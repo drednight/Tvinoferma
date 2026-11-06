@@ -723,3 +723,40 @@
 .gm-point-map span {
   color: #f5cc76;
 }
+.gm-compose-block {
+  border: 1px solid var(--border);
+  padding: 12px;
+  border-radius: 10px;
+  margin: 12px 0;
+}
+.gm-compose-block > header,
+.gm-compose-fields {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: end;
+}
+.gm-compose-fields > label {
+  flex: 1;
+  min-width: 140px;
+}
+.gm-compose-block li {
+  border-bottom: 1px solid var(--border);
+  padding: 10px 0;
+}
+.gm-record-area {
+  border: 2px dashed #8094b7;
+  border-radius: 10px;
+  min-height: 110px;
+  padding: 18px;
+  margin: 10px 0;
+  user-select: none;
+  touch-action: none;
+}
+.gm-record-area.is-recording {
+  border-color: #e05b66;
+  background: #e05b6615;
+}
+.gm-record-area:focus {
+  outline: 2px solid #e3be68;
+}

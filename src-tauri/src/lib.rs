@@ -298,6 +298,8 @@ pub fn run() {
             game_macros::game_macro_action,
             game_macros::game_macro_bindings,
             game_macros::game_macro_mirror,
+            game_macros::game_macro_pointer,
+            game_macros::game_macro_cursor,
             launcher::launcher_close_clients_pids,
             // повторная подпись окон (название и значок) после запуска
             launcher::launcher_decorate_clients,

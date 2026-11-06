@@ -1,3 +1,6 @@
+import { chord, steps } from './keySyntax.js';
+export { chord, steps } from './keySyntax.js';
+import { normalizeComposition } from './composition.js';
 import { normalizeAppearance } from './appearance.js';
 import { charactersInPartyOrdered } from '../parties/membership.js';
 export const ACTIONS = [
@@ -12,37 +15,10 @@ export const ACTIONS = [
   'optimize',
   'launch',
   'pause',
-  'mirror'
+  'mirror',
+  'composite',
+  'resize'
 ];
-export function chord(value) {
-  if (/^CTRL\+WHEEL(UP|DOWN)$/i.test(String(value))) return String(value).toUpperCase();
-  const parts = String(value || '')
-    .toUpperCase()
-    .replace(/\s/g, '')
-    .split('+');
-  const key = parts.pop();
-  if (!/^(F([1-9]|1[0-2])|[A-Z0-9]|LEFT|RIGHT|UP|DOWN|SPACE|ENTER|TAB|PAUSE|HOME)$/.test(key || '')) return '';
-  if (parts.some(p => !['CTRL', 'ALT', 'SHIFT'].includes(p)) || new Set(parts).size !== parts.length) return '';
-  return [...['CTRL', 'ALT', 'SHIFT'].filter(p => parts.includes(p)), key].join('+');
-}
-export function steps(text) {
-  const rows = String(text || '')
-    .split(/\n/)
-    .map(s => s.trim())
-    .filter(Boolean);
-  if (!rows.length || rows.length > 20) throw new Error('Нужно от 1 до 20 шагов.');
-  return rows.map(row => {
-    if (/^wait\s+\d+$/i.test(row)) {
-      const ms = Number(row.split(/\s+/)[1]);
-      if (ms < 50 || ms > 3000) throw new Error('Пауза — от 50 до 3000 мс.');
-      return { wait: ms };
-    }
-    const key = chord(row);
-    if (!key || key.includes('WHEEL'))
-      throw new Error('Недопустимая клавиша. Пример: SHIFT+1, F7 или wait 200, каждый шаг с новой строки.');
-    return { key };
-  });
-}
 export function normalizeGameMacros(input = {}) {
   input = input && typeof input === 'object' ? input : {};
   const leaders = Object.create(null);
@@ -62,12 +38,29 @@ export function normalizeGameMacros(input = {}) {
     } catch {
       continue;
     }
+    let blocks = [],
+      planError = '';
+    if (row.action === 'composite') {
+      try {
+        blocks = normalizeComposition(row.blocks);
+      } catch (error) {
+        planError = error.message;
+      }
+    }
     commands.push({
       id: String(row.id).slice(0, 80),
       name: String(
         row.id === 'ahk-buff' && row.name === 'Баф — отдельная пати' ? 'Баф — выбранная пати' : row.name || 'Команда'
       ).slice(0, 80),
       action: row.action,
+      blocks,
+      planError,
+      partyId: String(row.partyId || '').slice(0, 200),
+      profileId: String(row.profileId || '').slice(0, 80),
+      button: ['left', 'right', 'middle', 'x1', 'x2'].includes(row.button) ? row.button : 'left',
+      count: row.count === 2 ? 2 : 1,
+      width: size(row.width, 2560),
+      height: size(row.height, 1400),
       delivery: row.delivery === 'background' ? 'background' : 'foreground',
       hotkey: chord(row.hotkey),
       target: ['all', 'others', 'leader', 'subset'].includes(row.target) ? row.target : 'others',
@@ -120,6 +113,7 @@ export function normalizeGameMacros(input = {}) {
         ? { x: input.overlayPosition.x, y: input.overlayPosition.y }
         : null,
     enabled: input.enabled === true,
+    mirrorMouse: input.mirrorMouse === true,
     mirrorPresetVersion: input.mirrorPresetVersion === 1 ? 1 : 0,
     ahkPresetsVersion: input.ahkPresetsVersion === 1 ? 1 : 0,
     buffPartyId: String(input.partyId || '').slice(0, 200),

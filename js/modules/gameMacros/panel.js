@@ -16,6 +16,7 @@ import {
   saveProfile,
   pickPoint,
   previewCommand,
+  previewComposition,
   showSize
 } from './runtime.js';
 let activeHost,
@@ -61,7 +62,7 @@ export function mountGameMacros(host) {
   <header class="gm-heading"><div><span class="gm-eyebrow">Управление игровыми окнами</span><h3>🎮 Управление пати и макросы</h3><p>Выберите пати, настройте команды и запускайте их кнопкой или сочетанием клавиш.</p></div><button class="btn" data-gm-mirror aria-pressed="false">⌨ Включить повтор клавиатуры</button><button class="btn danger" data-gm-stop>■ Остановить</button></header>
   <div class="gm-control-bar"><label class="gm-field">Пати для всех команд<select data-gm-party><option value="">Выберите пати</option>${state.parties.map(p => option(p.id, p.name, c.partyId)).join('')}</select></label><label class="gm-switch"><input type="checkbox" data-gm-enabled ${c.enabled ? 'checked' : ''}><span><b>Управление сочетаниями клавиш</b><small>Можно запускать команды, когда открыта игра, без перехода в Твиноферму.</small></span></label></div>
   <p class="gm-key-note">Если переключатель выключен, работает ручной запуск кнопкой ▶. При включении Windows закрепляет сочетания за приложением; игровые команды срабатывают только из окон выбранной пати. Остановка — <kbd>Ctrl+Alt+Pause</kbd>.</p>
-  <button class="btn ghost" data-gm-diagnostics>◎ Проверить окна</button><div class="gm-status" role="status" data-gm-runtime></div>
+  <button class="btn ghost" data-gm-diagnostics>◎ Проверить окна</button><label><input type="checkbox" data-gm-mirror-mouse ${c.mirrorMouse ? 'checked' : ''}> Повторять также кнопки мыши: абсолютные экранные координаты, без масштабирования. Возможен расход ресурсов.</label><div class="gm-status" role="status" data-gm-runtime></div>
   <div class="gm-section-top"><h4>Мои команды <span>${c.commands.length}</span></h4><button class="btn primary" data-gm-create>＋ Создать команду</button></div>
   <div class="gm-command-workbench"><nav class="gm-command-menu" aria-label="Команды">${c.commands.map(row => `<button class="gm-command-choice ${row.id === selectedId ? 'is-selected' : ''}" data-gm-select="${esc(row.id)}" aria-pressed="${row.id === selectedId}"><b>${esc(row.name)}</b><kbd>${esc(row.hotkey || 'Без сочетания')}</kbd></button>`).join('') || '<p class="muted">Пока нет команд. Создайте первую.</p>'}</nav>
   <article class="gm-command-detail">${
@@ -69,7 +70,7 @@ export function mountGameMacros(host) {
       ? `<div class="gm-detail-head"><div><span class="gm-eyebrow">Выбранная команда</span><h4>${esc(selected.name)}</h4></div><div class="gm-icon-actions"><button class="btn" data-gm-run="${esc(selected.id)}" ${selected.action === 'pause' ? 'data-gm-pause' : ''} title="Запустить один раз без сочетания клавиш" aria-label="Запустить один раз">▶</button><button class="btn ghost" data-gm-edit="${esc(selected.id)}" title="Изменить команду" aria-label="Изменить команду">✎</button><button class="btn ghost danger" data-gm-delete="${esc(selected.id)}" title="Удалить команду" aria-label="Удалить команду">🗑</button></div></div>
   <dl class="gm-command-facts"><div><dt>Действие</dt><dd>${esc(commandLabels[selected.action])}</dd></div><div><dt>Получатели</dt><dd>${esc(targetLabel(selected))}</dd></div><div><dt>Сочетание</dt><dd><kbd>${esc(selected.hotkey || 'Не задано')}</kbd></dd></div>${['click', 'follow'].includes(selected.action) ? `<div><dt>Точка</dt><dd>${esc(point?.name || 'Нужно задать координаты')}</dd></div>` : ''}</dl>
   ${selected.action === 'sequence' ? `<pre class="gm-sequence">${esc(selected.sequence)}</pre>` : ''}
-  <p class="muted">Доставка: ${selected.delivery === 'background' ? 'без активации, эксперимент; игра может игнорировать' : 'ускоренный ввод с активацией окна'}.</p><p class="muted">▶ — выполнить эту команду один раз мышью. Это удобно для проверки и работы без сочетания клавиш.</p>${['click', 'follow'].includes(selected.action) ? `<button class="btn" data-gm-preview="${esc(selected.id)}">◎ Предпросмотр без клика</button><p class="muted">Перед первым кликом в этом сеансе проверьте точки предпросмотром.</p>` : ''}`
+  <p class="muted">Доставка: ${selected.delivery === 'background' ? 'без активации, эксперимент; игра может игнорировать' : 'ускоренный ввод с активацией окна'}.</p><p class="muted">▶ — выполнить эту команду один раз мышью. Это удобно для проверки и работы без сочетания клавиш.</p>${['click', 'follow', 'composite'].includes(selected.action) ? `<button class="btn" data-gm-preview="${esc(selected.id)}">◎ Предпросмотр без клика</button><p class="muted">Перед первым кликом в этом сеансе проверьте точки предпросмотром.</p>` : ''}`
       : '<p class="muted">Создайте команду: выберите действие, получателей и удобные клавиши.</p>'
   }</article></div>
   <section class="gm-settings-section"><div class="gm-section-top"><div><h4>Размеры клиентов для F11</h4><p>Задайте размер игровой области. «Показать размер» рисует рамку на экране, не меняя окна игры.</p></div><button class="btn ghost" data-gm-size-reset>По умолчанию</button></div><div class="gm-size-grid">${[
@@ -124,6 +125,7 @@ export function mountGameMacros(host) {
   );
   host.querySelector('[data-gm-stop]').onclick = stop;
   host.querySelector('[data-gm-mirror]').onclick = safe(toggleKeyboardMirror);
+  host.querySelector('[data-gm-mirror-mouse]').onchange = safe(e => save({ mirrorMouse: e.target.checked }));
   host.querySelector('[data-gm-party]').onchange = safe(e => save({ partyId: e.target.value }));
   host.querySelector('[data-gm-enabled]').onchange = safe(e => save({ enabled: e.target.checked }));
   host.querySelector('[data-gm-create]').onclick = () => openCommandEditor(config(), save);
@@ -148,7 +150,10 @@ export function mountGameMacros(host) {
   );
   host.querySelector('[data-gm-preview]')?.addEventListener(
     'click',
-    safe(async () => drawPoint(await previewCommand(selectedId)))
+    safe(async () => {
+      if (selected.action === 'composite') await previewComposition(selectedId);
+      else drawPoint(await previewCommand(selectedId));
+    })
   );
   host.querySelector('[data-gm-diagnostics]').onclick = safe(async () => {
     const rows = await (await import('./runtime.js')).listMacroWindows();

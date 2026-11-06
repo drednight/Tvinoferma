@@ -1,3 +1,4 @@
+import { compileComposition, executeComposition, compositionActions } from './composition.js';
 import { listen, emitTo } from '@tauri-apps/api/event';
 import { state } from '../../core/state.js';
 import { normalizeGameMacros, resolveTargets, steps, commandPoint, validPoint, backgroundCompatible } from './model.js';
@@ -13,7 +14,8 @@ let mirroring = false,
   mirrorSession = '',
   mirrorTimer,
   mirrorInit;
-let paused = false;
+let paused = false,
+  composing = false;
 const logs = [];
 const reviewedPoints = new Set();
 export const config = () => normalizeGameMacros(state.settings.gameMacros);
@@ -60,9 +62,9 @@ export function stop() {
     );
   if (busy) log('Запрошена остановка. Уже отправленный ввод отменить нельзя.');
 }
-const wait = async ms => {
+const wait = async (ms, aborted = () => false) => {
   for (let left = ms; left > 0; left -= 50) {
-    if (cancelled) throw new Error('cancel');
+    await checkpoint(aborted);
     await new Promise(r => setTimeout(r, Math.min(50, left)));
   }
 };
@@ -221,7 +223,8 @@ export async function run(id, hotkey = false) {
   const requested = config().commands.find(row => row.id === id);
   if (requested?.action === 'pause') {
     paused = !paused;
-    stop();
+    if (!composing) stop();
+    else if (mirroring || mirrorPending) void disableKeyboardMirror();
     log(paused ? 'Макросы на паузе.' : 'Макросы возобновлены.');
     void broadcast();
     return;
@@ -248,205 +251,20 @@ export async function run(id, hotkey = false) {
   try {
     if (mirroring || mirrorPending) await disableKeyboardMirror();
     if (hotkey) await wait(200);
-    if (command.action === 'launch') {
-      const party = state.parties.find(p => p.id === c.partyId);
-      if (!party) throw new Error('no party');
-      const { launchPartyByName } = await import('../launcher/partyLaunch.js');
-      await launchPartyByName(party.name);
-      log('Открыта штатная очередь запуска пати.');
-      return;
-    }
-    if (command.delivery === 'background' && !backgroundCompatible(command))
-      throw new Error('Эта команда не поддерживает фоновую доставку. Нужна последовательность клавиш либо F6→F1.');
-    const rows = await windowTargets(command, c);
-    if (hotkey && command.delivery !== 'background') {
-      let foreground = false;
-      for (const row of rows) {
-        try {
-          await act(row, 'foreground');
-          foreground = true;
-          break;
-        } catch {
-          /* not this window */
+    if (command.action === 'composite') {
+      composing = true;
+      const plan = compileComposition(command, c);
+      await preflightComposition(plan, c, false);
+      await executeComposition(plan, {
+        action: cmd => executeLegacy(cmd, c, false, false),
+        wait,
+        checkpoint,
+        pause: async () => {
+          paused = true;
+          log('Последовательность на паузе. Нажмите «Пауза / продолжить».');
         }
-      }
-      if (!foreground) {
-        log('Горячая команда пропущена: активное окно не относится к выбранной пати.');
-        return;
-      }
-    }
-    log(`Начало: ${command.name}. Получателей: ${rows.length}.`);
-    if (command.delivery === 'background') {
-      const send = async (row, key) => {
-        if (cancelled) throw new Error('cancel');
-        await act(row, 'key-background', { key });
-      };
-      if (command.action === 'f6f1') {
-        const scoped = scopedConfig(c, command),
-          leaderId = scoped.leaders[scoped.partyId];
-        if (!rows.some(row => row.charId === leaderId)) throw new Error('PL required');
-        for (const row of rows.filter(row => row.charId !== leaderId)) await send(row, 'F6');
-        for (const row of rows) await send(row, 'F1');
-      } else {
-        for (const row of rows) {
-          let previousKey = false;
-          for (const step of steps(command.sequence)) {
-            if (step.wait) {
-              await wait(step.wait);
-              previousKey = false;
-            } else {
-              if (previousKey) await wait(30);
-              await send(row, step.key);
-              previousKey = true;
-            }
-          }
-        }
-      }
-      log(
-        'Оконные сообщения поставлены в очередь без активации окон. Обработка игрой НЕ подтверждена; автоматического повтора/переключения нет.'
-      );
-      return;
-    }
-
-    if (['next', 'previous'].includes(command.action)) {
-      let activeId = cycleId;
-      for (const row of rows) {
-        try {
-          await act(row, 'foreground');
-          activeId = row.charId;
-          break;
-        } catch {
-          /* not active */
-        }
-      }
-      const found = rows.findIndex(r => r.charId === activeId),
-        idx = found < 0 && command.action === 'previous' ? 0 : found,
-        next = (idx + (command.action === 'next' ? 1 : -1) + rows.length) % rows.length;
-      await act(rows[next], 'focus');
-      cycleId = rows[next].charId;
-      log('Окно переключено.');
-      return;
-    }
-    if (command.action === 'f6f1' || command.action === 'optimize') {
-      const scoped = scopedConfig(c, command),
-        leaderId = scoped.leaders[scoped.partyId];
-      const leader = rows.find(row => row.charId === leaderId);
-      if (!leader) throw new Error('PL required');
-      if (command.action === 'f6f1') {
-        for (const row of rows.filter(r => r.charId !== leaderId)) {
-          if (cancelled) throw new Error('cancel');
-          await act(row, 'focus');
-          await act(row, 'key', { key: 'F6' });
-        }
-        for (const row of rows) {
-          if (cancelled) throw new Error('cancel');
-          await act(row, 'focus');
-          await act(row, 'key', { key: 'F1' });
-        }
-      } else {
-        const rectFor = row => ({
-          x: 0,
-          y: 0,
-          width: row.charId === leaderId ? c.leaderWidth : c.otherWidth,
-          height: row.charId === leaderId ? c.leaderHeight : c.otherHeight
-        });
-        for (const row of rows) {
-          if (cancelled) throw new Error('cancel');
-          await act(row, 'resize-check', { rect: rectFor(row) });
-        }
-        if (cancelled) throw new Error('cancel');
-        await act(leader, 'client-layout', { rect: rectFor(leader) });
-        for (const row of rows.filter(r => r.charId !== leaderId)) {
-          if (cancelled) throw new Error('cancel');
-          await act(row, 'focus');
-          await act(row, 'key', { key: 'CTRL+F9' });
-          await wait(150);
-          await act(row, 'client-layout', { rect: rectFor(row) });
-        }
-      }
-      if (cancelled) throw new Error('cancel');
-      await act(leader, 'focus');
-      log(
-        command.action === 'f6f1'
-          ? 'Оба прохода F6 → F1 завершены.'
-          : 'Размеры клиентских областей применены; Ctrl+F9 отправлен остальным.'
-      );
-    } else if (command.action === 'follow') {
-      const point = commandPoint(c, command),
-        menu = commandPoint(c, { ...command, pointId: command.menuPointId });
-      if (![point, menu].every(p => reviewedPoints.has(JSON.stringify(p)))) throw new Error('preview required');
-      for (const row of rows)
-        for (const p of [point, menu]) {
-          if (cancelled) throw new Error('cancel');
-          await act(row, 'preview', { point: p });
-        }
-      for (const row of rows) {
-        if (cancelled) throw new Error('cancel');
-        await act(row, 'focus');
-        await act(row, 'key', { key: 'SHIFT+1' });
-        await wait(80);
-        await act(row, 'right-click', { point });
-        await wait(120);
-        await act(row, 'click', { point: menu });
-        log(`Следование: ввод отправлен для ${row.nick}; результат в игре не проверялся.`);
-      }
-    } else if (command.action === 'click') {
-      const plan = await pointPlan(c, command, rows, true);
-      for (const { row, point } of plan) {
-        if (cancelled) throw new Error('cancel');
-        await act(row, 'preview', { point });
-      }
-      for (const [index, { row, point }] of plan.entries()) {
-        if (cancelled) throw new Error('cancel');
-        await act(row, 'focus');
-        await wait(100);
-        await act(row, 'click', { point });
-        log(`Клик отправлен: ${index + 1}/${rows.length}. Игровой результат не проверялся.`);
-      }
-    } else if (command.action === 'layout') {
-      const profile = c.profiles.find(p => p.id === c.profileId);
-      if (!profile || rows.some(row => !profile.windows.some(w => w.charId === row.charId)))
-        throw new Error('no complete profile');
-      for (const row of rows) {
-        if (cancelled) throw new Error('cancel');
-        const geometry = profile.windows.find(w => w.charId === row.charId);
-        if (!geometry) throw new Error('missing profile member');
-        await act(row, 'layout', { rect: geometry });
-      }
-    } else {
-      const sequence = command.action === 'sequence' ? steps(command.sequence) : [];
-      for (const [index, row] of rows.entries()) {
-        if (cancelled) throw new Error('cancel');
-        await act(row, 'focus');
-        if (cancelled) throw new Error('cancel');
-        let previousKey = false;
-        for (const step of sequence) {
-          if (step.wait) {
-            await wait(step.wait);
-            previousKey = false;
-          } else {
-            if (previousKey) await wait(30);
-            await act(row, 'key', { key: step.key });
-            previousKey = true;
-          }
-        }
-        log(`Обработано окон: ${index + 1}/${rows.length}. Ввод отправлен; результат в игре не проверялся.`);
-      }
-    }
-    if (['sequence', 'follow', 'click'].includes(command.action) && !cancelled) {
-      const scoped = scopedConfig(c, command),
-        leaderId = scoped.leaders[scoped.partyId];
-      if (leaderId) {
-        try {
-          const [leader] = await windowTargets({ target: 'leader', action: 'leader' }, scoped);
-          if (cancelled) throw new Error('cancel');
-          await act(leader, 'focus');
-        } catch {
-          /* no implicit replacement */
-        }
-      }
-    }
-    log('Команда завершена.');
+      });
+    } else await executeLegacy(command, c, hotkey);
   } catch (error) {
     log(cancelled ? 'Остановлено пользователем.' : `Остановлено: ${macroErrorText(error)}`);
   } finally {
@@ -454,8 +272,243 @@ export async function run(id, hotkey = false) {
       `Время выполнения: ${Math.round(performance.now() - started)} мс. Это время доставки/проверок, не подтверждение действия в игре.`
     );
     busy = false;
+    if (composing) paused = false;
+    composing = false;
     void broadcast();
   }
+}
+
+async function executeLegacy(command, c, hotkey = false, restore = true) {
+  c = scopedConfig(c, command);
+  if (command.action === 'launch') {
+    const party = state.parties.find(p => p.id === (command.partyId || c.partyId));
+    if (!party) throw new Error('no party');
+    const { launchPartyByName } = await import('../launcher/partyLaunch.js');
+    const result = await launchPartyByName(party.name, { cancelled: () => cancelled });
+    if (!result || result.some(r => r.ok === false || r.cancelled))
+      throw new Error('Запуск пати не завершён. Последующие действия не выполнялись.');
+    for (let tries = 0; tries < 60; tries++) {
+      try {
+        await windowTargets({ action: 'sequence', target: 'all' }, { ...c, partyId: party.id });
+        break;
+      } catch (error) {
+        if (tries === 59) throw error;
+        await wait(250);
+      }
+    }
+    log('Открыта штатная очередь запуска пати.');
+    return;
+  }
+  if (
+    command.delivery === 'background' &&
+    !backgroundCompatible(command) &&
+    !['click', 'screen', 'layout', 'resize'].includes(command.action)
+  )
+    throw new Error('Эта команда не поддерживает фоновую доставку. Нужна последовательность клавиш либо F6→F1.');
+  const rows = await windowTargets(command, c);
+  if (hotkey && command.delivery !== 'background') {
+    let foreground = false;
+    for (const row of rows) {
+      try {
+        await act(row, 'foreground');
+        foreground = true;
+        break;
+      } catch {
+        /* not this window */
+      }
+    }
+    if (!foreground) {
+      log('Горячая команда пропущена: активное окно не относится к выбранной пати.');
+      return;
+    }
+  }
+  log(`Начало: ${command.name}. Получателей: ${rows.length}.`);
+  if (command.delivery === 'background' && ['sequence', 'f6f1'].includes(command.action)) {
+    const send = async (row, key) => {
+      if (cancelled) throw new Error('cancel');
+      await act(row, 'key-background', { key });
+    };
+    if (command.action === 'f6f1') {
+      const scoped = scopedConfig(c, command),
+        leaderId = scoped.leaders[scoped.partyId];
+      if (!rows.some(row => row.charId === leaderId)) throw new Error('PL required');
+      for (const row of rows.filter(row => row.charId !== leaderId)) await send(row, 'F6');
+      for (const row of rows) await send(row, 'F1');
+    } else {
+      for (const row of rows) {
+        let previousKey = false;
+        for (const step of steps(command.sequence)) {
+          if (step.wait) {
+            await wait(step.wait);
+            previousKey = false;
+          } else {
+            if (previousKey) await wait(30);
+            await send(row, step.key);
+            previousKey = true;
+          }
+        }
+      }
+    }
+    log(
+      'Оконные сообщения поставлены в очередь без активации окон. Обработка игрой НЕ подтверждена; автоматического повтора/переключения нет.'
+    );
+    return;
+  }
+
+  if (['next', 'previous'].includes(command.action)) {
+    let activeId = cycleId;
+    for (const row of rows) {
+      try {
+        await act(row, 'foreground');
+        activeId = row.charId;
+        break;
+      } catch {
+        /* not active */
+      }
+    }
+    const found = rows.findIndex(r => r.charId === activeId),
+      idx = found < 0 && command.action === 'previous' ? 0 : found,
+      next = (idx + (command.action === 'next' ? 1 : -1) + rows.length) % rows.length;
+    await act(rows[next], 'focus');
+    cycleId = rows[next].charId;
+    log('Окно переключено.');
+    return;
+  }
+  if (command.action === 'f6f1' || command.action === 'optimize') {
+    const scoped = scopedConfig(c, command),
+      leaderId = scoped.leaders[scoped.partyId];
+    const leader = rows.find(row => row.charId === leaderId);
+    if (!leader) throw new Error('PL required');
+    if (command.action === 'f6f1') {
+      for (const row of rows.filter(r => r.charId !== leaderId)) {
+        if (cancelled) throw new Error('cancel');
+        await act(row, 'focus');
+        await act(row, 'key', { key: 'F6' });
+      }
+      for (const row of rows) {
+        if (cancelled) throw new Error('cancel');
+        await act(row, 'focus');
+        await act(row, 'key', { key: 'F1' });
+      }
+    } else {
+      const rectFor = row => ({
+        x: 0,
+        y: 0,
+        width: row.charId === leaderId ? c.leaderWidth : c.otherWidth,
+        height: row.charId === leaderId ? c.leaderHeight : c.otherHeight
+      });
+      for (const row of rows) {
+        if (cancelled) throw new Error('cancel');
+        await act(row, 'resize-check', { rect: rectFor(row) });
+      }
+      if (cancelled) throw new Error('cancel');
+      await act(leader, 'client-layout', { rect: rectFor(leader) });
+      for (const row of rows.filter(r => r.charId !== leaderId)) {
+        if (cancelled) throw new Error('cancel');
+        await act(row, 'focus');
+        await act(row, 'key', { key: 'CTRL+F9' });
+        await wait(150);
+        await act(row, 'client-layout', { rect: rectFor(row) });
+      }
+    }
+    if (cancelled) throw new Error('cancel');
+    await act(leader, 'focus');
+    log(
+      command.action === 'f6f1'
+        ? 'Оба прохода F6 → F1 завершены.'
+        : 'Размеры клиентских областей применены; Ctrl+F9 отправлен остальным.'
+    );
+  } else if (command.action === 'follow') {
+    const point = commandPoint(c, command),
+      menu = commandPoint(c, { ...command, pointId: command.menuPointId });
+    if (![point, menu].every(p => reviewedPoints.has(JSON.stringify(p)))) throw new Error('preview required');
+    for (const row of rows)
+      for (const p of [point, menu]) {
+        if (cancelled) throw new Error('cancel');
+        await act(row, 'preview', { point: p });
+      }
+    for (const row of rows) {
+      if (cancelled) throw new Error('cancel');
+      await act(row, 'focus');
+      await act(row, 'key', { key: 'SHIFT+1' });
+      await wait(80);
+      await act(row, 'right-click', { point });
+      await wait(120);
+      await act(row, 'click', { point: menu });
+      log(`Следование: ввод отправлен для ${row.nick}; результат в игре не проверялся.`);
+    }
+  } else if (command.action === 'click') {
+    const plan = await pointPlan(c, command, rows, true);
+    for (const { row, point } of plan) {
+      if (cancelled) throw new Error('cancel');
+      await act(row, 'preview', { point });
+    }
+    for (const [index, { row, point }] of plan.entries()) {
+      if (cancelled) throw new Error('cancel');
+      if (command.delivery !== 'background') {
+        await act(row, 'focus');
+        await wait(100);
+      }
+      if ((command.button && command.button !== 'left') || command.count === 2 || command.delivery === 'background')
+        await pointer(row, command, point, false);
+      else await act(row, 'click', { point });
+      log(`Клик отправлен: ${index + 1}/${rows.length}. Игровой результат не проверялся.`);
+    }
+  } else if (command.action === 'screen') {
+    for (const row of rows) {
+      await checkpoint();
+      if (command.delivery !== 'background') await act(row, 'focus');
+      await pointer(row, command, null, false);
+    }
+  } else if (command.action === 'resize') {
+    for (const row of rows) {
+      await checkpoint();
+      await act(row, 'client-layout', { rect: { x: 0, y: 0, width: command.width, height: command.height } });
+    }
+  } else if (command.action === 'layout') {
+    const profile = c.profiles.find(p => p.id === (command.profileId || c.profileId));
+    if (!profile || rows.some(row => !profile.windows.some(w => w.charId === row.charId)))
+      throw new Error('no complete profile');
+    for (const row of rows) {
+      if (cancelled) throw new Error('cancel');
+      const geometry = profile.windows.find(w => w.charId === row.charId);
+      if (!geometry) throw new Error('missing profile member');
+      await act(row, 'layout', { rect: geometry });
+    }
+  } else {
+    const sequence = command.action === 'sequence' ? steps(command.sequence) : [];
+    for (const [index, row] of rows.entries()) {
+      if (cancelled) throw new Error('cancel');
+      await act(row, 'focus');
+      if (cancelled) throw new Error('cancel');
+      let previousKey = false;
+      for (const step of sequence) {
+        if (step.wait) {
+          await wait(step.wait);
+          previousKey = false;
+        } else {
+          if (previousKey) await wait(30);
+          await act(row, 'key', { key: step.key });
+          previousKey = true;
+        }
+      }
+      log(`Обработано окон: ${index + 1}/${rows.length}. Ввод отправлен; результат в игре не проверялся.`);
+    }
+  }
+  if (restore && ['sequence', 'follow', 'click'].includes(command.action) && !cancelled) {
+    const scoped = scopedConfig(c, command),
+      leaderId = scoped.leaders[scoped.partyId];
+    if (leaderId) {
+      try {
+        const [leader] = await windowTargets({ target: 'leader', action: 'leader' }, scoped);
+        if (cancelled) throw new Error('cancel');
+        await act(leader, 'focus');
+      } catch {
+        /* no implicit replacement */
+      }
+    }
+  }
+  log('Команда завершена.');
 }
 
 export async function capturePoint(charId, name, uiScale) {
@@ -575,8 +628,8 @@ export async function initGameMacros() {
   await configure();
 }
 
-export function scopedConfig(c, _command) {
-  return c;
+export function scopedConfig(c, command) {
+  return command.partyId ? { ...c, partyId: command.partyId } : c;
 }
 export function commandReady(c, command) {
   if (['click', 'follow'].includes(command.action)) {
@@ -744,6 +797,7 @@ const mirrorArgs = (operation, sessionId = mirrorSession, extra = {}) => ({
   sessionId,
   targets: [],
   shortcuts: [],
+  mouse: false,
   ...extra
 });
 function ensureMirror() {
@@ -807,6 +861,7 @@ export async function toggleKeyboardMirror() {
     const active = await native(
       'game_macro_mirror',
       mirrorArgs('start', id, {
+        mouse: config().mirrorMouse,
         targets: rows.map(r => ({ pid: r.pid, startedAt: r.startedAt })),
         shortcuts: [
           'CTRL+ALT+PAUSE',
@@ -837,12 +892,99 @@ export async function toggleKeyboardMirror() {
       }
     }, 1000);
     log(
-      `Повтор клавиатуры ВКЛЮЧЁН: ${rows.length} проверенных окон, только при фокусе игры. Мышь не передаётся. Ctrl+Alt+Pause — выключить. Обработка сообщений игрой не подтверждена.`
+      `Повтор клавиатуры ВКЛЮЧЁН: ${rows.length} проверенных окон, только при фокусе игры. ${config().mirrorMouse ? 'Кнопки мыши: абсолютные экранные точки.' : 'Мышь не передаётся.'} Ctrl+Alt+Pause — выключить. Обработка сообщений игрой не подтверждена.`
     );
   } catch (error) {
     log(macroErrorText(error));
   } finally {
     mirrorPending = false;
+    void broadcast();
+  }
+}
+
+async function checkpoint(aborted = () => false) {
+  while (paused) {
+    if (cancelled || aborted()) throw new Error('cancel');
+    await new Promise(r => setTimeout(r, 50));
+  }
+  if (cancelled || aborted()) throw new Error('cancel');
+}
+function pointer(row, command, point, checkOnly) {
+  if (command.delivery === 'background' && command.modifiers?.includes('ALT'))
+    throw new Error('Alt+клик: выберите обычный режим этого блока. Фоновый режим поддерживает только Ctrl/Shift.');
+  return native('game_macro_pointer', {
+    target: { pid: row.pid, startedAt: row.startedAt },
+    point: point || null,
+    input: {
+      x: command.x || 0,
+      y: command.y || 0,
+      button: command.button || 'left',
+      count: command.count || 1,
+      background: command.delivery === 'background',
+      checkOnly,
+      modifiers: command.modifiers || []
+    }
+  });
+}
+export async function recorderCursor() {
+  return native('game_macro_cursor');
+}
+async function preflightComposition(plan, c, preview) {
+  const actions = compositionActions(plan);
+  const launched = new Set(actions.filter(a => a.action === 'launch').map(a => a.partyId || c.partyId));
+  for (const cmd of actions) {
+    await checkpoint();
+    const scoped = scopedConfig(c, cmd);
+    if (cmd.action === 'launch') {
+      if (!state.parties.some(p => p.id === (cmd.partyId || c.partyId))) throw new Error('Пати для запуска удалена.');
+      continue;
+    }
+    if (launched.has(scoped.partyId) && !preview) continue; // launch-dependent identities are verified at execution
+    const rows = await windowTargets(cmd, scoped);
+    if (cmd.action === 'screen') {
+      if (!cmd.resourceAllowed) throw new Error('Разрешите действия мышью.');
+      for (const row of rows) await pointer(row, cmd, null, true);
+    }
+    if (cmd.action === 'click' || cmd.action === 'follow') {
+      const points =
+        cmd.action === 'click'
+          ? [commandPoint(scoped, cmd, false)]
+          : [commandPoint(scoped, cmd, false), commandPoint(scoped, { ...cmd, pointId: cmd.menuPointId }, false)];
+      if (!preview && (!cmd.resourceAllowed || points.some(p => !reviewedPoints.has(JSON.stringify(p)))))
+        throw new Error('Сначала проверьте точки составной команды предпросмотром и разрешите клики.');
+      for (const row of rows) for (const point of points) await act(row, 'preview', { point });
+    }
+    if (
+      cmd.action === 'layout' &&
+      !scoped.profiles.some(
+        p => p.id === (cmd.profileId || scoped.profileId) && rows.every(r => p.windows.some(w => w.charId === r.charId))
+      )
+    )
+      throw new Error('В профиле нет всех получателей.');
+    if (cmd.action === 'resize')
+      for (const row of rows)
+        await act(row, 'resize-check', { rect: { x: 0, y: 0, width: cmd.width, height: cmd.height } });
+  }
+  if (preview)
+    for (const cmd of actions.filter(a => ['click', 'follow'].includes(a.action))) {
+      const scoped = scopedConfig(c, cmd);
+      reviewedPoints.add(JSON.stringify(commandPoint(scoped, cmd, false)));
+      if (cmd.action === 'follow')
+        reviewedPoints.add(JSON.stringify(commandPoint(scoped, { ...cmd, pointId: cmd.menuPointId }, false)));
+    }
+}
+export async function previewComposition(id) {
+  if (busy) throw new Error('Сначала остановите команду.');
+  busy = true;
+  cancelled = false;
+  try {
+    const c = config(),
+      cmd = c.commands.find(a => a.id === id);
+    if (!cmd || cmd.action !== 'composite') throw new Error('Выберите составную команду.');
+    await preflightComposition(compileComposition(cmd, c), c, true);
+    log('План, получатели и точки проверены без ввода.');
+  } finally {
+    busy = false;
     void broadcast();
   }
 }

@@ -11,7 +11,7 @@ on:
 
 # New pushes supersede obsolete PR checks, not checks of another PR/main.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -26,23 +26,20 @@ jobs:
       - if: github.event_name == 'push'
         run: npx vitest run tests/cloudSnapshotFile.test.js tests/cloudSnapshotFilePanel.ui.test.js
       - run: npm run build
-      # Информационный шаг: показывает уязвимости, но не блокирует PR
-      - run: npm audit --omit=dev --audit-level=high
-        continue-on-error: true
 
   frontend-tests:
     if: github.event_name != 'push'
-    name: frontend-tests (${{ matrix.shard }}/4)
+    name: frontend-tests (${{ matrix.shard }}/8)
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-frontend
       # Every file runs exactly once, still isolated; no reduced test selection.
-      - run: npm test -- --shard=${{ matrix.shard }}/4 --maxWorkers=2
+      - run: npm test -- --shard=${{ matrix.shard }}/8 --maxWorkers=2
 
   # Preserve the existing required check name; it cannot pass before ALL shards.
   frontend:
@@ -63,28 +60,60 @@ jobs:
             test "$TESTS" = success
           fi
 
-  rust:
-    runs-on: windows-latest
+  frontend-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-frontend
+      - run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true
+
+  rust-format:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
+          components: rustfmt
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+
+  rust-checks:
+    name: rust-${{ matrix.check }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [test, clippy]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
-      # generate_context! требует собранный фронтенд (frontendDist = ../dist)
       - run: mkdir dist
-      - run: ./.github/scripts/run-cargo-windows.ps1 test
-        env:
-          # Отдельные временные имена; значения синтетические и очищаются после теста.
-          TF_RUN_CREDENTIAL_MANAGER_TESTS: '1'
-      # Явно проверяем, что opt-in тест не был пропущен или отфильтрован.
-      - run: ./.github/scripts/run-cargo-windows.ps1 credential-smoke
+      - run: ./.github/scripts/run-cargo-windows.ps1 ${{ matrix.check }}
         env:
           TF_RUN_CREDENTIAL_MANAGER_TESTS: '1'
-      - run: ./.github/scripts/run-cargo-windows.ps1 fmt
-      - run: ./.github/scripts/run-cargo-windows.ps1 clippy
+      - if: matrix.check == 'test'
+        run: ./.github/scripts/run-cargo-windows.ps1 credential-smoke
+        env:
+          TF_RUN_CREDENTIAL_MANAGER_TESTS: '1'
+
+  # Keep the protected check name. All native checks must succeed.
+  rust:
+    if: always()
+    needs: [rust-format, rust-checks]
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          FORMAT: ${{ needs.rust-format.result }}
+          CHECKS: ${{ needs.rust-checks.result }}
+        run: |
+          test "$FORMAT" = success
+          test "$CHECKS" = success
 
   rust-audit:
     runs-on: ubuntu-latest

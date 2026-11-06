@@ -546,6 +546,259 @@ mod win {
             })
         }
     }
+    pub(super) fn mouse_message(
+        raw: u64,
+        x: i32,
+        y: i32,
+        button: u8,
+        up: bool,
+        flags: u32,
+        double: bool,
+    ) -> Result<(), String> {
+        let hwnd = HWND(raw as usize as *mut _);
+        unsafe {
+            let mut point = POINT { x, y };
+            let mut r = RECT::default();
+            GetClientRect(hwnd, &mut r).map_err(|_| "Cannot read client area")?;
+            if !ScreenToClient(hwnd, &mut point).as_bool() {
+                return Err("Cannot convert pointer".into());
+            }
+            let outside = point.x < 0
+                || point.y < 0
+                || point.x >= r.right
+                || point.y >= r.bottom
+                || point.x > 32767
+                || point.y > 32767;
+            if outside && !up {
+                return Err("Point is outside client area".into());
+            }
+            if outside {
+                point.x = point.x.clamp(0, r.right.saturating_sub(1).clamp(0, 32767));
+                point.y = point.y.clamp(0, r.bottom.saturating_sub(1).clamp(0, 32767));
+            }
+            let (down, release, dbl, mask) = match button {
+                0 => (WM_LBUTTONDOWN, WM_LBUTTONUP, WM_LBUTTONDBLCLK, 1),
+                1 => (WM_RBUTTONDOWN, WM_RBUTTONUP, WM_RBUTTONDBLCLK, 2),
+                2 => (WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MBUTTONDBLCLK, 16),
+                3 | 4 => (
+                    WM_XBUTTONDOWN,
+                    WM_XBUTTONUP,
+                    WM_XBUTTONDBLCLK,
+                    if button == 3 { 32 } else { 64 },
+                ),
+                _ => return Err("Invalid mouse button".into()),
+            };
+            let position = ((point.y as u32) << 16) | (point.x as u32 & 0xffff);
+            let state = if up { flags & !mask } else { flags | mask };
+            let state = if button >= 3 {
+                state | ((button as u32 - 2) << 16)
+            } else {
+                state
+            };
+            PostMessageW(
+                Some(hwnd),
+                WM_MOUSEMOVE,
+                WPARAM(flags as usize),
+                LPARAM(position as isize),
+            )
+            .map_err(|_| "Cannot queue pointer position")?;
+            PostMessageW(
+                Some(hwnd),
+                if up {
+                    release
+                } else if double {
+                    dbl
+                } else {
+                    down
+                },
+                WPARAM(state as usize),
+                LPARAM(position as isize),
+            )
+            .map_err(|_| "Cannot queue mouse input")?;
+            if outside {
+                return Err("Point is outside client area".into());
+            }
+            Ok(())
+        }
+    }
+    pub(super) fn cursor() -> Result<super::ScreenPoint, String> {
+        unsafe {
+            let mut p = POINT::default();
+            GetCursorPos(&mut p).map_err(|_| "Cannot read pointer")?;
+            Ok(super::ScreenPoint { x: p.x, y: p.y })
+        }
+    }
+    pub(super) fn pointer(
+        raw: u64,
+        pid: u32,
+        input: super::PointerInput,
+        calibration: Option<PointInput>,
+    ) -> Result<Option<Geometry>, String> {
+        let hwnd = HWND(raw as usize as *mut _);
+        unsafe {
+            let mut actual = 0;
+            GetWindowThreadProcessId(hwnd, Some(&mut actual));
+            if actual != pid || !IsWindow(Some(hwnd)).as_bool() {
+                return Err("Game window disappeared".into());
+            }
+            if !["left", "right", "middle", "x1", "x2"].contains(&input.button.as_str())
+                || !(1..=2).contains(&input.count)
+                || input
+                    .modifiers
+                    .iter()
+                    .any(|m| !["CTRL", "SHIFT", "ALT"].contains(&m.as_str()))
+                || input.modifiers.len() > 3
+            {
+                return Err("Invalid pointer action".into());
+            }
+            if input.background && input.modifiers.iter().any(|m| m == "ALT") {
+                return Err("Alt-click needs foreground delivery".into());
+            }
+            let mut r = RECT::default();
+            GetClientRect(hwnd, &mut r).map_err(|_| "Cannot read client area")?;
+            let dpi = GetDpiForWindow(hwnd);
+            let mut screen = POINT {
+                x: input.x,
+                y: input.y,
+            };
+            if let Some(p) = calibration {
+                if p.width != r.right || p.height != r.bottom || p.dpi != dpi {
+                    return Err("Client size or DPI differs from calibration".into());
+                }
+                screen = POINT { x: p.x, y: p.y };
+                if !ClientToScreen(hwnd, &mut screen).as_bool() {
+                    return Err("Cannot convert calibration".into());
+                }
+            }
+            let mut local = screen;
+            if !ScreenToClient(hwnd, &mut local).as_bool()
+                || local.x < 0
+                || local.y < 0
+                || local.x >= r.right
+                || local.y >= r.bottom
+            {
+                return Err("Point is outside client area".into());
+            }
+            let geometry = Geometry {
+                x: local.x,
+                y: local.y,
+                width: r.right,
+                height: r.bottom,
+                dpi,
+            };
+            if input.check_only {
+                return Ok(Some(geometry));
+            }
+            let button = match input.button.as_str() {
+                "left" => 0,
+                "right" => 1,
+                "middle" => 2,
+                "x1" => 3,
+                _ => 4,
+            };
+            if input.background {
+                if input.modifiers.iter().any(|m| m == "ALT") {
+                    return Err("Alt-click needs foreground delivery".into());
+                }
+                let flags = if input.modifiers.iter().any(|m| m == "SHIFT") {
+                    4
+                } else {
+                    0
+                } | if input.modifiers.iter().any(|m| m == "CTRL") {
+                    8
+                } else {
+                    0
+                };
+                for i in 0..input.count {
+                    if let Err(error) =
+                        mouse_message(raw, screen.x, screen.y, button, false, flags, i == 1)
+                    {
+                        let _ = mouse_message(raw, screen.x, screen.y, button, true, flags, false);
+                        return Err(error);
+                    }
+                    let release =
+                        mouse_message(raw, screen.x, screen.y, button, true, flags, false);
+                    if let Err(error) = release {
+                        let _ = mouse_message(raw, screen.x, screen.y, button, true, flags, false);
+                        return Err(error);
+                    }
+                    if input.count == 2 && i == 0 {
+                        std::thread::sleep(Duration::from_millis(50));
+                    }
+                }
+            } else {
+                if GetForegroundWindow() != hwnd
+                    || [1, 2, 4, 0x10, 0x11, 0x12, 0x5b, 0x5c]
+                        .iter()
+                        .any(|k| GetAsyncKeyState(*k) < 0)
+                {
+                    return Err("Focus changed or physical input is held".into());
+                }
+                SetCursorPos(screen.x, screen.y).map_err(|_| "Cannot position pointer")?;
+                let under = WindowFromPoint(screen);
+                if GetForegroundWindow() != hwnd
+                    || (under != hwnd && !IsChild(hwnd, under).as_bool())
+                {
+                    return Err("Another window covers the calibrated point".into());
+                }
+                let key = |vk: u16, up: bool| INPUT {
+                    r#type: INPUT_KEYBOARD,
+                    Anonymous: INPUT_0 {
+                        ki: KEYBDINPUT {
+                            wVk: VIRTUAL_KEY(vk),
+                            dwFlags: if up {
+                                KEYEVENTF_KEYUP
+                            } else {
+                                KEYBD_EVENT_FLAGS(0)
+                            },
+                            ..Default::default()
+                        },
+                    },
+                };
+                let mods: Vec<u16> = input
+                    .modifiers
+                    .iter()
+                    .map(|m| match m.as_str() {
+                        "SHIFT" => 0x10,
+                        "CTRL" => 0x11,
+                        _ => 0x12,
+                    })
+                    .collect();
+                let mouse = |up: bool| INPUT {
+                    r#type: INPUT_MOUSE,
+                    Anonymous: INPUT_0 {
+                        mi: MOUSEINPUT {
+                            dwFlags: match (button, up) {
+                                (0, false) => MOUSEEVENTF_LEFTDOWN,
+                                (0, true) => MOUSEEVENTF_LEFTUP,
+                                (1, false) => MOUSEEVENTF_RIGHTDOWN,
+                                (1, true) => MOUSEEVENTF_RIGHTUP,
+                                (2, false) => MOUSEEVENTF_MIDDLEDOWN,
+                                (2, true) => MOUSEEVENTF_MIDDLEUP,
+                                (_, false) => MOUSEEVENTF_XDOWN,
+                                (_, true) => MOUSEEVENTF_XUP,
+                            },
+                            mouseData: if button >= 3 { button as u32 - 2 } else { 0 },
+                            ..Default::default()
+                        },
+                    },
+                };
+                let mut events: Vec<INPUT> = mods.iter().map(|vk| key(*vk, false)).collect();
+                for _ in 0..input.count {
+                    events.extend([mouse(false), mouse(true)]);
+                }
+                events.extend(mods.iter().rev().map(|vk| key(*vk, true)));
+                let sent = SendInput(&events, std::mem::size_of::<INPUT>() as i32);
+                if sent != events.len() as u32 {
+                    let mut release = vec![mouse(true)];
+                    release.extend(mods.iter().rev().map(|vk| key(*vk, true)));
+                    let _ = SendInput(&release, std::mem::size_of::<INPUT>() as i32);
+                    return Err("Windows did not accept the click".into());
+                }
+            }
+            Ok(Some(geometry))
+        }
+    }
     pub fn action(
         raw: u64,
         pid: u32,
@@ -992,6 +1245,7 @@ pub async fn game_macro_mirror(
     session_id: String,
     targets: Vec<Target>,
     shortcuts: Vec<String>,
+    mouse: Option<bool>,
 ) -> Result<bool, String> {
     main_only(&window)?;
     #[cfg(windows)]
@@ -1001,7 +1255,9 @@ pub async fn game_macro_mirror(
                 .lock()
                 .map_err(|_| "Mirror control lock failed")?;
             match operation.as_str() {
-                "start" => mirror::start(app, session_id, targets, shortcuts),
+                "start" => {
+                    mirror::start(app, session_id, targets, shortcuts, mouse.unwrap_or(false))
+                }
                 "stop" => mirror::stop(&session_id),
                 "heartbeat" => mirror::heartbeat(&session_id),
                 _ => Err("Unknown mirror operation".into()),
@@ -1012,7 +1268,7 @@ pub async fn game_macro_mirror(
     }
     #[cfg(not(windows))]
     {
-        let _ = (app, operation, session_id, targets, shortcuts);
+        let _ = (app, operation, session_id, targets, shortcuts, mouse);
         Err("Game control is Windows-only".into())
     }
 }
@@ -1021,5 +1277,61 @@ pub fn shutdown_mirror() {
     #[cfg(windows)]
     if let Ok(_guard) = MIRROR_CONTROL.lock() {
         let _ = mirror::stop("");
+    }
+}
+
+#[derive(Serialize)]
+pub struct ScreenPoint {
+    x: i32,
+    y: i32,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PointerInput {
+    x: i32,
+    y: i32,
+    button: String,
+    count: u8,
+    background: bool,
+    check_only: bool,
+    #[serde(default)]
+    modifiers: Vec<String>,
+}
+#[tauri::command]
+pub fn game_macro_cursor(window: tauri::WebviewWindow) -> Result<ScreenPoint, String> {
+    main_only(&window)?;
+    #[cfg(windows)]
+    {
+        win::cursor()
+    }
+    #[cfg(not(windows))]
+    {
+        Err("Windows-only".into())
+    }
+}
+#[tauri::command]
+pub async fn game_macro_pointer(
+    window: tauri::WebviewWindow,
+    target: Target,
+    input: PointerInput,
+    point: Option<PointInput>,
+) -> Result<Option<Geometry>, String> {
+    main_only(&window)?;
+    #[cfg(windows)]
+    {
+        tauri::async_runtime::spawn_blocking(move || {
+            let c = crate::launcher::macro_client(target.pid, target.started_at)?;
+            if !compatible_integrity(c.elevated, crate::launcher::self_elevated()) {
+                return Err("Game client identity changed or access is unavailable".into());
+            }
+            win::pointer(c.hwnd.ok_or("No game window")?, target.pid, input, point)
+        })
+        .await
+        .map_err(|_| "Pointer worker failed")?
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (target, input, point);
+        Err("Windows-only".into())
     }
 }

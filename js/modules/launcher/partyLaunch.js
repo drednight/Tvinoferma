@@ -274,12 +274,17 @@ export async function launchGroup(title, characters, opts = {}) {
   const signal = { cancelled: false };
   activeLaunches += 1;
   let task = null;
+  let macroCancelTimer;
   try {
     // Задача создаётся сразу, до проверок: пока идёт другой скрипт, запуск встаёт в очередь
     // дока и ждёт своей очереди, а не отказывает («запуск уже идёт»). Проверки идут уже после
     // ожидания: иначе «окна уже запущены» считалось бы по окнам чужого, ещё не закончившегося
     // запуска, и наш персонаж был бы пропущен.
     task = startTask(title, { cancelable: true });
+    if (typeof opts.cancelled === 'function')
+      macroCancelTimer = setInterval(() => {
+        if (opts.cancelled()) task.cancel();
+      }, 100);
     task.onCancel(() => {
       signal.cancelled = true;
     });
@@ -428,6 +433,7 @@ export async function launchGroup(title, characters, opts = {}) {
     toast(`Запуск не удался: ${errText(e)}`, 'error');
     return null;
   } finally {
+    clearInterval(macroCancelTimer);
     activeLaunches = Math.max(0, activeLaunches - 1);
     // Окна только что открылись — обновляем общий список окон, чтобы в карточке пати
     // появилась кнопка «🔖», а в шапке — кнопки закрытия окон.

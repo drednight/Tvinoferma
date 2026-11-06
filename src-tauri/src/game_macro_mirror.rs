@@ -42,12 +42,23 @@ struct Key {
     scan: u32,
     flags: u32,
     up: bool,
+    mouse: Option<Mouse>,
+}
+#[derive(Clone, Copy)]
+struct Mouse {
+    x: i32,
+    y: i32,
+    button: u8,
+    flags: u32,
+    double: bool,
 }
 struct Context {
     tx: SyncSender<Key>,
     clients: Vec<Client>,
     shortcuts: Vec<(Vec<u16>, u16)>,
     control: Arc<Control>,
+    mouse: bool,
+    last_mouse: Option<(u8, i32, i32, u64)>,
 }
 thread_local! { static CONTEXT: RefCell<Option<Context>> = const { RefCell::new(None) }; }
 fn halt(control: &Control, reason: u8) {
@@ -114,11 +125,117 @@ unsafe extern "system" fn hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
                 // Reset destinations before shortcuts/focus transitions rather than copying OS actions.
                 let key = Key {
                     source,
+                    mouse: None,
                     at: now(),
                     vk: if system || shortcut { 0 } else { event.vkCode },
                     scan: event.scanCode,
                     flags: event.flags.0,
                     up: matches!(wp.0 as u32, WM_KEYUP | WM_SYSKEYUP),
+                };
+                if ctx.tx.try_send(key).is_err() {
+                    halt(&ctx.control, 1);
+                }
+            });
+        }
+    }
+    CallNextHookEx(None, code, wp, lp)
+}
+unsafe extern "system" fn mouse_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+    if code >= 0
+        && matches!(
+            wp.0 as u32,
+            WM_LBUTTONDOWN
+                | WM_LBUTTONUP
+                | WM_RBUTTONDOWN
+                | WM_RBUTTONUP
+                | WM_MBUTTONDOWN
+                | WM_MBUTTONUP
+                | WM_XBUTTONDOWN
+                | WM_XBUTTONUP
+        )
+    {
+        let event = &*(lp.0 as *const MSLLHOOKSTRUCT);
+        if event.flags & LLMHF_INJECTED == 0 {
+            CONTEXT.with(|cell| {
+                let mut ctx = cell.borrow_mut();
+                let Some(ctx) = ctx.as_mut() else {
+                    return;
+                };
+                if !ctx.mouse || ctx.control.stop.load(Ordering::SeqCst) {
+                    return;
+                }
+                let hwnd = GetForegroundWindow();
+                let source = hwnd.0 as usize;
+                let under = WindowFromPoint(event.pt);
+                let mut pid = 0;
+                GetWindowThreadProcessId(hwnd, Some(&mut pid));
+                if (under != hwnd && !IsChild(hwnd, under).as_bool())
+                    || !ctx
+                        .clients
+                        .iter()
+                        .any(|c| c.hwnd == source && c.target.pid == pid)
+                {
+                    return;
+                }
+                let mut p = event.pt;
+                let mut r = windows::Win32::Foundation::RECT::default();
+                if GetClientRect(hwnd, &mut r).is_err()
+                    || !windows::Win32::Graphics::Gdi::ScreenToClient(hwnd, &mut p).as_bool()
+                    || p.x < 0
+                    || p.y < 0
+                    || p.x >= r.right
+                    || p.y >= r.bottom
+                {
+                    return;
+                }
+                let msg = wp.0 as u32;
+                let button = match msg {
+                    WM_LBUTTONDOWN | WM_LBUTTONUP => 0,
+                    WM_RBUTTONDOWN | WM_RBUTTONUP => 1,
+                    WM_MBUTTONDOWN | WM_MBUTTONUP => 2,
+                    _ => {
+                        if event.mouseData >> 16 == 1 {
+                            3
+                        } else {
+                            4
+                        }
+                    }
+                };
+                let up = matches!(
+                    msg,
+                    WM_LBUTTONUP | WM_RBUTTONUP | WM_MBUTTONUP | WM_XBUTTONUP
+                );
+                let at = now();
+                let double = !up
+                    && ctx.last_mouse.is_some_and(|(b, x, y, t)| {
+                        b == button
+                            && x == event.pt.x
+                            && y == event.pt.y
+                            && at.saturating_sub(t) <= GetDoubleClickTime() as u64
+                    });
+                if !up {
+                    ctx.last_mouse = if double {
+                        None
+                    } else {
+                        Some((button, event.pt.x, event.pt.y, at))
+                    };
+                }
+                let flags = if GetAsyncKeyState(0x10) < 0 { 4 } else { 0 }
+                    | if GetAsyncKeyState(0x11) < 0 { 8 } else { 0 };
+                let key = Key {
+                    source,
+                    at,
+                    vk: 0x100 + button as u32,
+                    scan: 0,
+                    flags: 0,
+                    up,
+                    mouse: Some(Mouse {
+                        x: event.pt.x,
+                        y: event.pt.y,
+                        button,
+                        flags,
+                        double,
+                    }),
                 };
                 if ctx.tx.try_send(key).is_err() {
                     halt(&ctx.control, 1);
@@ -162,6 +279,18 @@ fn message(key: Key, up: bool, repeat: bool) -> (u32, u32, u32) {
     (msg, vk, flags)
 }
 unsafe fn post(hwnd: usize, key: Key, up: bool, repeat: bool) -> bool {
+    if let Some(m) = key.mouse {
+        return super::win::mouse_message(
+            hwnd as u64,
+            m.x,
+            m.y,
+            m.button,
+            up,
+            m.flags,
+            m.double && !up,
+        )
+        .is_ok();
+    }
     let (msg, vk, flags) = message(key, up, repeat);
     PostMessageW(
         Some(HWND(hwnd as *mut _)),
@@ -286,6 +415,7 @@ pub fn start(
     id: String,
     targets: Vec<Target>,
     shortcuts: Vec<String>,
+    mouse: bool,
 ) -> Result<bool, String> {
     if id.is_empty()
         || id.len() > 80
@@ -331,12 +461,27 @@ pub fn start(
                 clients: clients.clone(),
                 shortcuts: parsed,
                 control: thread_control.clone(),
+                mouse,
+                last_mouse: None,
             })
         });
         let module = GetModuleHandleW(None).ok().map(|h| HINSTANCE(h.0));
         let hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook), module, 0);
         match hook {
             Ok(hook) => {
+                let mouse_hook = if mouse {
+                    match SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_hook), module, 0) {
+                        Ok(h) => Some(h),
+                        Err(_) => {
+                            let _ = UnhookWindowsHookEx(hook);
+                            CONTEXT.with(|ctx| *ctx.borrow_mut() = None);
+                            let _ = ready_tx.send(false);
+                            return;
+                        }
+                    }
+                } else {
+                    None
+                };
                 let worker_control = thread_control.clone();
                 let worker = std::thread::spawn(move || forward(rx, clients, worker_control));
                 let _ = ready_tx.send(true);
@@ -349,6 +494,9 @@ pub fn start(
                     std::thread::sleep(Duration::from_millis(2));
                 }
                 let _ = UnhookWindowsHookEx(hook);
+                if let Some(hook) = mouse_hook {
+                    let _ = UnhookWindowsHookEx(hook);
+                }
                 CONTEXT.with(|ctx| *ctx.borrow_mut() = None);
                 let _ = worker.join();
             }
@@ -381,6 +529,7 @@ mod tests {
     fn key(vk: u32, flags: u32) -> Key {
         Key {
             source: 0,
+            mouse: None,
             at: 0,
             vk,
             scan: 0x2a,
