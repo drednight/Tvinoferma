@@ -669,7 +669,7 @@ mod win {
 
     /// Текущий заголовок окна (см. `title_with_timeout` — почему с таймаутом).
     pub fn title_of(hwnd: usize) -> String {
-        title_with_timeout(hwnd as Hwnd)
+        window_caption(hwnd as Hwnd)
     }
 
     /// Когда процесс был запущен, мс с 1970. `None` — процесс недоступен (например, запущен от администратора).

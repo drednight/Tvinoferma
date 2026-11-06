@@ -885,7 +885,9 @@ mod win {
         }
     }
     pub(super) fn input_idle(raw: Option<&str>) -> Result<bool, String> {
-        let mut keys = vec![0x10u16, 0x11, 0x12, 0x5b, 0x5c];
+        let mut keys = vec![
+            0x01u16, 0x02, 0x04, 0x05, 0x06, 0x10, 0x11, 0x12, 0x5b, 0x5c,
+        ];
         if let Some(raw) = raw.filter(|s| !s.is_empty() && !s.contains("WHEEL")) {
             let (mods, key) = chord(raw)?;
             keys.extend(mods);
@@ -1088,13 +1090,24 @@ mod win {
                                 },
                             },
                         };
-                        if SendInput(
-                            &[mouse(false), mouse(true)],
-                            std::mem::size_of::<INPUT>() as i32,
-                        ) != 2
-                        {
+                        let accepted =
+                            SendInput(&[mouse(false)], std::mem::size_of::<INPUT>() as i32);
+                        if accepted == 1 {
+                            std::thread::sleep(Duration::from_millis(
+                                timing.hold_ms.clamp(10, 200),
+                            ));
+                        }
+                        // Separate down/up so polling games can observe the pressed button. Always release.
+                        let released =
+                            SendInput(&[mouse(true)], std::mem::size_of::<INPUT>() as i32);
+                        if released != 1 {
                             let _ = SendInput(&[mouse(true)], std::mem::size_of::<INPUT>() as i32);
+                        }
+                        if accepted != 1 || released != 1 {
                             return Err("Windows did not accept the click".into());
+                        }
+                        if GetForegroundWindow() != hwnd {
+                            return Err("Focus changed while clicking".into());
                         }
                     }
                     return Ok(Some(Geometry {

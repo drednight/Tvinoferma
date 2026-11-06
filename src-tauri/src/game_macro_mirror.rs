@@ -1,4 +1,4 @@
-//! Opt-in, volatile keyboard mirroring. Never stores keystrokes or injects global input.
+//! Opt-in, volatile mirroring. Diagnostic events are bounded and in memory only; no global injection.
 use super::{compatible_integrity, Target};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -23,6 +23,8 @@ struct Control {
     stop: AtomicBool,
     reason: AtomicU8,
     lease: AtomicU64,
+    failed_input: AtomicU64,
+    failed_age: AtomicU64,
 }
 struct Session {
     id: String,
@@ -137,6 +139,7 @@ unsafe extern "system" fn hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
                     up: matches!(wp.0 as u32, WM_KEYUP | WM_SYSKEYUP),
                 };
                 if ctx.tx.try_send(key).is_err() {
+                    failed_input(&ctx.control, key);
                     halt(&ctx.control, 1);
                 }
             });
@@ -173,13 +176,15 @@ unsafe extern "system" fn mouse_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESU
                 let under = WindowFromPoint(event.pt);
                 let mut pid = 0;
                 GetWindowThreadProcessId(hwnd, Some(&mut pid));
-                if (under != hwnd && !IsChild(hwnd, under).as_bool())
-                    || !ctx
-                        .clients
-                        .iter()
-                        .any(|c| c.hwnd == source && c.target.pid == pid)
+                if !ctx
+                    .clients
+                    .iter()
+                    .any(|c| c.hwnd == source && c.target.pid == pid)
                 {
-                    ctx.control.stop.store(true, Ordering::SeqCst);
+                    return;
+                }
+                if under != hwnd && !IsChild(hwnd, under).as_bool() {
+                    halt(&ctx.control, 6);
                     return;
                 }
                 let mut p = event.pt;
@@ -244,6 +249,7 @@ unsafe extern "system" fn mouse_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESU
                     }),
                 };
                 if ctx.tx.try_send(key).is_err() {
+                    failed_input(&ctx.control, key);
                     halt(&ctx.control, 1);
                 }
             });
@@ -289,7 +295,7 @@ fn message(key: Key, up: bool, repeat: bool) -> (u32, u32, u32) {
     };
     (msg, vk, flags)
 }
-unsafe fn post(hwnd: usize, key: Key, up: bool, repeat: bool) -> bool {
+unsafe fn post(hwnd: usize, key: Key, up: bool, repeat: bool) -> Result<(), u8> {
     if let Some(m) = key.mouse {
         return super::win::mouse_message(
             hwnd as u64,
@@ -300,7 +306,13 @@ unsafe fn post(hwnd: usize, key: Key, up: bool, repeat: bool) -> bool {
             m.flags,
             m.double && !up,
         )
-        .is_ok();
+        .map_err(|error| {
+            if error == "Point is outside client area" {
+                6
+            } else {
+                4
+            }
+        });
     }
     let (msg, vk, flags) = message(key, up, repeat);
     PostMessageW(
@@ -309,7 +321,7 @@ unsafe fn post(hwnd: usize, key: Key, up: bool, repeat: bool) -> bool {
         WPARAM(vk as usize),
         LPARAM(flags as isize),
     )
-    .is_ok()
+    .map_err(|_| 4)
 }
 
 fn release(clients: &[Client], held: &mut HashMap<usize, HashMap<u32, (Key, Instant)>>) {
@@ -317,16 +329,87 @@ fn release(clients: &[Client], held: &mut HashMap<usize, HashMap<u32, (Key, Inst
         if clients.iter().any(|c| c.hwnd == hwnd && verify(c)) {
             for (_, (key, _)) in keys {
                 unsafe {
-                    post(hwnd, key, true, false);
+                    let _ = post(hwnd, key, true, false);
                 }
             }
         }
     }
 }
-fn forward(rx: Receiver<Key>, clients: Vec<Client>, control: Arc<Control>) {
+fn failed_input(control: &Control, key: Key) {
+    control
+        .failed_input
+        .store(key.vk as u64 | (u64::from(key.up) << 32), Ordering::SeqCst);
+    control
+        .failed_age
+        .store(now().saturating_sub(key.at), Ordering::SeqCst);
+}
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InputTrace {
+    vk: u32,
+    up: bool,
+    recipients: u32,
+    age_ms: u64,
+    repetitions: u32,
+}
+struct TraceLog {
+    app: tauri::AppHandle,
+    id: String,
+    pending: Vec<InputTrace>,
+    flushed: Instant,
+    omitted: u32,
+}
+impl TraceLog {
+    fn record(&mut self, key: Key, recipients: u32) {
+        let age = now().saturating_sub(key.at);
+        if let Some(last) = self.pending.last_mut() {
+            if last.vk == key.vk && last.up == key.up && last.recipients == recipients {
+                last.repetitions = last.repetitions.saturating_add(1);
+                last.age_ms = last.age_ms.max(age);
+                return;
+            }
+        }
+        if self.pending.len() < 64 {
+            self.pending.push(InputTrace {
+                vk: key.vk,
+                up: key.up,
+                recipients,
+                age_ms: age,
+                repetitions: 1,
+            });
+        } else {
+            self.omitted = self.omitted.saturating_add(1);
+        }
+    }
+    fn flush(&mut self, force: bool) {
+        if !force && self.flushed.elapsed() < Duration::from_millis(100) {
+            return;
+        }
+        self.flushed = Instant::now();
+        if self.pending.is_empty() && self.omitted == 0 {
+            return;
+        }
+        let _=self.app.emit_to("main","game-macro-mirror-input",serde_json::json!({"sessionId":self.id,"events":std::mem::take(&mut self.pending),"omitted":std::mem::take(&mut self.omitted)}));
+    }
+}
+fn forward(
+    rx: Receiver<Key>,
+    clients: Vec<Client>,
+    control: Arc<Control>,
+    app: tauri::AppHandle,
+    id: String,
+) {
+    let mut trace = TraceLog {
+        app,
+        id,
+        pending: Vec::new(),
+        flushed: Instant::now(),
+        omitted: 0,
+    };
     let mut held: HashMap<usize, HashMap<u32, (Key, Instant)>> = HashMap::new();
     let mut previous = 0;
     while !control.stop.load(Ordering::SeqCst) {
+        trace.flush(false);
         if now().saturating_sub(control.lease.load(Ordering::SeqCst)) > 3000 {
             halt(&control, 2);
             break;
@@ -347,6 +430,8 @@ fn forward(rx: Receiver<Key>, clients: Vec<Client>, control: Arc<Control>) {
             continue;
         };
         if now().saturating_sub(key.at) > 250 {
+            failed_input(&control, key);
+            trace.record(key, 0);
             halt(&control, 1);
             break;
         }
@@ -362,6 +447,7 @@ fn forward(rx: Receiver<Key>, clients: Vec<Client>, control: Arc<Control>) {
             halt(&control, 3);
             break;
         }
+        let mut delivered = 0;
         for client in clients.iter().filter(|c| c.hwnd != key.source) {
             if control.stop.load(Ordering::SeqCst) {
                 break;
@@ -377,6 +463,7 @@ fn forward(rx: Receiver<Key>, clients: Vec<Client>, control: Arc<Control>) {
                 break;
             }
             if now().saturating_sub(key.at) > 250 {
+                failed_input(&control, key);
                 halt(&control, 1);
                 break;
             }
@@ -389,15 +476,19 @@ fn forward(rx: Receiver<Key>, clients: Vec<Client>, control: Arc<Control>) {
             if !key.up {
                 keys.insert(key.vk, (key, Instant::now()));
             }
-            if !unsafe { post(client.hwnd, key, key.up, repeat) } {
-                halt(&control, 4);
+            if let Err(reason) = unsafe { post(client.hwnd, key, key.up, repeat) } {
+                failed_input(&control, key);
+                halt(&control, reason);
                 break;
             }
+            delivered += 1;
             if key.up {
                 keys.remove(&key.vk);
             }
         }
+        trace.record(key, delivered);
     }
+    trace.flush(true);
     release(&clients, &mut held);
 }
 pub fn stop(id: &str) -> Result<bool, String> {
@@ -462,6 +553,8 @@ pub fn start(
         stop: AtomicBool::new(false),
         reason: AtomicU8::new(0),
         lease: AtomicU64::new(now()),
+        failed_input: AtomicU64::new(0),
+        failed_age: AtomicU64::new(0),
     });
     let thread_control = control.clone();
     let thread_id = id.clone();
@@ -497,7 +590,11 @@ pub fn start(
                     None
                 };
                 let worker_control = thread_control.clone();
-                let worker = std::thread::spawn(move || forward(rx, clients, worker_control));
+                let worker_app = app.clone();
+                let worker_id = thread_id.clone();
+                let worker = std::thread::spawn(move || {
+                    forward(rx, clients, worker_control, worker_app, worker_id)
+                });
                 let _ = ready_tx.send(true);
                 while !thread_control.stop.load(Ordering::SeqCst) {
                     let mut message = MSG::default();
@@ -519,7 +616,15 @@ pub fn start(
                 CONTEXT.with(|ctx| *ctx.borrow_mut() = None);
             }
         }
-        let _=app.emit_to("main","game-macro-mirror-state",serde_json::json!({"sessionId":thread_id,"active":false,"reason":thread_control.reason.load(Ordering::SeqCst)}));
+        let failed = thread_control.failed_input.load(Ordering::SeqCst);
+        let failure = if failed == 0 {
+            None
+        } else {
+            Some(
+                serde_json::json!({"vk":failed as u32,"up":failed>>32!=0,"ageMs":thread_control.failed_age.load(Ordering::SeqCst)}),
+            )
+        };
+        let _=app.emit_to("main","game-macro-mirror-state",serde_json::json!({"sessionId":thread_id,"active":false,"reason":thread_control.reason.load(Ordering::SeqCst),"failedInput":failure}));
     });
     let ready = ready_rx
         .recv_timeout(Duration::from_secs(3))

@@ -1,3 +1,4 @@
+import { inputLabel, formatMirrorInput } from './inputTrace.js';
 import { compileComposition, executeComposition, compositionActions } from './composition.js';
 import { listen, emitTo } from '@tauri-apps/api/event';
 import { state } from '../../core/state.js';
@@ -67,14 +68,14 @@ export async function broadcast() {
     /* overlay closed */
   }
 }
-function log(text, commandName = activeCommandName) {
+function log(text, commandName = activeCommandName, notify = true) {
   logs.push(`${new Date().toLocaleTimeString('ru-RU')} · ${text}`);
   logEntries.push({ text: logs.at(-1), commandName });
   if (logs.length > 120) {
     logs.shift();
     logEntries.shift();
   }
-  void broadcast();
+  if (notify) void broadcast();
 }
 export function stop() {
   if (mirroring || mirrorPending) void disableKeyboardMirror();
@@ -171,8 +172,17 @@ export async function windowTargets(
   }
   return resolveTargets(state, selected, command, rows);
 }
-const act = (row, action, extra = {}) =>
-  native('game_macro_action', {
+let inputStarted = 0,
+  firstInputLogged = false;
+const act = async (row, action, extra = {}) => {
+  const input = ['key', 'key-background', 'click', 'right-click'].includes(action);
+  if (input && busy && !firstInputLogged && inputStarted) {
+    firstInputLogged = true;
+    log(
+      `Первый запрос ввода: через ${Math.round(performance.now() - inputStarted)} мс после запуска (до обработки Windows/игрой).`
+    );
+  }
+  const result = await native('game_macro_action', {
     target: { pid: row.pid, startedAt: row.startedAt, ...(row.hwnd ? { hwnd: row.hwnd } : {}) },
     timing: inputTiming,
     action,
@@ -181,6 +191,12 @@ const act = (row, action, extra = {}) =>
     point: null,
     ...extra
   });
+  if (input)
+    log(
+      `Отправлено: ${extra.key || (action === 'right-click' ? 'ПКМ' : 'ЛКМ')} → ${row.nick || row.pid}${extra.point ? ` · точка (${extra.point.x}, ${extra.point.y})` : ''}. Нажатие и отпускание; обработка игрой не подтверждена.`
+    );
+  return result;
+};
 export async function saveProfile(name) {
   if (busy) throw new Error('Дождитесь окончания команды.');
   busy = true;
@@ -235,6 +251,9 @@ export function macroErrorText(error) {
       'Игровое окно закрылось или перезапустилось. Заново откройте клиент и проверьте список окон.',
     'Cannot queue background key':
       'Windows отказала в постановке фоновой клавиши. Автоповтора и переключения окон нет.',
+    'Focus changed while clicking': 'Во время клика сменился фокус. Кнопка отпущена, дальнейший ввод остановлен.',
+    'Windows did not accept the click':
+      'Windows не приняла нажатие или отпускание мыши целиком. Дальнейшие клики остановлены.',
     'Key input incomplete or focus changed':
       'Windows не приняла ввод целиком или сменилось активное окно. Повтора автоматически не будет.'
   };
@@ -278,19 +297,24 @@ export async function run(id, hotkey = false) {
   notice = '';
   activeCommandName = command.name;
   const started = performance.now();
+  inputStarted = started;
+  firstInputLogged = false;
   let suspended = false;
   cancelled = false;
-  void broadcast();
+  log(`Запуск: ${command.name}. Проверка окон и отпускания клавиш…`);
   try {
     if (mirroring || mirrorPending) await disableKeyboardMirror();
-    for (
-      let attempt = 0;
-      (await native('game_macro_input_idle', { chord: hotkey ? command.hotkey : null })) === false;
-      attempt++
-    ) {
-      if (attempt >= 75)
-        throw new Error('Отпустите клавиши запуска и модификаторы, затем повторите команду. Ввод не отправлен.');
-      await wait(20);
+    const idleArgs = { chord: hotkey ? command.hotkey : null };
+    let idle = await native('game_macro_input_idle', idleArgs);
+    const preparedRows = !['composite', 'launch'].includes(command.action) ? listMacroWindows() : null;
+    if (preparedRows) void preparedRows.catch(() => {});
+    for (let attempt = 0; idle === false; attempt++) {
+      if (attempt >= 150)
+        throw new Error(
+          'Отпустите клавиши запуска, модификаторы и кнопки мыши, затем повторите команду. Ввод не отправлен.'
+        );
+      await wait(10);
+      idle = await native('game_macro_input_idle', idleArgs);
     }
     await checkpoint();
     suspended = true;
@@ -316,7 +340,7 @@ export async function run(id, hotkey = false) {
         await checkpoint();
         await act(leader, 'focus');
       }
-    } else await executeLegacy(command, c, hotkey);
+    } else await executeLegacy(command, c, hotkey, true, preparedRows);
     if (command.delivery === 'background') {
       notice = 'Фоновая доставка завершена. Игра может игнорировать сообщения; результат не подтверждён.';
       log(notice);
@@ -329,6 +353,7 @@ export async function run(id, hotkey = false) {
       `Время выполнения: ${Math.round(performance.now() - started)} мс. Это время доставки/проверок, не подтверждение действия в игре.`
     );
     activeCommandName = '';
+    inputStarted = 0;
     if (composing) paused = false;
     composing = false;
     if (suspended) {
@@ -343,7 +368,7 @@ export async function run(id, hotkey = false) {
   }
 }
 
-async function executeLegacy(command, c, hotkey = false, restore = true) {
+async function executeLegacy(command, c, hotkey = false, restore = true, preparedRows = null) {
   await checkpoint();
   c = scopedConfig(c, command);
   inputTiming = {
@@ -375,7 +400,7 @@ async function executeLegacy(command, c, hotkey = false, restore = true) {
     !['click', 'screen', 'layout', 'resize'].includes(command.action)
   )
     throw new Error('Эта команда не поддерживает фоновую доставку. Нужна последовательность клавиш либо F6→F1.');
-  const snapshotRows = await listMacroWindows();
+  const snapshotRows = await (preparedRows || listMacroWindows());
   const rows = await windowTargets(command, c, snapshotRows);
   if (hotkey) {
     let foreground = false;
@@ -524,7 +549,6 @@ async function executeLegacy(command, c, hotkey = false, restore = true) {
       if (cancelled) throw new Error('cancel');
       if (command.delivery !== 'background') {
         await act(row, 'focus');
-        await wait(100);
       }
       if (
         (command.button && command.button !== 'left') ||
@@ -743,7 +767,7 @@ async function pointPlan(c, command, rows, requireReview, authorize = true) {
   ];
   const plan = [];
   for (const row of rows) {
-    await wait(50);
+    await checkpoint();
     let point = primary;
     if (candidates.length > 1) {
       const metric = await act(row, 'client-info');
@@ -904,6 +928,21 @@ const mirrorArgs = (operation, sessionId = mirrorSession, extra = {}) => ({
 });
 function ensureMirror() {
   return (mirrorInit ||= (async () => {
+    await listen('game-macro-mirror-input', event => {
+      const data = event.payload;
+      if (data?.sessionId !== mirrorSession) return;
+      for (const entry of (Array.isArray(data.events) ? data.events : []).slice(0, 64)) {
+        const text = formatMirrorInput(entry);
+        if (text) log(text, '', false);
+      }
+      if (data.omitted > 0)
+        log(
+          'Диагностические записи объединены/пропущены из-за частоты событий; ввод не задерживался ради журнала.',
+          '',
+          false
+        );
+      void broadcast();
+    });
     await listen('game-macro-mirror-state', event => {
       if (event.payload?.sessionId !== mirrorSession || event.payload.active !== false) return;
       ++mirrorEpoch;
@@ -918,9 +957,16 @@ function ensureMirror() {
         2: 'Потеря связи с интерфейсом: повтор остановлен.',
         3: 'Игровое окно изменилось: повтор остановлен.',
         4: 'Windows отказала в доставке: повтор остановлен.',
-        5: 'Клавиша удерживалась более 60 секунд без повтора: режим выключен защитой.'
+        5: 'Клавиша удерживалась более 60 секунд без повтора: режим выключен защитой.',
+        6: 'Точка мыши вне игровой области или недоступна: повтор остановлен.'
       };
-      notice = reasons[event.payload.reason] || 'Повтор выключен.';
+      const failed = event.payload.failedInput;
+      const label = inputLabel(failed?.vk);
+      notice =
+        (reasons[event.payload.reason] || 'Повтор выключен.') +
+        (label
+          ? ` Событие: ${label}, ${failed.up ? 'отпускание' : 'нажатие'}, задержка ${Math.max(0, Math.min(60000, Number(failed.ageMs) || 0))} мс.`
+          : '');
       log(notice);
     });
     await native('game_macro_mirror', mirrorArgs('stop', ''));
@@ -1033,10 +1079,10 @@ async function checkpoint(aborted = () => false) {
   }
   if (cancelled || aborted()) throw new Error('cancel');
 }
-function pointer(row, command, point, checkOnly) {
+async function pointer(row, command, point, checkOnly) {
   if (command.delivery === 'background' && command.modifiers?.includes('ALT'))
     throw new Error('Alt+клик: выберите обычный режим этого блока. Фоновый режим поддерживает только Ctrl/Shift.');
-  return native('game_macro_pointer', {
+  const result = await native('game_macro_pointer', {
     target: { pid: row.pid, startedAt: row.startedAt, ...(row.hwnd ? { hwnd: row.hwnd } : {}) },
     timing: inputTiming,
     point: point || null,
@@ -1050,6 +1096,11 @@ function pointer(row, command, point, checkOnly) {
       modifiers: command.modifiers || []
     }
   });
+  if (!checkOnly)
+    log(
+      `Отправлена кнопка мыши ${command.button || 'left'} → ${row.nick || row.pid} · ${point ? `точка (${point.x}, ${point.y})` : `экран (${command.x}, ${command.y})`}. Обработка игрой не подтверждена.`
+    );
+  return result;
 }
 export async function recorderCursor() {
   return native('game_macro_cursor');

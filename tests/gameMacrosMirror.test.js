@@ -127,3 +127,17 @@ it('allows a mouse toggle as an editable command and does not persist active mod
   expect(runtime.snapshot()).toMatchObject({ mirrorKeys: false, mirrorMouse: true });
   expect(state.settings.gameMacros.mirrorMouse).toBeUndefined();
 });
+it('logs only the active session input diagnostics and identifies the delayed key on overflow', async () => {
+  await runtime.toggleKeyboardMirror();
+  const id = m.invoke.mock.calls.find(([c, a]) => c === 'game_macro_mirror' && a.operation === 'start')[1].sessionId;
+  const trace = m.listeners.get('game-macro-mirror-input');
+  trace({ payload: { sessionId: 'stale', events: [{ vk: 0x71, up: false, recipients: 1 }] } });
+  expect(runtime.snapshot().logs.join(' ')).not.toContain('Повтор: F2');
+  trace({ payload: { sessionId: id, events: [{ vk: 0x78, up: false, recipients: 1, ageMs: 18 }] } });
+  expect(runtime.snapshot().logs.join(' ')).toContain('Повтор: F9');
+  m.listeners.get('game-macro-mirror-state')({
+    payload: { sessionId: id, active: false, reason: 1, failedInput: { vk: 0x78, up: false, ageMs: 265 } }
+  });
+  expect(runtime.snapshot().notice).toContain('F9');
+  expect(runtime.snapshot().notice).toContain('265 мс');
+});

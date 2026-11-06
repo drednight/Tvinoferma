@@ -197,3 +197,17 @@ it('keeps the saved party route after normalization and reversed OS enumeration'
   ).toEqual(['b', 'a']);
   expect(orderManagedTargets(restored, config, [...rows].reverse()).map(r => r.charId)).toEqual(['b', 'a', 'c']);
 });
+it('preserves the order of other parties too when a command visits all recognized clients', async () => {
+  const { orderManagedTargets } = await import('../js/modules/gameMacros/model.js');
+  const s = {
+    parties: [{ id: 'p' }, { id: 'q' }],
+    characters: [
+      { id: 'a', nick: 'Alpha', partyIds: ['p'], partyOrder: { p: 1 } },
+      { id: 'b', nick: 'Beta', partyIds: ['q'], partyOrder: { q: 2 } },
+      { id: 'c', nick: 'Zeta', partyIds: ['q'], partyOrder: { q: 1 } }
+    ]
+  };
+  expect(
+    orderManagedTargets(s, { partyId: 'p' }, [{ charId: 'b' }, { charId: 'a' }, { charId: 'c' }]).map(r => r.charId)
+  ).toEqual(['a', 'c', 'b']);
+});

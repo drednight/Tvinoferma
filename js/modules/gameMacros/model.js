@@ -255,7 +255,11 @@ export function backgroundCompatible(command) {
 
 // Global routes start with the selected party's persisted order, never OS enumeration order.
 export function orderManagedTargets(state, config, rows) {
-  const ids = partyMembers(state, config.partyId).map(c => c.id);
+  const ids = [
+    ...new Set(
+      [config.partyId, ...(state.parties || []).map(p => p.id)].flatMap(id => partyMembers(state, id).map(c => c.id))
+    )
+  ];
   const rank = new Map(ids.map((id, i) => [id, i]));
   const chars = new Map(state.characters.map(c => [c.id, c]));
   return [...rows].sort(

@@ -511,3 +511,20 @@ it('accepts a hotkey launched from PL even when the command only targets the oth
   await runtime.run('test', true);
   expect(invoke.mock.calls.some(([, a]) => a?.action === 'key' && a.target.pid === 20)).toBe(true);
 });
+it('prepares the window snapshot while waiting for the launching chord to be released', async () => {
+  let checks = 0;
+  invoke.mockImplementation(async (c, a) => {
+    if (c === 'game_macro_input_idle') return ++checks > 1;
+    if (c === 'launcher_running_details') return [client];
+    if (a?.action === 'foreground') return true;
+    return null;
+  });
+  await runtime.run('test', true);
+  const calls = invoke.mock.calls;
+  expect(calls.findIndex(([c]) => c === 'launcher_running_details')).toBeLessThan(
+    calls.findIndex(([c], i) => c === 'game_macro_input_idle' && i > 0)
+  );
+  expect(calls.filter(([c]) => c === 'launcher_running_details')).toHaveLength(1);
+  expect(runtime.snapshot().logs.join(' ')).toContain('Первый запрос ввода');
+  expect(runtime.snapshot().logs.join(' ')).toContain('Отправлено: F7');
+});
