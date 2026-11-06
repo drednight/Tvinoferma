@@ -128,3 +128,9 @@ it('hides both service headings together with the service panel', () => {
   document.querySelector('#info-toggle').click();
   expect([...document.querySelectorAll('[data-service-heading]')].every(el => !el.hidden)).toBe(true);
 });
+
+it('shows the continuous keyboard mirror status without exposing keystrokes', () => {
+  mocks.handlers.get('game-macro-snapshot')({ payload: { mirroring: true, commands: [] } });
+  expect(document.querySelector('#status').textContent).toContain('Повтор клавиатуры ВКЛЮЧЁН');
+  expect(document.querySelector('#status').textContent).toContain('Ctrl+Alt+Pause');
+});

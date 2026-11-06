@@ -37,6 +37,7 @@ struct Client {
 #[derive(Clone, Copy)]
 struct Key {
     source: usize,
+    at: u64,
     vk: u32,
     scan: u32,
     flags: u32,
@@ -59,6 +60,11 @@ unsafe fn modifiers() -> (bool, bool, bool) {
         GetAsyncKeyState(0x10) < 0,
         GetAsyncKeyState(0x12) < 0,
     )
+}
+fn reserved(vk: u32, ctrl: bool, alt: bool, win: bool) -> bool {
+    win || matches!(vk,0x5b..=0x5f|0xa6..=0xb7)
+        || (alt && matches!(vk, 0x09 | 0x1b | 0x73))
+        || (ctrl && vk == 0x1b)
 }
 unsafe extern "system" fn hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
     if code >= 0
@@ -93,11 +99,12 @@ unsafe extern "system" fn hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
                 {
                     return;
                 }
-                let system = GetAsyncKeyState(0x5b) < 0
-                    || GetAsyncKeyState(0x5c) < 0
-                    || matches!(event.vkCode,0x5b..=0x5f|0xa6..=0xb7)
-                    || (alt && matches!(event.vkCode, 0x09 | 0x1b | 0x73))
-                    || (ctrl && event.vkCode == 0x1b);
+                let system = reserved(
+                    event.vkCode,
+                    ctrl,
+                    alt,
+                    GetAsyncKeyState(0x5b) < 0 || GetAsyncKeyState(0x5c) < 0,
+                );
                 let shortcut = ctx.shortcuts.iter().any(|(mods, key)| {
                     *key as u32 == event.vkCode
                         && mods.contains(&0x11) == ctrl
@@ -107,6 +114,7 @@ unsafe extern "system" fn hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
                 // Reset destinations before shortcuts/focus transitions rather than copying OS actions.
                 let key = Key {
                     source,
+                    at: now(),
                     vk: if system || shortcut { 0 } else { event.vkCode },
                     scan: event.scanCode,
                     flags: event.flags.0,
@@ -126,7 +134,7 @@ fn verify(client: &Client) -> bool {
             && compatible_integrity(c.elevated, crate::launcher::self_elevated())
     })
 }
-unsafe fn post(hwnd: usize, key: Key, up: bool, repeat: bool) -> bool {
+fn message(key: Key, up: bool, repeat: bool) -> (u32, u32, u32) {
     let vk = match key.vk {
         0xa0 | 0xa1 => 0x10,
         0xa2 | 0xa3 => 0x11,
@@ -145,19 +153,25 @@ unsafe fn post(hwnd: usize, key: Key, up: bool, repeat: bool) -> bool {
         } else {
             0
         };
+    let msg = match (alt, up) {
+        (true, true) => WM_SYSKEYUP,
+        (true, false) => WM_SYSKEYDOWN,
+        (false, true) => WM_KEYUP,
+        (false, false) => WM_KEYDOWN,
+    };
+    (msg, vk, flags)
+}
+unsafe fn post(hwnd: usize, key: Key, up: bool, repeat: bool) -> bool {
+    let (msg, vk, flags) = message(key, up, repeat);
     PostMessageW(
         Some(HWND(hwnd as *mut _)),
-        match (alt, up) {
-            (true, true) => WM_SYSKEYUP,
-            (true, false) => WM_SYSKEYDOWN,
-            (false, true) => WM_KEYUP,
-            (false, false) => WM_KEYDOWN,
-        },
+        msg,
         WPARAM(vk as usize),
         LPARAM(flags as isize),
     )
     .is_ok()
 }
+
 fn release(clients: &[Client], held: &mut HashMap<usize, HashMap<u32, (Key, Instant)>>) {
     for (hwnd, keys) in held.drain() {
         if clients.iter().any(|c| c.hwnd == hwnd && verify(c)) {
@@ -192,6 +206,10 @@ fn forward(rx: Receiver<Key>, clients: Vec<Client>, control: Arc<Control>) {
         let Ok(key) = rx.recv_timeout(Duration::from_millis(10)) else {
             continue;
         };
+        if now().saturating_sub(key.at) > 250 {
+            halt(&control, 1);
+            break;
+        }
         if key.vk == 0 {
             release(&clients, &mut held);
             continue;
@@ -216,6 +234,10 @@ fn forward(rx: Receiver<Key>, clients: Vec<Client>, control: Arc<Control>) {
                 || key.source != unsafe { GetForegroundWindow().0 as usize }
             {
                 release(&clients, &mut held);
+                break;
+            }
+            if now().saturating_sub(key.at) > 250 {
+                halt(&control, 1);
                 break;
             }
             let keys = held.entry(client.hwnd).or_default();
@@ -351,4 +373,50 @@ pub fn start(
         thread,
     });
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn key(vk: u32, flags: u32) -> Key {
+        Key {
+            source: 0,
+            at: 0,
+            vk,
+            scan: 0x2a,
+            flags,
+            up: false,
+        }
+    }
+    #[test]
+    fn messages_preserve_shift_release_repeat_and_alt_context() {
+        let (msg, vk, flags) = message(key(0xa0, 0), false, false);
+        assert_eq!((msg, vk), (WM_KEYDOWN, 0x10));
+        assert_eq!((flags >> 16) & 0xff, 0x2a);
+        assert_eq!(
+            message(key(0xa0, 0), true, false).2 & 0xc0000000,
+            0xc0000000
+        );
+        assert_eq!(
+            message(key(0x70, 0), false, true).2 & 0x40000000,
+            0x40000000
+        );
+        assert_eq!(
+            message(key(0xa4, LLKHF_ALTDOWN.0), true, false).0,
+            WM_SYSKEYUP
+        );
+        assert_ne!(
+            message(key(0x71, LLKHF_EXTENDED.0), false, false).2 & 0x01000000,
+            0
+        );
+    }
+    #[test]
+    fn excludes_system_actions_not_normal_shift_chords() {
+        assert!(reserved(0x73, false, true, false));
+        assert!(reserved(0x09, false, true, false));
+        assert!(reserved(0x1b, true, false, false));
+        assert!(reserved(0x41, false, false, true));
+        assert!(!reserved(0x31, false, false, false));
+        assert!(!reserved(0x76, true, false, false));
+    }
 }
