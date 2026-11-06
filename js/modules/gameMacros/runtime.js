@@ -23,6 +23,7 @@ export function snapshot() {
     paused,
     registered,
     opacity: c.opacity,
+    appearance: c.appearance,
     topmost: c.topmost,
     commands: c.commands.map(({ id, name, hotkey }) => ({ id, name, hotkey })),
     logs: logs.slice(-80)
@@ -87,6 +88,7 @@ async function applyConfig() {
 }
 export async function openOverlay() {
   await initGameMacros();
+  state.settings.gameMacros = { ...config(), appearance: { ...config().appearance, hideHeader: false } };
   await native('game_macro_overlay', {
     topmost: config().topmost,
     position: config().overlayPosition,
@@ -480,7 +482,12 @@ export async function initGameMacros() {
     const p = event.payload;
     if (!p || !Number.isFinite(p.opacity) || p.opacity < 0.1 || p.opacity > 1 || typeof p.topmost !== 'boolean') return;
     const previous = config();
-    state.settings.gameMacros = { ...previous, opacity: p.opacity, topmost: p.topmost };
+    state.settings.gameMacros = normalizeGameMacros({
+      ...previous,
+      opacity: p.opacity,
+      topmost: p.topmost,
+      appearance: p.appearance || previous.appearance
+    });
     try {
       await (await import('../../core/storage.js')).persist();
     } catch {
@@ -561,14 +568,56 @@ export async function selectMacroParty(partyId) {
   await configure();
   window.dispatchEvent(new Event('tf-game-macro-party-selected'));
 }
-export async function showSize(width, height) {
+let sizeUnlisten,
+  sizeGeneration = 0;
+export async function showSize(width, height, role = 'leader') {
   if (busy) throw new Error('Сначала остановите текущую команду.');
-  await native('game_macro_guide', { mode: 'size', width, height, target: null, requestId: null });
+  if (!['leader', 'other'].includes(role)) throw new Error('Неизвестная группа размеров.');
+  const generation = ++sizeGeneration;
+  sizeUnlisten?.();
+  const requestId = crypto.randomUUID();
+  const off = await listen('game-macro-size-picked', async event => {
+    const p = event.payload;
+    if (p?.requestId !== requestId || generation !== sizeGeneration) return;
+    off();
+    if (generation === sizeGeneration) sizeUnlisten = null;
+    if (p.cancelled) return;
+    if (![p.width, p.height].every(n => Number.isInteger(n) && n >= 160 && n <= 8000)) return;
+    const previous = config();
+    state.settings.gameMacros = normalizeGameMacros({
+      ...previous,
+      [role + 'Width']: p.width,
+      [role + 'Height']: p.height
+    });
+    try {
+      await (await import('../../core/storage.js')).persist();
+      window.dispatchEvent(new Event('tf-game-macro-size-selected'));
+      log(`Размеры сохранены: ${p.width} × ${p.height}.`);
+    } catch {
+      state.settings.gameMacros = previous;
+      log(`Не удалось сохранить ${p.width} × ${p.height}. Проверьте доступность сохранения.`);
+    }
+  });
+  if (generation !== sizeGeneration) {
+    off();
+    return;
+  }
+  sizeUnlisten = off;
+  try {
+    await native('game_macro_guide', { mode: 'size', width, height, target: null, requestId });
+  } catch (error) {
+    off();
+    if (generation === sizeGeneration) sizeUnlisten = null;
+    throw error;
+  }
 }
-export async function pickPoint(charId, name) {
+
+export async function pickPoint(charId, name, replaceId = null) {
   if (busy) throw new Error('Дождитесь окончания команды.');
   if (!name.trim()) throw new Error('Введите название точки.');
-  if (config().points.length >= 30) throw new Error('Удалите ненужную точку: максимум 30.');
+  if (replaceId && !config().points.some(p => p.id === replaceId))
+    throw new Error('Точка уже удалена. Обновите список.');
+  if (!replaceId && config().points.length >= 30) throw new Error('Удалите ненужную точку: максимум 30.');
   busy = true;
   cancelled = false;
   void broadcast();
@@ -598,7 +647,7 @@ export async function pickPoint(charId, name) {
     const geometry = await result;
     if (cancelled) throw new Error('Задание точки отменено.');
     const point = {
-      id: crypto.randomUUID(),
+      id: replaceId || crypto.randomUUID(),
       name: name.trim().slice(0, 80),
       uiScale: 'Ручная калибровка',
       x: geometry.x,
@@ -608,7 +657,10 @@ export async function pickPoint(charId, name) {
       dpi: geometry.dpi
     };
     if (!validPoint(point)) throw new Error('Некорректная точка. Повторите калибровку.');
-    state.settings.gameMacros = { ...config(), points: [...config().points, point] };
+    state.settings.gameMacros = {
+      ...config(),
+      points: replaceId ? config().points.map(p => (p.id === replaceId ? point : p)) : [...config().points, point]
+    };
     log(`Точка «${point.name}» сохранена без клика в игру.`);
     return point;
   } finally {

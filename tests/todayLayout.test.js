@@ -21,6 +21,7 @@ import {
 let cleanup = () => {};
 afterEach(() => {
   cleanup();
+  document.querySelectorAll('.tf-overlay').forEach(el => el.remove());
   setTodayLayoutEditing(false);
 });
 beforeEach(() => {
@@ -111,8 +112,8 @@ it('has no swap buttons or per-block auto buttons; toolbar auto is disabled with
   expect(root.querySelector('[data-layout-swap]')).toBeNull();
   expect(root.querySelectorAll('[data-layout-auto]')).toHaveLength(1);
   expect(root.querySelector('[data-layout-toolbar] [data-layout-auto]').disabled).toBe(true);
-  expect(root.querySelectorAll('[data-layout-drag]')).toHaveLength(15);
-  expect(root.querySelectorAll('[data-layout-resize]')).toHaveLength(15);
+  expect(root.querySelectorAll('[data-layout-drag]')).toHaveLength(16);
+  expect(root.querySelectorAll('[data-layout-resize]')).toHaveLength(16);
 });
 it('freely moves and resizes clan without grid snapping, only persisting on Save', async () => {
   const root = mount();
@@ -142,11 +143,11 @@ it('toolbar auto size only resets selected dimensions and keeps its position', a
   root.querySelector('[data-layout-auto]').click();
   expect(root.querySelector('.rt-news').style.left).toBe('37px');
   expect(root.querySelector('.rt-news').style.top).toBe('29px');
-  expect(root.querySelector('.rt-news').style.width).toBe('fit-content');
+  expect(root.querySelector('.rt-news').style.width).toBe('520px');
   expect(root.querySelector('.rt-news').style.height).toBe('');
   expect(root.querySelector('.rt-clan').style.width).toBe('400px');
   await save(root);
-  expect(state.settings.ui.todayCanvas.blocks.news).toEqual({ x: 37, y: 29 });
+  expect(state.settings.ui.todayCanvas.blocks.news).toEqual({ x: 37, y: 29, width: 520 });
 });
 it('cancel and disabling Settings switch discard the whole draft', () => {
   const root = mount();
@@ -242,7 +243,7 @@ it('keyboard moves and resizes without grid snapping and Home applies selected a
   grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
   expect(root.querySelector('.rt-news').style.width).toBe('330px');
   grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
-  expect(root.querySelector('.rt-news').style.width).toBe('fit-content');
+  expect(root.querySelector('.rt-news').style.width).toBe('330px');
   expect(root.querySelector('.rt-news').style.left).toBe('1px');
 });
 
@@ -252,7 +253,7 @@ it('hides a widget in the draft, restores it from a real preview, and preserves 
   root.querySelector('[data-widget-remove="news"]').click();
   expect(root.querySelector('.rt-news').hidden).toBe(true);
   root.querySelector('[data-widget-library-open]').click();
-  const library = root.querySelector('[data-widget-library]');
+  const library = document.querySelector('[data-widget-library]');
   expect(library.querySelector('.rt-widget-preview .lg-panel')).not.toBeNull();
   const variant = library.querySelector('[data-widget-variant="news"]');
   variant.value = 'wide';
@@ -270,7 +271,7 @@ it('keeps additions and removals draft-only until saved and adds a script widget
   toggle();
   root.querySelector('[data-widget-remove="promos"]').click();
   root.querySelector('[data-widget-library-open]').click();
-  root.querySelector('[data-widget-insert="script-promo"]').click();
+  document.querySelector('[data-widget-insert="script-promo"]').click();
   expect(root.querySelector('.rt-script-promo').hidden).toBe(false);
   expect(root.querySelector('.rt-script-promo [data-layout-resize]')).not.toBeNull();
   root.querySelector('[data-layout-cancel]').click();

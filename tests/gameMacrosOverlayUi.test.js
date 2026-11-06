@@ -79,7 +79,11 @@ it('saves overlay appearance without opening the main app', async () => {
   document.querySelector('#topmost').checked = false;
   document.querySelector('#save-appearance').click();
   await vi.waitFor(() =>
-    expect(mocks.invoke).toHaveBeenCalledWith('game_macro_overlay_preferences', { opacity: 0.55, topmost: false })
+    expect(mocks.invoke).toHaveBeenCalledWith('game_macro_overlay_preferences', {
+      opacity: 0.55,
+      topmost: false,
+      appearance: { textColor: 'light', keyColor: 'gold', fontSize: 14, hideHeader: false }
+    })
   );
 });
 
@@ -105,4 +109,22 @@ it('puts the latest log entry first and keeps long command names in a separate e
   expect(document.querySelector('#logs').textContent.split('\n')[0]).toBe('последнее действие');
   expect(document.querySelector('#commands li span').textContent).toContain('Очень длинное');
   expect(document.querySelector('#commands li kbd').textContent).toBe('CTRL+ALT+F8');
+});
+it('applies independent text/key colors and font size, with header recovery on a later snapshot', () => {
+  const handler = mocks.handlers.get('game-macro-snapshot');
+  handler({
+    payload: { appearance: { textColor: 'mint', keyColor: 'blue', fontSize: 18, hideHeader: true }, commands: [] }
+  });
+  expect(document.documentElement.style.getPropertyValue('--overlay-text')).toBe('#bcefd8');
+  expect(document.documentElement.style.getPropertyValue('--overlay-key')).toBe('#b7c2ff');
+  expect(document.documentElement.style.getPropertyValue('--overlay-font')).toBe('18px');
+  expect(document.body.classList.contains('header-hidden')).toBe(true);
+  handler({ payload: { appearance: { hideHeader: false }, commands: [] } });
+  expect(document.body.classList.contains('header-hidden')).toBe(false);
+});
+it('hides both service headings together with the service panel', () => {
+  document.querySelector('#info-toggle').click();
+  expect([...document.querySelectorAll('[data-service-heading]')].every(el => el.hidden)).toBe(true);
+  document.querySelector('#info-toggle').click();
+  expect([...document.querySelectorAll('[data-service-heading]')].every(el => !el.hidden)).toBe(true);
 });

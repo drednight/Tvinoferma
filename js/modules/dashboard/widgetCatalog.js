@@ -1,5 +1,6 @@
 // A curated library: actions open the existing production dialogs, never run silently.
 export const ACTION_WIDGETS = [
+  ['script-notes', 'Блокнот', 'Личные заметки с названиями и описанием', 'notes', '📝'],
   ['script-auth', 'Проверка входа', 'Проверить авторизацию персонажей', 'check-auth', '🔐'],
   ['script-balance', 'Баланс монет', 'Обновить баланс персонажей', 'update-balance', '🪙'],
   ['script-marathons', 'Обновить марафоны', 'Получить актуальные отметки', 'update-marathons', '🏆'],

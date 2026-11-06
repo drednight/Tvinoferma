@@ -98,13 +98,20 @@
       .size .hint-point {
         display: none;
       }
-      .size #save {
+      #resize {
+        position: fixed;
+        right: 0;
+        bottom: 0;
+        cursor: nwse-resize;
+        font-size: 24px;
+      }
+      .point #resize {
         display: none;
       }
     </style>
   </head>
   <body>
-    <span class="cross"></span>
+    <span class="cross"></span><button id="resize" aria-label="Изменить размер рамки">◢</button>
     <section class="card" data-drag>
       <b id="title"></b>
       <p class="hint-point">Перетащите панель: совместите центр золотого крестика с нужной точкой.</p>

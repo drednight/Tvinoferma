@@ -33,7 +33,7 @@ export function scriptStatisticsHtml(reports, query = '') {
     return '<div class="empty-state">Подробных результатов пока нет или по поиску ничего не найдено.</div>';
   const validTone = new Set(['ok', 'info', 'warn', 'error']);
   const rows = groups.flatMap(group => group.entries.map(row => ({ group, row })));
-  return `<div class="tl-summary-table"><div class="tl-summary-title">Итоги по персонажам</div><div class="sr-table-wrap"><table class="sr-table"><thead><tr><th>Персонаж</th><th>Результат</th><th>Действие / скрипт</th><th>Подробности</th></tr></thead><tbody>${rows.map(({ group, row }) => `<tr><td>${classIconHtml(state.characters.find(c => c.id === group.charId) || {})} <b>${escapeHtml(group.nick)}</b></td><td><span class="sr-status is-${validTone.has(row.tone) ? row.tone : 'info'}">${escapeHtml(row.status || '—')}</span></td><td>${escapeHtml(row.action || '—')}<div class="muted">${escapeHtml(row.script)} · ${escapeHtml(when(row.at))}${row.dryRun ? ' · Пробный запуск' : ''}</div>${row.context ? `<div>${escapeHtml(row.context)}</div>` : ''}</td><td>${Array.isArray(row.details) && row.details.length ? row.details.map(line => escapeHtml(line)).join('<br>') : '—'}</td></tr>`).join('')}</tbody></table></div></div>`;
+  return `<div class="tl-summary-table"><div class="tl-summary-title">Итоги по персонажам</div><div class="sr-table-wrap"><table class="sr-table"><thead><tr><th>Персонаж</th><th>Результат</th><th>Действие / скрипт</th><th>Подробности</th></tr></thead><tbody>${rows.map(({ group, row }) => `<tr><td>${classIconHtml(state.characters.find(c => c.id === group.charId) || uniqueCharacterByNickname(state.characters, group.nick) || {})} <b>${escapeHtml(group.nick)}</b></td><td><span class="sr-status is-${validTone.has(row.tone) ? row.tone : 'info'}">${escapeHtml(row.status || '—')}</span></td><td>${escapeHtml(row.action || '—')}<div class="muted">${escapeHtml(row.script)} · ${escapeHtml(when(row.at))}${row.dryRun ? ' · Пробный запуск' : ''}</div>${row.context ? `<div>${escapeHtml(row.context)}</div>` : ''}</td><td>${Array.isArray(row.details) && row.details.length ? row.details.map(line => escapeHtml(line)).join('<br>') : '—'}</td></tr>`).join('')}</tbody></table></div></div>`;
 }
 
 /** Отдельное окно используют итоги скрипта и журнал: данные передаются уже безопасным снимком. */
@@ -62,4 +62,9 @@ export function openScriptStatistics(
   ov.foot.innerHTML = '<span></span><button type="button" class="btn primary" data-sr-close>Закрыть</button>';
   ov.foot.querySelector('[data-sr-close]').addEventListener('click', () => ov.close());
   return ov;
+}
+
+function uniqueCharacterByNickname(characters, nickname) {
+  const matches = characters.filter(c => c.nick === nickname);
+  return matches.length === 1 ? matches[0] : null;
 }

@@ -96,7 +96,7 @@ export function openCommandEditor(c, save, row = null) {
       )
       .join(
         ''
-      )}</fieldset><aside data-gm-action-help aria-live="polite"></aside></div><label>Сочетание для запуска <input class="input" name="hotkey" placeholder="CTRL+ALT+F8"></label><label data-gm-scope-field>Область команды <select name="scope"><option value="party">Управляющая пати</option><option value="managed">Все распознанные запущенные окна</option></select></label><fieldset class="gm-choice-grid" data-gm-targets><legend>Кому отправлять</legend>${[
+      )}</fieldset><aside data-gm-action-help aria-live="polite"></aside></div><label>Сочетание для запуска <input class="input" name="hotkey" placeholder="CTRL+ALT+F8"></label><label data-gm-scope-field>Область команды <select name="scope"><option value="party">Управляющая пати</option><option value="managed">Все распознанные запущенные окна</option></select><small>«Управляющая пати» — участники пати, выбранной в основном разделе. «Все распознанные окна» — все проверенные клиенты, даже из других пати; это нужно, например, для общего реса. Неизвестное окно блокирует общий запуск, а не выбирается наугад.</small></label><fieldset class="gm-choice-grid" data-gm-targets><legend>Кому отправлять</legend>${[
       ['all', 'Вся пати'],
       ['leader', 'Только ПЛ'],
       ['others', 'Кроме ПЛ'],

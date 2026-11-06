@@ -83,7 +83,7 @@ describe('party command workspace', () => {
     expect(document.querySelector('[data-gm-size="leaderHeight"]').value).toBe('1400');
     document.querySelector('[data-gm-size="leaderWidth"]').value = '1920';
     document.querySelector('[data-gm-show-size="leader"]').click();
-    await vi.waitFor(() => expect(mocks.showSize).toHaveBeenCalledWith(1920, 1400));
+    await vi.waitFor(() => expect(mocks.showSize).toHaveBeenCalledWith(1920, 1400, 'leader'));
   });
   it('only shows fields for the selected action in the creation dialog', () => {
     document.querySelector('[data-gm-create]').click();

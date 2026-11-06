@@ -1372,3 +1372,23 @@
     flex-wrap: wrap;
   }
 }
+.rt-window-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+  padding: 8px 0;
+}
+.rt-window-inline > b {
+  flex: 1;
+  min-width: 100px;
+  overflow-wrap: anywhere;
+}
+[data-info-fields] > label {
+  display: block;
+  margin: 7px 0;
+}
+.rt-information-grid > div[hidden] {
+  display: none !important;
+}

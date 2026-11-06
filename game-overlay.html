@@ -7,8 +7,8 @@
     <style>
       :root {
         color-scheme: dark;
-        font: 14px system-ui;
-        color: #eef1ff;
+        font: var(--overlay-font, 14px) system-ui;
+        color: var(--overlay-text, #eef1ff);
       }
       * {
         box-sizing: border-box;
@@ -39,6 +39,18 @@
       }
       body.folded #panel {
         display: none;
+      }
+      * {
+        scrollbar-width: none;
+      }
+      *::-webkit-scrollbar {
+        display: none;
+      }
+      body.header-hidden header {
+        display: none;
+      }
+      body.header-hidden #panel {
+        height: 100vh;
       }
       #back-hide {
         font-size: 11px;
@@ -78,7 +90,7 @@
       kbd {
         flex: 0 0 auto;
         white-space: nowrap;
-        color: #b7c2ff;
+        color: var(--overlay-key, #f5cc76);
       }
       pre {
         white-space: pre-wrap;
@@ -128,7 +140,7 @@
             <p id="status">Ожидание главного окна…</p>
             <button data-view="appearance">Вид оверлея</button><button data-view="journal">Открыть журнал</button>
           </div>
-          <h3>Назначенные клавиши</h3>
+          <h3 data-service-heading>Назначенные клавиши</h3>
           <ul id="commands"></ul>
         </section>
         <section id="appearance-screen" hidden>
@@ -143,11 +155,26 @@
           <p class="muted">
             Верхняя полоса прозрачнее основного фона. ▴ сворачивает окно; ⋯ скрывает служебную панель.
           </p>
+          <label
+            >Цвет текста<select id="text-color">
+              <option value="light">Светлый</option>
+              <option value="warm">Тёплый</option>
+              <option value="mint">Мятный</option>
+            </select></label
+          ><label
+            >Цвет клавиш<select id="key-color">
+              <option value="gold">Золотой</option>
+              <option value="blue">Голубой</option>
+              <option value="white">Белый</option>
+            </select></label
+          ><label>Размер текста<input id="font-size" type="range" min="10" max="24" value="14" /></label
+          ><label><input id="hide-header" type="checkbox" /> Скрыть заголовок и кнопки окна</label>
+          <p class="muted">Для возврата заголовка откройте оверлей повторно из трея.</p>
           <button id="save-appearance">Сохранить</button>
           <p id="appearance-error" role="status"></p>
         </section>
         <section id="journal-screen" hidden>
-          <h3>Журнал текущего сеанса</h3>
+          <h3 data-service-heading>Журнал текущего сеанса</h3>
           <pre id="logs"></pre>
         </section>
       </section>

@@ -711,3 +711,15 @@
     max-height: 180px;
   }
 }
+.gm-collapsed-title {
+  cursor: pointer;
+  font-weight: 700;
+  padding: 12px;
+}
+.gm-point-map {
+  max-height: 360px;
+  min-height: 100px;
+}
+.gm-point-map span {
+  color: #f5cc76;
+}

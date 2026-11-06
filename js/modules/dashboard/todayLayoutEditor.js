@@ -1,3 +1,4 @@
+import { openOverlay } from '../marathons/overlay.js';
 import { ACTION_WIDGETS, WIDGET_VARIANTS } from './widgetCatalog.js';
 import { ensureActionWidgets } from './todayWidgets.js';
 import { escapeHtml as esc } from '../../core/utils.js';
@@ -64,6 +65,51 @@ export function renderTodayLayoutEditor(root) {
   stopGesture?.();
   clearTodayCanvasObserver(root);
   ensureActionWidgets(root, editing);
+  const info = root.querySelector('.rt-information');
+  if (info) {
+    const fields = [...info.querySelectorAll('.rt-information-grid>div')];
+    const hidden = Array.isArray(state.settings.ui.todayInformationHidden)
+      ? state.settings.ui.todayInformationHidden
+      : [];
+    fields.forEach(el => (el.hidden = hidden.includes(el.querySelector('dt')?.textContent)));
+    if (!info.querySelector('[data-info-fields]')) {
+      const options = document.createElement('details');
+      options.dataset.infoFields = '';
+      const summary = document.createElement('summary');
+      summary.textContent = 'Показатели';
+      options.append(summary);
+      fields.forEach(el => {
+        const name = el.querySelector('dt')?.textContent;
+        if (!name) return;
+        const label = document.createElement('label'),
+          box = document.createElement('input');
+        box.type = 'checkbox';
+        box.checked = !hidden.includes(name);
+        label.append(box, document.createTextNode(' ' + name));
+        options.append(label);
+        box.onchange = async () => {
+          const previous = state.settings.ui.todayInformationHidden;
+          const next = fields
+            .filter(field => (field === el ? !box.checked : field.hidden))
+            .map(field => field.querySelector('dt').textContent);
+          state.settings.ui.todayInformationHidden = next;
+          options.querySelectorAll('input').forEach(input => (input.disabled = true));
+          try {
+            await persist();
+            el.hidden = !box.checked;
+          } catch {
+            state.settings.ui.todayInformationHidden = previous;
+            box.checked = !box.checked;
+            toast('Не удалось сохранить показатели.', 'error');
+          } finally {
+            options.querySelectorAll('input').forEach(input => (input.disabled = false));
+          }
+        };
+      });
+      info.append(options);
+    }
+  }
+
   root.querySelector('[data-widget-library]')?.remove();
   root.querySelector('[data-widget-add]')?.remove();
   root.querySelectorAll('[data-widget-remove]').forEach(el => el.remove());
@@ -103,13 +149,19 @@ export function renderTodayLayoutEditor(root) {
     const library = document.createElement('section');
     library.dataset.widgetLibrary = '';
     library.className = 'rt-widget-library';
-    library.innerHTML = `<header><h3>Библиотека виджетов</h3><button class="btn ghost" data-library-close>Закрыть</button></header><p>Выберите вид и добавьте блок. После добавления его можно свободно растянуть и переместить. Превью — схематическое, ваши данные не меняются.</p><div class="rt-widget-catalog">${TODAY_BLOCKS.map(
-      ([id, title]) => {
+    library.innerHTML = `<header><h3>Библиотека виджетов</h3><button class="btn ghost" data-library-close>Закрыть</button></header><p>Выберите вид и добавьте блок. После добавления его можно свободно растянуть и переместить. Превью — схематическое, ваши данные не меняются.</p><div class="rt-widget-catalog">${TODAY_BLOCKS.filter(
+      ([id]) => id !== 'clan' || surface.querySelector('.rt-clan')
+    )
+      .map(([id, title]) => {
         const exists = surface.querySelector(`.rt-${id}`);
         return `<article><h4>${esc(title)}</h4><div class="rt-widget-preview" aria-hidden="true"><b>${esc(title)}</b><i></i><i></i><i></i></div><select data-widget-variant="${id}" aria-label="Вариант ${esc(title)}">${WIDGET_VARIANTS.map(([key, label]) => `<option value="${key}">${label}</option>`).join('')}</select><p>${esc(ACTION_WIDGETS.find(row => row[0] === id)?.[2] || 'Ваши текущие данные в адаптивном блоке.')}</p><button class="btn" data-widget-insert="${id}" ${!exists ? 'disabled' : ''}>${!exists ? 'Недоступен: включите раздел в настройках' : !exists.hidden ? 'Изменить вид' : 'Добавить'}</button></article>`;
-      }
-    ).join('')}</div>`;
-    toolbar.after(library);
+      })
+      .join('')}</div>`;
+    const modal = openOverlay({ title: 'Библиотека виджетов', wide: true });
+    modal.body.append(library);
+    modal.foot.innerHTML = '';
+    modal.sub.textContent = 'Варианты размеров и предпросмотр';
+    const closeLibrary = () => modal.close();
     const previewWidget = (article, id, variant) => {
       const original = surface.querySelector(`.rt-${id}`),
         preview = article.querySelector('.rt-widget-preview');
@@ -138,7 +190,7 @@ export function renderTodayLayoutEditor(root) {
     library
       .querySelectorAll('[data-widget-insert]')
       .forEach(button => previewWidget(button.closest('article'), button.dataset.widgetInsert, 'compact'));
-    library.querySelector('[data-library-close]').onclick = () => library.remove();
+    library.querySelector('[data-library-close]').onclick = closeLibrary;
     library.querySelectorAll('[data-widget-variant]').forEach(
       select =>
         (select.onchange = () => {
@@ -170,7 +222,7 @@ export function renderTodayLayoutEditor(root) {
           }
           update(panel, id, { width, height });
           choose(id);
-          library.remove();
+          closeLibrary();
         })
     );
   };
@@ -214,7 +266,10 @@ export function renderTodayLayoutEditor(root) {
     const panel = surface.querySelector(`.rt-${selected}`);
     if (!panel) return;
     standard = false;
-    delete draft.blocks[selected].width;
+    draft.blocks[selected].width = Math.max(
+      300,
+      Math.min(720, panel.offsetWidth || draft.blocks[selected].width || 360)
+    );
     delete draft.blocks[selected].height;
     applyCanvasBlockSize(panel, draft.blocks[selected]);
     fit();
@@ -275,6 +330,8 @@ export function renderTodayLayoutEditor(root) {
       const height = panel.offsetHeight || before.height || 400;
       target.setPointerCapture?.(event.pointerId);
       panel.classList.add('rt-layout-resizing');
+      const previousZ = panel.style.zIndex;
+      panel.style.zIndex = '100';
       const move = e => {
         if (e.pointerId !== event.pointerId) return;
         const dx = e.clientX - x + board.scrollLeft - scrollX;
@@ -320,6 +377,7 @@ export function renderTodayLayoutEditor(root) {
         window.removeEventListener('pointercancel', cancel);
         target.removeEventListener('lostpointercapture', finish);
         panel.classList.remove('rt-layout-resizing');
+        panel.style.zIndex = previousZ;
         if (target.hasPointerCapture?.(event.pointerId)) target.releasePointerCapture(event.pointerId);
         stopGesture = null;
       };

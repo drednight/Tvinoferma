@@ -152,6 +152,7 @@ pub fn game_macro_overlay_preferences(
     app: tauri::AppHandle,
     opacity: f64,
     topmost: bool,
+    appearance: Option<serde_json::Value>,
 ) -> Result<(), String> {
     if window.label() != "game-overlay" || !opacity.is_finite() || !(0.1..=1.0).contains(&opacity) {
         return Err("Invalid overlay preferences".into());
@@ -162,7 +163,7 @@ pub fn game_macro_overlay_preferences(
     app.emit_to(
         "main",
         "game-overlay-preferences",
-        serde_json::json!({"opacity":opacity,"topmost":topmost}),
+        serde_json::json!({"opacity":opacity,"topmost":topmost,"appearance":appearance}),
     )
     .map_err(|_| "Cannot save overlay preferences".into())
 }
@@ -250,7 +251,8 @@ pub async fn game_macro_guide(
     } else if !(160..=8000).contains(&width) || !(160..=8000).contains(&height) {
         return Err("Invalid guide size".into());
     }
-    let url = format!("game-guide.html?mode={mode}&width={width}&height={height}");
+    let url =
+        format!("game-guide.html?mode={mode}&width={width}&height={height}&requestId={request_id}");
     let guide =
         tauri::WebviewWindowBuilder::new(&app, "game-guide", tauri::WebviewUrl::App(url.into()))
             .title("Твиноферма — экранная рамка")
@@ -258,7 +260,8 @@ pub async fn game_macro_guide(
             .transparent(true)
             .always_on_top(true)
             .skip_taskbar(true)
-            .resizable(false)
+            .resizable(mode == "size")
+            .min_inner_size(160.0, 160.0)
             .inner_size(280.0, 240.0)
             .build()
             .map_err(|_| "Cannot open guide")?;
@@ -280,6 +283,13 @@ pub async fn game_macro_guide(
     }
     let handle = app.clone();
     guide.on_window_event(move |event| {
+        if mode == "size" && matches!(event, tauri::WindowEvent::Destroyed) {
+            let _ = handle.emit_to(
+                "main",
+                "game-macro-size-picked",
+                serde_json::json!({"requestId":request_id,"cancelled":true}),
+            );
+        }
         if mode == "point" && matches!(event, tauri::WindowEvent::Destroyed) {
             let _ = handle.emit_to(
                 "main",
@@ -300,6 +310,28 @@ pub async fn game_macro_guide_result(
         return Err("Only the guide can confirm its position".into());
     }
     if !save {
+        return window.close().map_err(|_| "Cannot close guide".into());
+    }
+    let url = window.url().map_err(|_| "Cannot read guide mode")?;
+    if url
+        .query_pairs()
+        .any(|(key, value)| key == "mode" && value == "size")
+    {
+        let size = window.inner_size().map_err(|_| "Cannot read guide size")?;
+        if !(160..=8000).contains(&size.width) || !(160..=8000).contains(&size.height) {
+            return Err("Invalid guide size".into());
+        }
+        let id = url
+            .query_pairs()
+            .find(|(key, _)| key == "requestId")
+            .map(|(_, value)| value.into_owned())
+            .unwrap_or_default();
+        app.emit_to(
+            "main",
+            "game-macro-size-picked",
+            serde_json::json!({"requestId":id,"width":size.width,"height":size.height}),
+        )
+        .map_err(|_| "Cannot apply size")?;
         return window.close().map_err(|_| "Cannot close guide".into());
     }
     let (request_id, target) = GUIDE_TARGET

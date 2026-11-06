@@ -19,6 +19,7 @@ import {
 } from './runtime.js';
 let activeHost,
   selectedId = '',
+  selectedPointId = '',
   updateListener;
 const safe = fn => async event => {
   try {
@@ -50,11 +51,12 @@ const targetLabel = row =>
 export function mountGameMacros(host) {
   if (!host) return;
   activeHost = host;
+  const wasOpen = host.querySelector('#game-macros-block')?.open === true;
   const c = config();
   const selected = c.commands.find(row => row.id === selectedId) || c.commands[0];
   selectedId = selected?.id || '';
   const point = c.points.find(p => p.id === selected?.pointId);
-  host.innerHTML = `<section id="game-macros-block" class="tools-block gm-workspace">
+  host.innerHTML = `<details id="game-macros-block" class="tools-block gm-workspace"><summary class="gm-collapsed-title">🎮 Управление пати и макросы</summary>
   <header class="gm-heading"><div><span class="gm-eyebrow">Управление игровыми окнами</span><h3>🎮 Управление пати и макросы</h3><p>Выберите пати, настройте команды и запускайте их кнопкой или сочетанием клавиш.</p></div><button class="btn danger" data-gm-stop>■ Остановить</button></header>
   <div class="gm-control-bar"><label class="gm-field">Пати для всех команд<select data-gm-party><option value="">Выберите пати</option>${state.parties.map(p => option(p.id, p.name, c.partyId)).join('')}</select></label><label class="gm-switch"><input type="checkbox" data-gm-enabled ${c.enabled ? 'checked' : ''}><span><b>Управление сочетаниями клавиш</b><small>Можно запускать команды, когда открыта игра, без перехода в Твиноферму.</small></span></label></div>
   <p class="gm-key-note">Если переключатель выключен, работает ручной запуск кнопкой ▶. При включении Windows закрепляет сочетания за приложением; игровые команды срабатывают только из окон выбранной пати. Остановка — <kbd>Ctrl+Alt+Pause</kbd>.</p>
@@ -83,7 +85,20 @@ export function mountGameMacros(host) {
             ([suffix, name]) =>
               `<label class="gm-field">${name}<span class="gm-number-unit"><input type="number" min="160" max="8000" data-gm-size="${prefix + suffix}" value="${c[prefix + suffix]}"><small>px</small></span></label>`
           )
-          .join('')}</div><button class="btn" data-gm-show-size="${prefix}">▣ Показать размер</button></div>`
+          .join(
+            ''
+          )}</div><select class="input" data-gm-resolution="${prefix}" aria-label="Стандартное разрешение"><option value="">Стандартные разрешения</option>${[
+          [1280, 720],
+          [1600, 900],
+          [1920, 1080],
+          [1920, 1200],
+          [2560, 1400],
+          [2560, 1440],
+          [3440, 1440],
+          [3840, 2160]
+        ]
+          .map(([w, h]) => `<option value="${w}x${h}">${w} × ${h}</option>`)
+          .join('')}</select><button class="btn" data-gm-show-size="${prefix}">▣ Показать размер</button></div>`
     )
     .join('')}</div><button class="btn primary" data-gm-save-sizes>Сохранить размеры</button></section>
   <section class="gm-settings-section"><div class="gm-section-top"><div><h4>Профили размещения игровых окон</h4><p>Запомните текущие размеры и позиции окон пати. Выбранный профиль использует команда «Применить профиль окон».</p></div></div><div class="gm-profile-controls"><label class="gm-field">Используемый профиль<select data-gm-profile><option value="">Не выбран</option>${c.profiles.map(p => option(p.id, p.name, c.profileId)).join('')}</select></label><button class="btn ghost" data-gm-delete-profile>Удалить выбранный</button></div><div class="gm-profile-controls"><label class="gm-field">Название нового профиля<input data-gm-profile-name maxlength="80" placeholder="Например: основная пати, два монитора"></label><button class="btn" data-gm-save-profile>＋ Запомнить текущее расположение</button></div></section>
@@ -94,8 +109,18 @@ export function mountGameMacros(host) {
     .map(char => option(char.id, `${char.class || ''} — ${char.nick}`, c.leaders[c.partyId]))
     .join(
       ''
-    )}</select></label><button class="btn primary">⊕ Задать координаты</button></form><p class="muted">Размер окна и DPI определяются автоматически. Для другого размера окна создайте вариант точки; после перемещения элементов интерфейса задайте точку заново.</p><div class="gm-point-list">${c.points.map(p => `<div class="gm-point-row"><div><b>${esc(p.name)}</b><small>${p.width} × ${p.height} · DPI ${p.dpi} · (${p.x}, ${p.y})</small></div><button class="btn ghost" data-gm-point="${esc(p.id)}" title="Показать схему" aria-label="Показать схему точки">◎</button><button class="btn ghost" data-gm-remove-point="${esc(p.id)}" title="Удалить точку" aria-label="Удалить точку">🗑</button></div>`).join('') || '<p class="gm-empty">Сохранённых точек пока нет.</p>'}</div></section>
-  <footer class="gm-bottom-actions"><button class="btn" data-gm-logs>≡ Журнал сеанса</button><button class="btn" data-gm-overlay>▣ Открыть оверлей</button><button class="btn ghost" data-gm-overlay-settings>⚙ Настройки оверлея</button></footer></section>`;
+    )}</select></label><button class="btn primary">⊕ Задать координаты</button></form><p class="muted">Размер окна и DPI определяются автоматически. Для другого размера окна создайте вариант точки; после перемещения элементов интерфейса задайте точку заново.</p><div class="gm-command-workbench"><nav class="gm-command-menu">${c.points.map(p => `<button class="gm-command-choice" data-gm-point="${esc(p.id)}"><b>${esc(p.name)}</b><small>${p.width} × ${p.height}</small></button>`).join('') || '<p>Нет сохранённых точек.</p>'}</nav><article data-gm-point-detail></article></div></section>
+  <footer class="gm-bottom-actions"><button class="btn" data-gm-logs>≡ Журнал сеанса</button><button class="btn" data-gm-overlay>▣ Открыть оверлей</button><button class="btn ghost" data-gm-overlay-settings>⚙ Настройки оверлея</button></footer></details>`;
+  host.querySelector('#game-macros-block').open = wasOpen;
+  host.querySelectorAll('[data-gm-resolution]').forEach(
+    select =>
+      (select.onchange = () => {
+        if (!select.value) return;
+        const [w, h] = select.value.split('x');
+        host.querySelector(`[data-gm-size="${select.dataset.gmResolution}Width"]`).value = w;
+        host.querySelector(`[data-gm-size="${select.dataset.gmResolution}Height"]`).value = h;
+      })
+  );
   host.querySelector('[data-gm-stop]').onclick = stop;
   host.querySelector('[data-gm-party]').onchange = safe(e => save({ partyId: e.target.value }));
   host.querySelector('[data-gm-enabled]').onchange = safe(e => save({ enabled: e.target.checked }));
@@ -121,7 +146,7 @@ export function mountGameMacros(host) {
   );
   host.querySelector('[data-gm-preview]')?.addEventListener(
     'click',
-    safe(async () => showPoint(await previewCommand(selectedId)))
+    safe(async () => drawPoint(await previewCommand(selectedId)))
   );
   host.querySelector('[data-gm-diagnostics]').onclick = safe(async () => {
     const rows = await (await import('./runtime.js')).listMacroWindows();
@@ -152,7 +177,7 @@ export function mountGameMacros(host) {
     button.onclick = safe(() => {
       const sizes = readSizes(),
         prefix = button.dataset.gmShowSize;
-      return showSize(sizes[prefix + 'Width'], sizes[prefix + 'Height']);
+      return showSize(sizes[prefix + 'Width'], sizes[prefix + 'Height'], prefix);
     });
   });
   host.querySelector('[data-gm-profile]').onchange = safe(e => save({ profileId: e.target.value }));
@@ -177,19 +202,46 @@ export function mountGameMacros(host) {
     const previous = state.settings.gameMacros;
     try {
       const point = await pickPoint(String(data.get('charId')), String(data.get('name')));
+      selectedPointId = point.id;
       await save({});
-      showPoint(point);
     } catch (error) {
       state.settings.gameMacros = previous;
       throw error;
     }
   });
-  host.querySelectorAll('[data-gm-point]').forEach(button => {
-    button.onclick = () => showPoint(config().points.find(p => p.id === button.dataset.gmPoint));
-  });
-  host.querySelectorAll('[data-gm-remove-point]').forEach(button => {
-    button.onclick = safe(() => save({ points: config().points.filter(p => p.id !== button.dataset.gmRemovePoint) }));
-  });
+  const drawPoint = point => {
+    const detail = host.querySelector('[data-gm-point-detail]');
+    if (!point) {
+      detail.textContent = 'Выберите сохранённую точку слева.';
+      return;
+    }
+    selectedPointId = point.id;
+    detail.innerHTML = `<h4>${esc(point.name)}</h4><p>${point.width} × ${point.height} · DPI ${point.dpi} · (${point.x}, ${point.y}). Схема, не снимок игры.</p><div class="gm-point-map" style="aspect-ratio:${point.width}/${point.height}"><span style="left:${(point.x / point.width) * 100}%;top:${(point.y / point.height) * 100}%">⊕</span></div><label>Окно для повторного задания<select data-point-char>${partyMembers(
+      state,
+      c.partyId
+    )
+      .map(char => option(char.id, char.nick, c.leaders[c.partyId]))
+      .join(
+        ''
+      )}</select></label><button class="btn" data-point-edit>✎ Задать заново</button><button class="btn danger" data-point-delete aria-label="Удалить точку">🗑</button>`;
+    detail.querySelector('[data-point-delete]').onclick = safe(() =>
+      save({ points: config().points.filter(p => p.id !== point.id) })
+    );
+    detail.querySelector('[data-point-edit]').onclick = safe(async () => {
+      const previous = state.settings.gameMacros;
+      try {
+        await pickPoint(detail.querySelector('[data-point-char]').value, point.name, point.id);
+        await save({});
+      } catch (error) {
+        state.settings.gameMacros = previous;
+        throw error;
+      }
+    });
+  };
+  host
+    .querySelectorAll('[data-gm-point]')
+    .forEach(button => (button.onclick = () => drawPoint(config().points.find(p => p.id === button.dataset.gmPoint))));
+  drawPoint(c.points.find(p => p.id === selectedPointId) || c.points[0]);
   const update = () => {
     if (!host.isConnected) return;
     const data = snapshot();
@@ -211,14 +263,6 @@ export function mountGameMacros(host) {
   window.addEventListener('tf-game-macros-changed', update);
   update();
   void initGameMacros();
-}
-function showPoint(point) {
-  showModal({
-    title: `Точка: ${point.name}`,
-    content: `<div class="gm-dialog"><p>Клиент ${point.width} × ${point.height} px · DPI ${point.dpi}. Это схема, не снимок игры.</p><div class="gm-point-map" style="aspect-ratio:${point.width}/${point.height}"><span style="left:${(point.x / point.width) * 100}%;top:${(point.y / point.height) * 100}%">⊕</span></div></div>`,
-    submitText: null,
-    cancelText: 'Закрыть'
-  });
 }
 export function openMacrosDialog(action) {
   if (action === 'logs') {
@@ -252,5 +296,9 @@ export function openMacrosDialog(action) {
 }
 window.addEventListener('tf-game-macro-dialog', event => openMacrosDialog(event.detail));
 window.addEventListener('tf-game-macro-party-selected', () => {
+  if (activeHost?.isConnected) mountGameMacros(activeHost);
+});
+
+window.addEventListener('tf-game-macro-size-selected', () => {
   if (activeHost?.isConnected) mountGameMacros(activeHost);
 });

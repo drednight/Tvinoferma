@@ -1,3 +1,5 @@
+import { mountWindowsWidget } from './windowsWidget.js';
+import { mountNotes } from './notesWidget.js';
 import { ACTION_WIDGETS } from './widgetCatalog.js';
 export function ensureActionWidgets(root, editing = false) {
   const board = root.querySelector('.rt-board');
@@ -28,7 +30,13 @@ export function ensureActionWidgets(root, editing = false) {
         button.disabled = false;
       }
     };
-    panel.append(heading, text, button);
+    if (action === 'windows') {
+      panel.append(heading);
+      mountWindowsWidget(panel, editing);
+    } else if (action === 'notes') {
+      panel.append(heading);
+      mountNotes(panel, editing);
+    } else panel.append(heading, text, button);
     board.append(panel);
   }
 }

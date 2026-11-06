@@ -304,7 +304,7 @@ export async function openWindowPicker(opts = {}) {
  * @param {any} row строка списка окон
  * @param {() => Promise<void>} after вызывается после успешного применения
  */
-async function openStyleDialog(row, after) {
+export async function openStyleDialog(row, after) {
   const suggested = row.nick ? (row.cls ? `${row.nick} — ${row.cls}` : row.nick) : `PID ${row.pid}`;
   const ov = openOverlay({ title: `✏️ Вид окна: ${rowLabel(row)}`, wide: false });
   const classOptions = CLASSES.map(

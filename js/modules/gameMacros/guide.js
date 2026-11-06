@@ -11,10 +11,11 @@ async function finish(save) {
   if (pending) return;
   pending = true;
   try {
-    await invoke('game_macro_guide_result', { save: save && point });
+    await invoke('game_macro_guide_result', { save });
   } catch {
-    document.getElementById('error').textContent =
-      'Не удалось сохранить. Поместите крестик внутрь выбранного игрового окна и повторите.';
+    document.getElementById('error').textContent = point
+      ? 'Не удалось сохранить. Поместите крестик внутрь выбранного игрового окна и повторите.'
+      : 'Не удалось сохранить размер. Допустимо от 160 до 8000 физических пикселей по каждой стороне.';
   } finally {
     pending = false;
   }
@@ -30,3 +31,16 @@ document.addEventListener('keydown', event => {
     void finish(event.key === 'Enter');
   }
 });
+
+if (!point) {
+  document.getElementById('save').textContent = 'Применить и выйти · Enter';
+  document.getElementById('cancel').textContent = 'Выйти · Esc';
+  const update = () =>
+    (document.getElementById('title').textContent =
+      `Границы клиента · ${Math.round(innerWidth * devicePixelRatio)} × ${Math.round(innerHeight * devicePixelRatio)} px`);
+  window.addEventListener('resize', update);
+  document.getElementById('resize').onpointerdown = e => {
+    e.preventDefault();
+    void getCurrentWindow().startResizeDragging('SouthEast');
+  };
+}

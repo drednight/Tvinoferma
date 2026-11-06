@@ -865,6 +865,11 @@ export function openTaskLog(id) {
   let onlyProblems = false;
   const dur = t.finishedAt ? Math.round((new Date(t.finishedAt) - new Date(t.startedAt)) / 1000) : null;
   const draw = () => {
+    const scrollTargets = [ov.body, ov.el, ov.el.querySelector('.tf-dialog'), ov.body.querySelector('.tl-full')].filter(
+      Boolean
+    );
+    const scrollPositions = scrollTargets.map(el => ({ el, top: el.scrollTop, left: el.scrollLeft }));
+    const entryTop = ov.body.querySelector('.tl-full')?.scrollTop || 0;
     ov.sub.innerHTML = taskCardHtml(t);
     // Полный лог уже открыт: не предлагаем открыть ещё одну копию или свернуть те же строки.
     ov.sub.querySelector('[data-task-log]')?.remove();
@@ -882,6 +887,12 @@ export function openTaskLog(id) {
         .filter(x => !onlyProblems || x.level === 'warn' || x.level === 'error' || x.level === 'summary')
         .map(entryHtml)
         .join('')}</div>`;
+    scrollPositions.forEach(({ el, top, left }) => {
+      el.scrollTop = top;
+      el.scrollLeft = left;
+    });
+    const entries = ov.body.querySelector('.tl-full');
+    if (entries) entries.scrollTop = entryTop;
     ov.body.querySelector('[data-only-problems]').onchange = e => {
       onlyProblems = e.target.checked;
       ov.body.querySelector('.tl-full').innerHTML = t.entries

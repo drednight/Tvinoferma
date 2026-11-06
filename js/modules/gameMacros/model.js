@@ -1,3 +1,4 @@
+import { normalizeAppearance } from './appearance.js';
 import { charactersInPartyOrdered } from '../parties/membership.js';
 export const ACTIONS = [
   'next',
@@ -142,6 +143,7 @@ export function normalizeGameMacros(input = {}) {
       })),
     profileId: String(input.profileId || '').slice(0, 80),
     opacity: Math.max(0.1, Math.min(1, Number(input.opacity) || 0.9)),
+    appearance: normalizeAppearance(input.appearance),
     topmost: input.topmost !== false
   };
 }

@@ -1,3 +1,4 @@
+import { state } from '../js/core/state.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeScriptReport } from '../js/modules/automation/scriptReport.js';
 import {
@@ -173,4 +174,12 @@ describe('журнал задач', () => {
     expect(document.querySelector('.tf-dialog').textContent).toContain('Альфа');
     expect(document.querySelector('.tf-dialog').textContent).toContain('Руна');
   });
+});
+
+it('restores class icons for reports without a usable ID only when the nickname is unique', () => {
+  state.characters = [{ id: 'a', nick: 'Альфа', class: 'Жрец' }];
+  const report = makeScriptReport('promo', [{ nick: 'Альфа', status: 'success' }]);
+  expect(scriptStatisticsHtml([report])).toContain('<img class="char-class-ico"');
+  state.characters.push({ id: 'b', nick: 'Альфа', class: 'Воин' });
+  expect(scriptStatisticsHtml([report])).not.toContain('<img class="char-class-ico"');
 });

@@ -1,3 +1,4 @@
+import { normalizeAppearance, TEXT_PRESETS, KEY_PRESETS } from './appearance.js';
 import { listen, emitTo } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -6,6 +7,17 @@ async function init() {
   await listen('game-macro-snapshot', event => {
     if (event.payload == null) return;
     const data = event.payload;
+    const a = normalizeAppearance(data.appearance);
+    document.documentElement.style.setProperty('--overlay-text', TEXT_PRESETS[a.textColor]);
+    document.documentElement.style.setProperty('--overlay-key', KEY_PRESETS[a.keyColor]);
+    document.documentElement.style.setProperty('--overlay-font', a.fontSize + 'px');
+    document.body.classList.toggle('header-hidden', a.hideHeader);
+    if (document.getElementById('appearance-screen').hidden) {
+      document.getElementById('text-color').value = a.textColor;
+      document.getElementById('key-color').value = a.keyColor;
+      document.getElementById('font-size').value = String(a.fontSize);
+      document.getElementById('hide-header').checked = a.hideHeader;
+    }
     document.documentElement.style.setProperty(
       '--alpha',
       String(Math.max(0.1, Math.min(1, Number(data.opacity) || 0.9)))
@@ -58,6 +70,7 @@ async function init() {
   document.getElementById('info-toggle').onclick = () => {
     const controls = document.getElementById('overlay-controls');
     controls.hidden = !controls.hidden;
+    document.querySelectorAll('[data-service-heading]').forEach(el => (el.hidden = controls.hidden));
     document.getElementById('info-toggle').setAttribute('aria-expanded', String(!controls.hidden));
   };
   document.getElementById('opacity').oninput = event => {
@@ -70,7 +83,13 @@ async function init() {
     try {
       await invoke('game_macro_overlay_preferences', {
         opacity: Number(document.getElementById('opacity').value) / 100,
-        topmost: document.getElementById('topmost').checked
+        topmost: document.getElementById('topmost').checked,
+        appearance: normalizeAppearance({
+          textColor: document.getElementById('text-color').value,
+          keyColor: document.getElementById('key-color').value,
+          fontSize: document.getElementById('font-size').value,
+          hideHeader: document.getElementById('hide-header').checked
+        })
       });
       document.getElementById('appearance-error').textContent = 'Настройки применены.';
     } catch {
