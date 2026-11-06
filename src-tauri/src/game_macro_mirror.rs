@@ -1,0 +1,354 @@
+//! Opt-in, volatile keyboard mirroring. Never stores keystrokes or injects global input.
+use super::{compatible_integrity, Target};
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering},
+    mpsc::{sync_channel, Receiver, SyncSender},
+    Arc, LazyLock, Mutex,
+};
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
+use tauri::Emitter;
+use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::Input::KeyboardAndMouse::*;
+use windows::Win32::UI::WindowsAndMessaging::*;
+static CLOCK: LazyLock<Instant> = LazyLock::new(Instant::now);
+static SESSION: Mutex<Option<Session>> = Mutex::new(None);
+fn now() -> u64 {
+    CLOCK.elapsed().as_millis() as u64
+}
+struct Control {
+    stop: AtomicBool,
+    reason: AtomicU8,
+    lease: AtomicU64,
+}
+struct Session {
+    id: String,
+    control: Arc<Control>,
+    thread: JoinHandle<()>,
+}
+#[derive(Clone)]
+struct Client {
+    target: Target,
+    hwnd: usize,
+}
+#[derive(Clone, Copy)]
+struct Key {
+    source: usize,
+    vk: u32,
+    scan: u32,
+    flags: u32,
+    up: bool,
+}
+struct Context {
+    tx: SyncSender<Key>,
+    clients: Vec<Client>,
+    shortcuts: Vec<(Vec<u16>, u16)>,
+    control: Arc<Control>,
+}
+thread_local! { static CONTEXT: RefCell<Option<Context>> = const { RefCell::new(None) }; }
+fn halt(control: &Control, reason: u8) {
+    control.reason.store(reason, Ordering::SeqCst);
+    control.stop.store(true, Ordering::SeqCst);
+}
+unsafe fn modifiers() -> (bool, bool, bool) {
+    (
+        GetAsyncKeyState(0x11) < 0,
+        GetAsyncKeyState(0x10) < 0,
+        GetAsyncKeyState(0x12) < 0,
+    )
+}
+unsafe extern "system" fn hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+    if code >= 0
+        && matches!(
+            wp.0 as u32,
+            WM_KEYDOWN | WM_KEYUP | WM_SYSKEYDOWN | WM_SYSKEYUP
+        )
+    {
+        let event = &*(lp.0 as *const KBDLLHOOKSTRUCT);
+        if event.flags.0 & LLKHF_INJECTED.0 == 0 {
+            CONTEXT.with(|cell| {
+                let ctx = cell.borrow();
+                let Some(ctx) = ctx.as_ref() else {
+                    return;
+                };
+                if ctx.control.stop.load(Ordering::SeqCst) {
+                    return;
+                }
+                let (ctrl, shift, alt) = modifiers();
+                // Emergency stop works even outside the game. Never suppress the user's input.
+                if event.vkCode == 0x13 && ctrl && alt {
+                    halt(&ctx.control, 0);
+                    return;
+                }
+                let source = GetForegroundWindow().0 as usize;
+                let mut pid = 0;
+                GetWindowThreadProcessId(GetForegroundWindow(), Some(&mut pid));
+                if !ctx
+                    .clients
+                    .iter()
+                    .any(|c| c.hwnd == source && c.target.pid == pid)
+                {
+                    return;
+                }
+                let system = GetAsyncKeyState(0x5b) < 0
+                    || GetAsyncKeyState(0x5c) < 0
+                    || matches!(event.vkCode,0x5b..=0x5f|0xa6..=0xb7)
+                    || (alt && matches!(event.vkCode, 0x09 | 0x1b | 0x73))
+                    || (ctrl && event.vkCode == 0x1b);
+                let shortcut = ctx.shortcuts.iter().any(|(mods, key)| {
+                    *key as u32 == event.vkCode
+                        && mods.contains(&0x11) == ctrl
+                        && mods.contains(&0x10) == shift
+                        && mods.contains(&0x12) == alt
+                });
+                // Reset destinations before shortcuts/focus transitions rather than copying OS actions.
+                let key = Key {
+                    source,
+                    vk: if system || shortcut { 0 } else { event.vkCode },
+                    scan: event.scanCode,
+                    flags: event.flags.0,
+                    up: matches!(wp.0 as u32, WM_KEYUP | WM_SYSKEYUP),
+                };
+                if ctx.tx.try_send(key).is_err() {
+                    halt(&ctx.control, 1);
+                }
+            });
+        }
+    }
+    CallNextHookEx(None, code, wp, lp)
+}
+fn verify(client: &Client) -> bool {
+    crate::launcher::macro_client(client.target.pid, client.target.started_at).is_ok_and(|c| {
+        c.hwnd == Some(client.hwnd as u64)
+            && compatible_integrity(c.elevated, crate::launcher::self_elevated())
+    })
+}
+unsafe fn post(hwnd: usize, key: Key, up: bool, repeat: bool) -> bool {
+    let vk = match key.vk {
+        0xa0 | 0xa1 => 0x10,
+        0xa2 | 0xa3 => 0x11,
+        0xa4 | 0xa5 => 0x12,
+        x => x,
+    };
+    let alt = key.flags & LLKHF_ALTDOWN.0 != 0 || vk == 0x12;
+    let flags = 1u32
+        | ((key.scan & 0xff) << 16)
+        | (u32::from(key.flags & LLKHF_EXTENDED.0 != 0) << 24)
+        | (u32::from(alt) << 29)
+        | if up {
+            0xc0000000
+        } else if repeat {
+            0x40000000
+        } else {
+            0
+        };
+    PostMessageW(
+        Some(HWND(hwnd as *mut _)),
+        match (alt, up) {
+            (true, true) => WM_SYSKEYUP,
+            (true, false) => WM_SYSKEYDOWN,
+            (false, true) => WM_KEYUP,
+            (false, false) => WM_KEYDOWN,
+        },
+        WPARAM(vk as usize),
+        LPARAM(flags as isize),
+    )
+    .is_ok()
+}
+fn release(clients: &[Client], held: &mut HashMap<usize, HashMap<u32, (Key, Instant)>>) {
+    for (hwnd, keys) in held.drain() {
+        if clients.iter().any(|c| c.hwnd == hwnd && verify(c)) {
+            for (_, (key, _)) in keys {
+                unsafe {
+                    post(hwnd, key, true, false);
+                }
+            }
+        }
+    }
+}
+fn forward(rx: Receiver<Key>, clients: Vec<Client>, control: Arc<Control>) {
+    let mut held: HashMap<usize, HashMap<u32, (Key, Instant)>> = HashMap::new();
+    let mut previous = 0;
+    while !control.stop.load(Ordering::SeqCst) {
+        if now().saturating_sub(control.lease.load(Ordering::SeqCst)) > 3000 {
+            halt(&control, 2);
+            break;
+        }
+        if held.values().any(|keys| {
+            keys.values()
+                .any(|(_, at)| at.elapsed() > Duration::from_secs(60))
+        }) {
+            halt(&control, 5);
+            break;
+        }
+        let foreground = unsafe { GetForegroundWindow().0 as usize };
+        if foreground != previous {
+            release(&clients, &mut held);
+            previous = foreground;
+        }
+        let Ok(key) = rx.recv_timeout(Duration::from_millis(10)) else {
+            continue;
+        };
+        if key.vk == 0 {
+            release(&clients, &mut held);
+            continue;
+        }
+        if key.source != unsafe { GetForegroundWindow().0 as usize } {
+            release(&clients, &mut held);
+            continue;
+        }
+        if !clients.iter().any(|c| c.hwnd == key.source && verify(c)) {
+            halt(&control, 3);
+            break;
+        }
+        for client in clients.iter().filter(|c| c.hwnd != key.source) {
+            if control.stop.load(Ordering::SeqCst) {
+                break;
+            }
+            if !verify(client) {
+                halt(&control, 3);
+                break;
+            }
+            if control.stop.load(Ordering::SeqCst)
+                || key.source != unsafe { GetForegroundWindow().0 as usize }
+            {
+                release(&clients, &mut held);
+                break;
+            }
+            let keys = held.entry(client.hwnd).or_default();
+            // Ignore unmatched releases (keys held before activation were never copied).
+            if key.up && !keys.contains_key(&key.vk) {
+                continue;
+            }
+            let repeat = !key.up && keys.contains_key(&key.vk);
+            if !key.up {
+                keys.insert(key.vk, (key, Instant::now()));
+            }
+            if !unsafe { post(client.hwnd, key, key.up, repeat) } {
+                halt(&control, 4);
+                break;
+            }
+            if key.up {
+                keys.remove(&key.vk);
+            }
+        }
+    }
+    release(&clients, &mut held);
+}
+pub fn stop(id: &str) -> Result<bool, String> {
+    let mut guard = SESSION.lock().map_err(|_| "Mirror lock failed")?;
+    if guard.as_ref().is_some_and(|s| id.is_empty() || s.id == id) {
+        if let Some(session) = guard.take() {
+            session.control.stop.store(true, Ordering::SeqCst);
+            let _ = session.thread.join();
+        }
+    }
+    Ok(false)
+}
+pub fn heartbeat(id: &str) -> Result<bool, String> {
+    let guard = SESSION.lock().map_err(|_| "Mirror lock failed")?;
+    if let Some(session) = guard
+        .as_ref()
+        .filter(|s| s.id == id && !s.control.stop.load(Ordering::SeqCst))
+    {
+        session.control.lease.store(now(), Ordering::SeqCst);
+        return Ok(true);
+    }
+    Ok(false)
+}
+pub fn start(
+    app: tauri::AppHandle,
+    id: String,
+    targets: Vec<Target>,
+    shortcuts: Vec<String>,
+) -> Result<bool, String> {
+    if id.is_empty()
+        || id.len() > 80
+        || !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-')
+        || !(2..=30).contains(&targets.len())
+        || shortcuts.len() > 65
+    {
+        return Err("Invalid mirror configuration".into());
+    }
+    let parsed = shortcuts
+        .iter()
+        .map(|s| super::win::chord(s))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut clients = Vec::new();
+    for target in targets {
+        let c = crate::launcher::macro_client(target.pid, target.started_at)?;
+        if !compatible_integrity(c.elevated, crate::launcher::self_elevated()) {
+            return Err("Game client identity changed or access is unavailable".into());
+        }
+        let hwnd = c.hwnd.ok_or("No game window")? as usize;
+        if clients
+            .iter()
+            .any(|c: &Client| c.target.pid == target.pid || c.hwnd == hwnd)
+        {
+            return Err("Duplicate mirror target".into());
+        }
+        clients.push(Client { target, hwnd });
+    }
+    stop("")?;
+    let control = Arc::new(Control {
+        stop: AtomicBool::new(false),
+        reason: AtomicU8::new(0),
+        lease: AtomicU64::new(now()),
+    });
+    let thread_control = control.clone();
+    let thread_id = id.clone();
+    let (ready_tx, ready_rx) = sync_channel(1);
+    let thread = std::thread::spawn(move || unsafe {
+        let (tx, rx) = sync_channel(256);
+        CONTEXT.with(|ctx| {
+            *ctx.borrow_mut() = Some(Context {
+                tx,
+                clients: clients.clone(),
+                shortcuts: parsed,
+                control: thread_control.clone(),
+            })
+        });
+        let module = GetModuleHandleW(None).ok().map(|h| HINSTANCE(h.0));
+        let hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook), module, 0);
+        match hook {
+            Ok(hook) => {
+                let worker_control = thread_control.clone();
+                let worker = std::thread::spawn(move || forward(rx, clients, worker_control));
+                let _ = ready_tx.send(true);
+                while !thread_control.stop.load(Ordering::SeqCst) {
+                    let mut message = MSG::default();
+                    while PeekMessageW(&mut message, None, 0, 0, PM_REMOVE).as_bool() {
+                        let _ = TranslateMessage(&message);
+                        DispatchMessageW(&message);
+                    }
+                    std::thread::sleep(Duration::from_millis(2));
+                }
+                let _ = UnhookWindowsHookEx(hook);
+                CONTEXT.with(|ctx| *ctx.borrow_mut() = None);
+                let _ = worker.join();
+            }
+            Err(_) => {
+                let _ = ready_tx.send(false);
+                CONTEXT.with(|ctx| *ctx.borrow_mut() = None);
+            }
+        }
+        let _=app.emit_to("main","game-macro-mirror-state",serde_json::json!({"sessionId":thread_id,"active":false,"reason":thread_control.reason.load(Ordering::SeqCst)}));
+    });
+    let ready = ready_rx
+        .recv_timeout(Duration::from_secs(3))
+        .unwrap_or(false);
+    if !ready {
+        control.stop.store(true, Ordering::SeqCst);
+        let _ = thread.join();
+        return Err("Keyboard mirror unavailable".into());
+    }
+    *SESSION.lock().map_err(|_| "Mirror lock failed")? = Some(Session {
+        id,
+        control,
+        thread,
+    });
+    Ok(true)
+}

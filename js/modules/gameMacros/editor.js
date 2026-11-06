@@ -13,6 +13,7 @@ export const commandLabels = {
   f6f1: 'Два прохода: F6 кроме ПЛ → F1 всем',
   optimize: 'Размеры клиентов + Ctrl+F9 остальным',
   launch: 'Штатный запуск пати',
+  mirror: 'Повтор клавиатуры — вкл / выкл',
   pause: 'Пауза / продолжить'
 };
 
@@ -29,6 +30,8 @@ export const actionHelp = {
   f6f1: 'Сначала отправляет F6 всем, кроме ПЛ. Затем F1 всей пати, включая ПЛ.',
   optimize: 'Применяет размеры из раздела F11. Остальным участникам также отправляет Ctrl+F9.',
   launch: 'Запускает выбранную пати через обычную очередь запуска Твинофермы.',
+  mirror:
+    'Переключатель непрерывного повтора клавиатуры: только из распознанного активного игрового окна во все остальные распознанные клиенты. Мышь не копируется. Shift/Ctrl/Alt — экспериментальные оконные сообщения. Ввод в других приложениях не передаётся. Текст в игровом чате тоже повторяется: не вводите пароли в игре при включённом режиме. Alt+Tab/Alt+F4/Win и назначенные горячие команды исключены. Аварийное выключение Ctrl+Alt+Pause работает независимо от настройки хоткеев. Совместимость PW не подтверждена.',
   pause: 'Останавливает остаток команды и запрещает новые запуски до повторного нажатия.'
 };
 export function insertKeyToken(input, token) {
@@ -96,7 +99,7 @@ export function openCommandEditor(c, save, row = null) {
       )
       .join(
         ''
-      )}</fieldset><aside data-gm-action-help aria-live="polite"></aside></div><label>Сочетание для запуска <input class="input" name="hotkey" placeholder="CTRL+ALT+F8"></label><label>Доставка клавиш<select name="delivery"><option value="foreground">Обычная — с переключением окна (ускорена)</option><option value="background">Без переключения — оконные сообщения (эксперимент)</option></select><small>Фон: только клавиши без Ctrl/Shift/Alt в последовательности либо F6→F1. Игра может игнорировать сообщения. Нет автоперехода к переключению окон, результат в игре не подтверждается. Не используйте для расходных действий без проверки.</small></label><label data-gm-scope-field>Область команды <select name="scope"><option value="party">Управляющая пати</option><option value="managed">Все распознанные запущенные окна</option></select><small>«Управляющая пати» — участники пати, выбранной в основном разделе. «Все распознанные окна» — все проверенные клиенты, даже из других пати; это нужно, например, для общего реса. Неизвестное окно блокирует общий запуск, а не выбирается наугад.</small></label><fieldset class="gm-choice-grid" data-gm-targets><legend>Кому отправлять</legend>${[
+      )}</fieldset><aside data-gm-action-help aria-live="polite"></aside></div><label>Сочетание для запуска <input class="input" name="hotkey" placeholder="CTRL+ALT+F8"></label><label>Доставка клавиш<select name="delivery"><option value="foreground">Обычная — с переключением окна (ускорена)</option><option value="background">Без переключения — оконные сообщения (эксперимент)</option></select><small>Фон: клавиши и сочетания в последовательности либо F6→F1; Shift/Ctrl/Alt также экспериментальны. Игра может игнорировать сообщения. Нет автоперехода к переключению окон, результат в игре не подтверждается. Не используйте для расходных действий без проверки.</small></label><label data-gm-scope-field>Область команды <select name="scope"><option value="party">Управляющая пати</option><option value="managed">Все распознанные запущенные окна</option></select><small>«Управляющая пати» — участники пати, выбранной в основном разделе. «Все распознанные окна» — все проверенные клиенты, даже из других пати; это нужно, например, для общего реса. Неизвестное окно блокирует общий запуск, а не выбирается наугад.</small></label><fieldset class="gm-choice-grid" data-gm-targets><legend>Кому отправлять</legend>${[
       ['all', 'Вся пати'],
       ['leader', 'Только ПЛ'],
       ['others', 'Кроме ПЛ'],
@@ -120,15 +123,19 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
         if (!String(value.name || '').trim()) throw new Error('Введите название команды.');
         if (value.hotkey && !chord(value.hotkey)) throw new Error('Пример сочетания: CTRL+ALT+F8.');
         if (value.action === 'sequence') steps(value.sequence);
-        if (value.delivery === 'background' && !backgroundCompatible(value))
+        if (value.action !== 'mirror' && value.delivery === 'background' && !backgroundCompatible(value))
           throw new Error(
-            'Фоновый режим: только последовательность без Ctrl/Shift/Alt или F6→F1. Клики, следование, оптимизация и переключение требуют обычного режима.'
+            'Фоновый режим: только последовательность клавиш или F6→F1. Клики, следование, оптимизация и переключение требуют обычного режима.'
           );
         value.sequence = value.action === 'sequence' ? value.sequence : 'F8';
         if (value.action === 'leader') value.target = 'leader';
-        if (['f6f1', 'optimize', 'launch', 'pause'].includes(value.action)) value.target = 'all';
+        if (['f6f1', 'optimize', 'launch', 'pause', 'mirror'].includes(value.action)) value.target = 'all';
         if (['optimize', 'launch'].includes(value.action)) value.scope = 'party';
         if (value.scope === 'managed') value.target = 'all';
+        if (value.action === 'mirror') {
+          value.scope = 'managed';
+          value.delivery = 'background';
+        }
         value.charIds = data.getAll('charIds');
         value.pointIds = data.getAll('pointIds');
         value.resourceAllowed = data.has('resourceAllowed');
@@ -202,7 +209,7 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
       scope = form.elements.namedItem('scope').value,
       target = form.elements.namedItem('target').value;
     form.querySelector('[data-gm-action-help]').textContent = actionHelp[action] || '';
-    const fixed = ['leader', 'f6f1', 'optimize', 'launch', 'pause'].includes(action) || scope === 'managed';
+    const fixed = ['leader', 'f6f1', 'optimize', 'launch', 'pause', 'mirror'].includes(action) || scope === 'managed';
     form.querySelectorAll('[data-gm-click-field]').forEach(el => {
       el.hidden = !['click', 'follow'].includes(action);
     });
@@ -214,7 +221,7 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
     });
     form.querySelector('[data-gm-targets]').hidden = fixed;
     form.querySelector('[data-gm-variants-field]').hidden = action !== 'click';
-    form.querySelector('[data-gm-scope-field]').hidden = ['launch', 'pause', 'optimize'].includes(action);
+    form.querySelector('[data-gm-scope-field]').hidden = ['launch', 'pause', 'optimize', 'mirror'].includes(action);
     form.querySelector('[data-gm-subset]').hidden = fixed || target !== 'subset';
   };
   sync();

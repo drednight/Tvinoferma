@@ -5,7 +5,7 @@ import { mergeSettings } from '../js/core/state/settings.js';
 describe('StanislavFist AHK command migration', () => {
   it('installs every command once, does not read tokens and never enables hotkeys', () => {
     const c = mergeSettings({ gameMacros: { enabled: true } }).gameMacros;
-    expect(c.commands).toHaveLength(13);
+    expect(c.commands).toHaveLength(14);
     expect(c.enabled).toBe(false);
     expect(c.commands.find(c => c.id === 'ahk-assist')).toMatchObject({
       hotkey: 'CTRL+X',

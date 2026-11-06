@@ -11,7 +11,8 @@ export const ACTIONS = [
   'f6f1',
   'optimize',
   'launch',
-  'pause'
+  'pause',
+  'mirror'
 ];
 export function chord(value) {
   if (/^CTRL\+WHEEL(UP|DOWN)$/i.test(String(value))) return String(value).toUpperCase();
@@ -119,6 +120,7 @@ export function normalizeGameMacros(input = {}) {
         ? { x: input.overlayPosition.x, y: input.overlayPosition.y }
         : null,
     enabled: input.enabled === true,
+    mirrorPresetVersion: input.mirrorPresetVersion === 1 ? 1 : 0,
     ahkPresetsVersion: input.ahkPresetsVersion === 1 ? 1 : 0,
     buffPartyId: String(input.partyId || '').slice(0, 200),
     leaderWidth: size(legacySizes ? undefined : input.leaderWidth, 2560),
@@ -243,7 +245,7 @@ export function backgroundCompatible(command) {
   if (command.action === 'f6f1') return true;
   if (command.action !== 'sequence') return false;
   try {
-    return steps(command.sequence).every(step => step.wait || !step.key.includes('+'));
+    return steps(command.sequence).every(step => step.wait || !!step.key);
   } catch {
     return false;
   }

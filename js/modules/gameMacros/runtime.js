@@ -7,6 +7,12 @@ let initialized = false,
   cancelled = false,
   registered = false;
 let cycleId = '';
+let mirroring = false,
+  mirrorPending = false,
+  mirrorEpoch = 0,
+  mirrorSession = '',
+  mirrorTimer,
+  mirrorInit;
 let paused = false;
 const logs = [];
 const reviewedPoints = new Set();
@@ -20,6 +26,8 @@ export function snapshot() {
   const c = config();
   return {
     busy,
+    mirroring,
+    mirrorPending,
     paused,
     registered,
     opacity: c.opacity,
@@ -44,6 +52,7 @@ function log(text) {
   void broadcast();
 }
 export function stop() {
+  if (mirroring || mirrorPending) void disableKeyboardMirror();
   cancelled = true;
   if (busy && window.__TAURI_INTERNALS__)
     void native('game_macro_guide', { mode: 'close', width: 0, height: 0, target: null, requestId: null }).catch(
@@ -63,6 +72,7 @@ export function configure() {
   return configureQueue;
 }
 async function applyConfig() {
+  if (mirroring || mirrorPending) await disableKeyboardMirror();
   const c = config();
   registered = false;
   if (!window.__TAURI_INTERNALS__) {
@@ -229,11 +239,16 @@ export async function run(id, hotkey = false) {
   const c = config(),
     command = c.commands.find(r => r.id === id);
   if (!command) return;
+  if (command.action === 'mirror') {
+    await toggleKeyboardMirror();
+    return;
+  }
   busy = true;
   const started = performance.now();
   cancelled = false;
   void broadcast();
   try {
+    if (mirroring || mirrorPending) await disableKeyboardMirror();
     if (hotkey) await wait(200);
     if (command.action === 'launch') {
       const party = state.parties.find(p => p.id === c.partyId);
@@ -244,9 +259,7 @@ export async function run(id, hotkey = false) {
       return;
     }
     if (command.delivery === 'background' && !backgroundCompatible(command))
-      throw new Error(
-        'Эта команда не поддерживает фоновую доставку. Нужна последовательность без модификаторов либо F6→F1.'
-      );
+      throw new Error('Эта команда не поддерживает фоновую доставку. Нужна последовательность клавиш либо F6→F1.');
     const rows = await windowTargets(command, c);
     if (hotkey && command.delivery !== 'background') {
       let foreground = false;
@@ -518,6 +531,7 @@ export function openSettings() {
 export async function initGameMacros() {
   if (initialized || !window.__TAURI_INTERNALS__) return;
   initialized = true;
+  await ensureMirror();
   await listen('game-macro-hotkey', event => {
     if (config().enabled && registered) void run(String(event.payload), true);
   });
@@ -725,4 +739,112 @@ export async function applyOverlayPreferences() {
     existingOnly: true
   });
   await broadcast();
+}
+
+const mirrorArgs = (operation, sessionId = mirrorSession, extra = {}) => ({
+  operation,
+  sessionId,
+  targets: [],
+  shortcuts: [],
+  ...extra
+});
+function ensureMirror() {
+  return (mirrorInit ||= (async () => {
+    await listen('game-macro-mirror-state', event => {
+      if (event.payload?.sessionId !== mirrorSession || event.payload.active !== false) return;
+      ++mirrorEpoch;
+      mirrorPending = false;
+      mirroring = false;
+      clearInterval(mirrorTimer);
+      const reasons = {
+        1: 'Переполнение очереди: повтор остановлен.',
+        2: 'Потеря связи с интерфейсом: повтор остановлен.',
+        3: 'Игровое окно изменилось: повтор остановлен.',
+        4: 'Windows отказала в доставке: повтор остановлен.',
+        5: 'Клавиша удерживалась более 60 секунд без повтора: режим выключен защитой.'
+      };
+      log(reasons[event.payload.reason] || 'Повтор клавиатуры выключен.');
+    });
+    await native('game_macro_mirror', mirrorArgs('stop', ''));
+  })());
+}
+export async function disableKeyboardMirror() {
+  ++mirrorEpoch;
+  mirroring = false;
+  clearInterval(mirrorTimer);
+  void broadcast();
+  try {
+    await native('game_macro_mirror', mirrorArgs('stop'));
+  } catch {
+    log('Не удалось подтвердить выключение повтора; защита связи отключит его автоматически.');
+  }
+}
+export async function toggleKeyboardMirror() {
+  if (mirroring || mirrorPending) {
+    await disableKeyboardMirror();
+    return;
+  }
+  if (busy || paused) {
+    log('Сначала остановите команду и снимите паузу.');
+    return;
+  }
+  mirrorPending = true;
+  const epoch = ++mirrorEpoch;
+  void broadcast();
+  try {
+    await ensureMirror();
+    const rows = (await listMacroWindows()).filter(
+      r =>
+        r.known &&
+        r.charId &&
+        r.startedAt &&
+        r.hwnd &&
+        (r.elevated === false || (r.elevated === true && r.selfElevated === true))
+    );
+    if (rows.length < 2 || rows.length > 30 || new Set(rows.map(r => r.charId)).size !== rows.length)
+      throw new Error('Для повтора нужны 2–30 однозначно распознанных игровых окон. Неизвестные клиенты исключены.');
+    if (epoch !== mirrorEpoch) return;
+    const id = crypto.randomUUID();
+    mirrorSession = id;
+    const active = await native(
+      'game_macro_mirror',
+      mirrorArgs('start', id, {
+        targets: rows.map(r => ({ pid: r.pid, startedAt: r.startedAt })),
+        shortcuts: [
+          'CTRL+ALT+PAUSE',
+          ...config()
+            .commands.map(c => c.hotkey)
+            .filter(k => k && !k.includes('WHEEL'))
+        ]
+      })
+    );
+    if (epoch !== mirrorEpoch) {
+      await native('game_macro_mirror', mirrorArgs('stop', id));
+      return;
+    }
+    if (!active) throw new Error('Повтор клавиатуры не включён.');
+    mirroring = true;
+    mirrorTimer = setInterval(async () => {
+      if (epoch !== mirrorEpoch) return;
+      try {
+        if (!(await native('game_macro_mirror', mirrorArgs('heartbeat', id)))) {
+          if (epoch === mirrorEpoch) {
+            mirroring = false;
+            clearInterval(mirrorTimer);
+            log('Повтор клавиатуры отключён нативной защитой.');
+          }
+        }
+      } catch {
+        if (epoch === mirrorEpoch) await disableKeyboardMirror();
+      }
+    }, 1000);
+    log(
+      `Повтор клавиатуры ВКЛЮЧЁН: ${rows.length} проверенных окон, только при фокусе игры. Мышь не передаётся. Ctrl+Alt+Pause — выключить. Обработка сообщений игрой не подтверждена.`
+    );
+  } catch (error) {
+    log(macroErrorText(error));
+  } finally {
+    mirrorPending = false;
+    void broadcast();
+  }
 }

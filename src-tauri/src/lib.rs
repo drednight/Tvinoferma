@@ -297,6 +297,7 @@ pub fn run() {
             game_macros::game_macro_guide_result,
             game_macros::game_macro_action,
             game_macros::game_macro_bindings,
+            game_macros::game_macro_mirror,
             launcher::launcher_close_clients_pids,
             // повторная подпись окон (название и значок) после запуска
             launcher::launcher_decorate_clients,
@@ -309,6 +310,11 @@ pub fn run() {
             notify::tf_notify,
             notify::tf_notify_check,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                game_macros::shutdown_mirror();
+            }
+        });
 }

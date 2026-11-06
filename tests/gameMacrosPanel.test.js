@@ -8,6 +8,7 @@ vi.mock('../js/modules/gameMacros/runtime.js', async () => {
   const { state } = await import('../js/core/state.js');
   return {
     config: () => normalizeGameMacros(state.settings.gameMacros),
+    toggleKeyboardMirror: vi.fn(async () => {}),
     configure: vi.fn(async () => {}),
     initGameMacros: vi.fn(async () => {}),
     snapshot: () => ({ logs: ['Session log'], busy: false, registered: false }),

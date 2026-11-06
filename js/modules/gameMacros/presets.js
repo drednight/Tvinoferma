@@ -69,3 +69,27 @@ export function installAhkPresets(input = {}) {
     commands: [...commands, ...AHK_PRESETS.filter(row => !existing.has(row.id))]
   };
 }
+
+export function installMirrorPreset(input = {}) {
+  input = input && typeof input === 'object' ? input : {};
+  if (input.mirrorPresetVersion === 1) return input;
+  const commands = Array.isArray(input.commands) ? input.commands : [];
+  if (commands.length >= 64) return input;
+  return {
+    ...input,
+    mirrorPresetVersion: 1,
+    commands: commands.some(c => c?.action === 'mirror')
+      ? commands
+      : [
+          ...commands,
+          {
+            id: 'keyboard-mirror',
+            name: 'Повтор клавиатуры — вкл / выкл',
+            action: 'mirror',
+            scope: 'managed',
+            target: 'all',
+            hotkey: ''
+          }
+        ]
+  };
+}

@@ -8,6 +8,7 @@ import {
   config,
   configure,
   initGameMacros,
+  toggleKeyboardMirror,
   snapshot,
   openOverlay,
   run,
@@ -57,7 +58,7 @@ export function mountGameMacros(host) {
   selectedId = selected?.id || '';
   const point = c.points.find(p => p.id === selected?.pointId);
   host.innerHTML = `<details id="game-macros-block" class="tools-block gm-workspace"><summary class="gm-collapsed-title">🎮 Управление пати и макросы</summary>
-  <header class="gm-heading"><div><span class="gm-eyebrow">Управление игровыми окнами</span><h3>🎮 Управление пати и макросы</h3><p>Выберите пати, настройте команды и запускайте их кнопкой или сочетанием клавиш.</p></div><button class="btn danger" data-gm-stop>■ Остановить</button></header>
+  <header class="gm-heading"><div><span class="gm-eyebrow">Управление игровыми окнами</span><h3>🎮 Управление пати и макросы</h3><p>Выберите пати, настройте команды и запускайте их кнопкой или сочетанием клавиш.</p></div><button class="btn" data-gm-mirror aria-pressed="false">⌨ Включить повтор клавиатуры</button><button class="btn danger" data-gm-stop>■ Остановить</button></header>
   <div class="gm-control-bar"><label class="gm-field">Пати для всех команд<select data-gm-party><option value="">Выберите пати</option>${state.parties.map(p => option(p.id, p.name, c.partyId)).join('')}</select></label><label class="gm-switch"><input type="checkbox" data-gm-enabled ${c.enabled ? 'checked' : ''}><span><b>Управление сочетаниями клавиш</b><small>Можно запускать команды, когда открыта игра, без перехода в Твиноферму.</small></span></label></div>
   <p class="gm-key-note">Если переключатель выключен, работает ручной запуск кнопкой ▶. При включении Windows закрепляет сочетания за приложением; игровые команды срабатывают только из окон выбранной пати. Остановка — <kbd>Ctrl+Alt+Pause</kbd>.</p>
   <button class="btn ghost" data-gm-diagnostics>◎ Проверить окна</button><div class="gm-status" role="status" data-gm-runtime></div>
@@ -122,6 +123,7 @@ export function mountGameMacros(host) {
       })
   );
   host.querySelector('[data-gm-stop]').onclick = stop;
+  host.querySelector('[data-gm-mirror]').onclick = safe(toggleKeyboardMirror);
   host.querySelector('[data-gm-party]').onchange = safe(e => save({ partyId: e.target.value }));
   host.querySelector('[data-gm-enabled]').onchange = safe(e => save({ enabled: e.target.checked }));
   host.querySelector('[data-gm-create]').onclick = () => openCommandEditor(config(), save);
@@ -245,13 +247,22 @@ export function mountGameMacros(host) {
   const update = () => {
     if (!host.isConnected) return;
     const data = snapshot();
-    host.querySelector('[data-gm-runtime]').textContent = data.paused
-      ? 'Команды на паузе'
-      : data.busy
-        ? 'Команда выполняется…'
-        : data.registered
-          ? 'Управление клавишами включено'
-          : 'Ручной режим · команды запускаются кнопкой ▶';
+    const mirror = host.querySelector('[data-gm-mirror]');
+    mirror.textContent = data.mirroring
+      ? '⌨ Выключить повтор клавиатуры'
+      : data.mirrorPending
+        ? '⌨ Включение…'
+        : '⌨ Включить повтор клавиатуры';
+    mirror.setAttribute('aria-pressed', String(!!data.mirroring));
+    host.querySelector('[data-gm-runtime]').textContent = data.mirroring
+      ? 'Повтор клавиатуры ВКЛЮЧЁН · только из игры · Ctrl+Alt+Pause — выключить'
+      : data.paused
+        ? 'Команды на паузе'
+        : data.busy
+          ? 'Команда выполняется…'
+          : data.registered
+            ? 'Управление клавишами включено'
+            : 'Ручной режим · команды запускаются кнопкой ▶';
     host.querySelectorAll('button:not([data-gm-stop]):not([data-gm-pause]),input,select').forEach(input => {
       input.disabled = data.busy;
     });

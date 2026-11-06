@@ -461,7 +461,7 @@ mod win {
     use windows::Win32::UI::WindowsAndMessaging::*;
     static GENERATION: AtomicU64 = AtomicU64::new(0);
     static THREAD: Mutex<Option<std::thread::JoinHandle<()>>> = Mutex::new(None);
-    fn chord(text: &str) -> Result<(Vec<u16>, u16), String> {
+    pub(super) fn chord(text: &str) -> Result<(Vec<u16>, u16), String> {
         let text = text.to_ascii_uppercase();
         let mut parts: Vec<_> = text.split('+').collect();
         let last = parts.pop().ok_or("Empty key")?;
@@ -581,31 +581,43 @@ mod win {
                 }
                 "key-background" => {
                     let (mods, key) = chord(key.ok_or("Missing key")?)?;
-                    if !mods.is_empty() {
-                        return Err("Background modifiers are unsupported".into());
+                    let send = |vk: u16, up: bool, alt: bool| {
+                        let scan = MapVirtualKeyW(vk as u32, MAPVK_VK_TO_VSC);
+                        let flags = 1u32
+                            | ((scan & 0xff) << 16)
+                            | (u32::from(matches!(vk, 0x21..=0x28 | 0x2d | 0x2e)) << 24)
+                            | (u32::from(alt) << 29)
+                            | if up { 0xc0000000 } else { 0 };
+                        PostMessageW(
+                            Some(hwnd),
+                            match (alt, up) {
+                                (true, true) => WM_SYSKEYUP,
+                                (true, false) => WM_SYSKEYDOWN,
+                                (false, true) => WM_KEYUP,
+                                (false, false) => WM_KEYDOWN,
+                            },
+                            WPARAM(vk as usize),
+                            LPARAM(flags as isize),
+                        )
+                        .is_ok()
+                    };
+                    let alt = mods.contains(&0x12);
+                    let mut pressed = Vec::new();
+                    let mut ok = true;
+                    for vk in mods.iter().copied().chain(std::iter::once(key)) {
+                        if !send(vk, false, alt) {
+                            ok = false;
+                            break;
+                        }
+                        pressed.push(vk);
                     }
-                    let scan = MapVirtualKeyW(key as u32, MAPVK_VK_TO_VSC);
-                    let extended = matches!(key, 0x21..=0x28 | 0x2d | 0x2e);
-                    let flags = 1u32 | ((scan & 0xff) << 16) | ((extended as u32) << 24);
-                    // Only enqueue messages to the verified HWND. Never activate, attach input
-                    // threads, change keyboard state, or fall back to global SendInput here.
-                    let down = PostMessageW(
-                        Some(hwnd),
-                        WM_KEYDOWN,
-                        WPARAM(key as usize),
-                        LPARAM(flags as isize),
-                    );
-                    if down.is_ok() {
+                    if ok {
                         std::thread::sleep(Duration::from_millis(30));
                     }
-                    // Best effort release even when the down message could not be queued.
-                    let up = PostMessageW(
-                        Some(hwnd),
-                        WM_KEYUP,
-                        WPARAM(key as usize),
-                        LPARAM((flags | 0xc0000000) as isize),
-                    );
-                    if down.is_err() || up.is_err() {
+                    for vk in pressed.into_iter().rev() {
+                        ok = send(vk, true, alt) && ok;
+                    }
+                    if !ok {
                         return Err("Cannot queue background key".into());
                     }
                 }
@@ -963,5 +975,51 @@ mod integrity_tests {
         assert!(!compatible_integrity(Some(true), false));
         assert!(!compatible_integrity(None, false));
         assert!(!compatible_integrity(None, true));
+    }
+}
+
+#[cfg(windows)]
+#[path = "game_macro_mirror.rs"]
+mod mirror;
+#[cfg(windows)]
+static MIRROR_CONTROL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[tauri::command]
+pub async fn game_macro_mirror(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    operation: String,
+    session_id: String,
+    targets: Vec<Target>,
+    shortcuts: Vec<String>,
+) -> Result<bool, String> {
+    main_only(&window)?;
+    #[cfg(windows)]
+    {
+        tauri::async_runtime::spawn_blocking(move || {
+            let _guard = MIRROR_CONTROL
+                .lock()
+                .map_err(|_| "Mirror control lock failed")?;
+            match operation.as_str() {
+                "start" => mirror::start(app, session_id, targets, shortcuts),
+                "stop" => mirror::stop(&session_id),
+                "heartbeat" => mirror::heartbeat(&session_id),
+                _ => Err("Unknown mirror operation".into()),
+            }
+        })
+        .await
+        .map_err(|_| "Keyboard mirror worker failed")?
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (app, operation, session_id, targets, shortcuts);
+        Err("Game control is Windows-only".into())
+    }
+}
+
+pub fn shutdown_mirror() {
+    #[cfg(windows)]
+    if let Ok(_guard) = MIRROR_CONTROL.lock() {
+        let _ = mirror::stop("");
     }
 }

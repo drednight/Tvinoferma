@@ -716,8 +716,8 @@ mod win {
     /// кнопка закрытия окна в карточке, вкладка «Сегодня»). Раньше для каждого клиента окна
     /// перебирались отдельно — при десяти открытых окнах это десять полных обходов всех окон
     /// системы. Теперь обход один.
-    pub fn main_windows_by_pid() -> std::collections::HashMap<u32, (usize, String)> {
-        select_main_windows(all_windows())
+    pub fn main_windows_by_pid(pids: &[u32]) -> std::collections::HashMap<u32, (usize, String)> {
+        select_main_windows(windows_of(pids))
     }
 
     // A verified game window can have an empty caption (including with elevated clients).
@@ -931,7 +931,7 @@ mod win {
     pub fn process_start_ms(_pid: u32) -> Option<u64> {
         None
     }
-    pub fn main_windows_by_pid() -> std::collections::HashMap<u32, (usize, String)> {
+    pub fn main_windows_by_pid(_pids: &[u32]) -> std::collections::HashMap<u32, (usize, String)> {
         std::collections::HashMap::new()
     }
     pub fn restore_icons(_hwnd: usize, _small: usize, _big: usize) -> Result<(), u32> {
@@ -2328,7 +2328,8 @@ pub async fn launcher_running_details() -> Result<Vec<RunningClient>, String> {
     tauri::async_runtime::spawn_blocking(|| {
         let list = client_processes()?;
         // Все окна системы перебираются один раз на весь список, а не по одному на клиента
-        let windows = win::main_windows_by_pid();
+        let pids: Vec<u32> = list.iter().map(|(_, pid)| *pid).collect();
+        let windows = win::main_windows_by_pid(&pids);
         Ok::<Vec<RunningClient>, String>(
             list.into_iter()
                 .map(|(image, pid)| {

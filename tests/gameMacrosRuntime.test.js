@@ -275,7 +275,7 @@ describe('fast and background keyboard delivery', () => {
     ]);
     expect(runtime.snapshot().logs.join(' ')).toContain('НЕ подтверждена');
   });
-  it('rejects background modifiers before enumerating or sending', async () => {
+  it('posts experimental background modifiers without global input', async () => {
     state.settings.gameMacros.commands[0] = {
       id: 'test',
       action: 'sequence',
@@ -284,8 +284,10 @@ describe('fast and background keyboard delivery', () => {
       sequence: 'SHIFT+1\nF7'
     };
     await runtime.run('test');
-    expect(invoke).not.toHaveBeenCalled();
-    expect(runtime.snapshot().logs.join(' ')).toContain('не поддерживает фоновую');
+    expect(invoke.mock.calls.filter(([c]) => c === 'game_macro_action').map(([, a]) => [a.action, a.key])).toEqual([
+      ['key-background', 'SHIFT+1'],
+      ['key-background', 'F7']
+    ]);
   });
   it('never falls back to focus or SendInput after a background failure', async () => {
     state.settings.gameMacros.commands[0] = {
@@ -333,4 +335,22 @@ describe('fast and background keyboard delivery', () => {
       timeout.mockRestore();
     }
   });
+});
+it('background F6→F1 preserves both passes without activating/restoring the leader', async () => {
+  state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['p'] });
+  state.settings.gameMacros.leaders = { p: 'a' };
+  state.settings.gameMacros.commands = [{ id: 'test', action: 'f6f1', target: 'all', delivery: 'background' }];
+  invoke.mockImplementation(async c =>
+    c === 'launcher_running_details'
+      ? [client, { ...client, pid: 20, startedAt: 2000, hwnd: 200, title: 'Beta — Жрец' }]
+      : null
+  );
+  await runtime.run('test');
+  expect(
+    invoke.mock.calls.filter(([c]) => c === 'game_macro_action').map(([, a]) => [a.target.pid, a.action, a.key])
+  ).toEqual([
+    [20, 'key-background', 'F6'],
+    [10, 'key-background', 'F1'],
+    [20, 'key-background', 'F1']
+  ]);
 });
