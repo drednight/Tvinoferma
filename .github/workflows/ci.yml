@@ -58,6 +58,7 @@ jobs:
           name: test-times-${{ matrix.shard }}
           path: .ci-results/*.json
           include-hidden-files: true
+          overwrite: true
           if-no-files-found: error
           retention-days: 14
 

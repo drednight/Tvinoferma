@@ -445,9 +445,10 @@ export function startTask(title, opts = {}) {
 }
 
 /** Read-only summaries for dashboard widgets; never expose mutable Task/credentials/entries. */
-export function scriptWidgetReports() {
+export function scriptWidgetReports(kind) {
   return [...tasks]
-    .filter(t => t.scriptReport?.kind)
+    .filter(t => t.scriptReport?.kind && (!kind || t.scriptReport.kind === kind))
+    .slice(0, kind ? 1 : 4)
     .map(t => ({
       id: t.id,
       kind: t.scriptReport.kind,

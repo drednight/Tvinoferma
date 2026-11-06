@@ -35,7 +35,24 @@ try {
   exit = child.status ?? 1;
   if (child.error) console.error('Test runner could not start');
   if (fs.existsSync(report)) {
-    const durations = durationsFromReport(JSON.parse(fs.readFileSync(report, 'utf8')), root, selected);
+    const result = JSON.parse(fs.readFileSync(report, 'utf8'));
+    const escape = value => String(value).replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A');
+    for (const file of result.testResults || []) {
+      if (file.status !== 'failed') continue;
+      const name = path.relative(root, file.name).replaceAll('\\', '/');
+      const failed = (file.assertionResults || []).filter(t => t.status === 'failed');
+      if (!failed.length)
+        console.log(`::error title=Failed test file::${escape(name)} (collection or unhandled error; see job log)`);
+      for (const test of failed.slice(0, 10)) {
+        const reason = (test.failureMessages || []).some(m => /timed out|timeout/i.test(m))
+          ? 'timeout'
+          : 'assertion/error';
+        console.log(
+          `::error title=Failed test (${reason})::${escape(name)} — ${escape(String(test.fullName || test.title || 'test').slice(0, 240))}`
+        );
+      }
+    }
+    const durations = durationsFromReport(result, root, selected);
     fs.mkdirSync('.ci-results', { recursive: true });
     fs.writeFileSync(`.ci-results/${index}.json`, JSON.stringify({ files: selected, durations }));
     const slowest = Object.entries(durations)

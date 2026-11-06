@@ -37,7 +37,7 @@ export function mountActionWidget(panel, action, editing) {
       marathons: state.marathons,
       rosters: loadRosters(),
       shop: loadShopState(),
-      reports: action === 'promo' ? [] : scriptWidgetReports(),
+      reports: ['transfer', 'shop', 'caravan'].includes(action) ? scriptWidgetReports(action) : [],
       checking: state.ui.authCheck,
       promos: promoSources ? promoSources.coverage(promoSources.codes(), characters, promoSources.log()) : null
     });
