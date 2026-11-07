@@ -223,3 +223,19 @@ it('requests clearing the shared journal and renders the authoritative empty sna
   update({ payload: { logs: ['Новая запись'] } });
   expect(document.querySelector('#logs').textContent).toContain('Новая запись');
 });
+it('copies the complete snapshot chronologically rather than the reversed rendered journal', async () => {
+  const write = vi.fn(async () => {});
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: write } });
+  mocks.handlers.get('game-macro-snapshot')({
+    payload: { logs: ['Первая', 'Вторая'], logEntries: [{ text: 'Первая' }, { text: 'Вторая' }] }
+  });
+  expect(document.querySelector('#logs').textContent).toBe('Вторая\nПервая\n');
+  document.querySelector('#copy-logs').click();
+  await vi.waitFor(() => expect(write).toHaveBeenCalledWith('Первая\nВторая'));
+  expect(mocks.invoke).not.toHaveBeenCalled();
+  await vi.waitFor(() => expect(document.querySelector('#copy-logs').disabled).toBe(false));
+  mocks.handlers.get('game-macro-snapshot')({ payload: { logs: [], logEntries: [] } });
+  document.querySelector('#copy-logs').click();
+  await vi.waitFor(() => expect(document.querySelector('#copy-logs-status').textContent).toContain('Журнал пуст'));
+  expect(write).toHaveBeenCalledTimes(1);
+});

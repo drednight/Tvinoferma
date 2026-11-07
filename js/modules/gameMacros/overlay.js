@@ -1,12 +1,34 @@
+import { copyJournal } from './journal.js';
 import { normalizeAppearance, TEXT_PRESETS, KEY_PRESETS, COMMAND_PRESETS } from './appearance.js';
 import { listen, emitTo } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 async function init() {
   const current = getCurrentWindow();
+  let journalLines = [];
+  const copyButton = document.getElementById('copy-logs'),
+    journal = document.getElementById('journal-screen'),
+    copyStatus = document.getElementById('copy-logs-status');
+  copyButton.onclick = async () => {
+    copyButton.disabled = true;
+    try {
+      await copyJournal(journalLines, journal, copyStatus);
+    } finally {
+      copyButton.disabled = false;
+    }
+  };
   await listen('game-macro-snapshot', event => {
     if (event.payload == null) return;
     const data = event.payload;
+    journalLines = Array.isArray(data.logs)
+      ? data.logs.slice()
+      : Array.isArray(data.logEntries)
+        ? data.logEntries.map(entry => String(entry.text || ''))
+        : [];
+    if (!journalLines.length) {
+      journal.querySelector('[data-gm-journal-copy-fallback]')?.remove();
+      copyStatus.textContent = '';
+    }
     const partySelect = document.getElementById('party-select'),
       selected = partySelect.value || data.partyId;
     partySelect.replaceChildren(

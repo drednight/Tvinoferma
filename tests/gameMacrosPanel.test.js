@@ -198,3 +198,11 @@ it('offers journal clearing in the main dialog without running or stopping a com
   expect(runtime.stop).not.toHaveBeenCalled();
   expect(mocks.run).not.toHaveBeenCalled();
 });
+it('copies the current entire main journal without invoking a command', async () => {
+  const write = vi.fn(async () => {});
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: write } });
+  document.querySelector('[data-gm-logs]').click();
+  document.querySelector('[data-gm-copy-logs]').click();
+  await vi.waitFor(() => expect(write).toHaveBeenCalledWith('Session log'));
+  expect(mocks.run).not.toHaveBeenCalled();
+});

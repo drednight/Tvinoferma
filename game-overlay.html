@@ -204,6 +204,16 @@
       body.header-hidden #overlay-controls {
         padding-right: 30px;
       }
+      .gm-journal-copy-fallback {
+        display: block;
+        width: 100%;
+        background: #10141e;
+        color: inherit;
+        border: 1px solid #637090;
+        border-radius: 8px;
+        padding: 10px;
+        font: inherit;
+      }
     </style>
   </head>
   <body>
@@ -328,6 +338,9 @@
         </section>
         <section id="journal-screen" hidden>
           <h3 data-service-heading>Журнал текущего сеанса</h3>
+          <button type="button" id="copy-logs">Копировать весь лог</button>
+          <p id="copy-logs-status" role="status" aria-live="polite"></p>
+          <p class="muted">Копируются все сохранённые записи (до 300 строк), не только видимый фрагмент.</p>
           <button
             type="button"
             data-action="clear-logs"
