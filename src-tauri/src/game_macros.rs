@@ -227,9 +227,9 @@ pub fn game_macro_navigate(
                 serde_json::json!({"action":action,"partyId":party_id}),
             )
             .map_err(|_| "Cannot request party action".into()),
-        "stop" => app
-            .emit_to("main", "game-overlay-action", "stop")
-            .map_err(|_| "Cannot stop".into()),
+        "stop" | "clear-logs" => app
+            .emit_to("main", "game-overlay-action", action)
+            .map_err(|_| "Cannot send overlay action".into()),
         "settings" | "logs" | "overlay-settings" => {
             let main = app
                 .get_webview_window("main")

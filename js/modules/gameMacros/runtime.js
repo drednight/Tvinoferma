@@ -70,6 +70,12 @@ export function snapshot() {
     logs: logs.slice(-300)
   };
 }
+// Clear only this in-memory journal; do not cancel input or change execution state.
+export async function clearLogs() {
+  logs.length = 0;
+  logEntries.length = 0;
+  await broadcast();
+}
 export async function broadcast() {
   window.dispatchEvent(new Event('tf-game-macros-changed'));
   if (!window.__TAURI_INTERNALS__) return;
@@ -784,6 +790,7 @@ export async function initGameMacros() {
   });
   await listen('game-overlay-action', event => {
     if (event.payload === 'stop') stop();
+    else if (event.payload === 'clear-logs') void clearLogs();
   });
   await listen('game-macro-navigate', event => {
     openSettings();

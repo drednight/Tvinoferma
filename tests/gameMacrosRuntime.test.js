@@ -657,3 +657,40 @@ it('logs partial native delivery and failed release before stopping further reci
   expect(runtime.snapshot().notice).toContain('код 5');
   expect(invoke.mock.calls.filter(([, a]) => a?.action === 'key-background')).toHaveLength(1);
 });
+
+it('clears both journal representations without resetting the last execution status', async () => {
+  state.settings.gameMacros.commands[0].sequence = 'F8';
+  await runtime.run('test');
+  const before = runtime.snapshot();
+  expect(before.logs.length).toBeGreaterThan(0);
+  await runtime.clearLogs();
+  const after = runtime.snapshot();
+  expect(after.logs).toEqual([]);
+  expect(after.logEntries).toEqual([]);
+  expect(after.executionState).toBe(before.executionState);
+  expect(after.notice).toBe(before.notice);
+  await runtime.run('test');
+  expect(runtime.snapshot().logs.length).toBeGreaterThan(0);
+});
+it('clearing a live journal does not cancel the in-flight command or prevent later entries', async () => {
+  let release;
+  state.settings.gameMacros.commands[0].sequence = 'B';
+  invoke.mockImplementation(async (c, a) =>
+    c === 'launcher_running_details'
+      ? [client]
+      : a?.action === 'key'
+        ? new Promise(resolve => {
+            release = resolve;
+          })
+        : null
+  );
+  const pending = runtime.run('test');
+  await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+  await runtime.clearLogs();
+  expect(runtime.snapshot().busy).toBe(true);
+  expect(runtime.snapshot().logs).toEqual([]);
+  release(null);
+  await pending;
+  expect(runtime.snapshot().executionState).toBe('finished');
+  expect(runtime.snapshot().logs.length).toBeGreaterThan(0);
+});

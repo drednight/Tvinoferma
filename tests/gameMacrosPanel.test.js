@@ -14,6 +14,7 @@ vi.mock('../js/modules/gameMacros/runtime.js', async () => {
   const { state } = await import('../js/core/state.js');
   return {
     diagnoseBackground: mocks.diagnoseBackground,
+    clearLogs: vi.fn(async () => {}),
     config: () => normalizeGameMacros(state.settings.gameMacros),
     toggleKeyboardMirror: vi.fn(async () => {}),
     configure: vi.fn(async () => {}),
@@ -186,5 +187,14 @@ it('opens a non-input diagnostic modal and explicitly probes one selected client
   document.querySelector('[data-bg-probe-run]').click();
   await vi.waitFor(() => expect(document.querySelector('[data-bg-probe-report]').value).toBe('Диагностический отчёт'));
   expect(mocks.diagnoseBackground).toHaveBeenCalledWith('a', 'B');
+  expect(mocks.run).not.toHaveBeenCalled();
+});
+
+it('offers journal clearing in the main dialog without running or stopping a command', async () => {
+  document.querySelector('[data-gm-logs]').click();
+  document.querySelector('[data-gm-clear-logs]').click();
+  const runtime = await import('../js/modules/gameMacros/runtime.js');
+  await vi.waitFor(() => expect(runtime.clearLogs).toHaveBeenCalledTimes(1));
+  expect(runtime.stop).not.toHaveBeenCalled();
   expect(mocks.run).not.toHaveBeenCalled();
 });

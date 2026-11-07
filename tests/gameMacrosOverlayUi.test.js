@@ -210,3 +210,16 @@ it('keeps a compact panel control outside the header when the header is hidden',
   document.querySelector('[data-view="appearance"]').click();
   expect(document.querySelector('#appearance-screen').hidden).toBe(false);
 });
+
+it('requests clearing the shared journal and renders the authoritative empty snapshot', async () => {
+  const update = mocks.handlers.get('game-macro-snapshot');
+  update({ payload: { logs: ['Старая запись'] } });
+  document.querySelector('[data-view="journal"]').click();
+  document.querySelector('[data-action="clear-logs"]').click();
+  await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('game_macro_navigate', { action: 'clear-logs' }));
+  expect(document.querySelector('#logs').textContent).toContain('Старая запись');
+  update({ payload: { logs: [], logEntries: [] } });
+  expect(document.querySelector('#logs').textContent).toBe('');
+  update({ payload: { logs: ['Новая запись'] } });
+  expect(document.querySelector('#logs').textContent).toContain('Новая запись');
+});
