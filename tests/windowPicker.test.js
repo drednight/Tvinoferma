@@ -222,3 +222,31 @@ it('keeps decoration progress visible across redraws and prevents repeated click
   await vi.waitFor(() => expect(document.querySelector('[data-act="redecorate"]').disabled).toBe(false));
   expect(document.querySelector('[data-decoration-progress]').textContent).toContain('100%');
 });
+
+it('attaches an external client to a free character and recognizes it after reload', async () => {
+  state.characters.push({ id: 'c', nick: 'Вв', class: 'Маг', partyIds: ['p1'] });
+  const startedAt = Date.now() - 3600000;
+  mocks.details.mockResolvedValue(clients().map(c => (c.pid === 300 ? { ...c, startedAt } : c)));
+  const select = document.querySelector('[data-attach="300"]');
+  const option = document.createElement('option');
+  option.value = 'c';
+  select.append(option);
+  select.value = 'c';
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+  await vi.waitFor(() => expect(document.querySelector('[data-attach="300"]')).toBeNull());
+  expect(rows().find(r => r.textContent.includes('PID 300')).textContent).toContain('Вв');
+  expect(
+    rows()
+      .find(r => r.textContent.includes('PID 300'))
+      .classList.contains('is-unknown')
+  ).toBe(false);
+  window.localStorage.clear();
+});
+it('does not attach a character already recognized in another running window', async () => {
+  window.localStorage.clear();
+  const select = document.querySelector('[data-attach="300"]');
+  select.value = 'a';
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+  await vi.waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('уже привязан'), 'error'));
+  expect(document.querySelector('[data-attach="300"]')).not.toBeNull();
+});

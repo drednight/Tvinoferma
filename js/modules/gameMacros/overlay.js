@@ -7,6 +7,19 @@ async function init() {
   const current = getCurrentWindow();
   let journalLines = [];
   let repeatState = {};
+  const keyboardToggle = document.getElementById('keyboard-repeat-toggle');
+  const keyboardDisabled = () =>
+    !!repeatState.mirrorPending || ((!!repeatState.busy || !!repeatState.paused) && !repeatState.mirrorKeys);
+  keyboardToggle.onclick = async () => {
+    keyboardToggle.disabled = true;
+    try {
+      await emitTo('main', 'game-overlay-keyboard-toggle', null);
+    } catch {
+      document.getElementById('status').textContent = 'Не удалось отправить запрос повтора клавиатуры.';
+    } finally {
+      keyboardToggle.disabled = keyboardDisabled();
+    }
+  };
   const mouseToggle = document.getElementById('mouse-repeat-toggle');
   const mouseDisabled = () =>
     !!repeatState.mirrorPending || ((!!repeatState.busy || !!repeatState.paused) && !repeatState.mirrorMouse);
@@ -35,6 +48,18 @@ async function init() {
     if (event.payload == null) return;
     const data = event.payload;
     repeatState = data;
+    const keyboardOn = !!data.mirrorKeys,
+      keyboardPaused = keyboardOn && !data.mirroring && !data.mirrorPending;
+    keyboardToggle.textContent = data.mirrorPending
+      ? '⌨ Повтор клавиатуры: обновление…'
+      : keyboardPaused
+        ? '⌨ Повтор клавиатуры: ПРИОСТАНОВЛЕН'
+        : `⌨ Повтор клавиатуры: ${keyboardOn ? 'ВКЛ' : 'ВЫКЛ'}`;
+    keyboardToggle.dataset.state = keyboardPaused ? 'paused' : keyboardOn ? 'on' : 'off';
+    keyboardToggle.setAttribute('aria-pressed', String(keyboardOn));
+    keyboardToggle.title = keyboardOn ? 'Выключить повтор клавиатуры' : 'Включить повтор клавиатуры';
+    keyboardToggle.disabled = keyboardDisabled();
+    document.getElementById('party-close-all').disabled = !!data.busy;
     const mouseOn = !!data.mirrorMouse,
       mousePaused = mouseOn && !data.mirroring && !data.mirrorPending;
     mouseToggle.textContent = data.mirrorPending
@@ -176,6 +201,28 @@ async function init() {
     });
   };
   document.querySelectorAll('[data-view]').forEach(button => (button.onclick = () => showView(button.dataset.view)));
+  const extraNames = {
+    pink: 'Розовый',
+    cyan: 'Бирюзовый',
+    lime: 'Лаймовый',
+    coral: 'Коралловый',
+    silver: 'Серебристый',
+    lavender: 'Лавандовый'
+  };
+  for (const id of ['text-color', 'key-color', 'command-color']) {
+    const fieldset = document.getElementById(id).closest('fieldset');
+    for (const [value, name] of Object.entries(extraNames)) {
+      const label = document.createElement('label'),
+        input = document.createElement('input'),
+        span = document.createElement('span');
+      input.type = 'radio';
+      input.name = `${id}-choice`;
+      input.value = value;
+      span.textContent = name;
+      label.append(input, span);
+      fieldset.append(label);
+    }
+  }
   document.querySelectorAll('.color-options input[type=radio]').forEach(
     input =>
       (input.onchange = () => {
@@ -197,12 +244,14 @@ async function init() {
     partyBusy = true;
     document.getElementById('party-launch').disabled = true;
     document.getElementById('party-refresh').disabled = true;
+    document.getElementById('party-close-all').disabled = true;
     try {
       await invoke('game_macro_navigate', { action, partyId: document.getElementById('party-select').value || null });
     } catch {
       document.getElementById('window-notice').textContent =
         'Не удалось отправить запрос. Откройте главное приложение.';
       document.getElementById('party-refresh').disabled = false;
+      document.getElementById('party-close-all').disabled = false;
       document.getElementById('party-launch').disabled = !document.getElementById('party-select').value;
     } finally {
       partyBusy = false;
@@ -211,6 +260,16 @@ async function init() {
   document.getElementById('party-select').onchange = () =>
     (document.getElementById('party-launch').disabled = partyBusy || !document.getElementById('party-select').value);
   document.getElementById('party-launch').onclick = () => partyRequest('party-launch');
+  document.getElementById('party-close-all').onclick = () => {
+    document.getElementById('close-confirm').hidden = false;
+  };
+  document.getElementById('close-confirm-no').onclick = () => {
+    document.getElementById('close-confirm').hidden = true;
+  };
+  document.getElementById('close-confirm-yes').onclick = () => {
+    document.getElementById('close-confirm').hidden = true;
+    return partyRequest('party-close-all');
+  };
   document.getElementById('party-refresh').onclick = () => partyRequest('party-refresh');
   const togglePanel = () => {
     const controls = document.getElementById('overlay-controls');

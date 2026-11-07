@@ -317,3 +317,48 @@ it('shows a dedicated mouse toggle outside the hideable service panel with hones
   update({ payload: { mirrorMouse: false, busy: true } });
   expect(button.disabled).toBe(true);
 });
+
+it('keyboard repeat is independent, visible with service panel hidden, and reflects state', async () => {
+  const button = document.getElementById('keyboard-repeat-toggle');
+  mocks.handlers.get('game-macro-snapshot')({ payload: { mirrorKeys: true, mirrorMouse: false, mirroring: true } });
+  expect(button.textContent).toContain('ВКЛ');
+  expect(button.getAttribute('aria-pressed')).toBe('true');
+  document.getElementById('info-toggle').click();
+  expect(button.closest('[hidden]')).toBeNull();
+  button.click();
+  await vi.waitFor(() => expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-keyboard-toggle', null));
+  mocks.handlers.get('game-macro-snapshot')({ payload: { mirrorKeys: true, mirroring: false } });
+  expect(button.textContent).toContain('ПРИОСТАНОВЛЕН');
+});
+it('requires explicit confirmation before closing all clients from overlay', async () => {
+  document.getElementById('party-close-all').click();
+  expect(document.getElementById('close-confirm').hidden).toBe(false);
+  expect(mocks.invoke).not.toHaveBeenCalledWith(
+    'game_macro_navigate',
+    expect.objectContaining({ action: 'party-close-all' })
+  );
+  document.getElementById('close-confirm-no').click();
+  expect(document.getElementById('close-confirm').hidden).toBe(true);
+  document.getElementById('party-close-all').click();
+  document.getElementById('close-confirm-yes').click();
+  await vi.waitFor(() =>
+    expect(mocks.invoke).toHaveBeenCalledWith('game_macro_navigate', { action: 'party-close-all', partyId: null })
+  );
+});
+it('offers additional selectable colors in every palette and saves them', async () => {
+  for (const id of ['text-color', 'key-color', 'command-color']) {
+    expect(document.querySelectorAll(`[name="${id}-choice"]`).length).toBe(9);
+    const radio = document.querySelector(`[name="${id}-choice"][value="coral"]`);
+    radio.click();
+    expect(document.getElementById(id).value).toBe('coral');
+  }
+  document.getElementById('save-appearance').click();
+  await vi.waitFor(() =>
+    expect(mocks.invoke).toHaveBeenCalledWith(
+      'game_macro_overlay_preferences',
+      expect.objectContaining({
+        appearance: expect.objectContaining({ textColor: 'coral', keyColor: 'coral', commandColor: 'coral' })
+      })
+    )
+  );
+});

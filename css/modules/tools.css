@@ -916,3 +916,54 @@
   gap: 8px;
   flex-wrap: wrap;
 }
+
+/* Compact composition cards: actions stay together, fields adapt independently. */
+.gm-compose-steps {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.gm-compose-block .gm-compose-steps > li {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  min-width: 0;
+}
+.gm-step-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.gm-step-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.gm-step-actions .btn {
+  white-space: nowrap;
+  padding: 5px 8px;
+}
+.gm-compose-steps .gm-compose-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  align-items: start;
+}
+.gm-compose-steps .gm-compose-fields > label {
+  min-width: 0;
+}
+.gm-compose-fields input,
+.gm-compose-fields select,
+.gm-compose-fields textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.winp-attach {
+  display: grid;
+  gap: 4px;
+  min-width: 160px;
+}

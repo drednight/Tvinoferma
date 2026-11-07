@@ -13,7 +13,7 @@
 // если окно запущено не в то время, которое мы запомнили, запись не верится.
 
 const KEY = 'tf:launched-windows';
-/** Сколько живёт запись. Дольше держать незачем: за это время окно обычно закрыто. */
+/** Срок резервной записи запуска; явные привязки проверяются по старту живого процесса. */
 const TTL_MS = 24 * 60 * 60 * 1000;
 /** Насколько может разойтись время старта, чтобы запись ещё считалась нашей. */
 const START_TOLERANCE_MS = 5 * 60 * 1000;
@@ -26,21 +26,21 @@ const store = () => {
   }
 };
 
-/** @returns {Record<string, { charId: string, at: number }>} */
+/** @returns {Record<string, { charId: string, at: number, startedAt?: number }>} */
 function readAll() {
   try {
     const raw = JSON.parse(store()?.getItem(KEY) || '{}');
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
     const now = Date.now();
-    /** @type {Record<string, { charId: string, at: number }>} */
+    /** @type {Record<string, { charId: string, at: number, startedAt?: number }>} */
     const out = {};
     for (const [pid, v] of Object.entries(raw)) {
       const num = Number(pid);
       if (!Number.isInteger(num) || num <= 0 || !v || typeof v !== 'object') continue;
       const charId = String(v.charId || '');
       const at = Number(v.at);
-      if (!charId || !Number.isFinite(at) || now - at > TTL_MS) continue;
-      out[String(num)] = { charId, at };
+      if (!charId || !Number.isFinite(at) || (!v.startedAt && now - at > TTL_MS)) continue;
+      out[String(num)] = { charId, at, ...(Number(v.startedAt) > 0 ? { startedAt: Number(v.startedAt) } : {}) };
     }
     return out;
   } catch {
@@ -99,7 +99,7 @@ export function recalledOwnership(windows, now = Date.now()) {
     const rec = all[String(w.pid)];
     if (!rec) continue;
     // Окно стартовало не в то время, которое мы запомнили → PID переиспользован
-    if (Math.abs(now - w.uptimeMs - rec.at) > START_TOLERANCE_MS) continue;
+    if (Math.abs(now - w.uptimeMs - (rec.startedAt ?? rec.at)) > (rec.startedAt ? 1000 : START_TOLERANCE_MS)) continue;
     out[String(w.pid)] = rec.charId;
   }
   return out;
@@ -112,10 +112,22 @@ export function pruneLaunched(rows) {
   const now = Date.now();
   let changed = false;
   for (const pid of Object.keys(all)) {
-    if (!alive.has(pid) || now - all[pid].at > TTL_MS) {
+    if (!alive.has(pid) || (!all[pid].startedAt && now - all[pid].at > TTL_MS)) {
       delete all[pid];
       changed = true;
     }
   }
   if (changed) writeAll(all);
+}
+
+/** Attach an existing verified client, using its actual process start rather than attachment time. */
+export function rememberExistingWindow(pid, charId, startedAt) {
+  const num = Number(pid),
+    at = Number(startedAt);
+  if (!Number.isInteger(num) || num <= 0 || !charId || !Number.isFinite(at) || at <= 0 || at > Date.now())
+    throw new Error('Не удалось проверить время запуска окна. Обновите список.');
+  writeAll({ ...readAll(), [String(num)]: { charId: String(charId), at: Date.now(), startedAt: at } });
+  const saved = readAll()[String(num)];
+  if (saved?.charId !== String(charId) || saved?.startedAt !== at)
+    throw new Error('Не удалось сохранить привязку окна в локальном хранилище.');
 }

@@ -223,7 +223,7 @@ pub fn game_macro_navigate(
         return Err("Untrusted window".into());
     }
     match action.as_str() {
-        "party-refresh" | "party-launch" => app
+        "party-refresh" | "party-launch" | "party-close-all" => app
             .emit_to(
                 "main",
                 "game-overlay-party",

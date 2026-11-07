@@ -245,15 +245,25 @@
       .gm-journal-actions > button {
         margin: 0;
       }
-      #mouse-repeat-toggle {
+      .repeat-controls {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin: 8px 4px;
+      }
+      .repeat-controls .repeat-toggle {
+        margin: 0;
+        min-width: 0;
+      }
+      .repeat-toggle {
         font-weight: 600;
       }
-      #mouse-repeat-toggle[data-state='on'] {
+      .repeat-toggle[data-state='on'] {
         background: #214c40;
         border-color: #66d9ad;
         color: #c5ffe6;
       }
-      #mouse-repeat-toggle[data-state='paused'] {
+      .repeat-toggle[data-state='paused'] {
         border-color: #e6b86a;
         color: #f5cc76;
       }
@@ -299,9 +309,28 @@
           </nav>
           <p id="status">Ожидание главного окна…</p>
         </div>
-        <button type="button" id="mouse-repeat-toggle" aria-pressed="false" data-state="off" disabled>
-          🖱 Повтор мыши: ВЫКЛ
-        </button>
+        <div class="repeat-controls" role="group" aria-label="Повтор ввода">
+          <button
+            type="button"
+            class="repeat-toggle"
+            id="mouse-repeat-toggle"
+            aria-pressed="false"
+            data-state="off"
+            disabled
+          >
+            🖱 Повтор мыши: ВЫКЛ
+          </button>
+          <button
+            type="button"
+            class="repeat-toggle"
+            id="keyboard-repeat-toggle"
+            aria-pressed="false"
+            data-state="off"
+            disabled
+          >
+            ⌨ Повтор клавиатуры: ВЫКЛ
+          </button>
+        </div>
         <section id="shortcuts-screen">
           <h3 data-service-heading>Назначенные клавиши</h3>
           <ul id="commands"></ul>
@@ -374,7 +403,14 @@
               <option value="">Выберите пати</option>
             </select></label
           >
-          <p><button id="party-launch">▶ Запустить пати</button><button id="party-refresh">Обновить окна</button></p>
+          <p>
+            <button id="party-launch">▶ Запустить пати</button><button id="party-refresh">Обновить окна</button
+            ><button id="party-close-all">Закрыть все окна</button>
+          </p>
+          <div id="close-confirm" hidden>
+            <p>Закрыть все игровые окна, включая нераспознанные? Несохранённые данные в игре будут потеряны.</p>
+            <button id="close-confirm-yes">Да, закрыть все</button><button id="close-confirm-no">Отмена</button>
+          </div>
           <p id="window-notice" role="status">Нажмите «Обновить окна».</p>
           <ul id="windows"></ul>
           <p class="muted">

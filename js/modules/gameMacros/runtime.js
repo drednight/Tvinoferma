@@ -849,6 +849,9 @@ export async function initGameMacros() {
   await listen('game-overlay-party', event => {
     void overlayPartyAction(event.payload);
   });
+  await listen('game-overlay-keyboard-toggle', () => {
+    void toggleKeyboardMirror('keyboard').catch(() => log('Не удалось изменить повтор клавиатуры из оверлея.'));
+  });
   await listen('game-overlay-mouse-toggle', () => {
     void toggleKeyboardMirror('mouse').catch(() => log('Не удалось изменить повтор мыши из оверлея.'));
   });
@@ -1376,7 +1379,7 @@ export async function previewComposition(id) {
 
 // Native bridge accepts requests only from main/overlay. Resolve IDs against current user data.
 export async function overlayPartyAction(request) {
-  if (!['party-refresh', 'party-launch'].includes(request?.action)) return;
+  if (!['party-refresh', 'party-launch', 'party-close-all'].includes(request?.action)) return;
   if (busy) {
     overlayWindowNotice = 'Сначала завершите текущую команду.';
     await broadcast();
@@ -1387,6 +1390,15 @@ export async function overlayPartyAction(request) {
   overlayWindowNotice = 'Проверка окон…';
   void broadcast();
   try {
+    if (request.action === 'party-close-all') {
+      const { closeAllClients } = await import('../launcher/launch.js');
+      const { closeSelectedText } = await import('../launcher/windowList.js');
+      const report = await closeAllClients();
+      overlayWindowNotice = closeSelectedText(report);
+      const rows = await listMacroWindows();
+      overlayWindows = rows.map(row => ({ name: row.nick || 'Нераспознанное окно', pid: row.pid, known: !!row.known }));
+      return;
+    }
     if (request.action === 'party-launch') {
       const party = (state.parties || []).find(p => p.id === request.partyId);
       if (!party) throw new Error('Выберите существующую пати.');

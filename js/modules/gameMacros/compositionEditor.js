@@ -158,7 +158,7 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
                   )
                   .join('')}</fieldset>`
               : ''
-          }<ol>${block.steps.map((step, i) => `<li data-step="${i}" ${['resize', 'profile'].includes(step.type) || (step.type === 'command' && c.commands.some(cmd => cmd.id === step.commandId && !commandVisible(cmd))) ? 'hidden' : ''}><div class="gm-compose-fields"><label>Действие ${select('type', Object.entries(STEP_LABELS), step.type)}</label>${fields(step)}</div><button type="button" class="btn ghost" data-step-up ${i === 0 ? 'disabled' : ''}>↑</button><button type="button" class="btn danger" data-step-delete>Удалить шаг</button></li>`).join('')}</ol><div class="row gap"><button type="button" class="btn" data-step-add>＋ Действие</button><button type="button" class="btn ghost" data-command-choose>＋ Добавить готовую команду</button><label class="gm-field" data-command-picker hidden>Команда из «Моих команд»<select data-insert-command>${[['', 'Добавить существующую команду…'], ...c.commands.filter(cmd => cmd.id !== row?.id && commandVisible(cmd) && !['mirror', 'mouse-mirror', 'pause'].includes(cmd.action)).map(cmd => [cmd.id, cmd.name])].map(([v, l]) => option(v, l, '')).join('')}</select><small>Вставляется ссылка на сохранённую команду с её настройками. Изменения исходной команды применятся и здесь; циклы запрещены. Переключатели повтора не вставляются.</small></label><button type="button" class="btn" data-new-point>＋ Именованная точка</button></div><div data-recorder></div></section>`
+          }<ol class="gm-compose-steps">${block.steps.map((step, i) => `<li data-step="${i}" ${['resize', 'profile'].includes(step.type) || (step.type === 'command' && c.commands.some(cmd => cmd.id === step.commandId && !commandVisible(cmd))) ? 'hidden' : ''}><div class="gm-step-heading"><strong>Шаг ${i + 1}</strong><div class="gm-step-actions"><button type="button" class="btn ghost small" data-step-up title="Переместить шаг вверх" aria-label="Переместить шаг вверх" ${i === 0 ? 'disabled' : ''}>↑</button><button type="button" class="btn ghost small" data-step-down title="Переместить шаг вниз" aria-label="Переместить шаг вниз" ${i === block.steps.length - 1 ? 'disabled' : ''}>↓</button><button type="button" class="btn danger small" data-step-delete title="Удалить шаг">Удалить шаг</button></div></div><div class="gm-compose-fields"><label>Действие ${select('type', Object.entries(STEP_LABELS), step.type)}</label>${fields(step)}</div></li>`).join('')}</ol><div class="row gap"><button type="button" class="btn" data-step-add>＋ Действие</button><button type="button" class="btn ghost" data-command-choose>＋ Добавить готовую команду</button><label class="gm-field" data-command-picker hidden>Команда из «Моих команд»<select data-insert-command>${[['', 'Добавить существующую команду…'], ...c.commands.filter(cmd => cmd.id !== row?.id && commandVisible(cmd) && !['mirror', 'mouse-mirror', 'pause'].includes(cmd.action)).map(cmd => [cmd.id, cmd.name])].map(([v, l]) => option(v, l, '')).join('')}</select><small>Вставляется ссылка на сохранённую команду с её настройками. Изменения исходной команды применятся и здесь; циклы запрещены. Переключатели повтора не вставляются.</small></label><button type="button" class="btn" data-new-point>＋ Именованная точка</button></div><div data-recorder></div></section>`
       )
       .join(
         ''
@@ -257,6 +257,10 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
     }
     if (button.hasAttribute('data-step-delete')) {
       blocks[b].steps.splice(i, 1);
+      draw();
+    }
+    if (button.hasAttribute('data-step-down') && i < blocks[b].steps.length - 1) {
+      [blocks[b].steps[i + 1], blocks[b].steps[i]] = [blocks[b].steps[i], blocks[b].steps[i + 1]];
       draw();
     }
     if (button.hasAttribute('data-step-up') && i > 0) {
