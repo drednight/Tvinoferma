@@ -761,3 +761,67 @@ it('cancels an armed activity test without sending any notifications or keys', a
     vi.useRealTimers();
   }
 });
+it('runs activity delivery immediately for two recipients and carries the original foreground guard', async () => {
+  state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['p'] });
+  Object.assign(state.settings.gameMacros.commands[0], {
+    sequence: 'B',
+    delivery: 'background',
+    backgroundMethod: 'activity'
+  });
+  const second = { ...client, pid: 20, hwnd: 200, title: 'Beta — Воин' };
+  invoke.mockImplementation(async (name, args) =>
+    name === 'launcher_running_details'
+      ? [client, second]
+      : args?.action === 'key-background'
+        ? {
+            schema: 1,
+            activityTest: true,
+            vk: 0x42,
+            inputSent: true,
+            ok: true,
+            originalForeground: '0x100',
+            foregroundChanged: false
+          }
+        : null
+  );
+  await runtime.run('test');
+  const calls = invoke.mock.calls.filter(([, args]) => args?.action === 'key-background');
+  expect(calls).toHaveLength(2);
+  expect(calls[0][1].timing).toMatchObject({ backgroundMethod: 'activity' });
+  expect(calls[1][1].timing).toMatchObject({ activityForeground: '0x100' });
+  expect(invoke.mock.calls.some(([, args]) => args?.action === 'focus' || args?.action === 'key')).toBe(false);
+  expect(runtime.snapshot().executionState).toBe('finished');
+});
+it.each([
+  { ok: false, error: 1460 },
+  { ok: false, foregroundChanged: true },
+  { ok: false, refused: true }
+])('stops after activity failure without trying another recipient or foreground fallback: %j', async result => {
+  state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['p'] });
+  Object.assign(state.settings.gameMacros.commands[0], {
+    sequence: 'B',
+    delivery: 'background',
+    backgroundMethod: 'activity'
+  });
+  invoke.mockImplementation(async (name, args) =>
+    name === 'launcher_running_details'
+      ? [client, { ...client, pid: 20, hwnd: 200, title: 'Beta — Воин' }]
+      : args?.action === 'key-background'
+        ? { schema: 1, activityTest: true, ...result }
+        : null
+  );
+  await runtime.run('test');
+  expect(invoke.mock.calls.filter(([, args]) => args?.action === 'key-background')).toHaveLength(1);
+  expect(invoke.mock.calls.some(([, args]) => args?.action === 'focus' || args?.action === 'key')).toBe(false);
+  expect(runtime.snapshot().executionState).toBe('failed');
+});
+it('rejects multi-key activity commands before any native input or mirroring changes', async () => {
+  Object.assign(state.settings.gameMacros.commands[0], {
+    sequence: 'B\nF8',
+    delivery: 'background',
+    backgroundMethod: 'activity'
+  });
+  await runtime.run('test');
+  expect(invoke).not.toHaveBeenCalled();
+  expect(runtime.snapshot().notice).toContain('одной клавишей');
+});

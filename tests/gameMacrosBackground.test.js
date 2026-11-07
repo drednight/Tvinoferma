@@ -1,5 +1,10 @@
 import { it, expect } from 'vitest';
-import { BACKGROUND_METHODS, backgroundVariants, backgroundMethod } from '../js/modules/gameMacros/background.js';
+import {
+  BACKGROUND_METHODS,
+  backgroundVariants,
+  backgroundMethod,
+  validateActivityCommand
+} from '../js/modules/gameMacros/background.js';
 import { normalizeGameMacros } from '../js/modules/gameMacros/model.js';
 import { compileComposition } from '../js/modules/gameMacros/composition.js';
 it('creates three separate opt-in commands without triggers, changing neither source nor existing commands', () => {
@@ -16,7 +21,9 @@ it('creates three separate opt-in commands without triggers, changing neither so
   };
   let id = 0;
   const rows = backgroundVariants(original, [original], () => `test-${++id}`);
-  expect(rows.map(c => c.backgroundMethod)).toEqual(Object.keys(BACKGROUND_METHODS));
+  expect(rows.map(c => c.backgroundMethod)).toEqual(
+    Object.keys(BACKGROUND_METHODS).filter(method => method !== 'activity')
+  );
   expect(new Set(rows.map(c => c.id)).size).toBe(3);
   for (const row of rows)
     expect(row).toMatchObject({
@@ -50,4 +57,14 @@ it('carries each block method to its compiled keyboard actions', () => {
     const plan = compileComposition(cmd, { commands: [cmd] });
     expect(JSON.stringify(plan)).toContain(`"backgroundMethod":"${backgroundMethod}"`);
   }
+});
+
+it('limits activity delivery to a standalone single unmodified key', () => {
+  const valid = { action: 'sequence', sequence: 'F8', delivery: 'background', backgroundMethod: 'activity' };
+  expect(() => validateActivityCommand(valid)).not.toThrow();
+  for (const sequence of ['CTRL+B', 'B\nF8', 'wait 100\nB', 'SHIFT+F8'])
+    expect(() => validateActivityCommand({ ...valid, sequence })).toThrow('одной клавишей');
+  for (const action of ['f6f1', 'mirror', 'mouse-mirror', 'composite', 'click'])
+    expect(() => validateActivityCommand({ ...valid, action })).toThrow();
+  expect(() => validateActivityCommand(valid, true)).toThrow();
 });

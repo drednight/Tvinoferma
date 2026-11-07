@@ -141,7 +141,15 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
               ['background', 'В фоне (эксперимент)']
             ],
             block.delivery
-          )}</label>${block.delivery === 'background' ? `<label>Способ для клавиш ${select('backgroundMethod', Object.entries(BACKGROUND_METHODS), block.backgroundMethod || 'post')}</label><small>Клики и непрерывный повтор используют PostMessage. Другие способы здесь проверяются только для клавиш; без перебора и переключения.</small>` : ''}</div>${
+          )}</label>${
+            block.delivery === 'background'
+              ? `<label>Способ для клавиш ${select(
+                  'backgroundMethod',
+                  Object.entries(BACKGROUND_METHODS).filter(([method]) => method !== 'activity'),
+                  block.backgroundMethod || 'post'
+                )}</label><small>Клики и непрерывный повтор используют PostMessage. Другие способы здесь проверяются только для клавиш; без перебора и переключения.</small>`
+              : ''
+          }</div>${
             block.target === 'subset'
               ? `<fieldset><legend>Участники</legend>${partyMembers(state, block.partyId || c.partyId)
                   .map(

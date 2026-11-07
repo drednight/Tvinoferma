@@ -24,6 +24,7 @@ pub enum BackgroundMethod {
     Post,
     SendTimeout,
     Notify,
+    Activity,
 }
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -31,6 +32,7 @@ pub struct InputTiming {
     switch_ms: u64,
     hold_ms: u64,
     background_method: BackgroundMethod,
+    activity_foreground: Option<String>,
 }
 impl Default for InputTiming {
     fn default() -> Self {
@@ -38,6 +40,7 @@ impl Default for InputTiming {
             switch_ms: 30,
             hold_ms: 30,
             background_method: BackgroundMethod::default(),
+            activity_foreground: None,
         }
     }
 }
@@ -619,6 +622,7 @@ mod win {
     ) -> Result<(), u32> {
         SetLastError(WIN32_ERROR(0));
         let accepted = match method {
+            BackgroundMethod::Activity => return Err(87), // Must go through guarded activity_key.
             BackgroundMethod::Post => PostMessageW(Some(hwnd), msg, wp, lp).is_ok(),
             BackgroundMethod::Notify => background_notify(hwnd.0, msg, wp.0, lp.0) != 0,
             BackgroundMethod::SendTimeout => {
@@ -707,6 +711,16 @@ mod win {
         key: &str,
         timing: InputTiming,
     ) -> Result<serde_json::Value, String> {
+        if matches!(timing.background_method, BackgroundMethod::Activity) {
+            return activity_key(
+                raw,
+                pid,
+                key,
+                timing.hold_ms,
+                false,
+                timing.activity_foreground.as_deref(),
+            );
+        }
         let hwnd = verified_window(raw, pid)?;
         let mut report = background_probe(raw, pid, key, false)?;
         let (mods, vk) = chord(key)?;
@@ -767,6 +781,7 @@ mod win {
             BackgroundMethod::Post => "post",
             BackgroundMethod::SendTimeout => "send-timeout",
             BackgroundMethod::Notify => "notify",
+            BackgroundMethod::Activity => "activity",
         });
         report["holdMs"] = serde_json::json!(timing.hold_ms.clamp(10, 200));
         report["foregroundChanged"] = serde_json::json!(foreground_changed);
@@ -774,40 +789,64 @@ mod win {
         report["ok"] = serde_json::json!(failure.is_none() && !foreground_changed);
         Ok(report)
     }
-    // Isolated diagnostic only: never used by normal commands or repeat.
+    // Shared guarded protocol: explicit diagnostic or opt-in single-key command, never repeat.
     pub fn activity_probe(raw: u64, pid: u32) -> Result<serde_json::Value, String> {
+        activity_key(raw, pid, "B", 30, true, None)
+    }
+    fn activity_key(
+        raw: u64,
+        pid: u32,
+        key: &str,
+        hold_ms: u64,
+        diagnostic: bool,
+        expected: Option<&str>,
+    ) -> Result<serde_json::Value, String> {
+        let (mods, vk) = chord(key)?;
+        if !mods.is_empty() {
+            return Err("Activity mode requires one unmodified key".into());
+        }
         static TEST: Mutex<()> = Mutex::new(());
         let _guard = TEST
             .try_lock()
             .map_err(|_| "Activity test already running")?;
         let hwnd = verified_window(raw, pid)?;
-        let mut report = background_probe(raw, pid, "B", false)?;
+        let mut report = background_probe(raw, pid, key, false)?;
         report["activityTest"] = serde_json::json!(true);
+        report["holdMs"] = serde_json::json!(hold_ms.clamp(10, 200));
         report["inputSent"] = serde_json::json!(false);
         let original = unsafe { GetForegroundWindow() };
         let mut original_pid = 0;
         let source_thread = unsafe { GetWindowThreadProcessId(original, Some(&mut original_pid)) };
-        let refused = !input_idle(None)?
+        let foreground_mismatch =
+            expected.is_some_and(|value| value != format!("0x{:X}", original.0 as usize));
+        let refused = foreground_mismatch
+            || !input_idle(None)?
             || original.0.is_null()
-            || original_pid == pid
+            || (original_pid == pid && (diagnostic || original != hwnd))
             || report["visible"] != true
             || report["minimized"] == true
             || report["hung"] == true
             || report["selectedKeyHeld"] == true
             || report["modifierHeld"] == true;
         if refused {
+            report["ok"] = serde_json::json!(false);
             report["refused"] = serde_json::json!(true);
-            report["foregroundChanged"] = serde_json::json!(false);
+            report["foregroundChanged"] = serde_json::json!(foreground_mismatch);
             return Ok(report);
         }
         let changed = std::cell::Cell::new(false);
         let mut steps = Vec::new();
+        let failure = std::cell::Cell::new(None);
         let mut send = |phase: &str, msg: u32, wp: usize, lp: isize| {
             let before = unsafe { GetForegroundWindow() };
             changed.set(changed.get() || before != original);
             // Once changed, only key release and restoration are allowed.
             let cleanup = phase == "key-up" || phase.starts_with("restore");
-            if (!cleanup && changed.get()) || verified_window(raw, pid).is_err() {
+            let valid = verified_window(raw, pid).is_ok();
+            if !valid && failure.get().is_none() {
+                failure.set(Some(1400));
+            }
+            if (!cleanup && changed.get()) || !valid {
                 steps.push(serde_json::json!({"phase":phase,"skipped":true}));
                 return false;
             }
@@ -820,22 +859,32 @@ mod win {
                     BackgroundMethod::SendTimeout,
                 )
             };
+            failure.set(failure.get().or(result.err()));
             let after = unsafe { GetForegroundWindow() };
             changed.set(changed.get() || after != original);
             steps.push(serde_json::json!({"phase":phase,"message":format!("0x{msg:04X}"),"ok":result.is_ok(),"error":result.err().unwrap_or(0),"before":format!("0x{:X}",before.0 as usize),"after":format!("0x{:X}",after.0 as usize)}));
             result.is_ok() && (cleanup || !changed.get())
         };
         // No early return below: always attempt reverse notifications, including timeout paths.
-        let app_ok = send("activate-app", WM_ACTIVATEAPP, 1, source_thread as isize);
-        let window_ok = app_ok && send("activate-window", WM_ACTIVATE, 1, original.0 as isize);
+        let notifications = original_pid != pid;
+        report["notificationsSent"] = serde_json::json!(notifications);
+        let app_ok =
+            !notifications || send("activate-app", WM_ACTIVATEAPP, 1, source_thread as isize);
+        let window_ok = app_ok
+            && (!notifications || send("activate-window", WM_ACTIVATE, 1, original.0 as isize));
         if window_ok {
-            let scan = unsafe { MapVirtualKeyW(0x42, MAPVK_VK_TO_VSC) };
-            let flags = 1 | ((scan & 0xff) << 16);
+            let scan = unsafe { MapVirtualKeyW(vk as u32, MAPVK_VK_TO_VSC) };
+            let flags = 1
+                | ((scan & 0xff) << 16)
+                | (u32::from(matches!(vk, 0x21..=0x28 | 0x2d | 0x2e)) << 24);
             // Attempt UP even if DOWN times out: timeout does not prove non-delivery.
             report["inputSent"] = serde_json::json!(true);
-            if send("key-down", WM_KEYDOWN, 0x42, flags as isize) {
-                for _ in 0..3 {
-                    std::thread::sleep(Duration::from_millis(10));
+            if send("key-down", WM_KEYDOWN, vk as usize, flags as isize) {
+                let mut remaining = hold_ms.clamp(10, 200);
+                while remaining > 0 {
+                    let interval = remaining.min(10);
+                    std::thread::sleep(Duration::from_millis(interval));
+                    remaining -= interval;
                     // Sampling, not a guarantee against transitions between observations.
                     if unsafe { GetForegroundWindow() } != original {
                         changed.set(true);
@@ -843,26 +892,43 @@ mod win {
                     }
                 }
             }
-            send("key-up", WM_KEYUP, 0x42, (flags | 0xc0000000) as isize);
+            send(
+                "key-up",
+                WM_KEYUP,
+                vk as usize,
+                (flags | 0xc0000000) as isize,
+            );
         }
-        let current = unsafe { GetForegroundWindow() };
-        let mut current_pid = 0;
-        unsafe { GetWindowThreadProcessId(current, Some(&mut current_pid)) };
-        // Restore notifications to actual OS state; never falsely deactivate a now-active target.
-        send(
-            "restore-window",
-            WM_ACTIVATE,
-            usize::from(current == hwnd),
-            current.0 as isize,
-        );
-        let current = unsafe { GetForegroundWindow() };
-        let current_thread = unsafe { GetWindowThreadProcessId(current, Some(&mut current_pid)) };
-        send(
-            "restore-app",
-            WM_ACTIVATEAPP,
-            usize::from(current_pid == pid),
-            current_thread as isize,
-        );
+        if notifications {
+            let current = unsafe { GetForegroundWindow() };
+            send(
+                "restore-window",
+                WM_ACTIVATE,
+                usize::from(current == hwnd),
+                if current == hwnd {
+                    original.0 as isize
+                } else {
+                    current.0 as isize
+                },
+            );
+            let current = unsafe { GetForegroundWindow() };
+            let mut current_pid = 0;
+            let current_thread =
+                unsafe { GetWindowThreadProcessId(current, Some(&mut current_pid)) };
+            send(
+                "restore-app",
+                WM_ACTIVATEAPP,
+                usize::from(current_pid == pid),
+                if current_pid == pid {
+                    source_thread as isize
+                } else {
+                    current_thread as isize
+                },
+            );
+        }
+        changed.set(changed.get() || unsafe { GetForegroundWindow() } != original);
+        report["error"] = serde_json::json!(failure.get());
+        report["ok"] = serde_json::json!(failure.get().is_none() && !changed.get());
         report["foregroundChanged"] = serde_json::json!(changed.get());
         report["steps"] = serde_json::json!(steps);
         report["originalForeground"] = serde_json::json!(format!("0x{:X}", original.0 as usize));
@@ -911,6 +977,23 @@ mod win {
     }
     #[cfg(test)]
     mod background_key_tests {
+        #[test]
+        fn activity_mode_is_explicit_and_rejects_modifiers_before_window_access() {
+            let timing: super::InputTiming = serde_json::from_str(
+                r#"{"backgroundMethod":"activity","activityForeground":"0x123","holdMs":40}"#,
+            )
+            .unwrap();
+            assert!(matches!(
+                timing.background_method,
+                super::BackgroundMethod::Activity
+            ));
+            assert_eq!(timing.activity_foreground.as_deref(), Some("0x123"));
+            assert_eq!(
+                super::activity_key(0, 0, "CTRL+B", 30, false, None).unwrap_err(),
+                "Activity mode requires one unmodified key"
+            );
+            assert_eq!(super::chord("F8").unwrap(), (vec![], 0x77));
+        }
         #[test]
         fn letter_case_is_a_virtual_key_not_shifted_text() {
             assert_eq!(super::chord("B").unwrap(), (vec![], 0x42));

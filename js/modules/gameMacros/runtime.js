@@ -1,5 +1,5 @@
 import { backgroundReport } from './diagnostics.js';
-import { BACKGROUND_METHODS, backgroundMethod } from './background.js';
+import { BACKGROUND_METHODS, backgroundMethod, validateActivityCommand } from './background.js';
 import { inputLabel, formatMirrorInput } from './inputTrace.js';
 import { compileComposition, executeComposition, compositionActions } from './composition.js';
 import { listen, emitTo } from '@tauri-apps/api/event';
@@ -220,7 +220,12 @@ const act = async (row, action, extra = {}) => {
   if (action === 'key-background' && result?.schema === 1) {
     log(`Диагностика ввода → ${row.nick || row.pid}:`, '', false);
     for (const line of backgroundReport(result)) log(line, '', false);
+    if (inputTiming.backgroundMethod === 'activity' && typeof result.originalForeground === 'string')
+      inputTiming.activityForeground ??= result.originalForeground;
     if (result.ok === false) {
+      if (result.foregroundChanged) throw new Error('Focus changed during background test');
+      if (result.refused)
+        throw new Error('Тест активности отклонён: проверьте состояние окна и отпустите клавиши/мышь.');
       if (result.error != null) throw new Error(`Background delivery failed: ${result.error}`);
       throw new Error('Focus changed during background test');
     }
@@ -340,6 +345,15 @@ export async function run(id, hotkey = false) {
   const c = config(),
     command = c.commands.find(r => r.id === id);
   if (!command) return;
+  try {
+    validateActivityCommand(command);
+  } catch (error) {
+    notice = macroErrorText(error);
+    executionState = 'failed';
+    log(notice, command.name);
+    void broadcast();
+    return;
+  }
   if (['mirror', 'mouse-mirror'].includes(command.action)) {
     await toggleKeyboardMirror(command.action === 'mouse-mirror' ? 'mouse' : 'keyboard', command.name);
     return;
@@ -466,6 +480,7 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
     !['click', 'screen', 'layout', 'resize'].includes(command.action)
   )
     throw new Error('Эта команда не поддерживает фоновую доставку. Нужна последовательность клавиш либо F6→F1.');
+  validateActivityCommand(command, composing);
   const snapshotRows = await (preparedRows || listMacroWindows());
   const rows = await windowTargets(command, c, snapshotRows);
   if (hotkey) {
@@ -520,7 +535,7 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
       }
     }
     log(
-      'Оконные сообщения поставлены в очередь без активации окон. Обработка игрой НЕ подтверждена; автоматического повтора/переключения нет.'
+      'Доставка оконных сообщений завершена без обнаруженного переключения foreground. Обработка игрой НЕ подтверждена; автоматического повтора/переключения нет.'
     );
     return;
   }
@@ -1203,6 +1218,7 @@ async function preflightComposition(plan, c, preview) {
     launched = new Set(),
     changed = new Set(),
     reviewed = [];
+  for (const cmd of actions) validateActivityCommand(cmd, true);
   for (const cmd of actions) {
     await checkpoint();
     const scoped = scopedConfig(c, cmd),

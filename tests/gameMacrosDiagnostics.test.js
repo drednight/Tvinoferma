@@ -85,3 +85,17 @@ it('explains activity preflight refusal without presenting it as a successful in
   expect(text).toContain('Тест отклонён до уведомлений');
   expect(text).toContain('Попытка B — нет');
 });
+it('labels the actual activity key and distinguishes active recipients from notification tests', () => {
+  const text = backgroundReport({
+    schema: 1,
+    activityTest: true,
+    vk: 0x77,
+    holdMs: 40,
+    notificationsSent: false,
+    inputSent: true
+  }).join('\n');
+  expect(text).toContain('Попытка F8 — да');
+  expect(text).toContain('Цель уже активна');
+  expect(text).toContain('40 мс');
+  expect(text).not.toContain('Попытка B');
+});
