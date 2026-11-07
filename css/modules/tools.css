@@ -909,3 +909,10 @@
   gap: 8px;
   flex-wrap: wrap;
 }
+
+.gm-journal-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}

@@ -239,3 +239,11 @@ it('copies the complete snapshot chronologically rather than the reversed render
   await vi.waitFor(() => expect(document.querySelector('#copy-logs-status').textContent).toContain('Журнал пуст'));
   expect(write).toHaveBeenCalledTimes(1);
 });
+
+it('groups copy and clear side by side with feedback below the toolbar', () => {
+  const copy = document.querySelector('#copy-logs'),
+    clear = document.querySelector('[data-action="clear-logs"]');
+  expect(copy.nextElementSibling).toBe(clear);
+  expect(copy.parentElement.classList.contains('gm-journal-actions')).toBe(true);
+  expect(copy.parentElement.nextElementSibling.id).toBe('copy-logs-status');
+});

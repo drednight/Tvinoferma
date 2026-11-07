@@ -206,3 +206,12 @@ it('copies the current entire main journal without invoking a command', async ()
   await vi.waitFor(() => expect(write).toHaveBeenCalledWith('Session log'));
   expect(mocks.run).not.toHaveBeenCalled();
 });
+
+it('keeps copy and clear next to each other in one journal toolbar', () => {
+  document.querySelector('[data-gm-logs]').click();
+  const copy = document.querySelector('[data-gm-copy-logs]'),
+    clear = document.querySelector('[data-gm-clear-logs]');
+  expect(copy.nextElementSibling).toBe(clear);
+  expect(copy.parentElement.classList.contains('gm-journal-actions')).toBe(true);
+  expect(document.querySelector('[data-gm-copy-status]').parentElement).toBe(copy.parentElement.parentElement);
+});

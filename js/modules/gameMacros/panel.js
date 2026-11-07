@@ -447,7 +447,7 @@ export function openMacrosDialog(action) {
     showModal({
       title: 'Журнал команд · текущий сеанс',
       wide: true,
-      content: `<div class="gm-dialog"><p class="muted">Только действия команд с момента запуска приложения. Журнал не сохраняется на диск; хранятся последние 300 строк. Очистка не останавливает команду; новые записи продолжат появляться.</p><button type="button" class="btn ghost" data-gm-copy-logs>Копировать весь лог</button><button type="button" class="btn ghost" data-gm-clear-logs>Очистить лог</button><p class="muted" data-gm-copy-status role="status" aria-live="polite"></p><pre data-gm-log-text class="gm-log">${esc(snapshot().logs.join('\n') || 'Журнал пуст.')}</pre></div>`,
+      content: `<div class="gm-dialog"><p class="muted">Только действия команд с момента запуска приложения. Журнал не сохраняется на диск; хранятся последние 300 строк. Очистка не останавливает команду; новые записи продолжат появляться.</p><div class="gm-journal-actions" role="group" aria-label="Действия с журналом"><button type="button" class="btn ghost" data-gm-copy-logs>Копировать весь лог</button><button type="button" class="btn ghost" data-gm-clear-logs>Очистить лог</button></div><p class="muted" data-gm-copy-status role="status" aria-live="polite"></p><pre data-gm-log-text class="gm-log">${esc(snapshot().logs.join('\n') || 'Журнал пуст.')}</pre></div>`,
       submitText: null,
       cancelText: 'Закрыть'
     });
