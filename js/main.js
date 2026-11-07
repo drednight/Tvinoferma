@@ -14,7 +14,7 @@ import {
   abortGuardedMigration
 } from './core/storage.js';
 import { migrateState, SCHEMA_VERSION } from './core/migrations.js';
-import { blockUnsafeVaultRead, hydrateSecrets, vaultConflictReview } from './core/secrets.js';
+import { blockUnsafeVaultRead, hydrateSecrets, vaultConflictReview, vaultStatus } from './core/secrets.js';
 import { attachVaultConflictRecovery } from './settings/vaultConflictRecovery.js';
 import { hasSafeVaultCharacterMapping } from './core/vaultIdentity.js';
 import { initHotkeys, initDesktop } from './desktop/desktop.js';
@@ -146,8 +146,10 @@ export async function boot() {
     let idRemap = {};
     let vaultMappingSafe = true;
     const plaintextIds = new Set();
-    const stopForVaultRead = (conflict = false) => {
-      blockUnsafeVaultRead();
+    const stopForVaultRead = (conflict = false, code = undefined) => {
+      blockUnsafeVaultRead(code);
+      const diagnostic = vaultStatus();
+      const diagnosticText = ` Причина: ${diagnostic.error || 'безопасность чтения не подтверждена'}. Код диагностики: ${diagnostic.diagnosticCode || 'vault_read_blocked'}. Откройте Настройки → Безопасность и сообщите этот код, версию и источник сборки. Не удаляйте записи хранилища ОС.`;
       abortGuardedMigration();
       protectIncompatibleState();
       forgetLoadedState(raw);
@@ -158,13 +160,15 @@ export async function boot() {
       showStorageReadOnlyWarning(
         conflict
           ? 'Открытые контакты и данные хранилища ОС различаются. Сохранение остановлено: файл данных и защищённая запись контактов на этом ПК содержат разные значения. Это не ошибка входа в Google или Яндекс. Нажмите «Сравнить контакты и выбрать источник» в этом предупреждении. Выберите актуальный источник после сравнения; перед заменой сохраняются прежние данные. Перезапуск сам по себе конфликт не решает; не удаляйте хранилище ОС и резервные копии.'
-          : 'Учётные данные не удалось безопасно прочитать. Изменения не сохраняются; проверьте хранилище ОС и копии перед перезапуском. Копии state.json могут не содержать контакты.'
+          : 'Учётные данные не удалось безопасно прочитать. Изменения не сохраняются; проверьте хранилище ОС и копии перед перезапуском. Копии state.json могут не содержать контакты.' +
+              diagnosticText
       );
       if (conflict && isTauri()) {
         attachVaultConflictRecovery({ raw, aliases: idAliases, review: vaultConflictReview() });
       } else {
         alert(
-          'Не удалось безопасно прочитать хранилище учётных данных. Запись и перенос контактов остановлены. Проверьте доступ к хранилищу ОС, исходные данные и резервные копии перед перезапуском. Копия state.json может не содержать контакты.'
+          'Не удалось безопасно прочитать хранилище учётных данных. Запись и перенос контактов остановлены. Проверьте доступ к хранилищу ОС, исходные данные и резервные копии перед перезапуском. Копия state.json может не содержать контакты.' +
+            diagnosticText
         );
       }
     };
@@ -248,7 +252,9 @@ export async function boot() {
     // что пустые значения из state.json не доказывают отсутствие контактов в vault.
     const hasVaultMarker = raw && Object.hasOwn(raw, 'secretsInVault');
     const invalidVaultMarker = hasVaultMarker && raw.secretsInVault !== true && raw.secretsInVault !== false;
-    if (!startupReadOnly && (invalidVaultMarker || !vaultMappingSafe)) stopForVaultRead();
+    if (!startupReadOnly && (invalidVaultMarker || !vaultMappingSafe)) {
+      stopForVaultRead(false, invalidVaultMarker ? 'vault_marker_invalid' : 'vault_identity_mapping_invalid');
+    }
     if (!startupReadOnly) {
       const secrets = await hydrateSecrets([...state.characters, ...state.archivedCharacters], {
         tauri: isTauri(),

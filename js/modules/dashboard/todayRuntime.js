@@ -1,3 +1,4 @@
+import { marathonTotals } from '../marathons/model.js';
 import { runningWindows } from '../launcher/runningWindows.js';
 import { todayData } from './today.js';
 import { readPendingResponses } from '../guild/state.js';
@@ -11,6 +12,11 @@ import { discoveredPromos, promoCoverage } from '../automation/promoDiscovery.js
 import { loadLog } from '../automation/promoLog.js';
 import { promoDeadlineState } from '../automation/promoDeadlineLabel.js';
 import { currentBalances } from '../finance/model.js';
+/** Whole-marathon completion, using the same effective checks as the marathon table. */
+export function marathonCompletion(marathon) {
+  const totals = marathonTotals(marathon);
+  return { doneChecks: totals.checks, totalChecks: totals.maxChecks, percent: totals.percent };
+}
 export const nativeToday = () => !!globalThis.window?.__TAURI_INTERNALS__;
 /** Maximum tier reward, including coins even when the parser also supplies a label. */
 export function taskMaxReward(task) {
@@ -56,13 +62,12 @@ export function connectedTodayState(preview) {
       state.marathons
         .filter(m => m.kind !== 'series' && m.startDate > s.day.date && m.startDate <= mskAddDays(s.day.date, 7))
         .sort((a, b) => a.startDate.localeCompare(b.startDate))[0];
-    const progress = marathons.find(p => p.id === active?.id);
     s.scenarios.marathon = !!active;
     if (active) {
       s.day.marathon = {
         id: active.id,
         title: active.title,
-        percent: progress?.participants ? Math.round((progress.done / progress.participants) * 100) : 0,
+        ...marathonCompletion(active),
         startDate: active.startDate,
         endDate: active.endDate
       };

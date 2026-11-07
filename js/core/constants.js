@@ -93,6 +93,17 @@ export const PASS_TYPES = [
 ];
 
 export const DEFAULT_SETTINGS = {
+  gameMacros: {
+    points: [],
+    enabled: false,
+    partyId: '',
+    leaders: {},
+    commands: [],
+    profiles: [],
+    profileId: '',
+    opacity: 0.9,
+    topmost: true
+  },
   privacy: {
     maskEmailByDefault: true,
     maskPasswordByDefault: true,
@@ -135,6 +146,9 @@ export const DEFAULT_SETTINGS = {
     theme: 'dark',
     // Вид календаря на странице «Сегодня»: компактная неделя или месяц (js/modules/dashboard/plannerView.js)
     plannerView: 'week',
+    todayOrder: [],
+    todaySizes: {},
+    todayCanvas: null,
     // Какие разделы показывать в меню и в каком порядке (js/core/sections.js).
     // Пусто значит «порядок по умолчанию, все видны» — список разделов и так меняется
     // с выходом новой версии, а хранить его копию значило бы забыть об этом.

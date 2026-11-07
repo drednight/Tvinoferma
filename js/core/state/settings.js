@@ -1,3 +1,6 @@
+import { installAhkPresets, installMirrorPreset } from '../../modules/gameMacros/presets.js';
+import { normalizeGameMacros } from '../../modules/gameMacros/model.js';
+import { normalizeTodayOrder, normalizeTodaySizes, normalizeTodayCanvas } from '../../modules/dashboard/todayLayout.js';
 // @ts-check
 // js/core/state/settings.js
 // Приведение настроек к схеме — чистые функции без доступа к общему состоянию.
@@ -142,8 +145,12 @@ export function mergeSettings(input = {}) {
     ui: {
       ...DEFAULT_SETTINGS.ui,
       ...(input.ui || {}),
-      sections: normalizeSectionsSettings(input.ui?.sections)
+      sections: normalizeSectionsSettings(input.ui?.sections),
+      todayOrder: normalizeTodayOrder(input.ui?.todayOrder),
+      todaySizes: normalizeTodaySizes(input.ui?.todaySizes),
+      todayCanvas: normalizeTodayCanvas(input.ui?.todayCanvas)
     },
+    gameMacros: normalizeGameMacros(installMirrorPreset(installAhkPresets(input.gameMacros))),
     security: { ...DEFAULT_SETTINGS.security, ...(input.security || {}) },
     scripts: { ...DEFAULT_SETTINGS.scripts, ...(input.scripts || {}) },
     notifications: normalizeNotificationSettings(input.notifications),

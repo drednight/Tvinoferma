@@ -13,6 +13,7 @@ vi.mock('../js/modules/dashboard/siteFeed.js', () => ({ refreshSiteFeed: mocks.n
 vi.mock('../js/modules/automation/promoDiscovery.js', () => ({
   promoDiscovery: () => ({ check: mocks.promo })
 }));
+vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => () => {}) }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
 
 const SERVERS = {
@@ -230,8 +231,8 @@ describe('запуск приложения', () => {
   });
 });
 
-describe('без журнала и уведомлений', () => {
-  it('чтение статуса серверов не создаёт задач и не показывает уведомлений — ни при успехе, ни при сбое', async () => {
+describe('фоновый журнал без уведомлений', () => {
+  it('записывает успешные и неудачные проверки в журнал, не показывая уведомлений', async () => {
     const toast = vi.fn();
     vi.doMock('../js/core/ui.js', () => ({ toast, confirmModal: vi.fn(async () => true) }));
     const log = await import('../js/core/taskLog.js');
@@ -242,11 +243,17 @@ describe('без журнала и уведомлений', () => {
     await ss.refreshServerStatus({ invokeFn: mocks.invoke });
     await ss.loadServerStatusOnStartup(() => ({}), 100);
     expect(toast).not.toHaveBeenCalled();
-    expect(changes).not.toHaveBeenCalled();
-    expect(window.localStorage.getItem('tf_task_journal_v1')).toBeNull();
+    await vi.waitFor(() => expect(changes).toHaveBeenCalled());
+    await vi.waitFor(() => {
+      const tasks = JSON.parse(window.localStorage.getItem('tf_task_journal_v1') || '[]');
+      expect(
+        tasks.some(t => t.title === 'Фоновая задача: Проверка серверов' && t.status === 'done' && t.dock === false)
+      ).toBe(true);
+      expect(tasks.some(t => t.title === 'Фоновая задача: Проверка серверов' && t.status === 'warn')).toBe(true);
+    });
   });
 
-  it('модули чтения не подключают журнал задач и уведомления; Rust пишет в «тихую» область', () => {
+  it('чтение журналируется контроллером без уведомлений; Rust остаётся в тихой области', () => {
     for (const f of ['serverStatus.js', 'serverStatusView.js']) {
       const src = readFileSync(`js/modules/servers/${f}`, 'utf8');
       expect(src).not.toMatch(/taskLog|toast|startTask/);

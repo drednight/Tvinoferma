@@ -1,3 +1,4 @@
+import { classIconHtml } from '../automation/characterPicker.js';
 // js/modules/parties/manager.js
 
 import { state, normalizePartyColor } from '../../core/state.js';
@@ -199,9 +200,9 @@ export function openEditPartyModal(currentName) {
           ? ' · без пати'
           : '';
       return `
-            <label class="member-row${free ? ' is-free' : ''}" style="display:flex; align-items:center; gap:8px; padding:6px 0; cursor:pointer; border-bottom:1px dashed rgba(255,255,255,0.1);">
+            <label data-member-id="${escapeHtml(c.id)}" class="member-row${free ? ' is-free' : ''}" style="display:flex; align-items:center; gap:8px; padding:6px 0; cursor:pointer; border-bottom:1px dashed rgba(255,255,255,0.1);">
                 <input type="checkbox" class="member-checkbox" data-char-id="${c.id}" ${isInCurrentGroup ? 'checked' : ''} />
-                <span>${statusIcon} <strong>${escapeHtml(c.nick)}</strong> <small class="muted">(${escapeHtml(c.class)})</small><small class="muted">${place}</small></span>
+                <span>${statusIcon} ${classIconHtml(c)} <strong>${escapeHtml(c.nick)}</strong><small class="muted">${place}</small></span>
             </label>
         `;
     })
@@ -222,11 +223,20 @@ export function openEditPartyModal(currentName) {
                 <label style="display:block; margin-bottom:8px; font-weight:bold;">Состав группы (${currentMembers.length} чел.)</label>
                 <p class="muted" style="font-size:0.8rem; margin-bottom:8px;">Отметьте галочкой тех, кто должен быть в этой группе. У персонажа одна основная пати (по ней считаются монеты) и сколько угодно дополнительных; основную меняют в карточке персонажа.${freeCount ? ` <b class="member-free-note">Без пати: ${freeCount}</b> — таких видно первыми по списку, чтобы незадействованные не терялись среди участников других групп.` : ''}</p>
                 
+                <div class="row gap" style="flex-wrap:wrap;margin-bottom:8px"><input class="input" data-party-search placeholder="Поиск по нику" aria-label="Поиск по нику"><select class="input" data-party-class aria-label="Класс"><option value="">Все классы</option>${[
+                  ...new Set(state.characters.map(c => c.class || 'Без класса'))
+                ]
+                  .sort()
+                  .map(cls => `<option value="${escapeHtml(cls)}">${escapeHtml(cls)}</option>`)
+                  .join(
+                    ''
+                  )}</select><select class="input" data-party-membership aria-label="Участие в пати"><option value="">Любая пати</option><option value="free">Без пати</option><option value="current">Участники этой пати</option><option value="other">Есть другая пати</option></select><small data-party-filter-count></small></div>
                 <div style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border); padding: 8px; border-radius: 4px; background: var(--panel-2);">
                     ${allCharsForCheckbox}
                 </div>
             </div>
 
+            <div class="field"><label>👑 ПЛ для управления окнами (не меняет лидерство в игре)</label><select class="input" id="party-macro-leader"><option value="">Не назначен</option>${currentMembers.map(c => `<option value="${escapeHtml(c.id)}" ${state.settings.gameMacros?.leaders?.[party.id] === c.id ? 'selected' : ''}>${escapeHtml(c.nick)}</option>`).join('')}</select><p class="muted">ПЛ должен входить в сохранённый состав пати. При удалении участника назначение сбрасывается.</p></div>
             <!-- 3. Цвет карточки -->
             ${partyColorFieldHtml(currentName, party)}
             
@@ -265,6 +275,11 @@ export function openEditPartyModal(currentName) {
       }
 
       const checkboxes = document.querySelectorAll('.member-checkbox');
+      const selectedLeader = String(document.getElementById('party-macro-leader')?.value || '');
+      if (selectedLeader && ![...checkboxes].some(cb => cb.dataset.charId === selectedLeader && cb.checked)) {
+        setError('ПЛ должен входить в состав пати. Выберите участника или «Не назначен».');
+        return false;
+      }
       const now = new Date().toISOString();
 
       // Состав: добавляем/убираем только эту пати, остальные пати персонажа не трогаем
@@ -273,6 +288,12 @@ export function openEditPartyModal(currentName) {
         if (char && setMembership(char, party.id, cb.checked)) char.updatedAt = now;
       });
 
+      const leader = String(document.getElementById('party-macro-leader')?.value || '');
+      state.settings.gameMacros ||= { leaders: {} };
+      state.settings.gameMacros.leaders ||= {};
+      const member = state.characters.find(c => c.id === leader && isInParty(c, party.id));
+      if (member) state.settings.gameMacros.leaders[party.id] = leader;
+      else delete state.settings.gameMacros.leaders[party.id];
       // Переименование меняет только название: персонажи ссылаются на id
       party.name = newName;
       // Цвет читаем из поля при сохранении, а не по событию ввода: так он сохранится
@@ -291,6 +312,50 @@ export function openEditPartyModal(currentName) {
       return true;
     }
   });
+
+  const modalRoot = document.getElementById('modal-root');
+  const leaderSelect = modalRoot.querySelector('#party-macro-leader');
+  const syncLeaderOptions = () => {
+    const previous = leaderSelect.value;
+    const checked = new Set([...modalRoot.querySelectorAll('.member-checkbox:checked')].map(cb => cb.dataset.charId));
+    const members = state.characters.filter(c => checked.has(c.id));
+    leaderSelect.innerHTML =
+      '<option value="">Не назначен</option>' +
+      members.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.nick)}</option>`).join('');
+    leaderSelect.value = members.some(c => c.id === previous) ? previous : '';
+    leaderSelect.disabled = members.length === 0;
+  };
+  modalRoot.querySelectorAll('.member-checkbox').forEach(cb => cb.addEventListener('change', syncLeaderOptions));
+  syncLeaderOptions();
+  const filterMembers = () => {
+    const query = modalRoot.querySelector('[data-party-search]').value.trim().toLocaleLowerCase('ru');
+    const cls = modalRoot.querySelector('[data-party-class]').value;
+    const membership = modalRoot.querySelector('[data-party-membership]').value;
+    let visible = 0;
+    modalRoot.querySelectorAll('[data-member-id]').forEach(el => {
+      const char = state.characters.find(c => c.id === el.dataset.memberId);
+      const matches =
+        char &&
+        (!query || char.nick.toLocaleLowerCase('ru').includes(query)) &&
+        (!cls || (char.class || 'Без класса') === cls) &&
+        (!membership ||
+          (membership === 'free'
+            ? hasNoParty(char, state.parties)
+            : membership === 'current'
+              ? el.querySelector('input').checked
+              : state.parties.some(p => p.id !== party.id && isInParty(char, p.id))));
+      el.hidden = !matches;
+      el.style.display = matches ? 'flex' : 'none';
+      if (matches) visible++;
+    });
+    modalRoot.querySelector('[data-party-filter-count]').textContent =
+      `Показано: ${visible} из ${state.characters.length}`;
+  };
+  modalRoot
+    .querySelectorAll('[data-party-search],[data-party-class],[data-party-membership]')
+    .forEach(el => el.addEventListener('input', filterMembers));
+  modalRoot.querySelectorAll('.member-checkbox').forEach(el => el.addEventListener('change', filterMembers));
+  filterMembers();
 
   // Живой предпросмотр цвета: пока пользователь выбирает, образец карточки меняется сразу.
   // Окно собрано синхронно, поэтому обработчики можно вешать сразу — без setTimeout.

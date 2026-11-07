@@ -80,6 +80,7 @@ const FIELD_KEYS = {
 };
 const PRIVATE_KEYS = new Set([
   'contacts',
+  'siteLogin',
   'password',
   'recoveryEmail',
   'email',

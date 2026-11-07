@@ -231,9 +231,11 @@ describe('реальный порядок старта с имитацией nat
     expect(calls('save_state_if_unchanged')).toHaveLength(0);
     expect(calls('secrets_set_many')).toHaveLength(0);
     expect(document.getElementById('storage-readonly-banner').textContent).toContain('Учётные данные');
+    expect(document.getElementById('storage-readonly-banner').textContent).toContain('vault_probe_unavailable');
     const { renderSettings } = await import('../js/settings/settings.js');
     await renderSettings();
     expect(document.getElementById('vault-status').textContent).toContain('Сохранение остановлено');
+    expect(document.getElementById('vault-status').textContent).toContain('vault_probe_unavailable');
     expect(document.getElementById('vault-status').textContent).not.toContain('контакты сохраняются в state.json');
     const { persist } = await import('../js/core/storage.js');
     await expect(persist()).rejects.toThrow('Запись остановлена');
@@ -255,6 +257,7 @@ describe('реальный порядок старта с имитацией nat
     expect(disk.file).toBe(initialRaw);
     expect(ipc.mock.calls.some(([cmd]) => cmd === 'secrets_get_many' || cmd === 'save_state')).toBe(false);
     expect(document.getElementById('storage-readonly-banner').textContent).toContain('Учётные данные');
+    expect(document.getElementById('storage-readonly-banner').textContent).toContain('vault_identity_mapping_invalid');
   });
 
   it('останавливает цепочку переноса старых ключей до чтения vault и профилей', async () => {
@@ -276,6 +279,7 @@ describe('реальный порядок старта с имитацией nat
       )
     ).toBe(false);
     expect(document.getElementById('storage-readonly-banner').textContent).toContain('Учётные данные');
+    expect(document.getElementById('storage-readonly-banner').textContent).toContain('vault_identity_mapping_invalid');
   });
 
   it.each([

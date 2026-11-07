@@ -24,6 +24,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    rollupOptions: { input: { main: 'index.html', overlay: 'game-overlay.html', guide: 'game-guide.html' } },
     target: 'es2021'
   },
   test: {

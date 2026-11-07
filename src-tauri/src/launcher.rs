@@ -45,8 +45,6 @@ const DIALOG_CLASS: &str = "TYesNoForm";
 const DIALOG_TITLE: &str = "VK Play";
 /// Сколько ждать это окно после старта GameCenter, если клиент уже был запущен
 const DIALOG_WAIT: Duration = Duration::from_secs(30);
-/// Как часто повторять Enter в окно вопроса (один клик может не дойти)
-const DIALOG_PRESS_GAP: Duration = Duration::from_millis(700);
 /// Как часто опрашивать процессы, ожидая новый клиент игры.
 /// Опрос теперь почти бесплатный (снимок процессов, а не запуск `tasklist`), поэтому шаг мельче.
 const CLIENT_POLL_STEP: Duration = Duration::from_millis(250);
@@ -126,6 +124,7 @@ mod win {
     unsafe extern "system" {
         fn EnumWindows(proc_: EnumProc, lparam: isize) -> i32;
         fn GetClassNameW(hwnd: Hwnd, buf: *mut u16, max: i32) -> i32;
+        fn GetWindowTextW(hwnd: Hwnd, buf: *mut u16, max: i32) -> i32;
         fn IsWindowVisible(hwnd: Hwnd) -> i32;
         fn PostMessageW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> i32;
         fn GetWindowThreadProcessId(hwnd: Hwnd, pid: *mut u32) -> u32;
@@ -142,6 +141,7 @@ mod win {
         fn IsHungAppWindow(hwnd: Hwnd) -> i32;
         fn GetWindowLongW(hwnd: Hwnd, index: i32) -> i32;
         fn GetWindow(hwnd: Hwnd, cmd: u32) -> Hwnd;
+        fn GetAncestor(hwnd: Hwnd, flags: u32) -> Hwnd;
         // Значок из ресурсов нашего же exe (идентификатор `RT_GROUP_ICON`). Нужен большому
         // слоту окна: Tauri v2 не ставит `ICON_BIG`, а без него панель задач рисует пустой лист.
         fn LoadIconW(instance: *mut c_void, resource_id: *const u16) -> *mut c_void;
@@ -330,56 +330,37 @@ mod win {
         String::from_utf16_lossy(&buf[..n.clamp(0, 256) as usize])
     }
 
-    /// Заголовок окна с ограничением по времени.
-    ///
-    /// Заголовок чужого окна хранится в памяти чужого процесса, поэтому его читают не из
-    /// общей памяти, а сообщением `WM_GETTEXT`, на которое окно обязано ответить.
-    /// `GetWindowTextW` посылает это сообщение и ждёт, сколько понадобится чужому процессу:
-    /// зависший отвечает до 200 мс, и одно такое окно задерживает весь перебор окон — при
-    /// массовом запуске окон это и есть вероятная причина подвисаний. Поэтому отправляем
-    /// сообщение сами, с признаком `SMTO_ABORTIFHUNG` и коротким таймаутом: окно, которое
-    /// не ответило, считается окном без заголовка, а перебор окон не подвешивает.
-    fn title_with_timeout(hwnd: Hwnd) -> String {
-        const WM_GETTEXT: u32 = 0x000D;
-        const SMTO_ABORTIFHUNG: u32 = 0x0002;
-        /// Ждём ответа коротко: заголовки читаются в цикле, и зависшее окно не должно
-        /// задерживать проход дольше, чем сам шаг цикла.
-        const TIMEOUT_MS: u32 = 50;
-        let mut buf = [0u16; 256];
-        let mut copied: usize = 0;
-        let ok = unsafe {
-            SendMessageTimeoutW(
-                hwnd,
-                WM_GETTEXT,
-                buf.len(),
-                buf.as_mut_ptr() as isize,
-                SMTO_ABORTIFHUNG,
-                TIMEOUT_MS,
-                &mut copied,
-            )
-        };
-        if ok == 0 {
-            return String::new(); // окно не ответило: заголовок неизвестен
+    // Foreign captions are cached by Windows. Never force WM_GETTEXT into the game thread.
+    fn window_caption(hwnd: Hwnd) -> String {
+        let mut pid = 0;
+        unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+        // For our own process GetWindowTextW would send WM_GETTEXT synchronously instead.
+        if pid == std::process::id() {
+            return String::new();
         }
-        // Окно не обязано уложиться в буфер целиком, поэтому берём столько, сколько влезло
-        let n = copied.min(buf.len() - 1);
-        String::from_utf16_lossy(&buf[..n])
+        read(|b, n| unsafe { GetWindowTextW(hwnd, b, n) })
+    }
+    pub fn macro_window_matches(raw: usize, expected: u32) -> bool {
+        let hwnd = raw as Hwnd;
+        let mut pid = 0;
+        unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+        pid == expected
+            && unsafe { IsWindowVisible(hwnd) } != 0
+            && unsafe { GetAncestor(hwnd, 2) } == hwnd
+            && read(|b, n| unsafe { GetClassNameW(hwnd, b, n) }) == "ElementClient Window"
     }
 
     /// Что собирает `EnumWindows` по каждому окну.
     struct Collect<'a> {
         list: &'a mut Vec<WinInfo>,
         /// Процессы, у которых нужно читать заголовок и класс. `None` — у всех.
-        /// Заголовок чужого окна — это сообщение чужому процессу (см. `title_with_timeout`),
-        /// поэтому там, где чужие заголовки не нужны, их и не спрашивают.
+        /// Even cached foreign captions are only read for the requested processes.
         only: Option<HashSet<u32>>,
     }
 
     /// Нужно ли читать у окна процесса `pid` класс и заголовок. `None` — окна ищутся всех процессов.
     ///
-    /// Вынесено из `collect` ради проверки без запуска Windows: чтение заголовка чужого окна —
-    /// это сообщение чужому процессу (см. `title_with_timeout`), и там, где чужие заголовки
-    /// не нужны, его не должно быть.
+    /// Kept separate from `collect` for testing without Windows. Avoid unrelated window metadata.
     pub(crate) fn window_wanted(only: Option<&HashSet<u32>>, pid: u32) -> bool {
         only.is_none_or(|want| want.contains(&pid))
     }
@@ -394,7 +375,7 @@ mod win {
             return 1; // окно чужого процесса: ни класс, ни заголовок не читаем
         }
         let class = read(|b, n| unsafe { GetClassNameW(hwnd, b, n) });
-        let title = title_with_timeout(hwnd);
+        let title = window_caption(hwnd);
         ctx.list.push(WinInfo {
             hwnd: hwnd as usize,
             pid,
@@ -686,7 +667,7 @@ mod win {
 
     /// Текущий заголовок окна (см. `title_with_timeout` — почему с таймаутом).
     pub fn title_of(hwnd: usize) -> String {
-        title_with_timeout(hwnd as Hwnd)
+        window_caption(hwnd as Hwnd)
     }
 
     /// Когда процесс был запущен, мс с 1970. `None` — процесс недоступен (например, запущен от администратора).
@@ -716,16 +697,35 @@ mod win {
     /// кнопка закрытия окна в карточке, вкладка «Сегодня»). Раньше для каждого клиента окна
     /// перебирались отдельно — при десяти открытых окнах это десять полных обходов всех окон
     /// системы. Теперь обход один.
-    pub fn main_windows_by_pid() -> std::collections::HashMap<u32, (usize, String)> {
-        let mut map = std::collections::HashMap::new();
-        for w in all_windows() {
-            if !w.visible || w.title.is_empty() {
-                continue;
-            }
-            // Берём первое видимое с заголовком: у клиента игры главное окно одно
-            map.entry(w.pid).or_insert((w.hwnd, w.title));
+    pub fn main_windows_by_pid(pids: &[u32]) -> std::collections::HashMap<u32, (usize, String)> {
+        select_main_windows(windows_of(pids))
+    }
+
+    // A verified game window can have an empty caption (including with elevated clients).
+    // Prefer its exact class, but never guess between several game windows in one process.
+    pub fn select_main_windows(
+        windows: Vec<WinInfo>,
+    ) -> std::collections::HashMap<u32, (usize, String)> {
+        let mut grouped: std::collections::HashMap<u32, Vec<WinInfo>> =
+            std::collections::HashMap::new();
+        for window in windows.into_iter().filter(|w| w.visible) {
+            grouped.entry(window.pid).or_default().push(window);
         }
-        map
+        let mut result = std::collections::HashMap::new();
+        for (pid, windows) in grouped {
+            let game: Vec<_> = windows
+                .iter()
+                .filter(|w| w.class == "ElementClient Window")
+                .collect();
+            if game.len() == 1 {
+                result.insert(pid, (game[0].hwnd, game[0].title.clone()));
+            } else if game.is_empty() {
+                if let Some(window) = windows.into_iter().find(|w| !w.title.is_empty()) {
+                    result.insert(pid, (window.hwnd, window.title));
+                }
+            }
+        }
+        result
     }
 
     /// Возвращает окну значки, которые у него уже были (проверка права менять значки без изменения вида).
@@ -912,7 +912,7 @@ mod win {
     pub fn process_start_ms(_pid: u32) -> Option<u64> {
         None
     }
-    pub fn main_windows_by_pid() -> std::collections::HashMap<u32, (usize, String)> {
+    pub fn main_windows_by_pid(_pids: &[u32]) -> std::collections::HashMap<u32, (usize, String)> {
         std::collections::HashMap::new()
     }
     pub fn restore_icons(_hwnd: usize, _small: usize, _big: usize) -> Result<(), u32> {
@@ -991,62 +991,62 @@ fn is_gc_dialog(class: &str, title: &str, visible: bool) -> bool {
         && !title.to_lowercase().contains("авториз")
 }
 
-fn find_dialogs() -> Vec<usize> {
-    win::all_windows()
-        .into_iter()
-        .filter(|w| is_gc_dialog(&w.class, &w.title, w.visible))
-        .map(|w| w.hwnd)
-        .collect()
+// Only the selected executable may own the dialog. Unknown paths fail closed.
+fn owned_gc_dialog(w: &win::WinInfo, owner_path: Option<&str>, selected_path: &str) -> bool {
+    is_gc_dialog(&w.class, &w.title, w.visible)
+        && owner_path.is_some_and(|path| path.eq_ignore_ascii_case(selected_path))
 }
 
-/// Нажимает Enter во всех окнах вопроса GameCenter. Один клик может не дойти (окно ещё
-/// перехватывает фокус), поэтому Enter повторяется, пока окно не исчезнет.
-fn press_dialog_enter() {
-    for _ in 0..5 {
-        let dialogs = find_dialogs();
-        if dialogs.is_empty() {
-            return;
-        }
-        for hwnd in dialogs {
-            win::press_enter(hwnd);
-        }
-        sleep(DIALOG_PRESS_GAP);
+/// At most one confirmation per launch, including dialogs recreated with a new HWND.
+fn fresh_launch_dialog(
+    dialogs: &[(u32, usize)],
+    pressed: &HashSet<(u32, usize)>,
+) -> Option<(u32, usize)> {
+    if dialogs.len() != 1 || !pressed.is_empty() {
+        return None;
     }
+    Some(dialogs[0])
 }
 
-/// Дожидается нового клиента игры, попутно подтверждая окно «Клиент игры уже запущен».
-///
-/// Раньше это были два последовательных ожидания: сначала полностью ждалось окно вопроса
-/// (до 30 с), и только потом начинался поиск нового процесса клиента. Оба ожидания независимы,
-/// поэтому идут одним циклом: как только клиент появился, возврат происходит сразу.
-///
-/// Окно вопроса нажимается не чаще, чем раз в `DIALOG_PRESS_GAP`: спамить Enter нельзя,
-/// а в окно «Попытка авторизации…» его посылать нельзя вовсе (см. `is_gc_dialog`).
-///
-/// Возвращает `(pid нового клиента, нажали ли Enter в окно вопроса)`.
+/// Check for a new client BEFORE touching dialogs. Confirm one owned dialog once.
 fn await_new_client(
     before: &HashSet<u32>,
     wait: Duration,
     expect_dialog: bool,
+    exe: &Path,
 ) -> Option<(u32, bool)> {
     let dialog_deadline = Instant::now() + DIALOG_WAIT;
     let client_deadline = Instant::now() + wait;
-    let mut dialog_clicked = false;
-    let mut last_press: Option<Instant> = None;
+    let selected_path = plain_path(exe);
+    let mut pressed = HashSet::new();
     loop {
-        if expect_dialog && Instant::now() < dialog_deadline {
-            let due = last_press.is_none_or(|t| t.elapsed() >= DIALOG_PRESS_GAP);
-            if due && !find_dialogs().is_empty() {
-                dialog_clicked = true;
-                last_press = Some(Instant::now());
-                press_dialog_enter();
-            }
-        }
         if let Some(pid) = new_client_pid(before, &client_pids().unwrap_or_default()) {
-            return Some((pid, dialog_clicked));
+            return Some((pid, !pressed.is_empty()));
         }
         if Instant::now() >= client_deadline {
             return None;
+        }
+        if expect_dialog && Instant::now() < dialog_deadline {
+            let dialogs: Vec<_> = win::all_windows()
+                .into_iter()
+                .filter(|w| is_gc_dialog(&w.class, &w.title, w.visible))
+                .filter(|w| owned_gc_dialog(w, gamecenter_path(w.pid).as_deref(), &selected_path))
+                .map(|w| (w.pid, w.hwnd))
+                .collect();
+            if let Some(candidate) = fresh_launch_dialog(&dialogs, &pressed) {
+                // Recheck both the client and ownership immediately before posting input.
+                if let Some(pid) = new_client_pid(before, &client_pids().unwrap_or_default()) {
+                    return Some((pid, !pressed.is_empty()));
+                }
+                let still_owned = win::all_windows().into_iter().any(|w| {
+                    (w.pid, w.hwnd) == candidate
+                        && owned_gc_dialog(&w, gamecenter_path(w.pid).as_deref(), &selected_path)
+                });
+                if still_owned {
+                    pressed.insert(candidate);
+                    win::press_enter(candidate.1);
+                }
+            }
         }
         sleep(CLIENT_POLL_STEP);
     }
@@ -2240,8 +2240,8 @@ pub async fn launcher_start(
         // Окно вопроса «Запустить новую копию клиента» и появление нового клиента ждём одним
         // циклом: раньше сначала полностью ждалось окно вопроса, и только потом начинался
         // поиск процесса клиента — на каждый аккаунт это лишние секунды ожидания.
-        let (client_pid, dialog_clicked) = await_new_client(&before, wait, !before.is_empty())
-            .ok_or_else(|| {
+        let (client_pid, dialog_clicked) =
+            await_new_client(&before, wait, !before.is_empty(), &exe).ok_or_else(|| {
                 format!(
                     "Клиент игры не запустился за {} с (GameCenter: {})",
                     wait.as_secs(),
@@ -2309,7 +2309,8 @@ pub async fn launcher_running_details() -> Result<Vec<RunningClient>, String> {
     tauri::async_runtime::spawn_blocking(|| {
         let list = client_processes()?;
         // Все окна системы перебираются один раз на весь список, а не по одному на клиента
-        let windows = win::main_windows_by_pid();
+        let pids: Vec<u32> = list.iter().map(|(_, pid)| *pid).collect();
+        let windows = win::main_windows_by_pid(&pids);
         Ok::<Vec<RunningClient>, String>(
             list.into_iter()
                 .map(|(image, pid)| {
@@ -2328,6 +2329,69 @@ pub async fn launcher_running_details() -> Result<Vec<RunningClient>, String> {
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// Per-operation macro validation: inspect only the requested process/windows, without
+/// reading captions or tokens of unrelated windows. No identity/handle cache is used.
+#[cfg(windows)]
+pub(crate) fn macro_client_at(
+    pid: u32,
+    started_at: u64,
+    hwnd: Option<u64>,
+) -> Result<RunningClient, String> {
+    let Some(hwnd) = hwnd else {
+        return macro_client(pid, started_at);
+    };
+    if !win::macro_window_matches(hwnd as usize, pid) {
+        let client = macro_client(pid, started_at)?;
+        return if client.hwnd == Some(hwnd) {
+            Ok(client)
+        } else {
+            Err("Game client identity changed or access is unavailable".into())
+        };
+    }
+    let image = win::process_image_path(pid).ok_or("Cannot inspect game process")?;
+    if !is_client_image(image.rsplit(['\\', '/']).next().unwrap_or(""))
+        || win::process_start_ms(pid) != Some(started_at)
+    {
+        return Err("Game client identity changed or access is unavailable".into());
+    }
+    let elevated = win::process_elevated(pid);
+    if win::process_start_ms(pid) != Some(started_at) {
+        return Err("Game client identity changed or access is unavailable".into());
+    }
+    Ok(RunningClient {
+        pid,
+        image,
+        started_at: Some(started_at),
+        title: String::new(),
+        hwnd: Some(hwnd),
+        elevated,
+    })
+}
+
+#[cfg(windows)]
+pub(crate) fn macro_client(pid: u32, started_at: u64) -> Result<RunningClient, String> {
+    let image = win::process_image_path(pid).ok_or("Cannot inspect game process")?;
+    let name = image.rsplit(['\\', '/']).next().unwrap_or("");
+    if !is_client_image(name) || win::process_start_ms(pid) != Some(started_at) {
+        return Err("Game client identity changed or access is unavailable".into());
+    }
+    let mut windows = win::select_main_windows(win::windows_of(&[pid]));
+    let (hwnd, title) = windows.remove(&pid).ok_or("No unique game window")?;
+    let elevated = win::process_elevated(pid);
+    // Recheck after enumeration rather than trusting a cached PID.
+    if win::process_start_ms(pid) != Some(started_at) {
+        return Err("Game client identity changed or access is unavailable".into());
+    }
+    Ok(RunningClient {
+        pid,
+        image,
+        started_at: Some(started_at),
+        title,
+        hwnd: Some(hwnd as u64),
+        elevated,
+    })
 }
 
 /// Закрыть выбранные клиенты игры по PID. Возвращает отчёт в том же виде, что закрытие всех окон.
@@ -3167,6 +3231,37 @@ mod tests {
     }
 
     #[test]
+    fn launch_confirmation_is_once_per_launch_and_ambiguity_is_not_clicked() {
+        let mut pressed = HashSet::new();
+        assert_eq!(fresh_launch_dialog(&[(7, 100)], &pressed), Some((7, 100)));
+        pressed.insert((7, 100));
+        assert_eq!(fresh_launch_dialog(&[(7, 100)], &pressed), None);
+        assert_eq!(fresh_launch_dialog(&[(8, 101)], &pressed), None);
+        assert_eq!(fresh_launch_dialog(&[(7, 100), (8, 101)], &pressed), None);
+        assert_eq!(fresh_launch_dialog(&[], &pressed), None);
+    }
+    #[test]
+    fn launch_dialog_must_belong_to_selected_gamecenter_not_another_folder() {
+        let window = win::WinInfo {
+            hwnd: 100,
+            pid: 7,
+            class: "TYesNoForm".into(),
+            title: "VK Play Игровой центр".into(),
+            visible: true,
+        };
+        assert!(owned_gc_dialog(
+            &window,
+            Some("D:/GC1/GameCenter.exe"),
+            "d:/gc1/gamecenter.exe"
+        ));
+        assert!(!owned_gc_dialog(
+            &window,
+            Some("D:/GC2/GameCenter.exe"),
+            "D:/GC1/GameCenter.exe"
+        ));
+        assert!(!owned_gc_dialog(&window, None, "D:/GC1/GameCenter.exe"));
+    }
+    #[test]
     fn new_client_is_the_pid_that_was_not_there_before() {
         let before: HashSet<u32> = [10, 20].into_iter().collect();
         assert_eq!(new_client_pid(&before, &[10, 20]), None);
@@ -3859,5 +3954,35 @@ mod tests {
             std::fs::read_to_string(dir.join("GameCenter.ini.tvinoferma-backup")).unwrap();
         assert_eq!(backup2, INI); // повторная подмена копию не затирает
         let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+#[cfg(all(test, windows))]
+mod game_window_selection_tests {
+    use super::win;
+    fn window(hwnd: usize, class: &str, title: &str) -> win::WinInfo {
+        win::WinInfo {
+            hwnd,
+            pid: 42,
+            class: class.into(),
+            title: title.into(),
+            visible: true,
+        }
+    }
+    #[test]
+    fn untitled_game_is_selected_by_exact_class_not_a_captioned_helper() {
+        let result = win::select_main_windows(vec![
+            window(1, "Helper", "Helper title"),
+            window(2, "ElementClient Window", ""),
+        ]);
+        assert_eq!(result.get(&42), Some(&(2, String::new())));
+    }
+    #[test]
+    fn ambiguous_game_windows_are_not_guessed() {
+        let result = win::select_main_windows(vec![
+            window(1, "ElementClient Window", "Alpha"),
+            window(2, "ElementClient Window", "Beta"),
+        ]);
+        assert!(!result.contains_key(&42));
     }
 }

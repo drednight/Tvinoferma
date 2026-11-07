@@ -51,8 +51,8 @@ export function hasAnySavedLogin(char) {
  * @param {any} char
  * @returns {'no-gc' | 'no-login' | null}
  */
-export function launchBlocker(char) {
-  const target = resolveGameCenter(char, { gameCenters: gcs() });
+export function launchBlocker(char, preferredId = launcherSettings().preferredGcId) {
+  const target = resolveGameCenter(char, { gameCenters: gcs(), preferredId });
   if (!target) return 'no-gc';
   if (!target.saved) return 'no-login';
   return null;
@@ -339,7 +339,10 @@ export function openGameCentersModal(opts = {}) {
     info.set(gc.id, { status: 'loading' });
     const setText = () => {
       const el = gcRow(gc.id)?.querySelector('.gcm-gc-who');
-      if (el) el.textContent = infoText(gc);
+      if (el) {
+        el.textContent = infoText(gc);
+        el.setAttribute('title', infoText(gc));
+      }
     };
     setText();
     try {

@@ -444,6 +444,24 @@ export function startTask(title, opts = {}) {
   return t;
 }
 
+/** Read-only summaries for dashboard widgets; never expose mutable Task/credentials/entries. */
+export function scriptWidgetReports(kind) {
+  return [...tasks]
+    .filter(t => t.scriptReport?.kind && (!kind || t.scriptReport.kind === kind))
+    .slice(0, kind ? 1 : 4)
+    .map(t => ({
+      id: t.id,
+      kind: t.scriptReport.kind,
+      status: t.status,
+      paused: !!t.paused,
+      cancelled: !!t.cancelled,
+      percent: t.percent,
+      at: t.updatedAt || t.startedAt,
+      dryRun: !!t.scriptReport.dryRun,
+      rows: (t.scriptReport.rows || []).map(r => ({ charId: r.charId, nick: r.nick, status: r.status, tone: r.tone }))
+    }));
+}
+
 export function onTaskChange(fn) {
   subscribers.add(fn);
   return () => subscribers.delete(fn);
@@ -827,9 +845,26 @@ export function renderDock() {
 /** Подробные результаты одной задачи или всех сохранённых задач журнала. */
 export function openTaskStatistics(id = '') {
   const chosen = id ? tasks.filter(task => task.id === id) : tasks;
-  const reports = chosen
-    .filter(task => task.scriptReport && Array.isArray(task.scriptReport.rows))
-    .map(task => ({ ...task.scriptReport, at: task.startedAt }));
+  const reports = chosen.flatMap(task => {
+    if (Array.isArray(task.scriptReport?.rows) && task.scriptReport.rows.length)
+      return [{ ...task.scriptReport, at: task.startedAt }];
+    const summary = [...(task.entries || [])].reverse().find(entry => entry.level === 'summary' && entry.rows?.length);
+    return summary
+      ? [
+          {
+            title: task.title,
+            at: task.startedAt,
+            rows: summary.rows.map(row => ({
+              nick: row.name,
+              action: summary.message || 'Итог',
+              status: row.status,
+              tone: row.tone,
+              details: row.note ? [row.note] : []
+            }))
+          }
+        ]
+      : [];
+  });
   return openScriptStatistics(reports, {
     title: id ? '📊 Результат по персонажам' : '📊 Статистика по персонажам',
     note: id
@@ -848,6 +883,11 @@ export function openTaskLog(id) {
   let onlyProblems = false;
   const dur = t.finishedAt ? Math.round((new Date(t.finishedAt) - new Date(t.startedAt)) / 1000) : null;
   const draw = () => {
+    const scrollTargets = [ov.body, ov.el, ov.el.querySelector('.tf-dialog'), ov.body.querySelector('.tl-full')].filter(
+      Boolean
+    );
+    const scrollPositions = scrollTargets.map(el => ({ el, top: el.scrollTop, left: el.scrollLeft }));
+    const entryTop = ov.body.querySelector('.tl-full')?.scrollTop || 0;
     ov.sub.innerHTML = taskCardHtml(t);
     // Полный лог уже открыт: не предлагаем открыть ещё одну копию или свернуть те же строки.
     ov.sub.querySelector('[data-task-log]')?.remove();
@@ -865,6 +905,12 @@ export function openTaskLog(id) {
         .filter(x => !onlyProblems || x.level === 'warn' || x.level === 'error' || x.level === 'summary')
         .map(entryHtml)
         .join('')}</div>`;
+    scrollPositions.forEach(({ el, top, left }) => {
+      el.scrollTop = top;
+      el.scrollLeft = left;
+    });
+    const entries = ov.body.querySelector('.tl-full');
+    if (entries) entries.scrollTop = entryTop;
     ov.body.querySelector('[data-only-problems]').onchange = e => {
       onlyProblems = e.target.checked;
       ov.body.querySelector('.tl-full').innerHTML = t.entries

@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Твиноферма — управление пати</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font: var(--overlay-font, 14px) system-ui;
+        color: var(--overlay-text, #eef1ff);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: transparent;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      input[type='range'] {
+        width: 100%;
+        margin-top: 10px;
+      }
+      main {
+        height: 100vh;
+        overflow: hidden;
+        border: 0;
+        border-radius: 10px;
+      }
+      #panel {
+        background: rgba(16, 20, 30, var(--alpha, 0.9));
+        height: calc(100vh - 52px);
+        overflow: auto;
+        padding: 14px;
+      }
+      body.folded #panel {
+        display: none;
+      }
+      * {
+        scrollbar-width: none;
+      }
+      *::-webkit-scrollbar {
+        display: none;
+      }
+      body.header-hidden header {
+        display: none;
+      }
+      body.header-hidden #panel {
+        height: 100vh;
+      }
+      header span {
+        flex: 1;
+      }
+      header {
+        height: 52px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(16, 20, 30, calc(var(--alpha, 0.9) * 0.72));
+        font-size: 15px;
+        font-weight: 700;
+        padding: 6px 10px;
+        cursor: move;
+        user-select: none;
+      }
+      button {
+        padding: 8px;
+        margin: 4px;
+        border: 1px solid #637090;
+        border-radius: 7px;
+        background: #20283c;
+        color: inherit;
+        cursor: pointer;
+        font: inherit;
+      }
+      li {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        gap: 12px;
+        overflow-wrap: anywhere;
+        margin: 8px 0;
+      }
+      #commands {
+        padding: 0;
+      }
+      #commands li {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+      }
+      #commands .command-run {
+        margin: 0;
+        padding: 6px 9px;
+        color: var(--overlay-key, #f5cc76);
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      button:focus-visible {
+        outline: 2px solid var(--overlay-key, #f5cc76);
+        outline-offset: 2px;
+      }
+      kbd {
+        flex: 0 0 auto;
+        white-space: nowrap;
+        color: var(--overlay-key, #f5cc76);
+      }
+      pre {
+        white-space: pre-wrap;
+        max-height: 260px;
+        overflow: auto;
+        font: inherit;
+      }
+      .muted {
+        color: #aab1c6;
+      }
+      #status:is(
+        [data-execution-state='finished'],
+        [data-execution-state='failed'],
+        [data-execution-state='stopped'],
+        [data-execution-state='stopping']
+      ),
+      .gm-log-terminal {
+        color: var(--danger, #f7768e);
+        font-weight: 600;
+      }
+      #overlay-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin: 10px 0;
+      }
+      #overlay-nav button {
+        flex: 1;
+        padding: 8px;
+        border-radius: 8px;
+      }
+      #overlay-nav [aria-current='page'] {
+        border-color: var(--overlay-key);
+        color: var(--overlay-key);
+      }
+      .color-options {
+        border: 1px solid #4b5064;
+        border-radius: 10px;
+        padding: 10px;
+        margin: 12px 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .color-options legend {
+        padding: 0 6px;
+      }
+      .color-options label {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 6px;
+        border-radius: 6px;
+        background: #232737;
+      }
+      .color-options span::before {
+        content: '●';
+        margin-right: 5px;
+      }
+      [data-swatch='light'],
+      [data-swatch='white'] {
+        color: #eef2ff;
+      }
+      [data-swatch='warm'],
+      [data-swatch='gold'] {
+        color: #f5d98c;
+      }
+      [data-swatch='mint'] {
+        color: #91e2bd;
+      }
+      [data-swatch='blue'] {
+        color: #9ccaff;
+      }
+      [data-swatch='violet'] {
+        color: #c7a7ff;
+      }
+      [data-swatch='orange'] {
+        color: #ffb380;
+      }
+      #windows li {
+        padding: 10px;
+        border-bottom: 1px solid #4b5064;
+      }
+      #party-screen select {
+        width: 100%;
+        padding: 8px;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: wait;
+      }
+      #floating-panel-toggle {
+        display: none;
+        position: fixed;
+        top: 6px;
+        right: 6px;
+        z-index: 10;
+        margin: 0;
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        border-radius: 50%;
+        opacity: 0.65;
+        box-shadow: 0 2px 8px #0005;
+      }
+      body.header-hidden #floating-panel-toggle {
+        display: block;
+      }
+      #floating-panel-toggle:hover,
+      #floating-panel-toggle:focus-visible {
+        opacity: 1;
+      }
+      body.header-hidden #overlay-controls {
+        padding-right: 30px;
+      }
+      .gm-journal-copy-fallback {
+        display: block;
+        width: 100%;
+        background: #10141e;
+        color: inherit;
+        border: 1px solid #637090;
+        border-radius: 8px;
+        padding: 10px;
+        font: inherit;
+      }
+      .gm-journal-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .gm-journal-actions > button {
+        margin: 0;
+      }
+      #mouse-repeat-toggle {
+        font-weight: 600;
+      }
+      #mouse-repeat-toggle[data-state='on'] {
+        background: #214c40;
+        border-color: #66d9ad;
+        color: #c5ffe6;
+      }
+      #mouse-repeat-toggle[data-state='paused'] {
+        border-color: #e6b86a;
+        color: #f5cc76;
+      }
+    </style>
+  </head>
+  <body>
+    <button
+      id="floating-panel-toggle"
+      aria-controls="overlay-controls"
+      aria-expanded="true"
+      title="Скрыть или показать панель"
+      aria-label="Скрыть или показать панель"
+    >
+      ⋯
+    </button>
+    <main>
+      <header data-drag>
+        <span>🎮 Управление пати</span
+        ><button
+          id="info-toggle"
+          aria-controls="overlay-controls"
+          aria-expanded="true"
+          title="Скрыть или показать панель"
+        >
+          ⋯</button
+        ><button data-action="stop" title="Остановить команду" aria-label="Остановить команду">■</button
+        ><button
+          id="fold"
+          aria-controls="panel"
+          aria-expanded="true"
+          aria-label="Свернуть до верхней полосы"
+          title="Свернуть до верхней полосы"
+        >
+          ▴</button
+        ><button id="close" aria-label="Закрыть оверлей" title="Закрыть оверлей">×</button>
+      </header>
+      <section id="panel">
+        <div id="overlay-controls">
+          <nav id="overlay-nav" aria-label="Разделы оверлея">
+            <button data-view="shortcuts" aria-current="page">Назначенные клавиши</button
+            ><button data-view="journal">Журнал</button><button data-view="party">Пати и окна</button
+            ><button data-view="appearance">Настройки оверлея</button>
+          </nav>
+          <p id="status">Ожидание главного окна…</p>
+        </div>
+        <button type="button" id="mouse-repeat-toggle" aria-pressed="false" data-state="off" disabled>
+          🖱 Повтор мыши: ВЫКЛ
+        </button>
+        <section id="shortcuts-screen">
+          <h3 data-service-heading>Назначенные клавиши</h3>
+          <ul id="commands"></ul>
+        </section>
+        <section id="appearance-screen" hidden>
+          <h3>Настройки оверлея</h3>
+          <label
+            >Непрозрачность <output id="alpha-value">90%</output
+            ><input id="opacity" type="range" min="10" max="100" value="90"
+          /></label>
+          <p>
+            <label><input id="topmost" type="checkbox" checked /> Поверх других окон</label>
+          </p>
+          <p class="muted">
+            Верхняя полоса прозрачнее основного фона. ▴ сворачивает окно; ⋯ скрывает служебную панель.
+          </p>
+          <fieldset class="color-options">
+            <legend>Цвет текста</legend>
+            <input type="hidden" id="text-color" value="light" /><label
+              ><input type="radio" name="text-color-choice" value="light" checked /><span data-swatch="light"
+                >Светлый</span
+              ></label
+            ><label
+              ><input type="radio" name="text-color-choice" value="warm" /><span data-swatch="warm">Тёплый</span></label
+            ><label
+              ><input type="radio" name="text-color-choice" value="mint" /><span data-swatch="mint">Мятный</span></label
+            >
+          </fieldset>
+          <fieldset class="color-options">
+            <legend>Цвет клавиш</legend>
+            <input type="hidden" id="key-color" value="gold" /><label
+              ><input type="radio" name="key-color-choice" value="gold" checked /><span data-swatch="gold"
+                >Золотой</span
+              ></label
+            ><label
+              ><input type="radio" name="key-color-choice" value="blue" /><span data-swatch="blue">Голубой</span></label
+            ><label
+              ><input type="radio" name="key-color-choice" value="white" /><span data-swatch="white">Белый</span></label
+            >
+          </fieldset>
+          <fieldset class="color-options">
+            <legend>Цвет названия команды</legend>
+            <input type="hidden" id="command-color" value="mint" /><label
+              ><input type="radio" name="command-color-choice" value="mint" checked /><span data-swatch="mint"
+                >Мятный</span
+              ></label
+            ><label
+              ><input type="radio" name="command-color-choice" value="violet" /><span data-swatch="violet"
+                >Фиолетовый</span
+              ></label
+            ><label
+              ><input type="radio" name="command-color-choice" value="orange" /><span data-swatch="orange"
+                >Оранжевый</span
+              ></label
+            >
+          </fieldset>
+          <label>Размер текста<input id="font-size" type="range" min="10" max="24" value="14" /></label
+          ><label><input id="hide-header" type="checkbox" /> Скрыть заголовок и кнопки окна</label>
+          <p class="muted">
+            При скрытом заголовке кнопка ⋯ остаётся в правом верхнем углу. Она показывает меню, через которое можно
+            вернуться в настройки и включить заголовок.
+          </p>
+          <button id="save-appearance">Сохранить</button>
+          <p id="appearance-error" role="status"></p>
+        </section>
+        <section id="party-screen" hidden>
+          <h3>Пати и окна</h3>
+          <label
+            >Пати для запуска<select id="party-select">
+              <option value="">Выберите пати</option>
+            </select></label
+          >
+          <p><button id="party-launch">▶ Запустить пати</button><button id="party-refresh">Обновить окна</button></p>
+          <p id="window-notice" role="status">Нажмите «Обновить окна».</p>
+          <ul id="windows"></ul>
+          <p class="muted">
+            Запуск использует сохранённые настройки пати. Не закрывайте главное приложение. Список обновляется по
+            кнопке, не каждую секунду.
+          </p>
+        </section>
+        <section id="journal-screen" hidden>
+          <h3 data-service-heading>Журнал текущего сеанса</h3>
+          <div class="gm-journal-actions" role="group" aria-label="Действия с журналом">
+            <button type="button" id="copy-logs">Копировать весь лог</button>
+            <button
+              type="button"
+              data-action="clear-logs"
+              title="Очистить общий журнал макросов, не останавливая команду"
+            >
+              Очистить лог
+            </button>
+          </div>
+          <p id="copy-logs-status" role="status" aria-live="polite"></p>
+          <p class="muted">Копируются все сохранённые записи (до 300 строк), не только видимый фрагмент.</p>
+          <pre id="logs"></pre>
+        </section>
+      </section>
+    </main>
+    <script type="module" src="/js/modules/gameMacros/overlay.js"></script>
+  </body>
+</html>

@@ -177,7 +177,7 @@
             <!-- Появляется, только когда включён хотя бы один фильтр -->
             <button id="filters-clear" class="filters-clear" type="button" hidden title="Сбросить поиск и все фильтры">✕ Сбросить</button>
           </div>
-          <div class="row gap" style="margin: 10px 0;">
+          <div class="row gap" style="margin: 10px 0; flex-direction: column; align-items: flex-start;">
             <button id="show-active-characters" class="btn secondary small" type="button">Персонажи <span id="active-character-count">0</span></button>
             <button id="show-archived-characters" class="btn ghost small" type="button">Архив <span id="archived-character-count">0</span></button>
           </div>
@@ -307,6 +307,7 @@
           </summary>
           <p class="muted" style="margin-top: 0;">Переключатель убирает раздел из меню, стрелки меняют порядок — он же определяет, какой раздел открывает каждая цифра: Ctrl+1 — первый видимый.</p>
           <div id="sections-list" class="sections-list"></div>
+          <details class="fold"><summary>Расположение блоков на «Сегодня»</summary><div data-today-layout-settings></div></details>
         </details>
 <details class="panel fold" id="settings-launcher">
           <summary>

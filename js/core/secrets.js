@@ -20,6 +20,7 @@ const vault = {
   checked: false,
   blocked: false, // остановка до перезапуска в этом JS-контексте, не устойчивый карантин
   error: null,
+  diagnosticCode: null,
   // charId -> точная строка и её нормализованное содержимое; не выводить в журнал.
   known: new Map(),
   conflictReview: null
@@ -40,6 +41,7 @@ export function __setInvoke(fn) {
   vault.known.clear();
   vault.conflictReview = null;
   vault.error = null;
+  vault.diagnosticCode = null;
 }
 
 // Private in-memory review; never serialize to state, diagnostics, logs or cloud.
@@ -53,6 +55,7 @@ export function vaultStatus() {
     checked: vault.checked,
     blocked: vault.blocked,
     error: vault.error,
+    diagnosticCode: vault.diagnosticCode,
     count: vault.known.size
   };
 }
@@ -176,9 +179,14 @@ function blockVault(message) {
 }
 
 /** Не позволяет обойти обнаруженную небезопасную ссылку на vault отключением настройки. */
-export function blockUnsafeVaultRead() {
+export function blockUnsafeVaultRead(code = 'vault_reference_invalid') {
   vault.checked = true;
-  if (!vault.blocked) blockVault(DAMAGED);
+  if (!vault.blocked) {
+    blockVault(DAMAGED);
+    vault.diagnosticCode = ['vault_marker_invalid', 'vault_identity_mapping_invalid'].includes(code)
+      ? code
+      : 'vault_reference_invalid';
+  }
 }
 
 /**
@@ -199,13 +207,16 @@ export async function hydrateSecrets(
     vault.ready = false;
     if (requiresVault) {
       blockVault(UNAVAILABLE);
+      vault.diagnosticCode = 'vault_runtime_unavailable';
       return { migrated: 0, error: vault.error, blocked: true };
     }
     return { migrated: 0 };
   }
+  let phase = 'vault_probe_unavailable';
   try {
     const available = await invoke('secrets_available');
     if (available !== true) throw new Error(UNAVAILABLE);
+    phase = 'vault_identity_mapping_invalid';
     if (!Array.isArray(characters) || !(plaintextIds instanceof Set)) throw invalidData();
     const ids = new Set();
     const owners = new Map();
@@ -235,10 +246,14 @@ export async function hydrateSecrets(
         keys.add(old);
       }
     }
-    const records = readRecords(await invoke('secrets_get_many', { keys: [...keys] }), keys);
+    phase = 'vault_read_failed';
+    const response = await invoke('secrets_get_many', { keys: [...keys] });
+    phase = 'vault_records_invalid';
+    const records = readRecords(response, keys);
     const parsed = new Map();
     for (const [id, raw] of records) parsed.set(id, parseStoredContacts(raw));
 
+    phase = 'vault_sources_inconsistent';
     // Формируем весь план до изменения персонажей или vault.known.
     const known = new Map();
     const usedSources = new Set();
@@ -279,11 +294,13 @@ export async function hydrateSecrets(
     vault.known = known;
     vault.ready = true;
     vault.error = null;
+    vault.diagnosticCode = null;
     return { migrated };
   } catch (error) {
     if (!(error instanceof VaultConflictError)) vault.conflictReview = null;
     vault.ready = false;
     vault.known.clear();
+    vault.diagnosticCode = error instanceof VaultConflictError ? 'vault_contacts_conflict' : phase;
     vault.error =
       error instanceof VaultConflictError ? CONFLICT : error instanceof VaultDataError ? DAMAGED : UNAVAILABLE;
     if (error instanceof VaultDataError || requiresVault) vault.blocked = true;
@@ -389,7 +406,8 @@ export async function verifyContactsSource(snapshot) {
     const characters = [...snapshot.characters, ...snapshot.archivedCharacters];
     const keys = new Set(characters.map(char => char.id));
     if (keys.size !== characters.length) return false;
-    const records = readRecords(await invoke('secrets_get_many', { keys: [...keys] }), keys);
+    const response = await invoke('secrets_get_many', { keys: [...keys] });
+    const records = readRecords(response, keys);
     for (const char of characters) {
       if ((records.get(char.id) ?? null) !== (vault.known.get(char.id)?.raw ?? null)) {
         blockVault(CONFLICT);

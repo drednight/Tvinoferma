@@ -1,3 +1,4 @@
+import { backgroundTask } from '../../core/backgroundTask.js';
 import { refreshSiteFeed } from '../dashboard/siteFeed.js';
 // js/modules/servers/serverStatus.js
 // «Статус серверов» pwonline.ru (Issue #26): общий источник для плашки в шапке и окна передачи предметов.
@@ -63,6 +64,7 @@ export function isStatusDue(status, minutes, now = Date.now(), attemptAt = 0) {
  */
 export function refreshServerStatus(opts) {
   if (inflight) return inflight;
+  const journal = backgroundTask('Проверка серверов');
   lastAttemptAt = Date.now();
   // Do not block the public server read on the clan site or its response queue.
   if (globalThis.window?.__TAURI_INTERNALS__)
@@ -74,7 +76,14 @@ export function refreshServerStatus(opts) {
         current = saveStatus(res);
         lastError = null;
       } else if (res.status !== 'cancelled') lastError = { status: res.status, error: res.error || null };
+      journal.finish(
+        res.status === 'ok' ? 'Статус серверов обновлён.' : 'Проверка серверов не завершена.',
+        res.status === 'ok' ? 'done' : 'warn'
+      );
       return res;
+    } catch (error) {
+      journal.finish('Не удалось проверить серверы.', 'error');
+      throw error;
     } finally {
       inflight = null;
       notify();

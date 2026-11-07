@@ -9,6 +9,13 @@ on:
       - '.github/workflows/windows-acceptance.yml'
       - '.github/actions/setup-frontend/**'
       - 'js/modules/dashboard/**'
+      - 'js/modules/gameMacros/**'
+      - 'src-tauri/src/game_macros.rs'
+      - 'src-tauri/src/game_macro_mirror.rs'
+      - 'src-tauri/src/launcher.rs'
+      - 'src-tauri/capabilities/game-*.json'
+      - 'game-guide.html'
+      - 'game-overlay.html'
       - 'js/modules/guild/**'
       - 'src-tauri/src/guild.rs'
       - 'src-tauri/src/scripts/guild.js'
@@ -35,7 +42,7 @@ on:
       - 'src-tauri/src/commands/cloud_*.rs'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 permissions:

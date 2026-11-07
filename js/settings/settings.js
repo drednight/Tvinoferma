@@ -1,3 +1,4 @@
+import { bindTodayLayoutPanel } from './todayLayoutPanel.js';
 import { linkProfileOptions } from '../core/linkBrowser.js';
 import { openLegacyCloudRecovery } from '../modules/cloudSync/ui/legacyRecoveryPanel.js';
 // js/settings/settings.js
@@ -29,7 +30,7 @@ import { applySections } from '../core/sections.js';
 import { runNotificationTest, NOTIFY_KINDS } from '../desktop/notifications.js';
 import { SOUND_TONES, previewNotificationSound, soundSettings, soundDiagnostics } from '../desktop/sound.js';
 import { RECURRING_EVENTS, recurringEventScheduleText } from '../modules/dashboard/recurringEvents.js';
-import { toast, confirmModal } from '../core/ui.js';
+import { toast, confirmModal, showModal } from '../core/ui.js';
 import { showInApp } from '../core/notifyCenter.js';
 import { DANGER_ACTIONS, clearParties, clearMarathons, clearCharacters } from './dangerZone.js';
 import { balanceSettingsColumns } from './columns.js';
@@ -232,6 +233,48 @@ export async function renderSettings() {
             : v.error
               ? `⚠️ Хранилище ОС недоступно (${v.error}) — контакты сохраняются в state.json.`
               : '⚠️ Хранилище ОС ещё не проверено в этом сеансе. Контакты пока остаются в state.json; после перезапуска они будут проверены перед переносом.';
+    if (v.diagnosticCode)
+      vaultEl.textContent += ` Код диагностики: ${v.diagnosticCode}. Не удаляйте записи хранилища ОС; сообщите код, версию приложения и источник сборки.`;
+  }
+
+  if (vaultEl && !document.getElementById('vault-safe-diagnostic')) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.id = 'vault-safe-diagnostic';
+    button.className = 'btn ghost';
+    button.textContent = 'Диагностика сохранения (без контактов)';
+    button.onclick = async () => {
+      const v = vaultStatus();
+      let elevated = null,
+        version = 'не определена';
+      if (isTauri()) {
+        try {
+          elevated = await (await import('@tauri-apps/api/core')).invoke('launcher_self_elevated');
+          version = await (await import('@tauri-apps/api/app')).getVersion();
+        } catch {
+          /* report stays read-only */
+        }
+      }
+      const report = {
+        version,
+        native: isTauri(),
+        applicationElevated: elevated,
+        vault: {
+          ready: v.ready,
+          checked: v.checked,
+          blocked: v.blocked,
+          diagnosticCode: v.diagnosticCode || 'not_reported',
+          knownRecords: v.count
+        }
+      };
+      showModal({
+        title: 'Диагностика сохранения',
+        content: `<p>Отчёт не содержит email, паролей, телефонов и содержимого записей. Скопируйте его и передайте разработчику. Не удаляйте записи хранилища ОС и не отключайте защиту сохранения.</p><textarea class="input" readonly rows="12">${escapeHtml(JSON.stringify(report, null, 2))}</textarea>`,
+        submitText: 'Закрыть',
+        onSubmit: () => {}
+      });
+    };
+    vaultEl.after(button);
   }
 
   // Версия
@@ -589,6 +632,7 @@ function bindSettingInputs() {
 }
 
 export function bindSettings() {
+  bindTodayLayoutPanel();
   const cloudEnabled = !document.getElementById('cloud-registration-panel')?.hidden;
   if (cloudEnabled) {
     bindCloudRegistrationCheck({ desktop: isTauri() });

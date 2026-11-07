@@ -1,3 +1,4 @@
+import { backgroundTask } from '../../core/backgroundTask.js';
 import { openWebLink } from '../../core/linkBrowser.js';
 // js/modules/guild/page.js
 // Скрытая панель клана под разделом «Сегодня» (клановый сайт Guild).
@@ -223,9 +224,19 @@ export async function syncGuild({ silent = false } = {}) {
 /** Обновление по расписанию: молча, только при включённой панели клана. */
 export async function autoSync() {
   if (!isTauri() || !guildEnabled() || !writesAvailable()) return;
-  if (!(await syncGuild({ silent: true }))) return;
-  await syncClanEntries(readGuildData());
-  renderTodayNow();
+  const journal = backgroundTask('Обновление клана');
+  try {
+    if (!(await syncGuild({ silent: true }))) {
+      journal.finish('Сводка клана не обновлена.', 'warn');
+      return;
+    }
+    await syncClanEntries(readGuildData());
+    renderTodayNow();
+    journal.finish('Сводка и события клана обновлены.');
+  } catch (error) {
+    journal.finish('Не удалось обновить клан.', 'error');
+    throw error;
+  }
 }
 
 /** Миллисекунд до ближайшей полуночи по Москве. */

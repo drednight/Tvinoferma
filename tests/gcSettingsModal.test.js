@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
 
 const invokeMock = vi.fn();
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (...a) => invokeMock(...a) }));
@@ -51,6 +52,27 @@ beforeEach(() => {
 });
 
 describe('окно «GameCenter и персонажи»', () => {
+  it('keeps long launcher names, paths and account status in separate named grid areas', async () => {
+    const name = 'Тестовый GameCenter с длинным названием';
+    const path = `C:\\${'Очень длинная папка\\'.repeat(15)}GameCenter.exe`;
+    state.settings.launcher.gameCenters = [{ ...GC1, name, path }];
+    invokeMock.mockImplementation(async () => ({ nick: 'Длинное имя аккаунта '.repeat(10), loggedIn: true }));
+    openGameCentersModal();
+    await tick();
+    expect(document.querySelector('.gcm-gc-name').value).toBe(name);
+    expect(document.querySelector('.gcm-gc-path').getAttribute('title')).toBe(path);
+    await until(() => document.querySelector('.gcm-gc-who')?.getAttribute('title')?.includes('Длинное имя аккаунта'));
+    expect(document.querySelector('.gcm-gc-who').getAttribute('title')).toContain('Длинное имя аккаунта');
+    const css = readFileSync('css/modules/launcher.css', 'utf8');
+    expect(css).toContain("'icon kind name actions'");
+    expect(css).toContain("'. path path path'");
+    expect(css).toContain("'. account account account'");
+    expect(css).toContain("'name name'");
+    for (const area of ['icon', 'kind', 'name', 'path', 'account', 'actions']) {
+      expect(css).toContain(`grid-area: ${area};`);
+    }
+  });
+
   it('показывает GameCenter, персонажей и подсказку про перенос путей из карточек', async () => {
     openGameCentersModal();
     await tick();

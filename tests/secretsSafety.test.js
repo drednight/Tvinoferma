@@ -336,3 +336,46 @@ describe('подтверждение локальных изменений vault
     }
   );
 });
+
+describe('safe startup diagnostic categories', () => {
+  it.each([
+    ['probe', 'vault_probe_unavailable'],
+    ['read', 'vault_read_failed'],
+    ['format', 'vault_records_invalid'],
+    ['identity', 'vault_identity_mapping_invalid'],
+    ['sources', 'vault_sources_inconsistent']
+  ])('classifies %s without exposing IDs, contacts or native failures', async (mode, code) => {
+    const privateText = 'PRIVATE-RAW-ERROR-SECRET';
+    const characters =
+      mode === 'identity'
+        ? [
+            { id: 'PRIVATE-ID', contacts: {} },
+            { id: 'PRIVATE-ID', contacts: {} }
+          ]
+        : [{ id: 'PRIVATE-ID', contacts: {} }];
+    const before = structuredClone(characters);
+    const calls = [];
+    __setInvoke(async (command, args) => {
+      calls.push(command);
+      if (command === 'secrets_available') return mode !== 'probe';
+      if (command === 'secrets_get_many') {
+        if (mode === 'read') throw new Error(privateText);
+        if (mode === 'format') return { 'PRIVATE-ID': privateText };
+        if (mode === 'sources')
+          return { 'PRIVATE-ID': contactsJson(contact('one')), 'PRIVATE-OLD': contactsJson(contact('two')) };
+        return {};
+      }
+      throw new Error('must not write');
+    });
+    await hydrateSecrets(characters, {
+      requiresVault: true,
+      aliases: mode === 'sources' ? { 'PRIVATE-ID': 'PRIVATE-OLD' } : {}
+    });
+    const status = vaultStatus();
+    expect(status).toMatchObject({ blocked: true, ready: false, diagnosticCode: code });
+    expect(JSON.stringify(status)).not.toContain('PRIVATE');
+    expect(characters).toEqual(before);
+    expect(calls).not.toContain('secrets_set_many');
+    expect(calls).not.toContain('secrets_delete_many');
+  });
+});

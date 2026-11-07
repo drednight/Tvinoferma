@@ -51,6 +51,7 @@ mod cloud_outbox_store;
 mod commands;
 mod cookie_bank;
 mod elevate;
+mod game_macros;
 mod guild;
 mod injection;
 mod launcher;
@@ -288,6 +289,19 @@ pub fn run() {
             launcher::launcher_has_account,
             // список запущенных окон игры и закрытие выбранных
             launcher::launcher_running_details,
+            game_macros::game_macro_overlay,
+            game_macros::game_macro_navigate,
+            game_macros::game_macro_overlay_fold,
+            game_macros::game_macro_overlay_preferences,
+            game_macros::game_macro_guide,
+            game_macros::game_macro_guide_result,
+            game_macros::game_macro_action,
+            game_macros::game_macro_input_idle,
+            game_macros::game_macro_background_probe,
+            game_macros::game_macro_bindings,
+            game_macros::game_macro_mirror,
+            game_macros::game_macro_pointer,
+            game_macros::game_macro_cursor,
             launcher::launcher_close_clients_pids,
             // повторная подпись окон (название и значок) после запуска
             launcher::launcher_decorate_clients,
@@ -300,6 +314,11 @@ pub fn run() {
             notify::tf_notify,
             notify::tf_notify_check,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                game_macros::shutdown_mirror();
+            }
+        });
 }
