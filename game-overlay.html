@@ -245,6 +245,16 @@
       .gm-journal-actions > button {
         margin: 0;
       }
+      .launch-character {
+        border-left: 3px solid var(--overlay-command);
+        padding: 6px 10px;
+        font-weight: 700;
+        background: #7de4b41a;
+      }
+      #launch-result {
+        border-top: 1px solid #637090;
+        padding-top: 8px;
+      }
       .repeat-controls {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -413,8 +423,11 @@
             <button id="close-confirm-yes">Да, закрыть все</button><button id="close-confirm-no">Отмена</button>
           </div>
           <div id="launch-progress" hidden>
+            <p id="launch-character" class="launch-character" hidden></p>
             <progress id="launch-percent" max="100" value="0" aria-label="Прогресс запуска пати"></progress>
             <p id="launch-stage" role="status" aria-live="polite"></p>
+            <p id="launch-elapsed" class="muted"></p>
+            <p id="launch-result" hidden></p>
           </div>
           <p id="window-notice" role="status">Нажмите «Обновить окна».</p>
           <ul id="windows"></ul>

@@ -227,13 +227,16 @@ it('attaches an external client to a free character and recognizes it after relo
   state.characters.push({ id: 'c', nick: 'Вв', class: 'Маг', partyIds: ['p1'] });
   const startedAt = Date.now() - 3600000;
   mocks.details.mockResolvedValue(clients().map(c => (c.pid === 300 ? { ...c, startedAt } : c)));
+  document.querySelector('[data-act="refresh"]').click();
+  await vi.waitFor(() => expect(document.querySelector('[data-attach="300"] option[value="c"]')).not.toBeNull());
+  await vi.waitFor(() => expect(document.querySelector('[data-attach="300"]').disabled).toBe(false));
   const select = document.querySelector('[data-attach="300"]');
   const option = document.createElement('option');
   option.value = 'c';
   select.append(option);
   select.value = 'c';
   select.dispatchEvent(new Event('change', { bubbles: true }));
-  await vi.waitFor(() => expect(document.querySelector('[data-attach="300"]')).toBeNull());
+  await vi.waitFor(() => expect(document.querySelector('[data-detach="300"]')).not.toBeNull());
   expect(rows().find(r => r.textContent.includes('PID 300')).textContent).toContain('Вв');
   expect(
     rows()
@@ -249,4 +252,31 @@ it('does not attach a character already recognized in another running window', a
   select.dispatchEvent(new Event('change', { bubbles: true }));
   await vi.waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('уже привязан'), 'error'));
   expect(document.querySelector('[data-attach="300"]')).not.toBeNull();
+});
+
+it('can override a recognized window and remove only its manual binding', async () => {
+  window.localStorage.clear();
+  state.characters.push({ id: 'c', nick: 'Вв', class: 'Маг', partyIds: ['p1'] });
+  const live = clients();
+  mocks.details.mockResolvedValue(live);
+  document.querySelector('[data-act="refresh"]').click();
+  await vi.waitFor(() => expect(document.querySelector('[data-attach="100"] option[value="c"]')).not.toBeNull());
+  const select = document.querySelector('[data-attach="100"]');
+  select.value = 'c';
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+  await vi.waitFor(() => expect(document.querySelector('[data-detach="100"]')).not.toBeNull());
+  expect(
+    document.querySelector('[data-attach="100"]').closest('.winp-row').querySelector('.winp-who b').textContent
+  ).toBe('Вв');
+  expect(
+    document.querySelector('[data-attach="100"]').closest('.winp-row').querySelector('.winp-source').textContent
+  ).toContain('Ручная');
+  document.querySelector('[data-detach="100"]').click();
+  await vi.waitFor(() => expect(document.querySelector('[data-detach="100"]')).toBeNull());
+  expect(
+    document.querySelector('[data-attach="100"]').closest('.winp-row').querySelector('.winp-who b').textContent
+  ).toBe('Аа');
+  expect(
+    document.querySelector('[data-attach="100"]').closest('.winp-row').querySelector('.winp-source').textContent
+  ).toContain('заголовка');
 });

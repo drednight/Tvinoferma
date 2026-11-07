@@ -967,3 +967,116 @@
   gap: 4px;
   min-width: 160px;
 }
+
+/* Macro sequencer: action library + compact selectable event tape. */
+.gm-compose-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+.gm-compose-summary {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 8px 0;
+}
+.gm-compose-workbench {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  margin: 12px 0;
+}
+.gm-action-library {
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.gm-action-library .btn {
+  text-align: left;
+  white-space: nowrap;
+}
+.gm-compose-workbench .gm-compose-steps {
+  margin: 0;
+  gap: 5px;
+}
+.gm-compose-workbench .gm-action-row {
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: var(--surface, #18202d);
+}
+.gm-compose-workbench .gm-action-row.is-selected {
+  border-color: var(--accent, #7de4b4);
+  background: #7de4b410;
+}
+.gm-action-row .gm-step-heading {
+  margin: 0;
+  gap: 4px;
+}
+.gm-step-select {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  padding: 4px 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.gm-step-number {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  width: 20px;
+  flex-shrink: 0;
+}
+.gm-step-kind {
+  font-size: 11px;
+  color: var(--muted);
+  max-width: 125px;
+}
+.gm-step-select strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.gm-action-row .gm-step-actions .btn {
+  padding: 3px 6px;
+}
+.gm-action-row .gm-step-editor {
+  margin-top: 8px;
+  padding: 8px;
+  border-top: 1px solid var(--border);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 135px), 1fr));
+  font-size: 12px;
+}
+.gm-step-editor[hidden] {
+  display: none;
+}
+@media (max-width: 620px) {
+  .gm-compose-workbench {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .gm-action-library {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .gm-action-library > strong {
+    width: 100%;
+  }
+  .gm-step-kind {
+    display: none;
+  }
+}
+.winp-source {
+  font-size: 11px;
+}
+
+.gm-compose-workbench .gm-action-row.is-invalid {
+  border-color: var(--danger, #f7768e);
+}

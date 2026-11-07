@@ -583,7 +583,7 @@ it('does not send the first key if stop was requested while native activation wa
 });
 it('refreshes the overlay window list without activating game windows or sending input', async () => {
   await runtime.overlayPartyAction({ action: 'party-refresh' });
-  expect(runtime.snapshot().windows).toEqual([{ name: 'Alpha', pid: 10, known: true }]);
+  expect(runtime.snapshot().windows).toEqual([{ name: 'Alpha', pid: 10, known: true, ownershipSource: 'title' }]);
   expect(invoke.mock.calls.some(([c]) => c === 'game_macro_action')).toBe(false);
   expect(runtime.snapshot().busy).toBe(false);
 });
@@ -905,4 +905,14 @@ it('omits hidden window size/profile commands only from the overlay view, retain
   );
   expect(runtime.snapshot().commands.map(row => row.id)).toEqual(['test']);
   expect(runtime.config().commands.map(row => row.id)).toEqual(['test', 'size', 'layout']);
+});
+
+it('resolves a manual override for command recipients even if the old title matches another character', async () => {
+  const { rememberExistingWindow, forgetManualWindow } = await import('../js/modules/launcher/launchedWindows.js');
+  state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['p'] });
+  rememberExistingWindow(client.pid, 'b', client.startedAt);
+  const rows = await runtime.listMacroWindows();
+  expect(rows[0]).toMatchObject({ charId: 'b', known: true, ownershipSource: 'manual' });
+  forgetManualWindow(client.pid, client.startedAt);
+  expect((await runtime.listMacroWindows())[0]).toMatchObject({ charId: 'a', ownershipSource: 'title' });
 });

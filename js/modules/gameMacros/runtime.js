@@ -164,14 +164,19 @@ export async function openOverlay() {
 }
 export async function listMacroWindows() {
   const { windowRows } = await import('../launcher/windowList.js');
-  const { recalledOwnership } = await import('../launcher/launchedWindows.js');
+  const { windowOwnershipOptions } = await import('../launcher/launchedWindows.js');
   const clients = await native('launcher_running_details');
   const selfElevated = clients.some(c => c.elevated === true) && (await native('launcher_self_elevated')) === true;
-  const rows = windowRows(clients, state.characters, {
-    recalled: recalledOwnership(clients.map(c => ({ pid: c.pid, uptimeMs: Date.now() - c.startedAt })))
-  }).map(r => ({ ...r, ...clients.find(c => c.pid === r.pid), selfElevated }));
+  const rows = windowRows(clients, state.characters, windowOwnershipOptions(clients)).map(r => ({
+    ...r,
+    ...clients.find(c => c.pid === r.pid),
+    selfElevated
+  }));
   for (const row of rows) {
-    if (state.characters.filter(c => String(c.nick).toLowerCase() === String(row.nick).toLowerCase()).length > 1)
+    if (
+      row.ownershipSource !== 'manual' &&
+      state.characters.filter(c => String(c.nick).toLowerCase() === String(row.nick).toLowerCase()).length > 1
+    )
       row.known = false;
   }
   return rows;
@@ -1415,7 +1420,12 @@ export async function overlayPartyAction(request) {
       const report = await closeAllClients();
       overlayWindowNotice = closeSelectedText(report);
       const rows = await listMacroWindows();
-      overlayWindows = rows.map(row => ({ name: row.nick || 'Нераспознанное окно', pid: row.pid, known: !!row.known }));
+      overlayWindows = rows.map(row => ({
+        name: row.nick || 'Нераспознанное окно',
+        pid: row.pid,
+        known: !!row.known,
+        ownershipSource: row.ownershipSource
+      }));
       return;
     }
     if (request.action === 'party-launch') {
@@ -1436,7 +1446,12 @@ export async function overlayPartyAction(request) {
         throw new Error('Запуск пати не завершён. Проверьте журнал скриптов.');
     }
     const rows = await listMacroWindows();
-    overlayWindows = rows.map(row => ({ name: row.nick || 'Нераспознанное окно', pid: row.pid, known: !!row.known }));
+    overlayWindows = rows.map(row => ({
+      name: row.nick || 'Нераспознанное окно',
+      pid: row.pid,
+      known: !!row.known,
+      ownershipSource: row.ownershipSource
+    }));
     overlayWindowNotice = cancelled
       ? 'Остановлено пользователем.'
       : `Найдено окон: ${rows.length}. Обновите список после входа персонажей.`;

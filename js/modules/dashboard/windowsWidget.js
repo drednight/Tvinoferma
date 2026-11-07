@@ -2,7 +2,7 @@ import { state } from '../../core/state.js';
 import { isTauri } from '../../core/storage.js';
 import { confirmModal, toast } from '../../core/ui.js';
 import { windowRows, closeSelectedText } from '../launcher/windowList.js';
-import { recalledOwnership } from '../launcher/launchedWindows.js';
+import { windowOwnershipOptions } from '../launcher/launchedWindows.js';
 export function mountWindowsWidget(panel, editing) {
   const content = document.createElement('div'),
     refresh = document.createElement('button');
@@ -24,11 +24,7 @@ export function mountWindowsWidget(panel, editing) {
       const api = await import('../launcher/launch.js'),
         clients = await api.runningClientDetails();
       if (!panel.isConnected) return;
-      const rows = windowRows(clients, state.characters, {
-        recalled: recalledOwnership(
-          clients.map(c => ({ pid: c.pid, uptimeMs: c.startedAt ? Date.now() - c.startedAt : null }))
-        )
-      });
+      const rows = windowRows(clients, state.characters, windowOwnershipOptions(clients));
       content.replaceChildren();
       if (!rows.length) content.textContent = 'Запущенных клиентов нет.';
       for (const row of rows) {

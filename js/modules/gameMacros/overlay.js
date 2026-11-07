@@ -12,6 +12,18 @@ async function init() {
     }
   };
   const current = getCurrentWindow();
+  let latestLaunch = null;
+  const renderElapsed = () => {
+    const launch = latestLaunch;
+    if (!launch?.stageStartedAt) {
+      document.getElementById('launch-elapsed').textContent = '';
+      return;
+    }
+    const seconds = Math.max(0, Math.floor(((launch.finishedAt || Date.now()) - launch.stageStartedAt) / 1000));
+    document.getElementById('launch-elapsed').textContent =
+      `Время этапа: ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  };
+  setInterval(renderElapsed, 1000);
   let journalLines = [];
   let repeatState = {};
   const keyboardToggle = document.getElementById('keyboard-repeat-toggle');
@@ -100,13 +112,24 @@ async function init() {
     document.getElementById('windows').replaceChildren(
       ...(data.windows || []).map(row => {
         const li = document.createElement('li');
-        li.textContent = `${row.name} · PID ${row.pid}${row.known ? '' : ' · не распознано'}`;
+        li.textContent = `${row.name} · PID ${row.pid}${row.known ? ` · ${{ manual: 'ручная привязка', title: 'из заголовка', launcher: 'запуск Твинофермой' }[row.ownershipSource] || 'распознано'}` : ' · не распознано'}`;
         return li;
       })
     );
     const launch = data.launchProgress;
+    latestLaunch = launch;
+    renderElapsed();
     document.getElementById('launch-progress').hidden = !launch;
     if (launch) {
+      document.getElementById('launch-character').hidden = !launch.character;
+      document.getElementById('launch-character').textContent = launch.character
+        ? `Сейчас: ${launch.character.nick}`
+        : '';
+      const result = document.getElementById('launch-result');
+      result.hidden = launch.status === 'running' || !launch.counts;
+      result.textContent = launch.counts
+        ? `Запущено: ${launch.counts.launched} · Уже работало: ${launch.counts.alreadyRunning} · Ошибка: ${launch.counts.failed} · Отменено: ${launch.counts.cancelled} · Пропущено: ${launch.counts.skipped}`
+        : '';
       document.getElementById('launch-percent').value = launch.percent;
       document.getElementById('launch-stage').textContent =
         `${launch.percent}% · ${launch.stage}${launch.total ? ` · ${launch.done}/${launch.total}` : ''}`;

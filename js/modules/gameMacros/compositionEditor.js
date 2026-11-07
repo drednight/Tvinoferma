@@ -7,6 +7,39 @@ import { mountRecorder } from './recorder.js';
 export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
   let blocks = row?.blocks?.length ? structuredClone(row.blocks) : [newBlock()];
   let disposeRecorder = () => {};
+  const selected = new Map();
+  const collapsed = new Set();
+  const undo = [];
+  const canAdd = (b, count = 1) => {
+    if (blocks[b].steps.length + count <= 64 && blocks.reduce((n, block) => n + block.steps.length, 0) + count <= 128)
+      return true;
+    host.querySelector('[data-compose-error]').textContent = 'Лимит: 64 действия в блоке и 128 в команде.';
+    return false;
+  };
+  const remember = () => {
+    undo.push(structuredClone(blocks));
+    if (undo.length > 20) undo.shift();
+  };
+  const summary = step => {
+    switch (step.type) {
+      case 'keys':
+        return step.value || 'Выберите клавишу';
+      case 'wait':
+        return `${step.ms || 0} мс`;
+      case 'point':
+        return c.points.find(p => p.id === step.pointId)?.name || 'Выберите точку';
+      case 'command':
+        return c.commands.find(cmd => cmd.id === step.commandId)?.name || 'Выберите команду';
+      case 'screen':
+        return `${step.x}, ${step.y} · ${step.count === 2 ? 'двойной клик' : 'клик'}`;
+      case 'launch':
+        return state.parties.find(p => p.id === step.partyId)?.name || 'Выберите пати';
+      case 'focus':
+        return { next: 'Следующее', previous: 'Предыдущее', leader: 'ПЛ' }[step.direction] || 'ПЛ';
+      default:
+        return STEP_LABELS[step.type];
+    }
+  };
   function newBlock(index = 1) {
     return {
       name: `Блок ${index}`,
@@ -115,10 +148,10 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
   }
   function draw() {
     disposeRecorder();
-    host.innerHTML = `<h4>Составная команда</h4><p>До 8 блоков / 128 действий. Включите «Одновременно с предыдущим» для соседних блоков. Паузы ветвей перекрываются, ввод сериализован. Получатели задаются для каждого блока. Клики требуют разрешения и предпросмотра после сохранения.</p>${blocks
+    host.innerHTML = `<div class="gm-compose-title"><h4>Составная команда</h4><button type="button" class="btn ghost small" data-undo ${undo.length ? '' : 'disabled'}>↶ Отменить изменение</button></div><p>До 8 блоков / 128 действий. Включите «Одновременно с предыдущим» для соседних блоков. Паузы ветвей перекрываются, ввод сериализован. Получатели задаются для каждого блока. Клики требуют разрешения и предпросмотра после сохранения.</p>${blocks
       .map(
         (block, b) =>
-          `<section class="gm-compose-block" data-block="${b}"><header><label>Название ${input('name', block.name)}</label><button class="btn ghost" type="button" data-block-up ${b === 0 ? 'disabled' : ''}>↑</button><button class="btn danger" type="button" data-block-delete>Удалить блок</button></header><label><input type="checkbox" data-field="parallel" ${block.parallel ? 'checked' : ''} ${b === 0 ? 'disabled' : ''}> Одновременно с предыдущим</label><div class="gm-compose-fields"><label>Область ${select(
+          `<section class="gm-compose-block" data-block="${b}"><header><button type="button" class="btn ghost small" data-block-collapse aria-expanded="${!collapsed.has(b)}" title="Свернуть или раскрыть блок">${collapsed.has(b) ? '▸' : '▾'}</button><label>Название ${input('name', block.name)}</label><button class="btn ghost" type="button" data-block-up ${b === 0 ? 'disabled' : ''}>↑</button><button class="btn danger" type="button" data-block-delete>Удалить блок</button></header><p class="gm-compose-summary">${esc(block.name)} · ${block.steps.length} действий · ${block.scope === 'managed' ? 'Все распознанные окна' : esc(state.parties.find(p => p.id === (block.partyId || c.partyId))?.name || 'Текущая пати')} · ${block.delivery === 'background' ? 'В фоне' : 'С активацией'}</p><div ${collapsed.has(b) ? 'hidden' : ''}><label><input type="checkbox" data-field="parallel" ${block.parallel ? 'checked' : ''} ${b === 0 ? 'disabled' : ''}> Одновременно с предыдущим</label><div class="gm-compose-fields"><label>Область ${select(
             'scope',
             [
               ['party', 'Пати'],
@@ -158,7 +191,22 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
                   )
                   .join('')}</fieldset>`
               : ''
-          }<ol class="gm-compose-steps">${block.steps.map((step, i) => `<li data-step="${i}" ${['resize', 'profile'].includes(step.type) || (step.type === 'command' && c.commands.some(cmd => cmd.id === step.commandId && !commandVisible(cmd))) ? 'hidden' : ''}><div class="gm-step-heading"><strong>Шаг ${i + 1}</strong><div class="gm-step-actions"><button type="button" class="btn ghost small" data-step-up title="Переместить шаг вверх" aria-label="Переместить шаг вверх" ${i === 0 ? 'disabled' : ''}>↑</button><button type="button" class="btn ghost small" data-step-down title="Переместить шаг вниз" aria-label="Переместить шаг вниз" ${i === block.steps.length - 1 ? 'disabled' : ''}>↓</button><button type="button" class="btn danger small" data-step-delete title="Удалить шаг">Удалить шаг</button></div></div><div class="gm-compose-fields"><label>Действие ${select('type', Object.entries(STEP_LABELS), step.type)}</label>${fields(step)}</div></li>`).join('')}</ol><div class="row gap"><button type="button" class="btn" data-step-add>＋ Действие</button><button type="button" class="btn ghost" data-command-choose>＋ Добавить готовую команду</button><label class="gm-field" data-command-picker hidden>Команда из «Моих команд»<select data-insert-command>${[['', 'Добавить существующую команду…'], ...c.commands.filter(cmd => cmd.id !== row?.id && commandVisible(cmd) && !['mirror', 'mouse-mirror', 'pause'].includes(cmd.action)).map(cmd => [cmd.id, cmd.name])].map(([v, l]) => option(v, l, '')).join('')}</select><small>Вставляется ссылка на сохранённую команду с её настройками. Изменения исходной команды применятся и здесь; циклы запрещены. Переключатели повтора не вставляются.</small></label><button type="button" class="btn" data-new-point>＋ Именованная точка</button></div><div data-recorder></div></section>`
+          }<div class="gm-compose-workbench"><aside class="gm-action-library" aria-label="Добавить действие"><strong>Добавить</strong>${[
+            ['keys', '⌨', 'Клавиша'],
+            ['wait', '◷', 'Пауза'],
+            ['point', '⌖', 'Точка'],
+            ['screen', '↗', 'Клик'],
+            ['focus', '▣', 'Окно'],
+            ['launch', '▶', 'Пати'],
+            ['pause', 'Ⅱ', 'Ожидание']
+          ]
+            .map(
+              ([type, icon, label]) =>
+                `<button type="button" class="btn ghost small" data-add-type="${type}">${icon} ${label}</button>`
+            )
+            .join(
+              ''
+            )}</aside><ol class="gm-compose-steps">${block.steps.map((step, i) => `<li class="gm-action-row ${i === (selected.get(b) || 0) ? 'is-selected' : ''}" data-step="${i}" ${['resize', 'profile'].includes(step.type) || (step.type === 'command' && c.commands.some(cmd => cmd.id === step.commandId && !commandVisible(cmd))) ? 'hidden' : ''}><div class="gm-step-heading"><button type="button" class="gm-step-select" data-step-select aria-expanded="${i === (selected.get(b) || 0)}"><span class="gm-step-number">${i + 1}</span><span class="gm-step-kind">${esc(STEP_LABELS[step.type])}</span><strong data-step-summary>${esc(summary(step))}</strong></button><div class="gm-step-actions"><button type="button" class="btn ghost small" data-step-up title="Переместить шаг вверх" aria-label="Переместить шаг вверх" ${i === 0 ? 'disabled' : ''}>↑</button><button type="button" class="btn ghost small" data-step-down title="Переместить шаг вниз" aria-label="Переместить шаг вниз" ${i === block.steps.length - 1 ? 'disabled' : ''}>↓</button><button type="button" class="btn ghost small" data-step-copy title="Дублировать шаг" aria-label="Дублировать шаг">⧉</button><button type="button" class="btn danger small" data-step-delete title="Удалить шаг" aria-label="Удалить шаг">×</button></div></div><div class="gm-compose-fields gm-step-editor" ${i === (selected.get(b) || 0) ? '' : 'hidden'}><label>Действие ${select('type', Object.entries(STEP_LABELS), step.type)}</label>${fields(step)}</div></li>`).join('')}</ol></div><div class="row gap"><button type="button" class="btn" data-step-add>＋ Действие</button><button type="button" class="btn ghost" data-command-choose>＋ Добавить готовую команду</button><label class="gm-field" data-command-picker hidden>Команда из «Моих команд»<select data-insert-command>${[['', 'Добавить существующую команду…'], ...c.commands.filter(cmd => cmd.id !== row?.id && commandVisible(cmd) && !['mirror', 'mouse-mirror', 'pause'].includes(cmd.action)).map(cmd => [cmd.id, cmd.name])].map(([v, l]) => option(v, l, '')).join('')}</select><small>Вставляется ссылка на сохранённую команду с её настройками. Изменения исходной команды применятся и здесь; циклы запрещены. Переключатели повтора не вставляются.</small></label><button type="button" class="btn" data-new-point>＋ Именованная точка</button></div><div data-recorder></div></div></section>`
       )
       .join(
         ''
@@ -169,8 +217,9 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
       cleanups.push(
         mountRecorder(el.querySelector('[data-recorder]'), {
           cursor,
-          limit: 64 - blocks[b].steps.length,
+          limit: Math.min(64 - blocks[b].steps.length, 128 - blocks.reduce((n, block) => n + block.steps.length, 0)),
           onRecorded: steps => {
+            remember();
             blocks[b].steps.push(...steps);
             draw();
           }
@@ -186,6 +235,8 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
     const b = Number(el.dataset.block),
       stepEl = e.target.closest('[data-step]');
     if (e.target.matches('[data-insert-command]')) {
+      if (!canAdd(b)) return;
+      remember();
       if (e.target.value) blocks[b].steps.push({ type: 'command', commandId: e.target.value });
       draw();
       return;
@@ -214,6 +265,7 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
         : ['ms', 'x', 'y', 'width', 'height', 'count'].includes(field)
           ? Number(e.target.value)
           : e.target.value;
+    if (stepEl) stepEl.querySelector('[data-step-summary]').textContent = summary(object);
     if (!stepEl && ['partyId', 'target', 'scope', 'delivery'].includes(field)) {
       if (field === 'partyId') object.charIds = [];
       if (object.scope === 'managed') object.target = 'all';
@@ -230,6 +282,42 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
       b = Number(el?.dataset.block),
       step = button.closest('[data-step]'),
       i = Number(step?.dataset.step);
+    if (button.hasAttribute('data-undo')) {
+      if (undo.length) {
+        blocks = undo.pop();
+        selected.clear();
+        collapsed.clear();
+        draw();
+      }
+      return;
+    }
+    if (button.hasAttribute('data-block-collapse')) {
+      if (collapsed.has(b)) collapsed.delete(b);
+      else collapsed.add(b);
+      draw();
+      return;
+    }
+    if (button.hasAttribute('data-step-select')) {
+      selected.set(b, i);
+      draw();
+      return;
+    }
+    if (button.hasAttribute('data-add-type')) {
+      if (!canAdd(b)) return;
+      remember();
+      blocks[b].steps.push(blank(button.dataset.addType));
+      selected.set(b, blocks[b].steps.length - 1);
+      draw();
+      return;
+    }
+    if (button.hasAttribute('data-step-copy')) {
+      if (!canAdd(b)) return;
+      remember();
+      blocks[b].steps.splice(i + 1, 0, structuredClone(blocks[b].steps[i]));
+      selected.set(b, i + 1);
+      draw();
+      return;
+    }
     if (button.hasAttribute('data-command-choose')) {
       el.querySelector('[data-command-picker]').hidden = false;
       el.querySelector('[data-insert-command]').focus();
@@ -237,33 +325,48 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
     }
     if (button.hasAttribute('data-block-add')) {
       if (blocks.length >= 8) return;
+      remember();
       blocks.push(newBlock(blocks.length + 1));
       draw();
     }
     if (button.hasAttribute('data-block-delete')) {
+      remember();
       blocks.splice(b, 1);
+      selected.clear();
+      collapsed.clear();
       if (blocks[0]) blocks[0].parallel = false;
       draw();
     }
     if (button.hasAttribute('data-block-up') && b > 0) {
+      remember();
+      selected.clear();
+      collapsed.clear();
       [blocks[b - 1], blocks[b]] = [blocks[b], blocks[b - 1]];
       blocks[0].parallel = false;
       draw();
     }
     if (button.hasAttribute('data-step-add')) {
-      if (blocks[b].steps.length >= 64) return;
+      if (!canAdd(b)) return;
+      remember();
       blocks[b].steps.push(blank('keys'));
+      selected.set(b, blocks[b].steps.length - 1);
       draw();
     }
     if (button.hasAttribute('data-step-delete')) {
+      remember();
       blocks[b].steps.splice(i, 1);
+      selected.set(b, Math.max(0, Math.min(i, blocks[b].steps.length - 1)));
       draw();
     }
     if (button.hasAttribute('data-step-down') && i < blocks[b].steps.length - 1) {
+      remember();
+      selected.set(b, i + 1);
       [blocks[b].steps[i + 1], blocks[b].steps[i]] = [blocks[b].steps[i], blocks[b].steps[i + 1]];
       draw();
     }
     if (button.hasAttribute('data-step-up') && i > 0) {
+      remember();
+      selected.set(b, i - 1);
       [blocks[b].steps[i - 1], blocks[b].steps[i]] = [blocks[b].steps[i], blocks[b].steps[i - 1]];
       draw();
     }
@@ -278,7 +381,30 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
   };
   draw();
   return {
-    read: () => normalizeComposition(blocks),
+    read: () => {
+      try {
+        return normalizeComposition(blocks);
+      } catch (error) {
+        for (const [b, block] of blocks.entries()) {
+          for (const [i, step] of block.steps.entries()) {
+            try {
+              normalizeComposition([{ ...block, parallel: false, steps: [step] }]);
+            } catch {
+              selected.set(b, i);
+              collapsed.delete(b);
+              draw();
+              const row = host.querySelector(`[data-block="${b}"] [data-step="${i}"]`);
+              row?.classList.add('is-invalid');
+              host.querySelector('[data-compose-error]').textContent = `Блок ${b + 1}, шаг ${i + 1}: ${error.message}`;
+              row?.querySelector('input, select')?.focus();
+              throw error;
+            }
+          }
+        }
+        host.querySelector('[data-compose-error]').textContent = error.message;
+        throw error;
+      }
+    },
     setBlocks: next => {
       blocks = normalizeComposition(next);
       draw();

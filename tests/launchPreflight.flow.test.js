@@ -352,4 +352,19 @@ it('publishes launch progress, current character stage and terminal summary to t
   expect(updates.some(p => p.done === 1 && p.total === 2 && p.percent > 0 && p.percent < 100)).toBe(true);
   expect(updates.at(-1).percent).toBe(100);
   expect(updates.at(-1).stage).toContain('Запущено');
+  expect(updates.some(p => p.character?.id === 'a' && p.stageStartedAt > 0)).toBe(true);
+  expect(updates.at(-1).counts).toMatchObject({ launched: 2, alreadyRunning: 0, failed: 0, cancelled: 0 });
+  expect(updates.at(-1).finishedAt).toBeGreaterThan(0);
+});
+
+it('reports waiting for a decision in the main window rather than a client-window wait', async () => {
+  const updates = [];
+  state.characters = [A()];
+  state.characters[0].launch.gcAccounts = {};
+  const pending = partyLaunch.launchGroup('Проверка', state.characters, { onProgress: p => updates.push(p) });
+  await vi.waitFor(() => expect(updates.some(p => p.waitingForUser)).toBe(true));
+  expect(updates.find(p => p.waitingForUser).stage).toContain('главном окне');
+  click('cancel');
+  await pending;
+  expect(updates.at(-1).counts.cancelled).toBe(1);
 });

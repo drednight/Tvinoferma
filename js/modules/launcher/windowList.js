@@ -41,11 +41,11 @@ export function parseWindowTitle(title) {
  *
  * @param {Array<{pid: number, image?: string, startedAt?: number|null, title?: string, hwnd?: number|null, elevated?: boolean|null}>} clients ответ `launcher_running_details`
  * @param {Array<any>} characters персонажи приложения
- * @param {{ now?: number, partyIds?: string[] | null, recalled?: Record<string, string> }} [opts]
+ * @param {{ now?: number, partyIds?: string[] | null, recalled?: Record<string, string>, manual?: Record<string, string> }} [opts]
  *   `partyIds` — ограничить список участниками этих пати;
  *   `recalled` — `{ pid: charId }` из памяти запусков: подпись окна слетает вместе со
  *   значком, и без заголовка персонажа не с кем сопоставить (см. launchedWindows.js)
- * @returns {Array<{ pid: number, image: string, nick: string, cls: string, known: boolean, charId: string|null, uptimeMs: number|null, elevated: boolean|null, title: string, partyIds: string[] }>}
+ * @returns {Array<{ pid: number, image: string, nick: string, cls: string, known: boolean, ownershipSource: string, charId: string|null, uptimeMs: number|null, startedAt: number|null, elevated: boolean|null, title: string, partyIds: string[] }>}
  */
 export function windowRows(clients, characters, opts = {}) {
   const now = opts.now ?? Date.now();
@@ -71,7 +71,10 @@ export function windowRows(clients, characters, opts = {}) {
     .map(client => {
       const parsed = parseWindowTitle(client?.title);
       const pid = Number(client?.pid) || 0;
+      const manualChar = list.find(c => String(c.id) === String(opts.manual?.[String(pid)]));
+      const titleChar = parsed ? byNick.get(parsed.nick.toLowerCase()) : null;
       const char =
+        manualChar ||
         (parsed ? byNick.get(parsed.nick.toLowerCase()) : null) ||
         // Заголовок бесполезен — берём персонажа из памяти запусков
         byPid.get(String(pid)) ||
@@ -83,7 +86,9 @@ export function windowRows(clients, characters, opts = {}) {
         nick: char ? String(char.nick) : parsed?.nick || '',
         cls: char ? String(char.class || '') : parsed?.cls || '',
         known: !!char,
+        ownershipSource: manualChar ? 'manual' : titleChar ? 'title' : char ? 'launcher' : 'unknown',
         charId: char ? char.id : null,
+        startedAt: client?.startedAt || null,
         uptimeMs: client?.startedAt ? Math.max(0, now - Number(client.startedAt)) : null,
         elevated: client?.elevated ?? null,
         title: String(client?.title || ''),

@@ -381,3 +381,35 @@ it('opens a separate TeamSpeak window, not a page in the party overlay', async (
   document.getElementById('teamspeak-open').click();
   await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('teamspeak_overlay'));
 });
+
+it('shows current character, elapsed stage time and terminal launch counts', async () => {
+  const started = Date.now() - 65000;
+  const progress = {
+    status: 'running',
+    percent: 45,
+    done: 1,
+    total: 2,
+    stage: 'Ожидаем окно клиента',
+    stageStartedAt: started,
+    character: { id: 'a', nick: 'Alpha' },
+    counts: { launched: 1, alreadyRunning: 2, failed: 0, cancelled: 0, skipped: 0 }
+  };
+  mocks.handlers.get('game-macro-snapshot')({ payload: { launchProgress: progress } });
+  expect(document.getElementById('launch-character').textContent).toBe('Сейчас: Alpha');
+  expect(document.getElementById('launch-elapsed').textContent).toContain('1:05');
+  expect(document.getElementById('launch-result').hidden).toBe(true);
+  mocks.handlers.get('game-macro-snapshot')({
+    payload: {
+      launchProgress: {
+        ...progress,
+        character: null,
+        status: 'warn',
+        finishedAt: Date.now(),
+        counts: { ...progress.counts, failed: 1 }
+      }
+    }
+  });
+  expect(document.getElementById('launch-character').hidden).toBe(true);
+  expect(document.getElementById('launch-result').hidden).toBe(false);
+  expect(document.getElementById('launch-result').textContent).toContain('Запущено: 1 · Уже работало: 2 · Ошибка: 1');
+});

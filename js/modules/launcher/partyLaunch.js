@@ -6,6 +6,7 @@
 import { state } from '../../core/state.js';
 import { persist, isTauri } from '../../core/storage.js';
 import { toast, confirmModal } from '../../core/ui.js';
+import { windowOwnershipOptions } from './launchedWindows.js';
 import { startTask, onTaskChange } from '../../core/taskLog.js';
 import {
   launchCharacters,
@@ -290,13 +291,33 @@ export async function launchGroup(title, characters, opts = {}) {
   let task = null;
   let macroCancelTimer;
   let unsubscribeProgress = () => {};
+  let stageKey = '',
+    stageStartedAt = Date.now(),
+    currentCharacter = null,
+    waitingForUser = false;
+  let counts = { launched: 0, alreadyRunning: 0, failed: 0, cancelled: 0, skipped: 0 };
+  const characterStage = (character, stage) => {
+    currentCharacter = { id: character.id, nick: character.nick };
+    waitingForUser = false;
+    task.setStep(`${character.nick}: ${stage}`);
+  };
   const publishProgress = current => {
     if (!opts.onProgress) return;
     try {
       const total = Math.max(0, Number(current.total) || 0),
         done = Math.max(0, Number(current.done) || 0);
       const running = current.status === 'running';
+      const key = `${current.step}|${currentCharacter?.id || ''}|${waitingForUser}`;
+      if (key !== stageKey) {
+        stageKey = key;
+        stageStartedAt = Date.now();
+      }
       opts.onProgress({
+        character: running ? currentCharacter : null,
+        waitingForUser: running && waitingForUser,
+        stageStartedAt,
+        finishedAt: running ? null : Date.now(),
+        counts: { ...counts },
         done,
         total,
         percent: running ? Math.min(99, total ? Math.round((done / total) * 95) : 0) : 100,
@@ -327,6 +348,7 @@ export async function launchGroup(title, characters, opts = {}) {
     // Ждём своей очереди: пока идёт другой скрипт, игру не запускаем
     await task.waitTurn();
     if (signal.cancelled) {
+      counts.cancelled = characters.length;
       task.finish('Отменено в очереди', 'warn');
       return null;
     }
@@ -345,8 +367,13 @@ export async function launchGroup(title, characters, opts = {}) {
     //   — если после правки ничего не изменилось, второй экран не показываем вовсе.
     let fixedOnce = false;
     while (opts.interactive !== false && shouldShowPreflight(pre, mode)) {
+      currentCharacter = null;
+      waitingForUser = true;
+      task.setStep('Ожидаем действие пользователя в главном окне: проверка запуска');
       const choice = await openPreflight(pre, { title, gameCenters: launchContext().gameCenters });
+      waitingForUser = false;
       if (!choice) {
+        counts.cancelled = characters.length;
         task.finish('Отменено на экране проверки', 'warn');
         return null;
       }
@@ -355,7 +382,10 @@ export async function launchGroup(title, characters, opts = {}) {
       if (fixes.some(f => f.id === 'openGcWindow')) {
         if (fixedOnce) break; // окно уже открывали, второй раз по той же просьбе — нет
         fixedOnce = true;
+        waitingForUser = true;
+        task.setStep('Ожидаем действие пользователя в главном окне: настройки GameCenter');
         await openGameCentersForFix(pre, opts);
+        waitingForUser = false;
       }
       // Окна игры от администратора: подписываем их короткоживущим помощником от администратора.
       // Твиноферма при этом не перезапускается — права нужны только на это действие.
@@ -367,6 +397,8 @@ export async function launchGroup(title, characters, opts = {}) {
     }
     const ready = pre.toLaunch;
     const skipped = [...pre.noGc, ...pre.noSavedLogin];
+    counts.alreadyRunning = pre.alreadyRunning.length;
+    counts.skipped = skipped.length;
     if (!ready.length) {
       if (pre.alreadyRunning.length && !skipped.length)
         toast(launchSummary({ ok: 0, running: pre.alreadyRunning.length, ms: 0 }), 'info');
@@ -402,9 +434,9 @@ export async function launchGroup(title, characters, opts = {}) {
       {
         signal,
         gcId,
-        onStage: (c, stage) => task.setStep(`${c.nick}: ${stage}`),
+        onStage: (c, stage) => characterStage(c, stage),
         onStart: c => {
-          task.setStep(`${c.nick}: запуск…`);
+          characterStage(c, 'запуск…');
           const target = resolveGameCenter(c, group.ctx);
           task.log(
             `${c.nick}: GameCenter «${target?.gc?.name || 'свой путь'}»; сохранённый вход — ${target?.saved ? 'да' : 'нет'}.`
@@ -413,6 +445,9 @@ export async function launchGroup(title, characters, opts = {}) {
         onDone: (e, done, total) => {
           task.log(`${e.nick}: ${e.ok ? 'клиент игры запущен' : `ошибка — ${e.error}`}`, e.ok ? 'ok' : 'error');
           launchWarnings(e.info).forEach(w => task.log(`${e.nick}: ${w}`, 'warn'));
+          counts.launched += Number(!!e.ok);
+          counts.cancelled += Number(!!e.cancelled);
+          counts.failed += Number(!e.ok && !e.cancelled);
           task.progress(done, total);
         }
       },
@@ -439,8 +474,8 @@ export async function launchGroup(title, characters, opts = {}) {
         {
           signal,
           gcId,
-          onStage: (c, stage) => task.setStep(`${c.nick}: повтор — ${stage}`),
-          onStart: c => task.setStep(`${c.nick}: повтор…`),
+          onStage: (c, stage) => characterStage(c, `повтор — ${stage}`),
+          onStart: c => characterStage(c, 'повтор…'),
           onDone: e => {
             task.log(
               `${e.nick}: повтор — ${e.ok ? 'клиент игры запущен' : `снова ошибка — ${e.error}`}`,
@@ -458,6 +493,7 @@ export async function launchGroup(title, characters, opts = {}) {
     // Проверяем, что окна действительно получили название «Ник — Класс» и значок: окно клиента
     // появляется не сразу, и игра может переписать заголовок. Где не вышло — пробуем ещё раз.
     try {
+      currentCharacter = null;
       task.setStep('Проверка названий и значков игровых окон…');
       const decorNote = await verifyLaunchedDecor(results);
       if (decorNote) task.log(decorNote, 'warn');
@@ -480,6 +516,7 @@ export async function launchGroup(title, characters, opts = {}) {
       running: pre.alreadyRunning.length,
       ms
     });
+    counts = { launched: ok, alreadyRunning: pre.alreadyRunning.length, failed, cancelled, skipped: skipped.length };
     task.finish(summary, failed ? 'warn' : undefined);
     reportDone(summary, failed > 0);
     saveRunToHistory({ title, results, pre, ms, gcName });
@@ -607,7 +644,8 @@ export async function closePartyWindows(partyName) {
 
   let rows;
   try {
-    rows = windowRows(await runningClientDetails(), state.characters);
+    const clients = await runningClientDetails();
+    rows = windowRows(clients, state.characters, windowOwnershipOptions(clients));
   } catch (e) {
     toast(`Не удалось получить список окон: ${errText(e)}`, 'error');
     return 0;
@@ -671,7 +709,8 @@ export async function signPartyWindows(partyName) {
 
   let rows;
   try {
-    rows = windowRows(await runningClientDetails(), state.characters);
+    const clients = await runningClientDetails();
+    rows = windowRows(clients, state.characters, windowOwnershipOptions(clients));
   } catch (e) {
     toast(`Не удалось получить список окон: ${errText(e)}`, 'error');
     return 0;
