@@ -690,7 +690,7 @@ mod win {
                 "vk":vk,"scanSender":MapVirtualKeyW(vk as u32,MAPVK_VK_TO_VSC),
                 "scanTarget":MapVirtualKeyExW(vk as u32,MAPVK_VK_TO_VSC,Some(layout)),
                 "modifiers":mods,"selectedKeyHeld":GetAsyncKeyState(vk as i32)<0,
-                "modifierHeld":[0x10,0x11,0x12,0x5b,0x5c].iter().any(|v|GetAsyncKeyState(*v)<0),
+                "modifierHeld":([0x10,0x11,0x12,0x5b,0x5c].iter().any(|v|GetAsyncKeyState(*v)<0)),
                 "health":probes,"inputSent":false}),
             )
         }
