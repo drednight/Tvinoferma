@@ -62,7 +62,32 @@ struct Context {
     mouse: bool,
     keyboard: bool,
     source: Option<usize>,
-    last_mouse: Option<(u8, i32, i32, u64)>,
+    last_mouse: Option<(usize, u8, i32, i32, u64)>,
+}
+// Use Windows' time AND movement tolerance; a double click is scoped to one source window.
+fn double_click_matches(
+    previous: Option<(usize, u8, i32, i32, u64)>,
+    current: (usize, u8, i32, i32, u64),
+    timeout: u64,
+    width: i32,
+    height: i32,
+) -> bool {
+    let Some((source, button, x, y, time)) = previous else {
+        return false;
+    };
+    let (next_source, next_button, next_x, next_y, next_time) = current;
+    let dx = i64::from(next_x) - i64::from(x);
+    let dy = i64::from(next_y) - i64::from(y);
+    let w = i64::from(width.max(1));
+    let h = i64::from(height.max(1));
+    source == next_source
+        && button == next_button
+        && next_time >= time
+        && next_time - time <= timeout
+        && dx >= -(w / 2)
+        && dx < (w + 1) / 2
+        && dy >= -(h / 2)
+        && dy < (h + 1) / 2
 }
 thread_local! { static CONTEXT: RefCell<Option<Context>> = const { RefCell::new(None) }; }
 fn halt(control: &Control, reason: u8) {
@@ -228,17 +253,18 @@ unsafe extern "system" fn mouse_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESU
                 );
                 let at = now();
                 let double = !up
-                    && ctx.last_mouse.is_some_and(|(b, x, y, t)| {
-                        b == button
-                            && x == event.pt.x
-                            && y == event.pt.y
-                            && at.saturating_sub(t) <= GetDoubleClickTime() as u64
-                    });
+                    && double_click_matches(
+                        ctx.last_mouse,
+                        (source, button, event.pt.x, event.pt.y, at),
+                        GetDoubleClickTime() as u64,
+                        GetSystemMetrics(SM_CXDOUBLECLK),
+                        GetSystemMetrics(SM_CYDOUBLECLK),
+                    );
                 if !up {
                     ctx.last_mouse = if double {
                         None
                     } else {
-                        Some((button, event.pt.x, event.pt.y, at))
+                        Some((source, button, event.pt.x, event.pt.y, at))
                     };
                 }
                 let flags = if GetAsyncKeyState(0x10) < 0 { 4 } else { 0 }
@@ -672,6 +698,52 @@ pub fn start(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn doubles_allow_system_jitter_but_not_other_sources_buttons_or_late_clicks() {
+        let previous = Some((10, 0, 100, 100, 1000));
+        assert!(double_click_matches(
+            previous,
+            (10, 0, 101, 99, 1300),
+            500,
+            4,
+            4
+        ));
+        assert!(!double_click_matches(
+            previous,
+            (10, 0, 104, 100, 1300),
+            500,
+            4,
+            4
+        ));
+        assert!(!double_click_matches(
+            previous,
+            (20, 0, 100, 100, 1300),
+            500,
+            4,
+            4
+        ));
+        assert!(!double_click_matches(
+            previous,
+            (10, 1, 100, 100, 1300),
+            500,
+            4,
+            4
+        ));
+        assert!(!double_click_matches(
+            previous,
+            (10, 0, 100, 100, 1600),
+            500,
+            4,
+            4
+        ));
+        assert!(!double_click_matches(
+            None,
+            (10, 0, 100, 100, 1300),
+            500,
+            4,
+            4
+        ));
+    }
     #[test]
     fn leader_source_does_not_accept_other_clients() {
         assert!(source_allowed(None, 20));

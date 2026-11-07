@@ -1150,7 +1150,7 @@ mod win {
                 Some(hwnd),
                 if up {
                     release
-                } else if double {
+                } else if double && GetClassLongW(hwnd, GCL_STYLE) & CS_DBLCLKS.0 != 0 {
                     dbl
                 } else {
                     down
