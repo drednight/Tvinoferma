@@ -100,7 +100,7 @@ function log(text, commandName = activeCommandName, notify = true, terminal = fa
   if (notify) void broadcast();
 }
 export function stop(stopMirror = true) {
-  if (stopMirror && (mirroring || mirrorPending)) void disableKeyboardMirror();
+  if (stopMirror && (mirroring || mirrorPending || mirrorKeys || mirrorMouse)) void disableKeyboardMirror();
   cancelled = true;
   executionState = busy ? 'stopping' : 'stopped';
   notice = busy ? 'Остановка запрошена…' : 'Остановлено пользователем.';
@@ -1154,7 +1154,11 @@ export async function toggleKeyboardMirror(kind = 'keyboard', commandName = '', 
     await disableKeyboardMirror();
     return;
   }
-  if (mirroring) await disableKeyboardMirror(true);
+  if (mirroring) {
+    const transitionEpoch = mirrorEpoch;
+    await disableKeyboardMirror(true);
+    if (mirrorEpoch !== transitionEpoch + 1) return; // Explicit stop wins over an in-flight refresh.
+  }
   if (mirrorKeys || mirrorMouse) {
     mirrorKeys = desiredKeys;
     mirrorMouse = desiredMouse;

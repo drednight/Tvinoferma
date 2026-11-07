@@ -200,3 +200,29 @@ it('does not disable repeat when pausing macros, but explicit stop still disable
   await vi.waitFor(() => expect(runtime.snapshot().mirroring).toBe(false));
   expect(runtime.snapshot()).toMatchObject({ mirrorKeys: false, mirrorMouse: false });
 });
+it('does not re-enable repeat if the user stops during a settings refresh', async () => {
+  await runtime.toggleKeyboardMirror();
+  let releaseStop;
+  m.invoke.mockImplementation(async (name, args) =>
+    name === 'launcher_running_details'
+      ? clients
+      : name === 'game_macro_mirror'
+        ? args.operation === 'stop' && args.sessionId
+          ? new Promise(resolve => {
+              releaseStop = resolve;
+            })
+          : args.operation === 'start' || args.operation === 'heartbeat'
+        : null
+  );
+  state.settings.gameMacros.commands[0].hotkey = 'CTRL+ALT+F11';
+  m.invoke.mockClear();
+  const refreshing = runtime.configure();
+  await vi.waitFor(() => expect(releaseStop).toBeTypeOf('function'));
+  runtime.stop();
+  releaseStop(true);
+  await refreshing;
+  expect(runtime.snapshot()).toMatchObject({ mirroring: false, mirrorKeys: false, mirrorMouse: false });
+  expect(m.invoke.mock.calls.some(([name, args]) => name === 'game_macro_mirror' && args.operation === 'start')).toBe(
+    false
+  );
+});
