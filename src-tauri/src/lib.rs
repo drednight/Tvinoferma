@@ -62,6 +62,7 @@ mod parsers;
 mod pool;
 mod shortcut;
 mod stats_ocr;
+mod teamspeak;
 mod tray;
 mod vault;
 mod windows;
@@ -289,6 +290,11 @@ pub fn run() {
             launcher::launcher_has_account,
             // список запущенных окон игры и закрытие выбранных
             launcher::launcher_running_details,
+            teamspeak::teamspeak_overlay,
+            teamspeak::teamspeak_topmost,
+            teamspeak::teamspeak3_connect,
+            teamspeak::teamspeak3_poll,
+            teamspeak::teamspeak3_disconnect,
             game_macros::game_macro_overlay,
             game_macros::game_macro_navigate,
             game_macros::game_macro_overlay_fold,

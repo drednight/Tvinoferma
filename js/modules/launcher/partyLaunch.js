@@ -6,7 +6,7 @@
 import { state } from '../../core/state.js';
 import { persist, isTauri } from '../../core/storage.js';
 import { toast, confirmModal } from '../../core/ui.js';
-import { startTask } from '../../core/taskLog.js';
+import { startTask, onTaskChange } from '../../core/taskLog.js';
 import {
   launchCharacters,
   launchSummary,
@@ -289,12 +289,34 @@ export async function launchGroup(title, characters, opts = {}) {
   activeLaunches += 1;
   let task = null;
   let macroCancelTimer;
+  let unsubscribeProgress = () => {};
+  const publishProgress = current => {
+    if (!opts.onProgress) return;
+    try {
+      const total = Math.max(0, Number(current.total) || 0),
+        done = Math.max(0, Number(current.done) || 0);
+      const running = current.status === 'running';
+      opts.onProgress({
+        done,
+        total,
+        percent: running ? Math.min(99, total ? Math.round((done / total) * 95) : 0) : 100,
+        stage: current.step || current.summary || 'Ожидание очереди',
+        status: current.status
+      });
+    } catch {
+      /* progress rendering must never abort a launch */
+    }
+  };
   try {
     // Задача создаётся сразу, до проверок: пока идёт другой скрипт, запуск встаёт в очередь
     // дока и ждёт своей очереди, а не отказывает («запуск уже идёт»). Проверки идут уже после
     // ожидания: иначе «окна уже запущены» считалось бы по окнам чужого, ещё не закончившегося
     // запуска, и наш персонаж был бы пропущен.
     task = startTask(title, { cancelable: true });
+    unsubscribeProgress = onTaskChange(current => {
+      if (current === task) publishProgress(current);
+    });
+    publishProgress(task);
     if (typeof opts.cancelled === 'function')
       macroCancelTimer = setInterval(() => {
         if (opts.cancelled()) task.cancel();
@@ -380,6 +402,7 @@ export async function launchGroup(title, characters, opts = {}) {
       {
         signal,
         gcId,
+        onStage: (c, stage) => task.setStep(`${c.nick}: ${stage}`),
         onStart: c => {
           task.setStep(`${c.nick}: запуск…`);
           const target = resolveGameCenter(c, group.ctx);
@@ -416,6 +439,7 @@ export async function launchGroup(title, characters, opts = {}) {
         {
           signal,
           gcId,
+          onStage: (c, stage) => task.setStep(`${c.nick}: повтор — ${stage}`),
           onStart: c => task.setStep(`${c.nick}: повтор…`),
           onDone: e => {
             task.log(
@@ -434,6 +458,7 @@ export async function launchGroup(title, characters, opts = {}) {
     // Проверяем, что окна действительно получили название «Ник — Класс» и значок: окно клиента
     // появляется не сразу, и игра может переписать заголовок. Где не вышло — пробуем ещё раз.
     try {
+      task.setStep('Проверка названий и значков игровых окон…');
       const decorNote = await verifyLaunchedDecor(results);
       if (decorNote) task.log(decorNote, 'warn');
     } catch (e) {
@@ -465,6 +490,7 @@ export async function launchGroup(title, characters, opts = {}) {
     toast(`Запуск не удался: ${errText(e)}`, 'error');
     return null;
   } finally {
+    unsubscribeProgress();
     clearInterval(macroCancelTimer);
     activeLaunches = Math.max(0, activeLaunches - 1);
     // Окна только что открылись — обновляем общий список окон, чтобы в карточке пати

@@ -32,6 +32,7 @@ let mirroring = false,
   mirrorInit;
 let paused = false,
   composing = false;
+let launchProgress = null;
 let overlayWindows = [],
   overlayWindowNotice = 'Нажмите «Обновить окна», чтобы проверить запущенные клиенты.';
 const logs = [];
@@ -54,6 +55,7 @@ export function snapshot() {
     partyId: c.partyId,
     windows: overlayWindows,
     windowNotice: overlayWindowNotice,
+    launchProgress,
     executionState,
     runningName: activeCommandName,
     mirroring,
@@ -460,7 +462,13 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
     const party = state.parties.find(p => p.id === (command.partyId || c.partyId));
     if (!party) throw new Error('no party');
     const { launchPartyByName } = await import('../launcher/partyLaunch.js');
-    const result = await launchPartyByName(party.name, { cancelled: () => cancelled });
+    const result = await launchPartyByName(party.name, {
+      cancelled: () => cancelled,
+      onProgress: progress => {
+        launchProgress = progress;
+        void broadcast();
+      }
+    });
     if (!result || result.some(r => r.ok === false || r.cancelled))
       throw new Error('Запуск пати не завершён. Последующие действия не выполнялись.');
     for (let tries = 0; tries < 60; tries++) {
@@ -849,11 +857,15 @@ export async function initGameMacros() {
   await listen('game-overlay-party', event => {
     void overlayPartyAction(event.payload);
   });
-  await listen('game-overlay-keyboard-toggle', () => {
-    void toggleKeyboardMirror('keyboard').catch(() => log('Не удалось изменить повтор клавиатуры из оверлея.'));
+  await listen('game-overlay-keyboard-toggle', event => {
+    void setMirrorEnabled('keyboard', event.payload?.enabled).catch(() =>
+      log('Не удалось изменить повтор клавиатуры из оверлея.')
+    );
   });
-  await listen('game-overlay-mouse-toggle', () => {
-    void toggleKeyboardMirror('mouse').catch(() => log('Не удалось изменить повтор мыши из оверлея.'));
+  await listen('game-overlay-mouse-toggle', event => {
+    void setMirrorEnabled('mouse', event.payload?.enabled).catch(() =>
+      log('Не удалось изменить повтор мыши из оверлея.')
+    );
   });
   await listen('game-overlay-run', event => {
     const id = event.payload;
@@ -1147,6 +1159,12 @@ export async function disableKeyboardMirror(preserveModes = false) {
     log('Не удалось подтвердить выключение повтора; защита связи отключит его автоматически.');
   }
 }
+// Overlay buttons request a state, never an ambiguous toggle from a stale snapshot.
+export async function setMirrorEnabled(kind, enabled) {
+  if (typeof enabled !== 'boolean' || !['mouse', 'keyboard'].includes(kind)) return;
+  if (enabled === (kind === 'mouse' ? mirrorMouse : mirrorKeys)) return;
+  await toggleKeyboardMirror(kind);
+}
 export async function toggleKeyboardMirror(kind = 'keyboard', commandName = '', refreshModes = null) {
   kind = kind === 'mouse' ? 'mouse' : 'keyboard';
   if (mirrorPending) return;
@@ -1387,6 +1405,7 @@ export async function overlayPartyAction(request) {
   }
   busy = true;
   cancelled = false;
+  launchProgress = null;
   overlayWindowNotice = 'Проверка окон…';
   void broadcast();
   try {
@@ -1406,7 +1425,13 @@ export async function overlayPartyAction(request) {
       void broadcast();
       const { launchPartyByName } = await import('../launcher/partyLaunch.js');
       if (cancelled) throw new Error('Остановлено пользователем.');
-      const result = await launchPartyByName(party.name, { cancelled: () => cancelled });
+      const result = await launchPartyByName(party.name, {
+        cancelled: () => cancelled,
+        onProgress: progress => {
+          launchProgress = progress;
+          void broadcast();
+        }
+      });
       if (!result || result.some(r => r.ok === false || r.cancelled))
         throw new Error('Запуск пати не завершён. Проверьте журнал скриптов.');
     }

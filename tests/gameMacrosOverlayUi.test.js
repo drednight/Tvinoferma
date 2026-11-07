@@ -302,7 +302,9 @@ it('shows a dedicated mouse toggle outside the hideable service panel with hones
   expect(button.getAttribute('aria-pressed')).toBe('false');
   mocks.emitTo.mockClear();
   button.click();
-  await vi.waitFor(() => expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-mouse-toggle', null));
+  await vi.waitFor(() =>
+    expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-mouse-toggle', { enabled: true })
+  );
   update({ payload: { mirrorMouse: true, mirroring: true } });
   expect(button.textContent).toContain('ВКЛ');
   expect(button.dataset.state).toBe('on');
@@ -326,7 +328,9 @@ it('keyboard repeat is independent, visible with service panel hidden, and refle
   document.getElementById('info-toggle').click();
   expect(button.closest('[hidden]')).toBeNull();
   button.click();
-  await vi.waitFor(() => expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-keyboard-toggle', null));
+  await vi.waitFor(() =>
+    expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-keyboard-toggle', { enabled: false })
+  );
   mocks.handlers.get('game-macro-snapshot')({ payload: { mirrorKeys: true, mirroring: false } });
   expect(button.textContent).toContain('ПРИОСТАНОВЛЕН');
 });
@@ -361,4 +365,19 @@ it('offers additional selectable colors in every palette and saves them', async 
       })
     )
   );
+});
+
+it('renders real party launch percent and stage without fabricating elapsed-time progress', () => {
+  mocks.handlers.get('game-macro-snapshot')({
+    payload: {
+      launchProgress: { done: 2, total: 4, percent: 48, stage: 'Alpha: ожидание нового клиента…', status: 'running' }
+    }
+  });
+  expect(document.getElementById('launch-progress').hidden).toBe(false);
+  expect(document.getElementById('launch-percent').value).toBe(48);
+  expect(document.getElementById('launch-stage').textContent).toContain('48% · Alpha: ожидание нового клиента… · 2/4');
+});
+it('opens a separate TeamSpeak window, not a page in the party overlay', async () => {
+  document.getElementById('teamspeak-open').click();
+  await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('teamspeak_overlay'));
 });

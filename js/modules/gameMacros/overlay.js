@@ -4,6 +4,13 @@ import { listen, emitTo } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 async function init() {
+  document.getElementById('teamspeak-open').onclick = async () => {
+    try {
+      await invoke('teamspeak_overlay');
+    } catch {
+      document.getElementById('status').textContent = 'Не удалось открыть оверлей TeamSpeak.';
+    }
+  };
   const current = getCurrentWindow();
   let journalLines = [];
   let repeatState = {};
@@ -13,7 +20,7 @@ async function init() {
   keyboardToggle.onclick = async () => {
     keyboardToggle.disabled = true;
     try {
-      await emitTo('main', 'game-overlay-keyboard-toggle', null);
+      await emitTo('main', 'game-overlay-keyboard-toggle', { enabled: !repeatState.mirrorKeys });
     } catch {
       document.getElementById('status').textContent = 'Не удалось отправить запрос повтора клавиатуры.';
     } finally {
@@ -26,7 +33,7 @@ async function init() {
   mouseToggle.onclick = async () => {
     mouseToggle.disabled = true;
     try {
-      await emitTo('main', 'game-overlay-mouse-toggle', null);
+      await emitTo('main', 'game-overlay-mouse-toggle', { enabled: !repeatState.mirrorMouse });
     } catch {
       document.getElementById('status').textContent = 'Не удалось отправить запрос повтора мыши.';
     } finally {
@@ -97,6 +104,13 @@ async function init() {
         return li;
       })
     );
+    const launch = data.launchProgress;
+    document.getElementById('launch-progress').hidden = !launch;
+    if (launch) {
+      document.getElementById('launch-percent').value = launch.percent;
+      document.getElementById('launch-stage').textContent =
+        `${launch.percent}% · ${launch.stage}${launch.total ? ` · ${launch.done}/${launch.total}` : ''}`;
+    }
     const a = normalizeAppearance(data.appearance);
     document.documentElement.style.setProperty('--overlay-text', TEXT_PRESETS[a.textColor]);
     document.documentElement.style.setProperty('--overlay-key', KEY_PRESETS[a.keyColor]);

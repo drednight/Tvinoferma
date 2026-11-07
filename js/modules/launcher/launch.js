@@ -607,6 +607,7 @@ export function withoutSavedLogin(entries) {
  *   signal?: { cancelled: boolean },
  *   gcId?: string,
  *   decorate?: boolean,
+ *   onStage?: (character: any, stage: string) => void,
  *   onStart?: (character: any) => void,
  *   onDone?: (entry: { id: string, nick: string, ok: boolean, error?: string, info?: LaunchInfo, ms?: number | null }, done: number, total: number) => void
  * }} [opts]
@@ -641,6 +642,7 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
       const t0 = Date.now();
       let info;
       try {
+        opts.onStage?.(character, 'запуск лаунчера и ожидание нового игрового клиента…');
         info = await invoke('launcher_start', {
           path: target?.path,
           charId: target?.key,
@@ -659,6 +661,7 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
       }
       if (!last && delayMs > 0) {
         // следующий аккаунт стартует после паузы
+        opts.onStage?.(character, `клиент найден, пауза ${delayMs} мс перед следующим…`);
         delayTotal += delayMs;
         await sleep(delayMs);
       }

@@ -339,3 +339,17 @@ describe('safe single launch and explicit GameCenter selection', () => {
     expect(started()).toEqual([]);
   });
 });
+
+it('publishes launch progress, current character stage and terminal summary to the overlay callback', async () => {
+  const updates = [];
+  state.characters = [A(), B()];
+  await partyLaunch.launchGroup('Прогресс', state.characters, {
+    interactive: false,
+    onProgress: progress => updates.push({ ...progress })
+  });
+  expect(updates.some(p => p.stage.includes('проверка'))).toBe(true);
+  expect(updates.some(p => p.stage.includes('Аа') && p.stage.includes('ожидание'))).toBe(true);
+  expect(updates.some(p => p.done === 1 && p.total === 2 && p.percent > 0 && p.percent < 100)).toBe(true);
+  expect(updates.at(-1).percent).toBe(100);
+  expect(updates.at(-1).stage).toContain('Запущено');
+});

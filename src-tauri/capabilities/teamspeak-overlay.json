@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "teamspeak-overlay",
+  "description": "TeamSpeak overlay: local ClientQuery commands, events and window controls only.",
+  "windows": ["teamspeak-overlay"],
+  "permissions": ["core:window:allow-start-dragging", "core:window:allow-close"]
+}

@@ -131,7 +131,7 @@ export function mountGameMacros(host) {
     .join(
       ''
     )}</select></label><button class="btn primary">⊕ Задать координаты</button></form><p class="muted">Размер окна и DPI определяются автоматически. Для другого размера окна создайте вариант точки; после перемещения элементов интерфейса задайте точку заново.</p><div class="gm-points-workbench"><nav class="gm-point-list" aria-label="Сохранённые координатные точки">${c.points.map(p => `<button class="gm-point-choice" data-gm-point="${esc(p.id)}"><b>${esc(p.name)}</b><small>${p.width} × ${p.height}</small></button>`).join('') || '<p>Нет сохранённых точек.</p>'}</nav><article class="gm-point-detail" data-gm-point-detail></article></div></section>
-  <footer class="gm-bottom-actions"><button class="btn" data-gm-logs>≡ Журнал сеанса</button><button class="btn" data-gm-overlay>▣ Открыть оверлей</button><button class="btn ghost" data-gm-overlay-settings>⚙ Настройки оверлея</button></footer></details>`;
+  <footer class="gm-bottom-actions"><button class="btn" data-gm-logs>≡ Журнал сеанса</button><button class="btn" data-gm-overlay>▣ Открыть оверлей</button><button class="btn" data-gm-teamspeak>◉ Оверлей TeamSpeak</button><button class="btn ghost" data-gm-overlay-settings>⚙ Настройки оверлея</button></footer></details>`;
   host.querySelector('#game-macros-block').open = wasOpen;
   host.querySelectorAll('[data-gm-resolution]').forEach(
     select =>
@@ -264,6 +264,10 @@ export function mountGameMacros(host) {
       submitText: 'Закрыть',
       onSubmit: () => {}
     });
+  });
+  host.querySelector('[data-gm-teamspeak]').onclick = safe(async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('teamspeak_overlay');
   });
   host.querySelector('[data-gm-overlay]').onclick = safe(openOverlay);
   host.querySelector('[data-gm-logs]').onclick = () => openMacrosDialog('logs');

@@ -231,12 +231,30 @@ it('toggles only mouse mode through the overlay event and preserves keyboard mod
   await runtime.toggleKeyboardMirror();
   const toggle = m.listeners.get('game-overlay-mouse-toggle');
   expect(toggle).toBeTypeOf('function');
-  toggle({ payload: null });
+  toggle({ payload: { enabled: true } });
   await vi.waitFor(() =>
     expect(runtime.snapshot()).toMatchObject({ mirroring: true, mirrorKeys: true, mirrorMouse: true })
   );
-  toggle({ payload: null });
+  toggle({ payload: { enabled: false } });
   await vi.waitFor(() =>
     expect(runtime.snapshot()).toMatchObject({ mirroring: true, mirrorKeys: true, mirrorMouse: false })
   );
+});
+
+it('does not re-enable from a stale overlay disable request after native protective stop', async () => {
+  await runtime.toggleKeyboardMirror('mouse');
+  const [, args] = m.invoke.mock.calls.find(
+    ([name, args]) => name === 'game_macro_mirror' && args.operation === 'start'
+  );
+  m.listeners.get('game-macro-mirror-state')({ payload: { sessionId: args.sessionId, active: false, reason: 6 } });
+  m.invoke.mockClear();
+  await runtime.setMirrorEnabled('mouse', false);
+  expect(runtime.snapshot().mirrorMouse).toBe(false);
+  expect(m.invoke).not.toHaveBeenCalled();
+});
+it('duplicate explicit mouse-off requests cannot toggle the mode back on', async () => {
+  await runtime.toggleKeyboardMirror('mouse');
+  await runtime.setMirrorEnabled('mouse', false);
+  await runtime.setMirrorEnabled('mouse', false);
+  expect(runtime.snapshot()).toMatchObject({ mirrorMouse: false, mirroring: false });
 });

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Твиноферма — TeamSpeak</title>
+    <link rel="stylesheet" href="/css/modules/teamspeakOverlay.css" />
+  </head>
+  <body>
+    <header id="drag">
+      <strong>◉ TeamSpeak</strong><button id="settings-toggle" aria-expanded="true" title="Настройки">⚙</button
+      ><button id="close" title="Закрыть окно">×</button>
+    </header>
+    <main>
+      <section id="settings">
+        <h2>Подключение</h2>
+        <p class="muted">
+          Только локальный клиент на этом компьютере. Ключи и сообщения не записываются в журналы или файлы.
+        </p>
+        <form id="connection-form">
+          <label
+            >Клиент<select id="version">
+              <option value="6">TeamSpeak 6 · Remote Apps</option>
+              <option value="3">TeamSpeak 3 · ClientQuery</option>
+            </select></label
+          >
+          <label id="port3-label" hidden
+            >Порт ClientQuery<input id="port3" type="number" min="1" max="65535" value="25639"
+          /></label>
+          <label
+            >API-ключ <span class="muted">(TS3 — обязательный, TS6 — можно оставить пустым)</span
+            ><input id="api-key" type="password" autocomplete="off" spellcheck="false"
+          /></label>
+          <p id="connection-help" class="muted"></p>
+          <div class="actions">
+            <button id="connect" type="submit">Подключить</button
+            ><button id="disconnect" type="button">Отключить</button>
+          </div>
+        </form>
+        <h2>Вид окна</h2>
+        <form id="appearance-form">
+          <label>Непрозрачность<input id="opacity" type="range" min="20" max="100" /></label
+          ><label>Размер текста<input id="fontSize" type="range" min="10" max="24" /></label
+          ><label>Цвет говорящего<input id="accent" type="color" /></label
+          ><label>Сообщение исчезает через, сек.<input id="messageSeconds" type="number" min="3" max="120" /></label
+          ><label class="check"><input id="topmost" type="checkbox" />Поверх других окон</label
+          ><label class="check"><input id="speakersOnly" type="checkbox" />Показывать только говорящих</label
+          ><label class="check"><input id="showChat" type="checkbox" />Показывать чат канала</label
+          ><button type="submit">Сохранить вид</button>
+        </form>
+      </section>
+      <p id="status" role="status" aria-live="polite">Не подключено</p>
+      <label id="server-label" hidden>Сервер<select id="server"></select></label>
+      <h2 id="channel">Мой канал</h2>
+      <ul id="members" aria-label="Участники канала"></ul>
+      <section id="chat">
+        <h2>Чат канала</h2>
+        <p class="muted">
+          Только просмотр новых сообщений, полученных через API. Исчезают по таймеру, история не сохраняется.
+        </p>
+        <ol id="messages" aria-live="polite"></ol>
+      </section>
+    </main>
+    <script type="module" src="/js/modules/teamspeak/overlay.js"></script>
+  </body>
+</html>

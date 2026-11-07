@@ -219,7 +219,21 @@ unsafe extern "system" fn mouse_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESU
                     return;
                 }
                 if under != hwnd && !IsChild(hwnd, under).as_bool() {
-                    halt(&ctx.control, 6);
+                    // A click that activates another app still sees the old foreground in
+                    // this low-level hook. Do not treat the overlay click as a game failure.
+                    ctx.last_mouse = None;
+                    let reset = Key {
+                        source,
+                        at: now(),
+                        vk: 0,
+                        scan: 0,
+                        flags: 0,
+                        up: true,
+                        mouse: None,
+                    };
+                    if ctx.tx.try_send(reset).is_err() {
+                        halt(&ctx.control, 1);
+                    }
                     return;
                 }
                 let mut p = event.pt;
@@ -231,7 +245,20 @@ unsafe extern "system" fn mouse_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESU
                     || p.x >= r.right
                     || p.y >= r.bottom
                 {
-                    ctx.control.stop.store(true, Ordering::SeqCst);
+                    // Window borders/title bars are not game input, but not a mode-off request.
+                    ctx.last_mouse = None;
+                    let reset = Key {
+                        source,
+                        at: now(),
+                        vk: 0,
+                        scan: 0,
+                        flags: 0,
+                        up: true,
+                        mouse: None,
+                    };
+                    if ctx.tx.try_send(reset).is_err() {
+                        halt(&ctx.control, 1);
+                    }
                     return;
                 }
                 let msg = wp.0 as u32;
