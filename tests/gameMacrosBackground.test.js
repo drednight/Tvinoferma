@@ -59,11 +59,12 @@ it('carries each block method to its compiled keyboard actions', () => {
   }
 });
 
-it('limits activity delivery to a standalone single unmodified key', () => {
+it('allows bounded modifier sequences but not composition or mouse activity delivery', () => {
   const valid = { action: 'sequence', sequence: 'F8', delivery: 'background', backgroundMethod: 'activity' };
   expect(() => validateActivityCommand(valid)).not.toThrow();
-  for (const sequence of ['CTRL+B', 'B\nF8', 'wait 100\nB', 'SHIFT+F8'])
-    expect(() => validateActivityCommand({ ...valid, sequence })).toThrow('одной клавишей');
+  for (const sequence of ['CTRL+B', 'SHIFT+1\nF2', 'wait 100\nB', 'SHIFT+F8'])
+    expect(() => validateActivityCommand({ ...valid, sequence })).not.toThrow();
+  expect(() => validateActivityCommand({ ...valid, sequence: 'SHIFT+SHIFT+1' })).toThrow();
   for (const action of ['f6f1', 'mirror', 'mouse-mirror', 'composite', 'click'])
     expect(() => validateActivityCommand({ ...valid, action })).toThrow();
   expect(() => validateActivityCommand(valid, true)).toThrow();

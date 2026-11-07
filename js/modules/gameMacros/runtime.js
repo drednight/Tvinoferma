@@ -482,12 +482,51 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
     throw new Error('Эта команда не поддерживает фоновую доставку. Нужна последовательность клавиш либо F6→F1.');
   validateActivityCommand(command, composing);
   const snapshotRows = await (preparedRows || listMacroWindows());
-  const rows = await windowTargets(command, c, snapshotRows);
+  let rows,
+    fallbackAll = false;
+  try {
+    rows = await windowTargets(command, c, snapshotRows);
+  } catch (error) {
+    if (composing || command.action !== 'sequence' || command.scope === 'managed') throw error;
+    // Resolution-only fallback, before input. Never retry/broaden after a delivery failure.
+    if (
+      !snapshotRows.length ||
+      snapshotRows.some(
+        row =>
+          !row.pid ||
+          !row.startedAt ||
+          !row.hwnd ||
+          !(row.elevated === false || (row.elevated === true && row.selfElevated === true))
+      ) ||
+      new Set(snapshotRows.map(row => row.pid)).size !== snapshotRows.length
+    ) {
+      throw new Error(
+        'Резерв для всех окон недоступен: есть непроверенный процесс, дескриптор или права. Ввод не отправлен.',
+        { cause: error }
+      );
+    }
+    rows = orderManagedTargets(
+      state,
+      c,
+      snapshotRows.map(row => ({
+        ...row,
+        charId: row.known ? row.charId : `window:${row.pid}`,
+        nick: row.known ? row.nick : `PID ${row.pid}`
+      }))
+    );
+    fallbackAll = true;
+    log(
+      `Управляющая пати недоступна: ${macroErrorText(error)} Резерв: ВСЕ проверенные игровые окна (${rows.length}). Фильтр ПЛ/поднабора не применяется.`,
+      command.name
+    );
+  }
   if (hotkey) {
     let foreground = false;
     const memberIds = new Set((await import('./model.js')).partyMembers(state, c.partyId).map(ch => ch.id));
     const sources =
-      command.scope === 'managed' ? rows : snapshotRows.filter(row => row.known && memberIds.has(row.charId));
+      fallbackAll || command.scope === 'managed'
+        ? rows
+        : snapshotRows.filter(row => row.known && memberIds.has(row.charId));
     for (const row of sources) {
       try {
         await act(row, 'foreground');
@@ -503,7 +542,7 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
   }
   log(`Начало: ${command.name}. Получателей: ${rows.length}.`);
   log(
-    `Порядок «${state.parties.find(p => p.id === c.partyId)?.name || 'Все окна'}»: ${rows.map(row => state.characters.find(ch => ch.id === row.charId)?.nick || row.pid).join(' → ')}`
+    `Порядок «${fallbackAll ? 'Все проверенные игровые окна (резерв)' : state.parties.find(p => p.id === c.partyId)?.name || 'Все окна'}»: ${rows.map(row => state.characters.find(ch => ch.id === row.charId)?.nick || row.pid).join(' → ')}`
   );
   if (command.delivery === 'background' && ['sequence', 'f6f1'].includes(command.action)) {
     log(
@@ -686,6 +725,7 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
   }
   if (
     restore &&
+    !fallbackAll &&
     command.returnTo !== 'last' &&
     ['sequence', 'follow', 'click', 'resize', 'layout'].includes(command.action) &&
     !cancelled

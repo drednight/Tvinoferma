@@ -15,7 +15,7 @@ export function backgroundReport(report) {
     `Состояние перед отправкой: тестовая клавиша физически зажата — ${flag(report.selectedKeyHeld)}, Ctrl/Shift/Alt/Win зажат — ${flag(report.modifierHeld)}. Модификаторов в команде: ${Array.isArray(report.modifiers) ? report.modifiers.length : '?'}.`
   ];
   if (report.activityTest) {
-    const key =
+    const baseKey =
       report.vk == null
         ? 'B'
         : report.vk >= 0x30 && report.vk <= 0x5a
@@ -23,8 +23,12 @@ export function backgroundReport(report) {
           : report.vk >= 0x70 && report.vk <= 0x7b
             ? `F${report.vk - 0x6f}`
             : `VK=${hex(report.vk)}`;
+    const modifiers = (Array.isArray(report.modifiers) ? report.modifiers : []).map(
+      vk => ({ 16: 'SHIFT', 17: 'CTRL', 18: 'ALT' })[vk] || '?'
+    );
+    const key = [...modifiers, baseKey].join('+');
     lines.push(
-      `Эксперимент: WM_ACTIVATEAPP + WM_ACTIVATE, одна клавиша ${key} через SendMessageTimeout (25 мс); без SetFocus/SetForegroundWindow.`
+      `Эксперимент: WM_ACTIVATEAPP + WM_ACTIVATE, сочетание ${key} через SendMessageTimeout (25 мс); без SetFocus/SetForegroundWindow.`
     );
     if (report.notificationsSent === false)
       lines.push('Цель уже активна: клавиша отправляется без дополнительных уведомлений активности.');
@@ -33,14 +37,21 @@ export function backgroundReport(report) {
       lines.push(
         'Тест отклонён до уведомлений: окно должно быть видимым, не свёрнутым, не зависшим, без удерживаемых клавиш/мыши. В диагностике B получатель должен быть в другом неактивном процессе.'
       );
-    for (const step of (Array.isArray(report.steps) ? report.steps : []).slice(0, 6)) {
-      const phase = ['activate-app', 'activate-window', 'key-down', 'key-up', 'restore-window', 'restore-app'].includes(
-        step.phase
-      )
+    for (const step of (Array.isArray(report.steps) ? report.steps : []).slice(0, 12)) {
+      const phase = [
+        'activate-app',
+        'activate-window',
+        'modifier-down',
+        'modifier-up',
+        'key-down',
+        'key-up',
+        'restore-window',
+        'restore-app'
+      ].includes(step.phase)
         ? step.phase
         : '?';
       lines.push(
-        `${phase}: ${step.skipped ? 'пропущено' : `Windows подтвердила — ${flag(step.ok)}, код ${number(step.error)}; foreground ${token(step.before)} → ${token(step.after)}`}.`
+        `${phase}${phase.includes('modifier') ? ` VK=${hex(step.wparam)}` : ''}: ${step.skipped ? 'пропущено' : `Windows подтвердила — ${flag(step.ok)}, код ${number(step.error)}; foreground ${token(step.before)} → ${token(step.after)}`}.`
       );
     }
     lines.push(

@@ -99,3 +99,28 @@ it('labels the actual activity key and distinguishes active recipients from noti
   expect(text).toContain('40 мс');
   expect(text).not.toContain('Попытка B');
 });
+it('includes chord modifiers and reverse modifier release without truncating restore steps', () => {
+  const text = backgroundReport({
+    schema: 1,
+    activityTest: true,
+    vk: 0x31,
+    modifiers: [17, 16],
+    inputSent: true,
+    steps: [
+      { phase: 'activate-app', ok: true },
+      { phase: 'activate-window', ok: true },
+      { phase: 'modifier-down', wparam: 17, ok: true },
+      { phase: 'modifier-down', wparam: 16, ok: true },
+      { phase: 'key-down', ok: true },
+      { phase: 'key-up', ok: true },
+      { phase: 'modifier-up', wparam: 16, ok: true },
+      { phase: 'modifier-up', wparam: 17, ok: false, error: 1460 },
+      { phase: 'restore-window', ok: true },
+      { phase: 'restore-app', ok: true }
+    ]
+  }).join('\n');
+  expect(text).toContain('Попытка CTRL+SHIFT+1');
+  expect(text).toContain('modifier-up VK=0x11');
+  expect(text).toContain('restore-app');
+  expect(text).toContain('1460');
+});

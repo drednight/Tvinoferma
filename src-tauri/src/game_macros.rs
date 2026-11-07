@@ -802,9 +802,6 @@ mod win {
         expected: Option<&str>,
     ) -> Result<serde_json::Value, String> {
         let (mods, vk) = chord(key)?;
-        if !mods.is_empty() {
-            return Err("Activity mode requires one unmodified key".into());
-        }
         static TEST: Mutex<()> = Mutex::new(());
         let _guard = TEST
             .try_lock()
@@ -841,7 +838,7 @@ mod win {
             let before = unsafe { GetForegroundWindow() };
             changed.set(changed.get() || before != original);
             // Once changed, only key release and restoration are allowed.
-            let cleanup = phase == "key-up" || phase.starts_with("restore");
+            let cleanup = phase.ends_with("-up") || phase.starts_with("restore");
             let valid = verified_window(raw, pid).is_ok();
             if !valid && failure.get().is_none() {
                 failure.set(Some(1400));
@@ -862,7 +859,7 @@ mod win {
             failure.set(failure.get().or(result.err()));
             let after = unsafe { GetForegroundWindow() };
             changed.set(changed.get() || after != original);
-            steps.push(serde_json::json!({"phase":phase,"message":format!("0x{msg:04X}"),"ok":result.is_ok(),"error":result.err().unwrap_or(0),"before":format!("0x{:X}",before.0 as usize),"after":format!("0x{:X}",after.0 as usize)}));
+            steps.push(serde_json::json!({"phase":phase,"wparam":wp,"message":format!("0x{msg:04X}"),"ok":result.is_ok(),"error":result.err().unwrap_or(0),"before":format!("0x{:X}",before.0 as usize),"after":format!("0x{:X}",after.0 as usize)}));
             result.is_ok() && (cleanup || !changed.get())
         };
         // No early return below: always attempt reverse notifications, including timeout paths.
@@ -873,31 +870,54 @@ mod win {
         let window_ok = app_ok
             && (!notifications || send("activate-window", WM_ACTIVATE, 1, original.0 as isize));
         if window_ok {
-            let scan = unsafe { MapVirtualKeyW(vk as u32, MAPVK_VK_TO_VSC) };
-            let flags = 1
-                | ((scan & 0xff) << 16)
-                | (u32::from(matches!(vk, 0x21..=0x28 | 0x2d | 0x2e)) << 24);
-            // Attempt UP even if DOWN times out: timeout does not prove non-delivery.
+            // Keep a list even when DOWN times out: every attempted key gets an UP.
+            let mut pressed = Vec::new();
+            let alt = mods.contains(&0x12);
+            let mut key_message = |key: u16, up: bool| {
+                let scan = unsafe { MapVirtualKeyW(key as u32, MAPVK_VK_TO_VSC) };
+                let flags = 1
+                    | ((scan & 0xff) << 16)
+                    | (u32::from(matches!(key, 0x21..=0x28 | 0x2d | 0x2e)) << 24)
+                    | (u32::from(alt) << 29)
+                    | if up { 0xc0000000 } else { 0 };
+                let msg = match (alt, up) {
+                    (true, true) => WM_SYSKEYUP,
+                    (true, false) => WM_SYSKEYDOWN,
+                    (false, true) => WM_KEYUP,
+                    (false, false) => WM_KEYDOWN,
+                };
+                let phase = match (key == vk, up) {
+                    (true, true) => "key-up",
+                    (true, false) => "key-down",
+                    (false, true) => "modifier-up",
+                    (false, false) => "modifier-down",
+                };
+                send(phase, msg, key as usize, flags as isize)
+            };
             report["inputSent"] = serde_json::json!(true);
-            if send("key-down", WM_KEYDOWN, vk as usize, flags as isize) {
+            let mut down_ok = true;
+            for key in mods.iter().copied().chain(std::iter::once(vk)) {
+                pressed.push(key);
+                if !key_message(key, false) {
+                    down_ok = false;
+                    break;
+                }
+            }
+            if down_ok {
                 let mut remaining = hold_ms.clamp(10, 200);
                 while remaining > 0 {
                     let interval = remaining.min(10);
                     std::thread::sleep(Duration::from_millis(interval));
                     remaining -= interval;
-                    // Sampling, not a guarantee against transitions between observations.
                     if unsafe { GetForegroundWindow() } != original {
                         changed.set(true);
                         break;
                     }
                 }
             }
-            send(
-                "key-up",
-                WM_KEYUP,
-                vk as usize,
-                (flags | 0xc0000000) as isize,
-            );
+            for key in pressed.into_iter().rev() {
+                key_message(key, true);
+            }
         }
         if notifications {
             let current = unsafe { GetForegroundWindow() };
@@ -978,7 +998,7 @@ mod win {
     #[cfg(test)]
     mod background_key_tests {
         #[test]
-        fn activity_mode_is_explicit_and_rejects_modifiers_before_window_access() {
+        fn activity_mode_is_explicit_and_parses_modifier_order() {
             let timing: super::InputTiming = serde_json::from_str(
                 r#"{"backgroundMethod":"activity","activityForeground":"0x123","holdMs":40}"#,
             )
@@ -988,10 +1008,8 @@ mod win {
                 super::BackgroundMethod::Activity
             ));
             assert_eq!(timing.activity_foreground.as_deref(), Some("0x123"));
-            assert_eq!(
-                super::activity_key(0, 0, "CTRL+B", 30, false, None).unwrap_err(),
-                "Activity mode requires one unmodified key"
-            );
+            assert_eq!(super::chord("SHIFT+1").unwrap(), (vec![0x10], 0x31));
+            assert!(super::chord("SHIFT+SHIFT+1").is_err());
             assert_eq!(super::chord("F8").unwrap(), (vec![], 0x77));
         }
         #[test]

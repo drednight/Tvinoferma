@@ -1,3 +1,4 @@
+import { steps } from './keySyntax.js';
 // These are transport experiments, not claims about PW compatibility. Never auto-fallback.
 export const BACKGROUND_METHODS = {
   post: 'PostMessage · очередь',
@@ -23,15 +24,9 @@ export function backgroundVariants(command, commands, makeId = () => crypto.rand
 
 export function validateActivityCommand(command, composing = false) {
   if (command.delivery !== 'background' || backgroundMethod(command.backgroundMethod) !== 'activity') return;
-  const key = String(command.sequence || '')
-    .trim()
-    .toUpperCase();
-  if (
-    composing ||
-    command.action !== 'sequence' ||
-    !/^(?:[A-Z0-9]|F(?:[1-9]|1[0-2])|LEFT|RIGHT|UP|DOWN|SPACE|ENTER|TAB|PAUSE|HOME)$/.test(key)
-  )
+  if (composing || command.action !== 'sequence')
     throw new Error(
-      'Уведомления активности: только отдельная команда с одной клавишей без модификаторов, пауз и составных блоков. Мышь и непрерывный повтор не поддерживаются.'
+      'Уведомления активности: только отдельная последовательность клавиш. Мышь, непрерывный повтор, F6→F1 и составные блоки не поддерживаются.'
     );
+  steps(command.sequence);
 }

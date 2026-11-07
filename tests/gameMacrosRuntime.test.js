@@ -815,13 +815,86 @@ it.each([
   expect(invoke.mock.calls.some(([, args]) => args?.action === 'focus' || args?.action === 'key')).toBe(false);
   expect(runtime.snapshot().executionState).toBe('failed');
 });
-it('rejects multi-key activity commands before any native input or mirroring changes', async () => {
+it('rejects unsupported activity actions before any native input or mirroring changes', async () => {
   Object.assign(state.settings.gameMacros.commands[0], {
+    action: 'f6f1',
     sequence: 'B\nF8',
     delivery: 'background',
     backgroundMethod: 'activity'
   });
   await runtime.run('test');
   expect(invoke).not.toHaveBeenCalled();
-  expect(runtime.snapshot().notice).toContain('одной клавишей');
+  expect(runtime.snapshot().notice).toContain('только отдельная последовательность');
+});
+it('sends Shift+1 then F2 in order to each recipient with activity delivery', async () => {
+  Object.assign(state.settings.gameMacros.commands[0], {
+    sequence: 'SHIFT+1\nF2',
+    delivery: 'background',
+    backgroundMethod: 'activity'
+  });
+  invoke.mockImplementation(async (name, args) =>
+    name === 'launcher_running_details'
+      ? [client]
+      : args?.action === 'key-background'
+        ? {
+            schema: 1,
+            activityTest: true,
+            vk: args.key === 'F2' ? 0x71 : 0x31,
+            modifiers: args.key === 'F2' ? [] : [16],
+            ok: true,
+            originalForeground: '0x100'
+          }
+        : null
+  );
+  await runtime.run('test');
+  expect(invoke.mock.calls.filter(([, args]) => args?.action === 'key-background').map(([, args]) => args.key)).toEqual(
+    ['SHIFT+1', 'F2']
+  );
+  expect(runtime.snapshot().executionState).toBe('finished');
+});
+it.each(['missing-party', 'missing-member'])(
+  'falls back to all validated game processes before input when %s cannot resolve',
+  async reason => {
+    if (reason === 'missing-party') state.settings.gameMacros.partyId = 'gone';
+    else state.characters.push({ id: 'b', nick: 'Absent', partyIds: ['p'] });
+    Object.assign(state.settings.gameMacros.commands[0], {
+      sequence: 'SHIFT+1\nF2',
+      delivery: 'background',
+      backgroundMethod: 'activity'
+    });
+    const unknown = { pid: 30, startedAt: 2000, hwnd: 300, elevated: false, title: 'Element Client' };
+    invoke.mockImplementation(async (name, args) =>
+      name === 'launcher_running_details'
+        ? [client, unknown]
+        : args?.action === 'key-background'
+          ? { schema: 1, activityTest: true, ok: true, originalForeground: '0x100' }
+          : null
+    );
+    await runtime.run('test');
+    const calls = invoke.mock.calls
+      .filter(([, args]) => args?.action === 'key-background')
+      .map(([, args]) => [args.target.pid, args.key]);
+    expect(calls).toEqual([
+      [10, 'SHIFT+1'],
+      [10, 'F2'],
+      [30, 'SHIFT+1'],
+      [30, 'F2']
+    ]);
+    expect(runtime.snapshot().logs.join('\n')).toContain('Резерв: ВСЕ проверенные игровые окна (2)');
+    expect(runtime.snapshot().executionState).toBe('finished');
+  }
+);
+it('does not fall back if any game process lacks a verified window identity', async () => {
+  state.settings.gameMacros.partyId = 'gone';
+  Object.assign(state.settings.gameMacros.commands[0], {
+    sequence: 'B',
+    delivery: 'background',
+    backgroundMethod: 'activity'
+  });
+  invoke.mockImplementation(async name =>
+    name === 'launcher_running_details' ? [client, { ...client, pid: 20, hwnd: null, title: 'Unknown' }] : null
+  );
+  await runtime.run('test');
+  expect(runtime.snapshot().executionState).toBe('failed');
+  expect(invoke.mock.calls.some(([, args]) => args?.action === 'key-background')).toBe(false);
 });
