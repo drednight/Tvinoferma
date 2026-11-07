@@ -14,6 +14,34 @@ export function backgroundReport(report) {
     `Клавиша VK=${hex(report.vk)}; scan отправителя=${hex(report.scanSender)}, scan раскладки игры=${hex(report.scanTarget)}. Раскладки: ${token(report.senderLayout)} → ${token(report.targetLayout)}.`,
     `Состояние перед отправкой: тестовая клавиша физически зажата — ${flag(report.selectedKeyHeld)}, Ctrl/Shift/Alt/Win зажат — ${flag(report.modifierHeld)}. Модификаторов в команде: ${Array.isArray(report.modifiers) ? report.modifiers.length : '?'}.`
   ];
+  if (report.activityTest) {
+    lines.push(
+      'Эксперимент: WM_ACTIVATEAPP + WM_ACTIVATE, один B через SendMessageTimeout (25 мс); без SetFocus/SetForegroundWindow.'
+    );
+    if (report.refused)
+      lines.push(
+        'Тест отклонён до уведомлений: окно должно быть видимым, не свёрнутым, не зависшим, в другом неактивном процессе; отпустите B и модификаторы.'
+      );
+    for (const step of (Array.isArray(report.steps) ? report.steps : []).slice(0, 6)) {
+      const phase = ['activate-app', 'activate-window', 'key-down', 'key-up', 'restore-window', 'restore-app'].includes(
+        step.phase
+      )
+        ? step.phase
+        : '?';
+      lines.push(
+        `${phase}: ${step.skipped ? 'пропущено' : `Windows подтвердила — ${flag(step.ok)}, код ${number(step.error)}; foreground ${token(step.before)} → ${token(step.after)}`}.`
+      );
+    }
+    lines.push(
+      `Попытка B — ${flag(report.inputSent)}. Изменение реального активного окна по замерам — ${flag(report.foregroundChanged)}.`
+    );
+    if (report.foregroundChanged)
+      lines.push('Условие «без активации» нарушено. Дальнейшие нажатия отменены; фокус автоматически не возвращался.');
+    lines.push(
+      'Обратные уведомления — попытка восстановить состояние по Windows, не гарантия обработки игрой. Таймаут не доказывает недоставку. Реакцию PW проверьте вручную; краткие смены фокуса между замерами могут быть не замечены.'
+    );
+    return lines;
+  }
   if (report.integrityAllowed === false)
     lines.push('Проверка прав не пройдена: отправка клавиш этому окну заблокирована.');
   if (report.foregroundChangedDuringProbe)

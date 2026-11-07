@@ -212,19 +212,30 @@ export function mountGameMacros(host) {
         .map(char => option(char.id, char.nick, c.leaders[c.partyId]))
         .join(
           ''
-        )}</select></label><label>Клавиша для расчёта VK/scan (не нажимается)<input data-bg-key value="B" maxlength="32"></label><button type="button" class="btn" data-bg-probe-run>Проверить без нажатия</button><p data-bg-probe-status role="status"></p><label>Отчёт для копирования<textarea data-bg-probe-report readonly rows="14"></textarea></label><button type="button" class="btn ghost" data-bg-probe-copy>Выделить отчёт для копирования</button><p class="muted">После проверки сравните вручную: 1) та же клавиша физически в игре; 2) одношаговая команда с обычной доставкой; 3) три фоновых варианта по одному на двух клиентах. Обычный режим активирует окна — здесь он автоматически не запускается. Для каждого варианта запишите: сработало ли в активном/неактивном окне и исходное состояние интерфейса. Не используйте расходные действия.</p></div>`
+        )}</select></label><label>Клавиша для расчёта VK/scan (не нажимается)<input data-bg-key value="B" maxlength="32"></label><button type="button" class="btn" data-bg-probe-run>Проверить без нажатия</button><fieldset><legend>Эксперимент уведомлений об активности</legend><p>Один B одному неактивному клиенту. Возможны активация клиентом и неверное внутреннее состояние. Уведомления не равны настоящему фокусу. Не используйте расходные действия. После запуска за 5 секунд вручную перейдите в другой клиент; выбранный получатель должен остаться неактивным. Не переключайте окна во время отправки.</p><label><input type="checkbox" data-bg-activity-confirm> Понимаю риск; разрешаю уведомления и один B</label><button type="button" class="btn ghost" data-bg-activity-run disabled>Уведомления активности + B (через 5 секунд)</button></fieldset><p data-bg-probe-status role="status"></p><label>Отчёт для копирования<textarea data-bg-probe-report readonly rows="14"></textarea></label><button type="button" class="btn ghost" data-bg-probe-copy>Выделить отчёт для копирования</button><p class="muted">После проверки сравните вручную: 1) та же клавиша физически в игре; 2) одношаговая команда с обычной доставкой; 3) три фоновых варианта по одному на двух клиентах. Обычный режим активирует окна — здесь он автоматически не запускается. Для каждого варианта запишите: сработало ли в активном/неактивном окне и исходное состояние интерфейса. Не используйте расходные действия.</p></div>`
     });
     const modal = document.querySelector('#modal-root');
     const button = modal.querySelector('[data-bg-probe-run]'),
       status = modal.querySelector('[data-bg-probe-status]'),
       report = modal.querySelector('[data-bg-probe-report]');
-    button.onclick = async () => {
+    const activity = modal.querySelector('[data-bg-activity-run]'),
+      confirm = modal.querySelector('[data-bg-activity-confirm]');
+    confirm.onchange = () => {
+      activity.disabled = !confirm.checked;
+    };
+    const probe = async experimental => {
+      if (experimental && !confirm.checked) return;
       button.disabled = true;
-      status.textContent = 'Проверяется окно; клавиши не отправляются…';
+      activity.disabled = true;
+      confirm.disabled = true;
+      status.textContent = experimental
+        ? 'Через 5 секунд отправится один B. Перейдите в другой клиент, получатель должен остаться неактивным.'
+        : 'Проверяется окно; клавиши не отправляются…';
       try {
         report.value = await diagnoseBackground(
           modal.querySelector('[data-bg-char]').value,
-          modal.querySelector('[data-bg-key]').value
+          modal.querySelector('[data-bg-key]').value,
+          ...(experimental ? [true] : [])
         );
         status.textContent = 'Готово. Отчёт также записан в журнал сеанса.';
       } catch (error) {
@@ -232,8 +243,12 @@ export function mountGameMacros(host) {
         report.value = error.message;
       } finally {
         button.disabled = false;
+        confirm.disabled = false;
+        activity.disabled = !confirm.checked;
       }
     };
+    button.onclick = () => probe(false);
+    activity.onclick = () => probe(true);
     modal.querySelector('[data-bg-probe-copy]').onclick = () => {
       report.focus();
       report.select();

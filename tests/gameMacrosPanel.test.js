@@ -215,3 +215,17 @@ it('keeps copy and clear next to each other in one journal toolbar', () => {
   expect(copy.parentElement.classList.contains('gm-journal-actions')).toBe(true);
   expect(document.querySelector('[data-gm-copy-status]').parentElement).toBe(copy.parentElement.parentElement);
 });
+
+it('requires explicit opt-in before the one-key activity experiment', async () => {
+  document.querySelector('[data-gm-background-probe]').click();
+  const button = document.querySelector('[data-bg-activity-run]'),
+    confirm = document.querySelector('[data-bg-activity-confirm]');
+  expect(button.disabled).toBe(true);
+  button.click();
+  expect(mocks.diagnoseBackground).not.toHaveBeenCalled();
+  confirm.checked = true;
+  confirm.dispatchEvent(new Event('change'));
+  button.click();
+  await vi.waitFor(() => expect(mocks.diagnoseBackground).toHaveBeenCalledWith('a', 'B', true));
+  expect(mocks.run).not.toHaveBeenCalled();
+});

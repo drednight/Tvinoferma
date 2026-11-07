@@ -718,3 +718,46 @@ describe('overlay command launching', () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 });
+
+it('arms a single activity test after five seconds and forces plain B without running a normal command', async () => {
+  vi.useFakeTimers();
+  try {
+    invoke.mockImplementation(async c =>
+      c === 'launcher_running_details'
+        ? [client]
+        : c === 'game_macro_background_probe'
+          ? { schema: 1, activityTest: true, refused: true }
+          : null
+    );
+    const pending = runtime.diagnoseBackground('a', 'CTRL+F9', true);
+    expect(runtime.snapshot().busy).toBe(true);
+    await vi.advanceTimersByTimeAsync(4900);
+    expect(invoke).not.toHaveBeenCalledWith('game_macro_background_probe', expect.anything());
+    await vi.advanceTimersByTimeAsync(100);
+    const report = await pending;
+    expect(invoke).toHaveBeenCalledWith('game_macro_background_probe', {
+      target: { pid: 10, startedAt: 1000, hwnd: 100 },
+      key: 'B',
+      activityTest: true
+    });
+    expect(report).toContain('Тест отклонён');
+    expect(runtime.snapshot().busy).toBe(false);
+    expect(invoke.mock.calls.some(([c]) => c === 'game_macro_action')).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+it('cancels an armed activity test without sending any notifications or keys', async () => {
+  vi.useFakeTimers();
+  try {
+    const result = runtime.diagnoseBackground('a', 'B', true).catch(error => error);
+    await vi.advanceTimersByTimeAsync(1000);
+    runtime.stop();
+    await vi.advanceTimersByTimeAsync(50);
+    expect(await result).toBeInstanceOf(Error);
+    expect(invoke.mock.calls.some(([c]) => c === 'game_macro_background_probe')).toBe(false);
+    expect(runtime.snapshot().busy).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
+});

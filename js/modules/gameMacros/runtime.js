@@ -1319,24 +1319,41 @@ export async function overlayPartyAction(request) {
   }
 }
 
-export async function diagnoseBackground(charId, key = 'B') {
+export async function diagnoseBackground(charId, key = 'B', activityTest = false) {
   if (busy || mirroring || mirrorPending) throw new Error('Завершите команду и выключите повтор перед диагностикой.');
   busy = true;
   cancelled = false;
-  notice = 'Диагностика фона без клавиш…';
+  notice = activityTest
+    ? 'Через 5 секунд — тест активности и один B. Перейдите в другой клиент; проверяемое окно оставьте неактивным.'
+    : 'Диагностика фона без клавиш…';
   void broadcast();
   try {
+    if (activityTest) {
+      for (let tick = 0; tick < 100; tick++) {
+        if (cancelled || paused) throw new Error('cancel');
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      if (cancelled || paused) throw new Error('cancel');
+    }
     const rows = await listMacroWindows();
     const row = rows.find(row => row.known && row.charId === charId && row.hwnd && row.startedAt);
     if (!row) throw new Error('Не найдено однозначно распознанное окно выбранного персонажа.');
     if (cancelled) throw new Error('Остановлено пользователем.');
     const report = await native('game_macro_background_probe', {
       target: { pid: row.pid, startedAt: row.startedAt, hwnd: row.hwnd },
-      key
+      key: activityTest ? 'B' : key,
+      ...(activityTest ? { activityTest: true } : {})
     });
-    const lines = [`Диагностика фона без клавиш → ${row.nick || row.pid}:`, ...backgroundReport(report)];
+    const lines = [
+      `${activityTest ? 'Эксперимент активности + B' : 'Диагностика фона без клавиш'} → ${row.nick || row.pid}:`,
+      ...backgroundReport(report)
+    ];
     for (const line of lines) log(line, '', false);
-    notice = cancelled ? 'Проверка остановлена.' : 'Диагностика фона завершена. Клавиши не отправлялись.';
+    notice = cancelled
+      ? 'Проверка остановлена.'
+      : activityTest
+        ? 'Эксперимент завершён. Смотрите отчёт; реакция игры не подтверждена.'
+        : 'Диагностика фона завершена. Клавиши не отправлялись.';
     return lines.join('\n');
   } catch (error) {
     notice = macroErrorText(error);

@@ -460,7 +460,9 @@ pub async fn game_macro_action(
         tauri::async_runtime::spawn_blocking(move || {
             let client =
                 crate::launcher::macro_client_at(target.pid, target.started_at, target.hwnd)?;
-            if !compatible_integrity(client.elevated, crate::launcher::self_elevated()) {
+            if activity_test.unwrap_or(false)
+                && !compatible_integrity(client.elevated, crate::launcher::self_elevated())
+            {
                 return Err("Game client identity changed or access is unavailable".into());
             }
             let hwnd = client.hwnd.ok_or("No game window")?;
@@ -502,6 +504,7 @@ pub async fn game_macro_background_probe(
     window: tauri::WebviewWindow,
     target: Target,
     key: String,
+    activity_test: Option<bool>,
 ) -> Result<serde_json::Value, String> {
     main_only(&window)?;
     #[cfg(windows)]
@@ -509,12 +512,15 @@ pub async fn game_macro_background_probe(
         tauri::async_runtime::spawn_blocking(move || {
             let client =
                 crate::launcher::macro_client_at(target.pid, target.started_at, target.hwnd)?;
-            let mut report = win::background_probe(
-                client.hwnd.ok_or("No game window")?,
-                target.pid,
-                &key,
-                true,
-            )?;
+            if !compatible_integrity(client.elevated, crate::launcher::self_elevated()) {
+                return Err("Game window has higher integrity".into());
+            }
+            let raw = client.hwnd.ok_or("No game window")?;
+            let mut report = if activity_test.unwrap_or(false) {
+                win::activity_probe(raw, target.pid)?
+            } else {
+                win::background_probe(raw, target.pid, &key, true)?
+            };
             report["appElevated"] = serde_json::json!(crate::launcher::self_elevated());
             report["targetElevated"] = serde_json::json!(client.elevated);
             report["integrityAllowed"] = serde_json::json!(compatible_integrity(
@@ -529,7 +535,7 @@ pub async fn game_macro_background_probe(
     }
     #[cfg(not(windows))]
     {
-        let _ = (target, key);
+        let _ = (target, key, activity_test);
         Err("Game control is Windows-only".into())
     }
 }
@@ -617,7 +623,7 @@ mod win {
             BackgroundMethod::Notify => background_notify(hwnd.0, msg, wp.0, lp.0) != 0,
             BackgroundMethod::SendTimeout => {
                 let mut result = 0;
-                // BLOCK | ABORTIFHUNG | ERRORONEXIT. No indefinite wait and no focus notifications.
+                // BLOCK | ABORTIFHUNG | ERRORONEXIT. Bounded wait; no activation API calls.
                 background_send_timeout(hwnd.0, msg, wp.0, lp.0, 0x23, 25, &mut result) != 0
             }
         };
@@ -766,6 +772,100 @@ mod win {
         report["foregroundChanged"] = serde_json::json!(foreground_changed);
         report["error"] = serde_json::json!(failure);
         report["ok"] = serde_json::json!(failure.is_none() && !foreground_changed);
+        Ok(report)
+    }
+    // Isolated diagnostic only: never used by normal commands or repeat.
+    pub fn activity_probe(raw: u64, pid: u32) -> Result<serde_json::Value, String> {
+        static TEST: Mutex<()> = Mutex::new(());
+        let _guard = TEST
+            .try_lock()
+            .map_err(|_| "Activity test already running")?;
+        let hwnd = verified_window(raw, pid)?;
+        let mut report = background_probe(raw, pid, "B", false)?;
+        report["activityTest"] = serde_json::json!(true);
+        report["inputSent"] = serde_json::json!(false);
+        let original = unsafe { GetForegroundWindow() };
+        let mut original_pid = 0;
+        let source_thread = unsafe { GetWindowThreadProcessId(original, Some(&mut original_pid)) };
+        let refused = !input_idle(None)?
+            || original.0.is_null()
+            || original_pid == pid
+            || report["visible"] != true
+            || report["minimized"] == true
+            || report["hung"] == true
+            || report["selectedKeyHeld"] == true
+            || report["modifierHeld"] == true;
+        if refused {
+            report["refused"] = serde_json::json!(true);
+            report["foregroundChanged"] = serde_json::json!(false);
+            return Ok(report);
+        }
+        let changed = std::cell::Cell::new(false);
+        let mut steps = Vec::new();
+        let mut send = |phase: &str, msg: u32, wp: usize, lp: isize| {
+            let before = unsafe { GetForegroundWindow() };
+            changed.set(changed.get() || before != original);
+            // Once changed, only key release and restoration are allowed.
+            let cleanup = phase == "key-up" || phase.starts_with("restore");
+            if (!cleanup && changed.get()) || verified_window(raw, pid).is_err() {
+                steps.push(serde_json::json!({"phase":phase,"skipped":true}));
+                return false;
+            }
+            let result = unsafe {
+                send_background(
+                    hwnd,
+                    msg,
+                    WPARAM(wp),
+                    LPARAM(lp),
+                    BackgroundMethod::SendTimeout,
+                )
+            };
+            let after = unsafe { GetForegroundWindow() };
+            changed.set(changed.get() || after != original);
+            steps.push(serde_json::json!({"phase":phase,"message":format!("0x{msg:04X}"),"ok":result.is_ok(),"error":result.err().unwrap_or(0),"before":format!("0x{:X}",before.0 as usize),"after":format!("0x{:X}",after.0 as usize)}));
+            result.is_ok() && (cleanup || !changed.get())
+        };
+        // No early return below: always attempt reverse notifications, including timeout paths.
+        let app_ok = send("activate-app", WM_ACTIVATEAPP, 1, source_thread as isize);
+        let window_ok = app_ok && send("activate-window", WM_ACTIVATE, 1, original.0 as isize);
+        if window_ok {
+            let scan = unsafe { MapVirtualKeyW(0x42, MAPVK_VK_TO_VSC) };
+            let flags = 1 | ((scan & 0xff) << 16);
+            // Attempt UP even if DOWN times out: timeout does not prove non-delivery.
+            report["inputSent"] = serde_json::json!(true);
+            if send("key-down", WM_KEYDOWN, 0x42, flags as isize) {
+                for _ in 0..3 {
+                    std::thread::sleep(Duration::from_millis(10));
+                    // Sampling, not a guarantee against transitions between observations.
+                    if unsafe { GetForegroundWindow() } != original {
+                        changed.set(true);
+                        break;
+                    }
+                }
+            }
+            send("key-up", WM_KEYUP, 0x42, (flags | 0xc0000000) as isize);
+        }
+        let current = unsafe { GetForegroundWindow() };
+        let mut current_pid = 0;
+        unsafe { GetWindowThreadProcessId(current, Some(&mut current_pid)) };
+        // Restore notifications to actual OS state; never falsely deactivate a now-active target.
+        send(
+            "restore-window",
+            WM_ACTIVATE,
+            usize::from(current == hwnd),
+            current.0 as isize,
+        );
+        let current = unsafe { GetForegroundWindow() };
+        let current_thread = unsafe { GetWindowThreadProcessId(current, Some(&mut current_pid)) };
+        send(
+            "restore-app",
+            WM_ACTIVATEAPP,
+            usize::from(current_pid == pid),
+            current_thread as isize,
+        );
+        report["foregroundChanged"] = serde_json::json!(changed.get());
+        report["steps"] = serde_json::json!(steps);
+        report["originalForeground"] = serde_json::json!(format!("0x{:X}", original.0 as usize));
         Ok(report)
     }
     static GENERATION: AtomicU64 = AtomicU64::new(0);

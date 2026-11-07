@@ -54,3 +54,34 @@ it('bounds message output and handles old builds explicitly', () => {
     )
   ).toHaveLength(8);
 });
+
+it('reports activation and reverse notification failures separately without claiming success', () => {
+  const text = backgroundReport({
+    schema: 1,
+    activityTest: true,
+    inputSent: true,
+    foregroundChanged: true,
+    steps: [
+      { phase: 'activate-app', ok: true, error: 0, before: '0x123', after: '0x123' },
+      { phase: 'key-down', skipped: true },
+      { phase: 'restore-window', ok: false, error: 1460, before: '0x456', after: '0x456' },
+      { phase: 'restore-app', ok: true, error: 0, before: '0x456', after: '0x456' }
+    ]
+  }).join('\n');
+  expect(text).toContain('Условие «без активации» нарушено');
+  expect(text).toContain('restore-window: Windows подтвердила — нет, код 1460');
+  expect(text).toContain('key-down: пропущено');
+  expect(text).toContain('не гарантия обработки игрой');
+  expect(text).not.toContain('Клавиши не отправлялись');
+});
+it('explains activity preflight refusal without presenting it as a successful input test', () => {
+  const text = backgroundReport({
+    schema: 1,
+    activityTest: true,
+    refused: true,
+    inputSent: false,
+    foregroundChanged: false
+  }).join('\n');
+  expect(text).toContain('Тест отклонён до уведомлений');
+  expect(text).toContain('Попытка B — нет');
+});
