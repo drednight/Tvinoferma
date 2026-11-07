@@ -234,3 +234,20 @@ it('does not render the command execution notice below the repeat source', () =>
   expect(document.querySelector('[data-gm-mirror-source]')).not.toBeNull();
   expect(document.querySelector('[data-gm-logs]')).not.toBeNull();
 });
+it('hides size/profile settings and commands without deleting saved data', () => {
+  state.settings.gameMacros.commands.push(
+    { id: 'size', action: 'resize', name: 'Old size' },
+    { id: 'layout', action: 'layout', name: 'Old layout' }
+  );
+  state.settings.gameMacros.profiles = [{ id: 'saved', name: 'Saved profile', windows: [] }];
+  mountGameMacros(document.getElementById('host'));
+  expect(document.querySelector('[data-gm-hidden-sizes]').hidden).toBe(true);
+  expect(document.querySelector('[data-gm-hidden-profiles]').hidden).toBe(true);
+  expect(document.querySelector('[data-gm-select="size"]')).toBeNull();
+  expect(document.querySelector('[data-gm-select="layout"]')).toBeNull();
+  expect(state.settings.gameMacros.commands.some(row => row.id === 'size')).toBe(true);
+  expect(state.settings.gameMacros.profiles[0].id).toBe('saved');
+  document.querySelector('[data-gm-create]').click();
+  for (const action of ['resize', 'layout'])
+    expect(document.querySelector(`[name="action"][value="${action}"]`).closest('label').hidden).toBe(true);
+});

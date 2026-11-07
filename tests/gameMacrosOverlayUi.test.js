@@ -294,3 +294,26 @@ it('reports delivery failure without claiming execution and allows retry', async
   await vi.waitFor(() => expect(document.querySelector('#status').textContent).toContain('Не удалось отправить'));
   expect(play.disabled).toBe(false);
 });
+it('shows a dedicated mouse toggle outside the hideable service panel with honest on/off/paused states', async () => {
+  const update = mocks.handlers.get('game-macro-snapshot'),
+    button = document.querySelector('#mouse-repeat-toggle');
+  update({ payload: { mirrorMouse: false, mirroring: false } });
+  expect(button.textContent).toContain('ВЫКЛ');
+  expect(button.getAttribute('aria-pressed')).toBe('false');
+  mocks.emitTo.mockClear();
+  button.click();
+  await vi.waitFor(() => expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-mouse-toggle', null));
+  update({ payload: { mirrorMouse: true, mirroring: true } });
+  expect(button.textContent).toContain('ВКЛ');
+  expect(button.dataset.state).toBe('on');
+  expect(button.getAttribute('aria-pressed')).toBe('true');
+  document.querySelector('#info-toggle').click();
+  expect(button.closest('#overlay-controls')).toBeNull();
+  expect(button.hidden).toBe(false);
+  update({ payload: { mirrorMouse: true, mirroring: false } });
+  expect(button.textContent).toContain('ПРИОСТАНОВЛЕН');
+  update({ payload: { mirrorMouse: true, mirroring: true, busy: true } });
+  expect(button.disabled).toBe(false);
+  update({ payload: { mirrorMouse: false, busy: true } });
+  expect(button.disabled).toBe(true);
+});

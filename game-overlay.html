@@ -245,6 +245,18 @@
       .gm-journal-actions > button {
         margin: 0;
       }
+      #mouse-repeat-toggle {
+        font-weight: 600;
+      }
+      #mouse-repeat-toggle[data-state='on'] {
+        background: #214c40;
+        border-color: #66d9ad;
+        color: #c5ffe6;
+      }
+      #mouse-repeat-toggle[data-state='paused'] {
+        border-color: #e6b86a;
+        color: #f5cc76;
+      }
     </style>
   </head>
   <body>
@@ -287,6 +299,9 @@
           </nav>
           <p id="status">Ожидание главного окна…</p>
         </div>
+        <button type="button" id="mouse-repeat-toggle" aria-pressed="false" data-state="off" disabled>
+          🖱 Повтор мыши: ВЫКЛ
+        </button>
         <section id="shortcuts-screen">
           <h3 data-service-heading>Назначенные клавиши</h3>
           <ul id="commands"></ul>

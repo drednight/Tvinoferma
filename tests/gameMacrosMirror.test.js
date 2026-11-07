@@ -226,3 +226,17 @@ it('does not re-enable repeat if the user stops during a settings refresh', asyn
     false
   );
 });
+it('toggles only mouse mode through the overlay event and preserves keyboard mode', async () => {
+  await runtime.initGameMacros();
+  await runtime.toggleKeyboardMirror();
+  const toggle = m.listeners.get('game-overlay-mouse-toggle');
+  expect(toggle).toBeTypeOf('function');
+  toggle({ payload: null });
+  await vi.waitFor(() =>
+    expect(runtime.snapshot()).toMatchObject({ mirroring: true, mirrorKeys: true, mirrorMouse: true })
+  );
+  toggle({ payload: null });
+  await vi.waitFor(() =>
+    expect(runtime.snapshot()).toMatchObject({ mirroring: true, mirrorKeys: true, mirrorMouse: false })
+  );
+});

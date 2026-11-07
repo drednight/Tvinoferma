@@ -1,7 +1,7 @@
 import { BACKGROUND_METHODS } from './background.js';
 import { escapeHtml as esc } from '../../core/utils.js';
 import { state } from '../../core/state.js';
-import { partyMembers } from './model.js';
+import { partyMembers, commandVisible } from './model.js';
 import { STEP_LABELS, normalizeComposition } from './composition.js';
 import { mountRecorder } from './recorder.js';
 export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
@@ -19,10 +19,10 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
       steps: [{ type: 'keys', value: 'F8' }]
     };
   }
-  const option = (v, label, chosen) =>
-    `<option value="${esc(v)}" ${v === chosen ? 'selected' : ''}>${esc(label)}</option>`;
+  const option = (v, label, chosen, hidden = false) =>
+    `<option ${hidden ? 'hidden' : ''} value="${esc(v)}" ${v === chosen ? 'selected' : ''}>${esc(label)}</option>`;
   const select = (field, values, value) =>
-    `<select class="input" data-field="${field}">${values.map(([v, l]) => option(v, l, value)).join('')}</select>`;
+    `<select class="input" data-field="${field}">${values.map(([v, l]) => option(v, l, value, (field === 'type' && ['resize', 'profile'].includes(v)) || (field === 'commandId' && c.commands.some(cmd => cmd.id === v && !commandVisible(cmd))))).join('')}</select>`;
   const input = (field, value, type = 'text') =>
     `<input class="input" data-field="${field}" type="${type}" value="${esc(value ?? '')}">`;
   const parties = () => [['', 'Текущая управляющая пати'], ...state.parties.map(p => [p.id, p.name])];
@@ -158,7 +158,7 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
                   )
                   .join('')}</fieldset>`
               : ''
-          }<ol>${block.steps.map((step, i) => `<li data-step="${i}"><div class="gm-compose-fields"><label>Действие ${select('type', Object.entries(STEP_LABELS), step.type)}</label>${fields(step)}</div><button type="button" class="btn ghost" data-step-up ${i === 0 ? 'disabled' : ''}>↑</button><button type="button" class="btn danger" data-step-delete>Удалить шаг</button></li>`).join('')}</ol><div class="row gap"><button type="button" class="btn" data-step-add>＋ Действие</button><button type="button" class="btn ghost" data-command-choose>＋ Добавить готовую команду</button><label class="gm-field" data-command-picker hidden>Команда из «Моих команд»<select data-insert-command>${[['', 'Добавить существующую команду…'], ...c.commands.filter(cmd => cmd.id !== row?.id && !['mirror', 'mouse-mirror', 'pause'].includes(cmd.action)).map(cmd => [cmd.id, cmd.name])].map(([v, l]) => option(v, l, '')).join('')}</select><small>Вставляется ссылка на сохранённую команду с её настройками. Изменения исходной команды применятся и здесь; циклы запрещены. Переключатели повтора не вставляются.</small></label><button type="button" class="btn" data-new-point>＋ Именованная точка</button></div><div data-recorder></div></section>`
+          }<ol>${block.steps.map((step, i) => `<li data-step="${i}" ${['resize', 'profile'].includes(step.type) || (step.type === 'command' && c.commands.some(cmd => cmd.id === step.commandId && !commandVisible(cmd))) ? 'hidden' : ''}><div class="gm-compose-fields"><label>Действие ${select('type', Object.entries(STEP_LABELS), step.type)}</label>${fields(step)}</div><button type="button" class="btn ghost" data-step-up ${i === 0 ? 'disabled' : ''}>↑</button><button type="button" class="btn danger" data-step-delete>Удалить шаг</button></li>`).join('')}</ol><div class="row gap"><button type="button" class="btn" data-step-add>＋ Действие</button><button type="button" class="btn ghost" data-command-choose>＋ Добавить готовую команду</button><label class="gm-field" data-command-picker hidden>Команда из «Моих команд»<select data-insert-command>${[['', 'Добавить существующую команду…'], ...c.commands.filter(cmd => cmd.id !== row?.id && commandVisible(cmd) && !['mirror', 'mouse-mirror', 'pause'].includes(cmd.action)).map(cmd => [cmd.id, cmd.name])].map(([v, l]) => option(v, l, '')).join('')}</select><small>Вставляется ссылка на сохранённую команду с её настройками. Изменения исходной команды применятся и здесь; циклы запрещены. Переключатели повтора не вставляются.</small></label><button type="button" class="btn" data-new-point>＋ Именованная точка</button></div><div data-recorder></div></section>`
       )
       .join(
         ''

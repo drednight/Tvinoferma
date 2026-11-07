@@ -5,7 +5,7 @@ import { openOverlay } from '../marathons/overlay.js';
 import { state } from '../../core/state.js';
 import { escapeHtml as esc } from '../../core/utils.js';
 import { showModal } from '../../core/ui.js';
-import { chord, steps, partyMembers, backgroundCompatible } from './model.js';
+import { chord, steps, partyMembers, backgroundCompatible, commandVisible } from './model.js';
 export const commandLabels = {
   next: 'Следующее окно',
   previous: 'Предыдущее окно',
@@ -110,7 +110,7 @@ export function openCommandEditor(c, save, row = null) {
       .filter(([key]) => row || !['follow', 'f6f1', 'optimize'].includes(key))
       .map(
         ([key, value]) =>
-          `<label class="gm-choice"><input type="radio" name="action" value="${key}"><span>${esc(value)}</span></label>`
+          `<label class="gm-choice" ${commandVisible({ action: key }) ? '' : 'hidden'}><input type="radio" name="action" value="${key}"><span>${esc(value)}</span></label>`
       )
       .join(
         ''

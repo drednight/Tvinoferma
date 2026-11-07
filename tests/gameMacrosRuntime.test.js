@@ -898,3 +898,11 @@ it('does not fall back if any game process lacks a verified window identity', as
   expect(runtime.snapshot().executionState).toBe('failed');
   expect(invoke.mock.calls.some(([, args]) => args?.action === 'key-background')).toBe(false);
 });
+it('omits hidden window size/profile commands only from the overlay view, retaining saved commands', () => {
+  state.settings.gameMacros.commands.push(
+    { id: 'size', action: 'resize', name: 'Size' },
+    { id: 'layout', action: 'layout', name: 'Layout' }
+  );
+  expect(runtime.snapshot().commands.map(row => row.id)).toEqual(['test']);
+  expect(runtime.config().commands.map(row => row.id)).toEqual(['test', 'size', 'layout']);
+});

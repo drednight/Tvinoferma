@@ -275,3 +275,5 @@ export function orderManagedTargets(state, config, rows) {
       String(a.charId).localeCompare(String(b.charId))
   );
 }
+
+export const commandVisible = command => !['resize', 'layout'].includes(command.action);

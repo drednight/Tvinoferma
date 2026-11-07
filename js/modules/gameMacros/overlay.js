@@ -6,6 +6,20 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 async function init() {
   const current = getCurrentWindow();
   let journalLines = [];
+  let repeatState = {};
+  const mouseToggle = document.getElementById('mouse-repeat-toggle');
+  const mouseDisabled = () =>
+    !!repeatState.mirrorPending || ((!!repeatState.busy || !!repeatState.paused) && !repeatState.mirrorMouse);
+  mouseToggle.onclick = async () => {
+    mouseToggle.disabled = true;
+    try {
+      await emitTo('main', 'game-overlay-mouse-toggle', null);
+    } catch {
+      document.getElementById('status').textContent = 'Не удалось отправить запрос повтора мыши.';
+    } finally {
+      mouseToggle.disabled = mouseDisabled();
+    }
+  };
   const copyButton = document.getElementById('copy-logs'),
     journal = document.getElementById('journal-screen'),
     copyStatus = document.getElementById('copy-logs-status');
@@ -20,6 +34,18 @@ async function init() {
   await listen('game-macro-snapshot', event => {
     if (event.payload == null) return;
     const data = event.payload;
+    repeatState = data;
+    const mouseOn = !!data.mirrorMouse,
+      mousePaused = mouseOn && !data.mirroring && !data.mirrorPending;
+    mouseToggle.textContent = data.mirrorPending
+      ? '🖱 Повтор мыши: обновление…'
+      : mousePaused
+        ? '🖱 Повтор мыши: ПРИОСТАНОВЛЕН'
+        : `🖱 Повтор мыши: ${mouseOn ? 'ВКЛ' : 'ВЫКЛ'}`;
+    mouseToggle.dataset.state = mousePaused ? 'paused' : mouseOn ? 'on' : 'off';
+    mouseToggle.setAttribute('aria-pressed', String(mouseOn));
+    mouseToggle.title = mouseOn ? 'Выключить повтор мыши' : 'Включить повтор мыши';
+    mouseToggle.disabled = mouseDisabled();
     journalLines = Array.isArray(data.logs)
       ? data.logs.slice()
       : Array.isArray(data.logEntries)

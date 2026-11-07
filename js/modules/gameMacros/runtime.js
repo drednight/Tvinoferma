@@ -6,6 +6,7 @@ import { listen, emitTo } from '@tauri-apps/api/event';
 import { state } from '../../core/state.js';
 import {
   normalizeGameMacros,
+  commandVisible,
   resolveTargets,
   steps,
   commandPoint,
@@ -64,7 +65,7 @@ export function snapshot() {
     opacity: c.opacity,
     appearance: c.appearance,
     topmost: c.topmost,
-    commands: c.commands.map(({ id, name, hotkey, action }) => ({
+    commands: c.commands.filter(commandVisible).map(({ id, name, hotkey, action }) => ({
       id,
       name,
       hotkey,
@@ -847,6 +848,9 @@ export async function initGameMacros() {
   });
   await listen('game-overlay-party', event => {
     void overlayPartyAction(event.payload);
+  });
+  await listen('game-overlay-mouse-toggle', () => {
+    void toggleKeyboardMirror('mouse').catch(() => log('Не удалось изменить повтор мыши из оверлея.'));
   });
   await listen('game-overlay-run', event => {
     const id = event.payload;
