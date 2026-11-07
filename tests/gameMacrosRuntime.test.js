@@ -694,3 +694,27 @@ it('clearing a live journal does not cancel the in-flight command or prevent lat
   expect(runtime.snapshot().executionState).toBe('finished');
   expect(runtime.snapshot().logs.length).toBeGreaterThan(0);
 });
+
+describe('overlay command launching', () => {
+  it('runs by saved id with hotkeys disabled, using the existing mouse-release and execution guards', async () => {
+    const { listen } = await import('@tauri-apps/api/event');
+    await runtime.initGameMacros();
+    const handler = listen.mock.calls.findLast(([name]) => name === 'game-overlay-run')[1];
+    state.settings.gameMacros.enabled = false;
+    state.settings.gameMacros.commands[0].sequence = 'F7';
+    invoke.mockClear();
+    handler({ payload: 'test' });
+    await vi.waitFor(() => expect(runtime.snapshot().executionState).toBe('finished'));
+    expect(invoke).toHaveBeenCalledWith('game_macro_input_idle', { chord: null });
+    expect(
+      invoke.mock.calls.some(
+        ([name, args]) => name === 'game_macro_action' && args.action === 'key' && args.key === 'F7'
+      )
+    ).toBe(true);
+    invoke.mockClear();
+    handler({ payload: { id: 'test' } });
+    handler({ payload: 'removed-command' });
+    await Promise.resolve();
+    expect(invoke).not.toHaveBeenCalled();
+  });
+});

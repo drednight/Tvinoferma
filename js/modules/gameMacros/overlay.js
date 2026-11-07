@@ -86,8 +86,25 @@ async function init() {
         const name = document.createElement('span');
         name.textContent = String(row.name || '');
         name.style.minWidth = '0';
-        li.append(name);
-        key.textContent = String(row.hotkey || 'Кнопка в Инструментах');
+        const play = document.createElement('button');
+        play.type = 'button';
+        play.className = 'command-run';
+        play.textContent = '▶';
+        play.title = `Запустить: ${row.name || 'команда'}`;
+        play.setAttribute('aria-label', play.title);
+        play.disabled = !row.id || (!!data.busy && !row.allowWhileBusy);
+        play.onclick = async () => {
+          play.disabled = true;
+          try {
+            await emitTo('main', 'game-overlay-run', row.id);
+          } catch {
+            document.getElementById('status').textContent = 'Не удалось отправить запрос запуска команды.';
+          } finally {
+            play.disabled = !row.id || (!!data.busy && !row.allowWhileBusy);
+          }
+        };
+        li.append(play, name);
+        key.textContent = String(row.hotkey || 'Не назначена');
         li.append(key);
         return li;
       })

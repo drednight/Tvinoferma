@@ -64,7 +64,12 @@ export function snapshot() {
     opacity: c.opacity,
     appearance: c.appearance,
     topmost: c.topmost,
-    commands: c.commands.map(({ id, name, hotkey }) => ({ id, name, hotkey })),
+    commands: c.commands.map(({ id, name, hotkey, action }) => ({
+      id,
+      name,
+      hotkey,
+      allowWhileBusy: action === 'pause'
+    })),
     notice,
     logEntries: logEntries.slice(-300),
     logs: logs.slice(-300)
@@ -787,6 +792,11 @@ export async function initGameMacros() {
   });
   await listen('game-overlay-party', event => {
     void overlayPartyAction(event.payload);
+  });
+  await listen('game-overlay-run', event => {
+    const id = event.payload;
+    if (typeof id !== 'string' || !config().commands.some(command => command.id === id)) return;
+    void run(id).catch(() => log('Не удалось запустить команду из оверлея.'));
   });
   await listen('game-overlay-action', event => {
     if (event.payload === 'stop') stop();

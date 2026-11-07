@@ -1,6 +1,12 @@
 import { beforeEach, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(async () => {}), drag: vi.fn(), close: vi.fn(), handlers: new Map() }));
+const mocks = vi.hoisted(() => ({
+  invoke: vi.fn(async () => {}),
+  drag: vi.fn(),
+  close: vi.fn(),
+  emitTo: vi.fn(async () => {}),
+  handlers: new Map()
+}));
 beforeEach(async () => {
   vi.resetModules();
   vi.clearAllMocks();
@@ -11,7 +17,7 @@ beforeEach(async () => {
       mocks.handlers.set(name, handler);
       return () => {};
     },
-    emitTo: async () => {}
+    emitTo: mocks.emitTo
   }));
   vi.doMock('@tauri-apps/api/window', () => ({
     getCurrentWindow: () => ({ startDragging: mocks.drag, close: mocks.close })
@@ -246,4 +252,45 @@ it('groups copy and clear side by side with feedback below the toolbar', () => {
   expect(copy.nextElementSibling).toBe(clear);
   expect(copy.parentElement.classList.contains('gm-journal-actions')).toBe(true);
   expect(copy.parentElement.nextElementSibling.id).toBe('copy-logs-status');
+});
+
+it('runs the selected command from a labelled play button even without a hotkey', async () => {
+  mocks.emitTo.mockClear();
+  mocks.handlers.get('game-macro-snapshot')({
+    payload: {
+      commands: [
+        { id: 'one', name: 'Первая', hotkey: 'CTRL+F8' },
+        { id: 'two', name: 'Вторая' }
+      ]
+    }
+  });
+  const rows = document.querySelectorAll('#commands li');
+  expect([...rows[0].children].map(node => node.tagName)).toEqual(['BUTTON', 'SPAN', 'KBD']);
+  expect(rows[0].querySelector('button').getAttribute('aria-label')).toContain('Первая');
+  expect(rows[1].querySelector('kbd').textContent).toBe('Не назначена');
+  rows[1].querySelector('button').click();
+  await vi.waitFor(() => expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-run', 'two'));
+  expect(mocks.invoke).not.toHaveBeenCalled();
+});
+it('prevents concurrent starts while retaining the pause control', () => {
+  mocks.handlers.get('game-macro-snapshot')({
+    payload: {
+      busy: true,
+      commands: [
+        { id: 'one', name: 'Первая' },
+        { id: 'pause', allowWhileBusy: true, name: 'Пауза' }
+      ]
+    }
+  });
+  const buttons = document.querySelectorAll('#commands button');
+  expect(buttons[0].disabled).toBe(true);
+  expect(buttons[1].disabled).toBe(false);
+});
+it('reports delivery failure without claiming execution and allows retry', async () => {
+  mocks.emitTo.mockRejectedValueOnce(new Error('denied'));
+  mocks.handlers.get('game-macro-snapshot')({ payload: { commands: [{ id: 'one', name: 'Первая' }] } });
+  const play = document.querySelector('#commands button');
+  play.click();
+  await vi.waitFor(() => expect(document.querySelector('#status').textContent).toContain('Не удалось отправить'));
+  expect(play.disabled).toBe(false);
 });

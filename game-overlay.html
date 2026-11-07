@@ -85,6 +85,28 @@
         overflow-wrap: anywhere;
         margin: 8px 0;
       }
+      #commands {
+        padding: 0;
+      }
+      #commands li {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+      }
+      #commands .command-run {
+        margin: 0;
+        padding: 6px 9px;
+        color: var(--overlay-key, #f5cc76);
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      button:focus-visible {
+        outline: 2px solid var(--overlay-key, #f5cc76);
+        outline-offset: 2px;
+      }
       kbd {
         flex: 0 0 auto;
         white-space: nowrap;
