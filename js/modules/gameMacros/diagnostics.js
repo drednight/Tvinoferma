@@ -1,0 +1,55 @@
+// Only selected-game metadata and explicit test key messages. No titles, paths, chat, or global key capture.
+const number = value => (Number.isFinite(value) ? value : '?');
+const flag = value => (value === true ? 'да' : value === false ? 'нет' : 'неизвестно');
+const hex = value => (Number.isInteger(value) ? `0x${value.toString(16).toUpperCase()}` : '?');
+const token = value => (typeof value === 'string' && /^0x[\dA-F]+$/i.test(value) ? value : '?');
+export function backgroundReport(report) {
+  if (!report || report.schema !== 1) return ['Диагностический отчёт недоступен: обновите приложение.'];
+  const lines = [
+    `Проверенная цель: PID ${number(report.pid)}, HWND ${token(report.hwnd)}, GUI thread ${number(report.threadId)}. Личность проверена: ${flag(report.identityChecked)}.`,
+    `Класс окна: ${typeof report.class === 'string' && /^[\w .-]{1,128}$/.test(report.class) ? report.class : 'не определён'}. CapsLock — ${flag(report.capsLock)}; CapsLock не добавляет Shift в оконные сообщения.`,
+    `Администратор: Твиноферма — ${flag(report.appElevated)}, игра — ${flag(report.targetElevated)}.`,
+    `Окно: видимо — ${flag(report.visible)}, свёрнуто — ${flag(report.minimized)}, Windows считает зависшим — ${flag(report.hung)}; активно — ${flag(report.targetForeground)}.`,
+    `GUI: сведения доступны — ${flag(report.guiAvailable)} (код ${number(report.guiError)}), фокус в целевом HWND — ${flag(report.focusIsTarget)}, фокус в другом HWND этой нити — ${flag(report.childFocus)}, захват мыши целью — ${flag(report.captureIsTarget)}.`,
+    `Клавиша VK=${hex(report.vk)}; scan отправителя=${hex(report.scanSender)}, scan раскладки игры=${hex(report.scanTarget)}. Раскладки: ${token(report.senderLayout)} → ${token(report.targetLayout)}.`,
+    `Состояние перед отправкой: тестовая клавиша физически зажата — ${flag(report.selectedKeyHeld)}, Ctrl/Shift/Alt/Win зажат — ${flag(report.modifierHeld)}. Модификаторов в команде: ${Array.isArray(report.modifiers) ? report.modifiers.length : '?'}.`
+  ];
+  if (report.integrityAllowed === false)
+    lines.push('Проверка прав не пройдена: отправка клавиш этому окну заблокирована.');
+  if (report.foregroundChangedDuringProbe)
+    lines.push(
+      'Во время проверки изменилось активное окно. Сравните повторно без переключений; фокус не восстанавливался.'
+    );
+  if (report.minimized) lines.push('Для сравнения вручную разверните окно; диагностика не восстанавливает его.');
+  if (report.scanSender !== report.scanTarget)
+    lines.push('Раскладки дают разные scan-code. Автоматической подмены раскладки или клавиши нет.');
+  const health = (Array.isArray(report.health) ? report.health : []).slice(0, 3);
+  for (const probe of health)
+    lines.push(
+      `WM_NULL (без клавиши), лимит ${number(probe.timeoutMs)} мс: ответ — ${flag(probe.ok)}, код ${number(probe.error)}, ${number(probe.elapsedUs)} мкс.`
+    );
+  if (health.some(p => p.ok))
+    lines.push('Оконная процедура ответила на WM_NULL. Это не доказывает, что она обрабатывает WM_KEY.');
+  if (health[0]?.ok === false && health.slice(1).some(p => p.ok))
+    lines.push(
+      'Ответ получен только с увеличенным лимитом: 25 мс может быть недостаточно. Лимит клавиатурной команды не менялся.'
+    );
+  if (report.inputSent) {
+    const method = ['post', 'send-timeout', 'notify'].includes(report.method) ? report.method : '?';
+    lines.push(
+      `Выбранный способ ${method}, удержание ${number(report.holdMs)} мс. Изменение фокуса во время отправки — ${flag(report.foregroundChanged)}.`
+    );
+    for (const message of (Array.isArray(report.messages) ? report.messages : []).slice(0, 8)) {
+      lines.push(
+        `${message.phase === 'up' ? 'Отпускание' : 'Нажатие'}: VK=${hex(message.vk)}, scan=${hex(message.scan)}, msg=${token(message.message)}, lParam=${token(message.lparam)}; Windows приняла — ${flag(message.ok)}, код ${number(message.error)}, ${number(message.elapsedUs)} мкс.`
+      );
+    }
+    lines.push(
+      'Отчёт Windows не подтверждает действие в PW. Реакцию игры отметьте отдельно; отсутствие реакции не доказывает DirectInput/Raw Input.'
+    );
+  } else
+    lines.push(
+      'Клавиши не отправлялись. Проверка WM_NULL не переключает фокус и не меняет раскладку/состояние клавиатуры.'
+    );
+  return lines;
+}

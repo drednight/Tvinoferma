@@ -610,3 +610,50 @@ it.each([
   expect(invoke.mock.calls.filter(([, a]) => a?.action === 'key-background')).toHaveLength(1);
   expect(invoke.mock.calls.some(([, a]) => a?.action === 'focus' || a?.action === 'key')).toBe(false);
 });
+it('performs only a read-only explicit probe and records identity and WM_NULL results', async () => {
+  invoke.mockImplementation(async c =>
+    c === 'launcher_running_details'
+      ? [client]
+      : c === 'game_macro_background_probe'
+        ? {
+            schema: 1,
+            pid: 10,
+            identityChecked: true,
+            health: [{ timeoutMs: 25, ok: true, error: 0 }],
+            inputSent: false
+          }
+        : null
+  );
+  const text = await runtime.diagnoseBackground('a', 'B');
+  expect(text).toContain('WM_NULL');
+  expect(text).toContain('Клавиши не отправлялись');
+  expect(invoke.mock.calls.map(([c]) => c)).toEqual(['launcher_running_details', 'game_macro_background_probe']);
+  expect(runtime.snapshot().busy).toBe(false);
+});
+it('does not probe unknown or vanished game clients', async () => {
+  await expect(runtime.diagnoseBackground('missing', 'B')).rejects.toThrow('Не найдено');
+  expect(invoke.mock.calls.some(([c]) => c === 'game_macro_background_probe')).toBe(false);
+});
+it('logs partial native delivery and failed release before stopping further recipients or keys', async () => {
+  Object.assign(state.settings.gameMacros.commands[0], { delivery: 'background', sequence: 'B\nF8' });
+  invoke.mockImplementation(async (c, args) =>
+    c === 'launcher_running_details'
+      ? [client]
+      : args?.action === 'key-background'
+        ? {
+            schema: 1,
+            ok: false,
+            error: 5,
+            inputSent: true,
+            messages: [
+              { phase: 'down', vk: 66, ok: true, error: 0 },
+              { phase: 'up', vk: 66, ok: false, error: 5 }
+            ]
+          }
+        : null
+  );
+  await runtime.run('test');
+  expect(runtime.snapshot().logs.join('\n')).toContain('Отпускание: VK=0x42');
+  expect(runtime.snapshot().notice).toContain('код 5');
+  expect(invoke.mock.calls.filter(([, a]) => a?.action === 'key-background')).toHaveLength(1);
+});

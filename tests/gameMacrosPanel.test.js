@@ -1,12 +1,19 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { state } from '../js/core/state.js';
 import { mountGameMacros } from '../js/modules/gameMacros/panel.js';
-const mocks = vi.hoisted(() => ({ showSize: vi.fn(), openOverlay: vi.fn(), run: vi.fn(), pickPoint: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  diagnoseBackground: vi.fn(async () => 'Диагностический отчёт'),
+  showSize: vi.fn(),
+  openOverlay: vi.fn(),
+  run: vi.fn(),
+  pickPoint: vi.fn()
+}));
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}) }));
 vi.mock('../js/modules/gameMacros/runtime.js', async () => {
   const { normalizeGameMacros } = await import('../js/modules/gameMacros/model.js');
   const { state } = await import('../js/core/state.js');
   return {
+    diagnoseBackground: mocks.diagnoseBackground,
     config: () => normalizeGameMacros(state.settings.gameMacros),
     toggleKeyboardMirror: vi.fn(async () => {}),
     configure: vi.fn(async () => {}),
@@ -171,4 +178,13 @@ it('groups keyboard and mouse repeat controls together', () => {
   const group = document.querySelector('.gm-mirror-buttons');
   expect(group.querySelector('[data-gm-mirror]')).not.toBeNull();
   expect(group.querySelector('[data-gm-mirror-mouse]')).not.toBeNull();
+});
+
+it('opens a non-input diagnostic modal and explicitly probes one selected client', async () => {
+  document.querySelector('[data-gm-background-probe]').click();
+  expect(mocks.diagnoseBackground).not.toHaveBeenCalled();
+  document.querySelector('[data-bg-probe-run]').click();
+  await vi.waitFor(() => expect(document.querySelector('[data-bg-probe-report]').value).toBe('Диагностический отчёт'));
+  expect(mocks.diagnoseBackground).toHaveBeenCalledWith('a', 'B');
+  expect(mocks.run).not.toHaveBeenCalled();
 });

@@ -6,6 +6,7 @@ import { normalizeGameMacros, partyMembers, validPoint } from './model.js';
 import { commandLabels, openCommandEditor } from './editor.js';
 import {
   config,
+  diagnoseBackground,
   configure,
   initGameMacros,
   toggleKeyboardMirror,
@@ -77,7 +78,7 @@ export function mountGameMacros(host) {
   <header class="gm-heading"><div><span class="gm-eyebrow">Управление игровыми окнами</span><h3>🎮 Управление пати и макросы</h3><p>Выберите пати, настройте команды и запускайте их кнопкой или сочетанием клавиш.</p></div><div class="gm-mirror-buttons"><button class="btn" data-gm-mirror aria-pressed="false">⌨ Включить повтор клавиатуры</button><button class="btn" data-gm-mirror-mouse aria-pressed="false">🖱 Включить повтор мыши</button></div><button class="btn danger" data-gm-stop>■ Остановить</button></header>
   <div class="gm-control-bar gm-party-bar"><label class="gm-field">Пати для всех команд<select data-gm-party><option value="">Выберите пати</option>${state.parties.map(p => option(p.id, p.name, c.partyId)).join('')}</select></label></div>
   <p class="gm-key-note">Если переключатель выключен, работает ручной запуск кнопкой ▶. При включении Windows закрепляет сочетания за приложением; игровые команды срабатывают только из окон выбранной пати. Остановка — <kbd>Ctrl+Alt+Pause</kbd>.</p>
-  <div class="gm-repeat-toolbar"><button class="btn ghost" data-gm-diagnostics>◎ Проверить окна</button><button class="btn ghost" data-gm-recognize>Распознать пати / порядок</button></div><label class="gm-field">Источник повтора<select data-gm-mirror-source><option value="any" ${c.mirrorSource === 'any' ? 'selected' : ''}>Любое распознанное игровое окно</option><option value="leader" ${c.mirrorSource === 'leader' ? 'selected' : ''}>Только ПЛ выбранной пати</option></select><small>Получатели — все остальные проверенные клиенты. Изменение настроек выключает активный повтор.</small></label><small>Клавиатура и мышь включаются независимо. Мышь: абсолютные экранные координаты, без масштабирования. Возможен расход ресурсов.</small><div class="gm-status" role="status" data-gm-runtime></div>
+  <div class="gm-repeat-toolbar"><button class="btn ghost" data-gm-diagnostics>◎ Проверить окна</button><button class="btn ghost" data-gm-background-probe>◎ Диагностика фона (без клавиш)</button><button class="btn ghost" data-gm-recognize>Распознать пати / порядок</button></div><label class="gm-field">Источник повтора<select data-gm-mirror-source><option value="any" ${c.mirrorSource === 'any' ? 'selected' : ''}>Любое распознанное игровое окно</option><option value="leader" ${c.mirrorSource === 'leader' ? 'selected' : ''}>Только ПЛ выбранной пати</option></select><small>Получатели — все остальные проверенные клиенты. Изменение настроек выключает активный повтор.</small></label><small>Клавиатура и мышь включаются независимо. Мышь: абсолютные экранные координаты, без масштабирования. Возможен расход ресурсов.</small><div class="gm-status" role="status" data-gm-runtime></div>
   <div class="gm-section-top"><h4>Мои команды <span>${c.commands.length}</span></h4><button class="btn primary" data-gm-create>＋ Создать команду</button></div>
   <div class="gm-command-workbench"><nav class="gm-command-menu" aria-label="Команды">${c.commands.map(row => `<button class="gm-command-choice ${row.id === selectedId ? 'is-selected' : ''}" data-gm-select="${esc(row.id)}" aria-pressed="${row.id === selectedId}"><b>${esc(row.name)}</b><kbd>${esc(row.hotkey || 'Без сочетания')}</kbd></button>`).join('') || '<p class="muted">Пока нет команд. Создайте первую.</p>'}</nav>
   <article class="gm-command-detail">${
@@ -197,6 +198,46 @@ export function mountGameMacros(host) {
       else drawPoint(await previewCommand(selectedId));
     })
   );
+  host.querySelector('[data-gm-background-probe]').onclick = () => {
+    showModal({
+      title: 'Диагностика фонового ввода',
+      submitText: 'Закрыть',
+      onSubmit: () => {},
+      content: `<div class="gm-dialog"><p>Проверка одного распознанного клиента без нажатия клавиш. WM_NULL ждёт ответ до 25/100/250 мс, более длинные проверки пропускаются после первого успеха. Фокус и раскладка не меняются.</p><label>Проверяемый персонаж<select data-bg-char>${partyMembers(
+        state,
+        c.partyId
+      )
+        .map(char => option(char.id, char.nick, c.leaders[c.partyId]))
+        .join(
+          ''
+        )}</select></label><label>Клавиша для расчёта VK/scan (не нажимается)<input data-bg-key value="B" maxlength="32"></label><button type="button" class="btn" data-bg-probe-run>Проверить без нажатия</button><p data-bg-probe-status role="status"></p><label>Отчёт для копирования<textarea data-bg-probe-report readonly rows="14"></textarea></label><button type="button" class="btn ghost" data-bg-probe-copy>Выделить отчёт для копирования</button><p class="muted">После проверки сравните вручную: 1) та же клавиша физически в игре; 2) одношаговая команда с обычной доставкой; 3) три фоновых варианта по одному на двух клиентах. Обычный режим активирует окна — здесь он автоматически не запускается. Для каждого варианта запишите: сработало ли в активном/неактивном окне и исходное состояние интерфейса. Не используйте расходные действия.</p></div>`
+    });
+    const modal = document.querySelector('#modal-root');
+    const button = modal.querySelector('[data-bg-probe-run]'),
+      status = modal.querySelector('[data-bg-probe-status]'),
+      report = modal.querySelector('[data-bg-probe-report]');
+    button.onclick = async () => {
+      button.disabled = true;
+      status.textContent = 'Проверяется окно; клавиши не отправляются…';
+      try {
+        report.value = await diagnoseBackground(
+          modal.querySelector('[data-bg-char]').value,
+          modal.querySelector('[data-bg-key]').value
+        );
+        status.textContent = 'Готово. Отчёт также записан в журнал сеанса.';
+      } catch (error) {
+        status.textContent = error.message;
+        report.value = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    };
+    modal.querySelector('[data-bg-probe-copy]').onclick = () => {
+      report.focus();
+      report.select();
+      status.textContent = 'Отчёт выделен. Нажмите Ctrl+C.';
+    };
+  };
   host.querySelector('[data-gm-diagnostics]').onclick = safe(async () => {
     const rows = await (await import('./runtime.js')).listMacroWindows();
     showModal({

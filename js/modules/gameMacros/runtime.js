@@ -1,3 +1,4 @@
+import { backgroundReport } from './diagnostics.js';
 import { BACKGROUND_METHODS, backgroundMethod } from './background.js';
 import { inputLabel, formatMirrorInput } from './inputTrace.js';
 import { compileComposition, executeComposition, compositionActions } from './composition.js';
@@ -65,8 +66,8 @@ export function snapshot() {
     topmost: c.topmost,
     commands: c.commands.map(({ id, name, hotkey }) => ({ id, name, hotkey })),
     notice,
-    logEntries: logEntries.slice(-80),
-    logs: logs.slice(-80)
+    logEntries: logEntries.slice(-300),
+    logs: logs.slice(-300)
   };
 }
 export async function broadcast() {
@@ -81,7 +82,7 @@ export async function broadcast() {
 function log(text, commandName = activeCommandName, notify = true, terminal = false) {
   logs.push(`${new Date().toLocaleTimeString('ru-RU')} · ${text}`);
   logEntries.push({ text: logs.at(-1), commandName, terminal });
-  if (logs.length > 120) {
+  if (logs.length > 300) {
     logs.shift();
     logEntries.shift();
   }
@@ -205,6 +206,14 @@ const act = async (row, action, extra = {}) => {
     point: null,
     ...extra
   });
+  if (action === 'key-background' && result?.schema === 1) {
+    log(`Диагностика ввода → ${row.nick || row.pid}:`, '', false);
+    for (const line of backgroundReport(result)) log(line, '', false);
+    if (result.ok === false) {
+      if (result.error != null) throw new Error(`Background delivery failed: ${result.error}`);
+      throw new Error('Focus changed during background test');
+    }
+  }
   if (input)
     log(
       `Отправлено: ${extra.key || (action === 'right-click' ? 'ПКМ' : 'ЛКМ')} → ${row.nick || row.pid}${extra.point ? ` · точка (${extra.point.x}, ${extra.point.y})` : ''}. Нажатие и отпускание; обработка игрой не подтверждена.`
@@ -1290,5 +1299,34 @@ export async function overlayPartyAction(request) {
   } finally {
     busy = false;
     await broadcast();
+  }
+}
+
+export async function diagnoseBackground(charId, key = 'B') {
+  if (busy || mirroring || mirrorPending) throw new Error('Завершите команду и выключите повтор перед диагностикой.');
+  busy = true;
+  cancelled = false;
+  notice = 'Диагностика фона без клавиш…';
+  void broadcast();
+  try {
+    const rows = await listMacroWindows();
+    const row = rows.find(row => row.known && row.charId === charId && row.hwnd && row.startedAt);
+    if (!row) throw new Error('Не найдено однозначно распознанное окно выбранного персонажа.');
+    if (cancelled) throw new Error('Остановлено пользователем.');
+    const report = await native('game_macro_background_probe', {
+      target: { pid: row.pid, startedAt: row.startedAt, hwnd: row.hwnd },
+      key
+    });
+    const lines = [`Диагностика фона без клавиш → ${row.nick || row.pid}:`, ...backgroundReport(report)];
+    for (const line of lines) log(line, '', false);
+    notice = cancelled ? 'Проверка остановлена.' : 'Диагностика фона завершена. Клавиши не отправлялись.';
+    return lines.join('\n');
+  } catch (error) {
+    notice = macroErrorText(error);
+    log(notice, '', false);
+    throw new Error(notice, { cause: error });
+  } finally {
+    busy = false;
+    void broadcast();
   }
 }

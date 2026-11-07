@@ -453,7 +453,7 @@ pub async fn game_macro_action(
     rect: Option<GeometryInput>,
     point: Option<PointInput>,
     timing: Option<InputTiming>,
-) -> Result<Option<Geometry>, String> {
+) -> Result<serde_json::Value, String> {
     main_only(&window)?;
     #[cfg(windows)]
     {
@@ -464,6 +464,18 @@ pub async fn game_macro_action(
                 return Err("Game client identity changed or access is unavailable".into());
             }
             let hwnd = client.hwnd.ok_or("No game window")?;
+            if action == "key-background" {
+                let mut report = win::background_key(
+                    hwnd,
+                    target.pid,
+                    key.as_deref().ok_or("Missing key")?,
+                    timing.unwrap_or_default(),
+                )?;
+                report["appElevated"] = serde_json::json!(crate::launcher::self_elevated());
+                report["targetElevated"] = serde_json::json!(client.elevated);
+                report["identityChecked"] = serde_json::json!(true);
+                return Ok(report);
+            }
             win::action(
                 hwnd,
                 target.pid,
@@ -473,6 +485,7 @@ pub async fn game_macro_action(
                 point,
                 timing.unwrap_or_default(),
             )
+            .map(|geometry| serde_json::json!(geometry))
         })
         .await
         .map_err(|_| "Window action failed")?
@@ -480,6 +493,43 @@ pub async fn game_macro_action(
     #[cfg(not(windows))]
     {
         let _ = (target, action, key, rect, point, timing);
+        Err("Game control is Windows-only".into())
+    }
+}
+// Explicit, bounded diagnostics. WM_NULL health probes do not contain keyboard input.
+#[tauri::command]
+pub async fn game_macro_background_probe(
+    window: tauri::WebviewWindow,
+    target: Target,
+    key: String,
+) -> Result<serde_json::Value, String> {
+    main_only(&window)?;
+    #[cfg(windows)]
+    {
+        tauri::async_runtime::spawn_blocking(move || {
+            let client =
+                crate::launcher::macro_client_at(target.pid, target.started_at, target.hwnd)?;
+            let mut report = win::background_probe(
+                client.hwnd.ok_or("No game window")?,
+                target.pid,
+                &key,
+                true,
+            )?;
+            report["appElevated"] = serde_json::json!(crate::launcher::self_elevated());
+            report["targetElevated"] = serde_json::json!(client.elevated);
+            report["integrityAllowed"] = serde_json::json!(compatible_integrity(
+                client.elevated,
+                crate::launcher::self_elevated()
+            ));
+            report["identityChecked"] = serde_json::json!(true);
+            Ok(report)
+        })
+        .await
+        .map_err(|_| "Background probe failed".to_string())?
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (target, key);
         Err("Game control is Windows-only".into())
     }
 }
@@ -576,6 +626,147 @@ mod win {
         } else {
             Err(GetLastError().0)
         }
+    }
+
+    fn verified_window(raw: u64, pid: u32) -> Result<HWND, String> {
+        let hwnd = HWND(raw as usize as *mut _);
+        let mut actual = 0;
+        unsafe {
+            GetWindowThreadProcessId(hwnd, Some(&mut actual));
+            if actual != pid || !IsWindow(Some(hwnd)).as_bool() {
+                return Err("Game window disappeared".into());
+            }
+        }
+        Ok(hwnd)
+    }
+    pub fn background_probe(
+        raw: u64,
+        pid: u32,
+        key: &str,
+        health: bool,
+    ) -> Result<serde_json::Value, String> {
+        let hwnd = verified_window(raw, pid)?;
+        let (mods, vk) = chord(key)?;
+        unsafe {
+            let thread = GetWindowThreadProcessId(hwnd, None);
+            let layout = GetKeyboardLayout(thread);
+            let sender_layout = GetKeyboardLayout(0);
+            let mut class = [0u16; 128];
+            let length = GetClassNameW(hwnd, &mut class);
+            let mut gui = GUITHREADINFO {
+                cbSize: std::mem::size_of::<GUITHREADINFO>() as u32,
+                ..Default::default()
+            };
+            let gui_ok = GetGUIThreadInfo(thread, &mut gui).is_ok();
+            let gui_error = if gui_ok { 0 } else { GetLastError().0 };
+            let initial_foreground = GetForegroundWindow();
+            let mut probes = Vec::new();
+            if health {
+                for timeout in [25, 100, 250] {
+                    verified_window(raw, pid)?;
+                    let mut result = 0;
+                    SetLastError(WIN32_ERROR(0));
+                    let start = std::time::Instant::now();
+                    let ok =
+                        background_send_timeout(hwnd.0, WM_NULL, 0, 0, 0x23, timeout, &mut result)
+                            != 0;
+                    let error = if ok { 0 } else { GetLastError().0 };
+                    probes.push(serde_json::json!({"timeoutMs":timeout,"ok":ok,"error":error,"elapsedUs":start.elapsed().as_micros() as u64}));
+                    // A short successful response makes longer health waits unnecessary.
+                    if ok {
+                        break;
+                    }
+                }
+            }
+            Ok(
+                serde_json::json!({"schema":1,"pid":pid,"hwnd":format!("0x{raw:X}"),"threadId":thread,
+                "class":String::from_utf16_lossy(&class[..length.max(0) as usize]),
+                "visible":IsWindowVisible(hwnd).as_bool(),"minimized":IsIconic(hwnd).as_bool(),"hung":IsHungAppWindow(hwnd).as_bool(),
+                "targetForeground":initial_foreground==hwnd,"foregroundChangedDuringProbe":GetForegroundWindow()!=initial_foreground,"capsLock":GetKeyState(0x14)&1!=0,
+                "guiAvailable":gui_ok,"guiError":gui_error,"focusIsTarget":gui_ok&&gui.hwndFocus==hwnd,
+                "childFocus":gui_ok&&!gui.hwndFocus.0.is_null()&&gui.hwndFocus!=hwnd,
+                "captureIsTarget":gui_ok&&gui.hwndCapture==hwnd,
+                "senderLayout":format!("0x{:X}",sender_layout.0 as usize),"targetLayout":format!("0x{:X}",layout.0 as usize),
+                "vk":vk,"scanSender":MapVirtualKeyW(vk as u32,MAPVK_VK_TO_VSC),
+                "scanTarget":MapVirtualKeyExW(vk as u32,MAPVK_VK_TO_VSC,Some(layout)),
+                "modifiers":mods,"selectedKeyHeld":GetAsyncKeyState(vk as i32)<0,
+                "modifierHeld":[0x10,0x11,0x12,0x5b,0x5c].iter().any(|v|GetAsyncKeyState(*v)<0),
+                "health":probes,"inputSent":false}),
+            )
+        }
+    }
+    pub fn background_key(
+        raw: u64,
+        pid: u32,
+        key: &str,
+        timing: InputTiming,
+    ) -> Result<serde_json::Value, String> {
+        let hwnd = verified_window(raw, pid)?;
+        let mut report = background_probe(raw, pid, key, false)?;
+        let (mods, vk) = chord(key)?;
+        let alt = mods.contains(&0x12);
+        let original = unsafe { GetForegroundWindow() };
+        let mut messages = Vec::new();
+        let mut failure = None;
+        let mut send = |key: u16, up: bool| {
+            let scan = unsafe { MapVirtualKeyW(key as u32, MAPVK_VK_TO_VSC) };
+            let flags = 1u32
+                | ((scan & 0xff) << 16)
+                | (u32::from(matches!(key, 0x21..=0x28 | 0x2d | 0x2e)) << 24)
+                | (u32::from(alt) << 29)
+                | if up { 0xc0000000 } else { 0 };
+            let msg = match (alt, up) {
+                (true, true) => WM_SYSKEYUP,
+                (true, false) => WM_SYSKEYDOWN,
+                (false, true) => WM_KEYUP,
+                (false, false) => WM_KEYDOWN,
+            };
+            let start = std::time::Instant::now();
+            let result = if verified_window(raw, pid).is_err() {
+                Err(1400)
+            } else {
+                unsafe {
+                    send_background(
+                        hwnd,
+                        msg,
+                        WPARAM(key as usize),
+                        LPARAM(flags as isize),
+                        timing.background_method,
+                    )
+                }
+            };
+            messages.push(serde_json::json!({"phase":if up{"up"}else{"down"},"vk":key,"scan":scan,"message":format!("0x{msg:04X}"),"lparam":format!("0x{flags:08X}"),"ok":result.is_ok(),"error":result.err().unwrap_or(0),"elapsedUs":start.elapsed().as_micros() as u64}));
+            result
+        };
+        let mut pressed = Vec::new();
+        for key in mods.iter().copied().chain(std::iter::once(vk)) {
+            pressed.push(key);
+            if let Err(code) = send(key, false) {
+                failure = Some(code);
+                break;
+            }
+        }
+        if failure.is_none() {
+            std::thread::sleep(Duration::from_millis(timing.hold_ms.clamp(10, 200)));
+        }
+        for key in pressed.into_iter().rev() {
+            if let Err(code) = send(key, true) {
+                failure.get_or_insert(code);
+            }
+        }
+        let foreground_changed = unsafe { GetForegroundWindow() != original };
+        report["inputSent"] = serde_json::json!(true);
+        report["messages"] = serde_json::json!(messages);
+        report["method"] = serde_json::json!(match timing.background_method {
+            BackgroundMethod::Post => "post",
+            BackgroundMethod::SendTimeout => "send-timeout",
+            BackgroundMethod::Notify => "notify",
+        });
+        report["holdMs"] = serde_json::json!(timing.hold_ms.clamp(10, 200));
+        report["foregroundChanged"] = serde_json::json!(foreground_changed);
+        report["error"] = serde_json::json!(failure);
+        report["ok"] = serde_json::json!(failure.is_none() && !foreground_changed);
+        Ok(report)
     }
     static GENERATION: AtomicU64 = AtomicU64::new(0);
     static THREAD: Mutex<Option<std::thread::JoinHandle<()>>> = Mutex::new(None);
@@ -1004,55 +1195,7 @@ mod win {
                     }
                     std::thread::sleep(Duration::from_millis(timing.switch_ms.min(500)));
                 }
-                "key-background" => {
-                    let original_foreground = GetForegroundWindow();
-                    let (mods, key) = chord(key.ok_or("Missing key")?)?;
-                    let send = |vk: u16, up: bool, alt: bool| {
-                        let scan = MapVirtualKeyW(vk as u32, MAPVK_VK_TO_VSC);
-                        let flags = 1u32
-                            | ((scan & 0xff) << 16)
-                            | (u32::from(matches!(vk, 0x21..=0x28 | 0x2d | 0x2e)) << 24)
-                            | (u32::from(alt) << 29)
-                            | if up { 0xc0000000 } else { 0 };
-                        send_background(
-                            hwnd,
-                            match (alt, up) {
-                                (true, true) => WM_SYSKEYUP,
-                                (true, false) => WM_SYSKEYDOWN,
-                                (false, true) => WM_KEYUP,
-                                (false, false) => WM_KEYDOWN,
-                            },
-                            WPARAM(vk as usize),
-                            LPARAM(flags as isize),
-                            timing.background_method,
-                        )
-                    };
-                    let alt = mods.contains(&0x12);
-                    let mut pressed = Vec::new();
-                    let mut failure = None;
-                    for vk in mods.iter().copied().chain(std::iter::once(key)) {
-                        // A timed-out down may still be processed. Always attempt its matching up.
-                        pressed.push(vk);
-                        if let Err(code) = send(vk, false, alt) {
-                            failure = Some(code);
-                            break;
-                        }
-                    }
-                    if failure.is_none() {
-                        std::thread::sleep(Duration::from_millis(timing.hold_ms.clamp(10, 200)));
-                    }
-                    for vk in pressed.into_iter().rev() {
-                        if let Err(code) = send(vk, true, alt) {
-                            failure.get_or_insert(code);
-                        }
-                    }
-                    if let Some(code) = failure {
-                        return Err(format!("Background delivery failed: {code}"));
-                    }
-                    if GetForegroundWindow() != original_foreground {
-                        return Err("Focus changed during background test".into());
-                    }
-                }
+                "key-background" => return Err("Background input requires diagnostics".into()),
                 "key" => {
                     if GetForegroundWindow() != hwnd {
                         return Err("Focus changed; command stopped".into());
