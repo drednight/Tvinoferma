@@ -18,7 +18,8 @@ fn overlay_only(window: &tauri::WebviewWindow) -> Result<(), String> {
     Ok(())
 }
 #[tauri::command]
-pub fn teamspeak_overlay(
+// WebView2 creation must run off the UI thread (same contract as game_macro_overlay).
+pub async fn teamspeak_overlay(
     window: tauri::WebviewWindow,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
@@ -46,9 +47,13 @@ pub fn teamspeak_overlay(
     .map_err(|_| "Cannot create TeamSpeak overlay")?;
     overlay.on_window_event(|event| {
         if matches!(event, tauri::WindowEvent::Destroyed) {
-            if let Ok(mut query) = QUERY.lock() {
-                *query = None;
-            }
+            // Window events run on the UI thread. A poll may hold QUERY during
+            // socket reads, so never wait for that mutex here.
+            tauri::async_runtime::spawn_blocking(|| {
+                if let Ok(mut query) = QUERY.lock() {
+                    *query = None;
+                }
+            });
         }
     });
     Ok(())

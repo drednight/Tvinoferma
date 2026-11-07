@@ -144,3 +144,20 @@ it('TS3 polling uses the native loopback bridge and stops after disconnect', asy
   expect(mocks.invoke).not.toHaveBeenCalledWith('teamspeak3_poll');
   expect(document.querySelectorAll('#members li')).toHaveLength(0);
 });
+
+it('closes without waiting for a stalled native ClientQuery disconnect', async () => {
+  mocks.invoke.mockImplementation(command =>
+    command === 'teamspeak3_disconnect' ? new Promise(() => {}) : Promise.resolve()
+  );
+  document.getElementById('close').click();
+  await vi.advanceTimersByTimeAsync(1);
+  expect(mocks.invoke).toHaveBeenCalledWith('teamspeak3_disconnect');
+  expect(mocks.close).toHaveBeenCalledTimes(1);
+});
+it('keeps native webview creation asynchronous and teardown mutex waits off the UI thread', () => {
+  const source = readFileSync('src-tauri/src/teamspeak.rs', 'utf8');
+  expect(source).toMatch(/pub async fn teamspeak_overlay\(/);
+  const teardown = source.slice(source.indexOf('overlay.on_window_event'), source.indexOf('pub fn teamspeak_topmost'));
+  expect(teardown.indexOf('spawn_blocking')).toBeGreaterThan(-1);
+  expect(teardown.indexOf('QUERY.lock()')).toBeGreaterThan(teardown.indexOf('spawn_blocking'));
+});

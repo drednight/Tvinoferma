@@ -283,7 +283,9 @@ $('drag').onpointerdown = event => {
   if (event.button === 0 && !event.target.closest('button')) void getCurrentWindow().startDragging();
 };
 $('close').onclick = async () => {
-  await disconnect(false);
+  // Stop local timers/socket immediately, but don't wait for a native poll's mutex.
+  // The native Destroyed handler also cleans up the session on a blocking worker.
+  void disconnect(false);
   await getCurrentWindow().close();
 };
 setInterval(renderMessages, 500);
