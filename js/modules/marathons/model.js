@@ -629,7 +629,7 @@ export function applySiteQuests(m, charId, quests, at = new Date().toISOString()
   const changes = [];
   if (!Array.isArray(quests) || m.kind === 'series' || m.status === 'completed') return changes;
   if (!m.participantIds.includes(charId)) return changes;
-  const day = at.slice(0, 10);
+  const day = mskDate(at);
   if (m.startDate && day < m.startDate) return changes;
 
   m.tasks.forEach(task => {
