@@ -61,6 +61,7 @@ struct Context {
     control: Arc<Control>,
     mouse: bool,
     keyboard: bool,
+    source: Option<usize>,
     last_mouse: Option<(u8, i32, i32, u64)>,
 }
 thread_local! { static CONTEXT: RefCell<Option<Context>> = const { RefCell::new(None) }; }
@@ -79,6 +80,9 @@ fn reserved(vk: u32, ctrl: bool, alt: bool, win: bool) -> bool {
     win || matches!(vk,0x5b..=0x5f|0xa6..=0xb7)
         || (alt && matches!(vk, 0x09 | 0x1b | 0x73))
         || (ctrl && vk == 0x1b)
+}
+fn source_allowed(selected: Option<usize>, actual: usize) -> bool {
+    selected.is_none_or(|source| source == actual)
 }
 unsafe extern "system" fn hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
     if code >= 0
@@ -107,6 +111,9 @@ unsafe extern "system" fn hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
                     return;
                 }
                 let source = GetForegroundWindow().0 as usize;
+                if !source_allowed(ctx.source, source) {
+                    return;
+                }
                 let mut pid = 0;
                 GetWindowThreadProcessId(GetForegroundWindow(), Some(&mut pid));
                 if !ctx
@@ -173,6 +180,9 @@ unsafe extern "system" fn mouse_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESU
                 }
                 let hwnd = GetForegroundWindow();
                 let source = hwnd.0 as usize;
+                if !source_allowed(ctx.source, source) {
+                    return;
+                }
                 let under = WindowFromPoint(event.pt);
                 let mut pid = 0;
                 GetWindowThreadProcessId(hwnd, Some(&mut pid));
@@ -519,6 +529,7 @@ pub fn start(
     shortcuts: Vec<String>,
     mouse: bool,
     keyboard: bool,
+    source: Option<Target>,
 ) -> Result<bool, String> {
     if id.is_empty()
         || id.len() > 80
@@ -548,6 +559,21 @@ pub fn start(
         }
         clients.push(Client { target, hwnd });
     }
+    let source_hwnd = if let Some(source) = source {
+        Some(
+            clients
+                .iter()
+                .find(|c| {
+                    c.target.pid == source.pid
+                        && c.target.started_at == source.started_at
+                        && source.hwnd.is_none_or(|hwnd| hwnd == c.hwnd as u64)
+                })
+                .ok_or("Mirror source is not a verified snapshot client")?
+                .hwnd,
+        )
+    } else {
+        None
+    };
     stop("")?;
     let control = Arc::new(Control {
         stop: AtomicBool::new(false),
@@ -569,6 +595,7 @@ pub fn start(
                 control: thread_control.clone(),
                 mouse,
                 keyboard,
+                source: source_hwnd,
                 last_mouse: None,
             })
         });
@@ -645,6 +672,12 @@ pub fn start(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn leader_source_does_not_accept_other_clients() {
+        assert!(source_allowed(None, 20));
+        assert!(source_allowed(Some(10), 10));
+        assert!(!source_allowed(Some(10), 20));
+    }
     fn key(vk: u32, flags: u32) -> Key {
         Key {
             source: 0,

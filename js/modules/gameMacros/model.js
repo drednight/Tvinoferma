@@ -1,3 +1,4 @@
+import { backgroundMethod } from './background.js';
 import { chord, steps } from './keySyntax.js';
 export { chord, steps } from './keySyntax.js';
 import { normalizeComposition } from './composition.js';
@@ -69,6 +70,7 @@ export function normalizeGameMacros(input = {}) {
           : 'last',
       switchMs: Math.max(0, Math.min(500, Math.round(Number(row.switchMs ?? 30)) || 0)),
       holdMs: Math.max(10, Math.min(200, Math.round(Number(row.holdMs ?? 30)) || 30)),
+      backgroundMethod: backgroundMethod(row.backgroundMethod),
       delivery: row.delivery === 'background' ? 'background' : 'foreground',
       hotkey: chord(row.hotkey),
       target: ['all', 'others', 'leader', 'subset'].includes(row.target) ? row.target : 'others',
@@ -122,6 +124,7 @@ export function normalizeGameMacros(input = {}) {
         : null,
     enabled: input.enabled === true,
     mirrorMouse: input.mirrorMouse === true,
+    mirrorSource: input.mirrorSource === 'leader' ? 'leader' : 'any',
     mirrorPresetVersion: [1, 2].includes(input.mirrorPresetVersion) ? input.mirrorPresetVersion : 0,
     ahkPresetsVersion: input.ahkPresetsVersion === 1 ? 1 : 0,
     buffPartyId: String(input.partyId || '').slice(0, 200),

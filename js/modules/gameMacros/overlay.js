@@ -24,6 +24,7 @@ async function init() {
       '--alpha',
       String(Math.max(0.1, Math.min(1, Number(data.opacity) || 0.9)))
     );
+    document.getElementById('status').dataset.executionState = data.executionState || 'idle';
     document.getElementById('status').textContent =
       data.notice ||
       (data.mirroring
@@ -31,7 +32,7 @@ async function init() {
         : data.paused
           ? 'Макросы на паузе'
           : data.busy
-            ? 'Команда выполняется'
+            ? `Выполняется: ${data.runningName || 'команда'}`
             : data.registered
               ? 'Хоткеи включены'
               : 'Хоткеи выключены / недоступны');
@@ -56,6 +57,7 @@ async function init() {
     document.getElementById('logs').replaceChildren(
       ...[...(data.logEntries || (data.logs || []).map(text => ({ text })))].reverse().map(entry => {
         const line = document.createElement('span');
+        if (entry.terminal) line.className = 'gm-log-terminal';
         const text = String(entry.text || ''),
           name = String(entry.commandName || '');
         if (!name) {
@@ -63,7 +65,7 @@ async function init() {
           return line;
         }
         const label = document.createElement('span');
-        label.style.color = 'var(--overlay-command)';
+        label.style.color = entry.terminal ? 'var(--danger, #f7768e)' : 'var(--overlay-command)';
         label.textContent = name;
         const index = text.indexOf(name);
         if (index >= 0)

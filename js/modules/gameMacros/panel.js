@@ -73,11 +73,11 @@ export function mountGameMacros(host) {
   const selected = c.commands.find(row => row.id === selectedId) || c.commands[0];
   selectedId = selected?.id || '';
   const point = c.points.find(p => p.id === selected?.pointId);
-  host.innerHTML = `<details id="game-macros-block" class="tools-block gm-workspace"><summary class="gm-collapsed-title">🎮 Управление пати и макросы</summary>
+  host.innerHTML = `<div class="gm-control-bar gm-hotkey-master"><label class="gm-switch"><input type="checkbox" data-gm-enabled ${c.enabled ? 'checked' : ''}><span><b>Управление сочетаниями клавиш</b><small>Можно запускать команды, когда открыта игра, без перехода в Твиноферму.</small></span></label><p class="muted">Выкл — команды работают только кнопками. Обычные сочетания не регистрируются. Во время выполнения аварийная остановка остаётся доступной.</p></div><details id="game-macros-block" class="tools-block gm-workspace"><summary class="gm-collapsed-title">🎮 Управление пати и макросы</summary>
   <header class="gm-heading"><div><span class="gm-eyebrow">Управление игровыми окнами</span><h3>🎮 Управление пати и макросы</h3><p>Выберите пати, настройте команды и запускайте их кнопкой или сочетанием клавиш.</p></div><button class="btn" data-gm-mirror aria-pressed="false">⌨ Включить повтор клавиатуры</button><button class="btn danger" data-gm-stop>■ Остановить</button></header>
-  <div class="gm-control-bar"><label class="gm-field">Пати для всех команд<select data-gm-party><option value="">Выберите пати</option>${state.parties.map(p => option(p.id, p.name, c.partyId)).join('')}</select></label><label class="gm-switch"><input type="checkbox" data-gm-enabled ${c.enabled ? 'checked' : ''}><span><b>Управление сочетаниями клавиш</b><small>Можно запускать команды, когда открыта игра, без перехода в Твиноферму.</small></span></label></div>
+  <div class="gm-control-bar gm-party-bar"><label class="gm-field">Пати для всех команд<select data-gm-party><option value="">Выберите пати</option>${state.parties.map(p => option(p.id, p.name, c.partyId)).join('')}</select></label></div>
   <p class="gm-key-note">Если переключатель выключен, работает ручной запуск кнопкой ▶. При включении Windows закрепляет сочетания за приложением; игровые команды срабатывают только из окон выбранной пати. Остановка — <kbd>Ctrl+Alt+Pause</kbd>.</p>
-  <button class="btn ghost" data-gm-diagnostics>◎ Проверить окна</button><button class="btn ghost" data-gm-recognize>Распознать пати / порядок</button><button class="btn" data-gm-mirror-mouse aria-pressed="false">🖱 Включить повтор мыши</button><small>Клавиатура и мышь включаются независимо. Мышь: абсолютные экранные координаты, без масштабирования. Возможен расход ресурсов.</small><div class="gm-status" role="status" data-gm-runtime></div>
+  <div class="gm-repeat-toolbar"><button class="btn ghost" data-gm-diagnostics>◎ Проверить окна</button><button class="btn ghost" data-gm-recognize>Распознать пати / порядок</button><button class="btn" data-gm-mirror-mouse aria-pressed="false">🖱 Включить повтор мыши</button></div><label class="gm-field">Источник повтора<select data-gm-mirror-source><option value="any" ${c.mirrorSource === 'any' ? 'selected' : ''}>Любое распознанное игровое окно</option><option value="leader" ${c.mirrorSource === 'leader' ? 'selected' : ''}>Только ПЛ выбранной пати</option></select><small>Получатели — все остальные проверенные клиенты. Изменение настроек выключает активный повтор.</small></label><small>Клавиатура и мышь включаются независимо. Мышь: абсолютные экранные координаты, без масштабирования. Возможен расход ресурсов.</small><div class="gm-status" role="status" data-gm-runtime></div>
   <div class="gm-section-top"><h4>Мои команды <span>${c.commands.length}</span></h4><button class="btn primary" data-gm-create>＋ Создать команду</button></div>
   <div class="gm-command-workbench"><nav class="gm-command-menu" aria-label="Команды">${c.commands.map(row => `<button class="gm-command-choice ${row.id === selectedId ? 'is-selected' : ''}" data-gm-select="${esc(row.id)}" aria-pressed="${row.id === selectedId}"><b>${esc(row.name)}</b><kbd>${esc(row.hotkey || 'Без сочетания')}</kbd></button>`).join('') || '<p class="muted">Пока нет команд. Создайте первую.</p>'}</nav>
   <article class="gm-command-detail">${
@@ -167,6 +167,7 @@ export function mountGameMacros(host) {
     });
   });
   host.querySelector('[data-gm-party]').onchange = safe(e => save({ partyId: e.target.value }));
+  host.querySelector('[data-gm-mirror-source]').onchange = safe(event => save({ mirrorSource: event.target.value }));
   host.querySelector('[data-gm-enabled]').onchange = safe(e => save({ enabled: e.target.checked }));
   host.querySelector('[data-gm-create]').onclick = () => openCommandEditor(config(), save);
   host.querySelectorAll('[data-gm-select]').forEach(button => {
@@ -357,6 +358,7 @@ export function mountGameMacros(host) {
     const mouse = host.querySelector('[data-gm-mirror-mouse]');
     mouse.textContent = data.mirrorMouse ? '🖱 Выключить повтор мыши' : '🖱 Включить повтор мыши';
     mouse.setAttribute('aria-pressed', String(!!data.mirrorMouse));
+    host.querySelector('[data-gm-runtime]').dataset.executionState = data.executionState || 'idle';
     host.querySelector('[data-gm-runtime]').textContent =
       data.notice ||
       (data.mirroring
@@ -364,7 +366,7 @@ export function mountGameMacros(host) {
         : data.paused
           ? 'Команды на паузе'
           : data.busy
-            ? 'Команда выполняется…'
+            ? `Выполняется: ${data.runningName || 'команда'}…`
             : data.registered
               ? 'Управление клавишами включено'
               : 'Ручной режим · команды запускаются кнопкой ▶');

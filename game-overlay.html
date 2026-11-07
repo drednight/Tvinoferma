@@ -102,6 +102,16 @@
       .muted {
         color: #aab1c6;
       }
+      #status:is(
+        [data-execution-state='finished'],
+        [data-execution-state='failed'],
+        [data-execution-state='stopped'],
+        [data-execution-state='stopping']
+      ),
+      .gm-log-terminal {
+        color: var(--danger, #f7768e);
+        font-weight: 600;
+      }
     </style>
   </head>
   <body>

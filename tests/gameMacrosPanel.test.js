@@ -126,3 +126,39 @@ it('edits point name and coordinates in a modal, preserving references and cance
   expect(state.settings.gameMacros.points[0]).toMatchObject({ id: 'point', x: 200 });
   expect(state.settings.gameMacros.commands[0].pointId).toBe('point');
 });
+it('keeps the master hotkey control before the collapsed macro workspace', () => {
+  const toggle = document.querySelector('[data-gm-enabled]');
+  const details = document.querySelector('#game-macros-block');
+  expect(toggle.closest('details')).toBeNull();
+  expect(toggle.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(toggle.checked).toBe(false);
+  expect(document.querySelector('[data-gm-mirror-source]').value).toBe('any');
+});
+it('converts key steps to a composition and exposes an explicit saved-command picker without losing them', () => {
+  document.querySelector('[data-gm-edit]').click();
+  const form = document.querySelector('[data-gm-form]');
+  form.elements.namedItem('sequence').value = 'CTRL+F9\nwait 200\nF8';
+  form.querySelector('[data-gm-to-composition]').click();
+  expect(form.elements.namedItem('action').value).toBe('composite');
+  expect(form.querySelector('[data-command-picker]').hidden).toBe(false);
+  expect([...form.querySelectorAll('[data-step] [data-field="value"]')].map(e => e.value)).toEqual(['CTRL+F9', 'F8']);
+  expect(form.querySelector('[data-field="ms"]').value).toBe('200');
+});
+it('creates three background test commands from the editor without running them', async () => {
+  document.querySelector('[data-gm-edit]').click();
+  const form = document.querySelector('[data-gm-form]');
+  form.querySelector('[name="action"][value="sequence"]').checked = true;
+  form.elements.namedItem('sequence').value = 'CTRL+F9';
+  form.elements.namedItem('delivery').value = 'background';
+  form.dispatchEvent(new Event('change', { bubbles: true }));
+  expect(form.querySelector('[data-gm-background-method]').hidden).toBe(false);
+  form.querySelector('[data-gm-background-variants]').click();
+  await vi.waitFor(() => expect(state.settings.gameMacros.commands).toHaveLength(4));
+  expect(state.settings.gameMacros.commands.slice(1).map(c => c.backgroundMethod)).toEqual([
+    'post',
+    'send-timeout',
+    'notify'
+  ]);
+  expect(state.settings.gameMacros.commands.slice(1).every(c => c.hotkey === '')).toBe(true);
+  expect(mocks.run).not.toHaveBeenCalled();
+});

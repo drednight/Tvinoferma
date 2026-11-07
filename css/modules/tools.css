@@ -760,3 +760,38 @@
 .gm-record-area:focus {
   outline: 2px solid #e3be68;
 }
+
+/* Same status palette and controls as the rest of the tools workspace. */
+.gm-hotkey-master {
+  margin-bottom: 12px;
+}
+.gm-hotkey-master p {
+  margin: 0;
+  align-self: center;
+}
+.gm-status:is(
+  [data-execution-state='finished'],
+  [data-execution-state='failed'],
+  [data-execution-state='stopped'],
+  [data-execution-state='stopping']
+) {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  font-weight: 600;
+}
+
+.gm-party-bar {
+  grid-template-columns: 1fr;
+}
+.gm-repeat-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.gm-dialog [hidden],
+.gm-workspace [hidden] {
+  display: none !important;
+}

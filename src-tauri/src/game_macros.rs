@@ -17,17 +17,27 @@ pub struct Target {
     #[serde(default)]
     hwnd: Option<u64>,
 }
+#[derive(Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum BackgroundMethod {
+    #[default]
+    Post,
+    SendTimeout,
+    Notify,
+}
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct InputTiming {
     switch_ms: u64,
     hold_ms: u64,
+    background_method: BackgroundMethod,
 }
 impl Default for InputTiming {
     fn default() -> Self {
         Self {
             switch_ms: 30,
             hold_ms: 30,
+            background_method: BackgroundMethod::default(),
         }
     }
 }
@@ -519,6 +529,38 @@ mod win {
     use windows::Win32::UI::HiDpi::GetDpiForWindow;
     use windows::Win32::UI::Input::KeyboardAndMouse::*;
     use windows::Win32::UI::WindowsAndMessaging::*;
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        #[link_name = "SendNotifyMessageW"]
+        fn background_notify(hwnd: *mut std::ffi::c_void, msg: u32, wp: usize, lp: isize) -> i32;
+        #[link_name = "SendMessageTimeoutW"]
+        fn background_send_timeout(
+            hwnd: *mut std::ffi::c_void,
+            msg: u32,
+            wp: usize,
+            lp: isize,
+            flags: u32,
+            timeout: u32,
+            result: *mut usize,
+        ) -> isize;
+    }
+    unsafe fn send_background(
+        hwnd: HWND,
+        msg: u32,
+        wp: WPARAM,
+        lp: LPARAM,
+        method: BackgroundMethod,
+    ) -> bool {
+        match method {
+            BackgroundMethod::Post => PostMessageW(Some(hwnd), msg, wp, lp).is_ok(),
+            BackgroundMethod::Notify => background_notify(hwnd.0, msg, wp.0, lp.0) != 0,
+            BackgroundMethod::SendTimeout => {
+                let mut result = 0;
+                // BLOCK | ABORTIFHUNG | ERRORONEXIT. No indefinite wait and no focus notifications.
+                background_send_timeout(hwnd.0, msg, wp.0, lp.0, 0x23, 25, &mut result) != 0
+            }
+        }
+    }
     static GENERATION: AtomicU64 = AtomicU64::new(0);
     static THREAD: Mutex<Option<std::thread::JoinHandle<()>>> = Mutex::new(None);
     pub(super) fn chord(text: &str) -> Result<(Vec<u16>, u16), String> {
@@ -938,6 +980,7 @@ mod win {
                     std::thread::sleep(Duration::from_millis(timing.switch_ms.min(500)));
                 }
                 "key-background" => {
+                    let original_foreground = GetForegroundWindow();
                     let (mods, key) = chord(key.ok_or("Missing key")?)?;
                     let send = |vk: u16, up: bool, alt: bool| {
                         let scan = MapVirtualKeyW(vk as u32, MAPVK_VK_TO_VSC);
@@ -946,8 +989,8 @@ mod win {
                             | (u32::from(matches!(vk, 0x21..=0x28 | 0x2d | 0x2e)) << 24)
                             | (u32::from(alt) << 29)
                             | if up { 0xc0000000 } else { 0 };
-                        PostMessageW(
-                            Some(hwnd),
+                        send_background(
+                            hwnd,
                             match (alt, up) {
                                 (true, true) => WM_SYSKEYUP,
                                 (true, false) => WM_SYSKEYDOWN,
@@ -956,18 +999,19 @@ mod win {
                             },
                             WPARAM(vk as usize),
                             LPARAM(flags as isize),
+                            timing.background_method,
                         )
-                        .is_ok()
                     };
                     let alt = mods.contains(&0x12);
                     let mut pressed = Vec::new();
                     let mut ok = true;
                     for vk in mods.iter().copied().chain(std::iter::once(key)) {
+                        // A timed-out down may still be processed. Always attempt its matching up.
+                        pressed.push(vk);
                         if !send(vk, false, alt) {
                             ok = false;
                             break;
                         }
-                        pressed.push(vk);
                     }
                     if ok {
                         std::thread::sleep(Duration::from_millis(timing.hold_ms.clamp(10, 200)));
@@ -976,7 +1020,10 @@ mod win {
                         ok = send(vk, true, alt) && ok;
                     }
                     if !ok {
-                        return Err("Cannot queue background key".into());
+                        return Err("Cannot deliver background key".into());
+                    }
+                    if GetForegroundWindow() != original_foreground {
+                        return Err("Focus changed during background test".into());
                     }
                 }
                 "key" => {
@@ -1364,6 +1411,7 @@ pub async fn game_macro_mirror(
     shortcuts: Vec<String>,
     mouse: Option<bool>,
     keyboard: Option<bool>,
+    source: Option<Target>,
 ) -> Result<bool, String> {
     main_only(&window)?;
     #[cfg(windows)]
@@ -1380,6 +1428,7 @@ pub async fn game_macro_mirror(
                     shortcuts,
                     mouse.unwrap_or(false),
                     keyboard.unwrap_or(true),
+                    source,
                 ),
                 "stop" => mirror::stop(&session_id),
                 "heartbeat" => mirror::heartbeat(&session_id),
@@ -1392,7 +1441,7 @@ pub async fn game_macro_mirror(
     #[cfg(not(windows))]
     {
         let _ = (
-            app, operation, session_id, targets, shortcuts, mouse, keyboard,
+            app, operation, session_id, targets, shortcuts, mouse, keyboard, source,
         );
         Err("Game control is Windows-only".into())
     }

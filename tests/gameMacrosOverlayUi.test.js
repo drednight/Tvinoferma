@@ -151,3 +151,15 @@ it('shows a mirror activation error prominently in the overlay status', () => {
   mocks.handlers.get('game-macro-snapshot')({ payload: { notice: 'Повтор не включён: нет игровых окон', logs: [] } });
   expect(document.querySelector('#status').textContent).toContain('нет игровых окон');
 });
+it('marks terminal status and its journal entry red using the project terminal classes', () => {
+  mocks.handlers.get('game-macro-snapshot')({
+    payload: {
+      executionState: 'finished',
+      notice: 'Завершена: Проба',
+      logEntries: [{ text: 'Завершена: Проба', commandName: 'Проба', terminal: true }]
+    }
+  });
+  expect(document.querySelector('#status').dataset.executionState).toBe('finished');
+  expect(document.querySelector('#status').textContent).toContain('Завершена');
+  expect(document.querySelector('#logs .gm-log-terminal')).not.toBeNull();
+});

@@ -1,3 +1,4 @@
+import { backgroundMethod } from './background.js';
 import { chord, steps } from './keySyntax.js';
 const text = (v, max = 200) => String(v || '').slice(0, max);
 const integer = (v, min, max, label) => {
@@ -33,6 +34,7 @@ export function normalizeComposition(value) {
       charIds: [
         ...new Set((Array.isArray(block.charIds) ? block.charIds : []).filter(id => typeof id === 'string'))
       ].slice(0, 30),
+      backgroundMethod: backgroundMethod(block.backgroundMethod),
       delivery: block.delivery === 'background' ? 'background' : 'foreground',
       steps: block.steps.map(step => {
         if (++total > 128) throw new Error('Не более 128 действий в плане.');
@@ -127,6 +129,7 @@ export function compileComposition(command, config) {
         charIds: block.charIds,
         partyId: block.partyId,
         delivery: block.delivery,
+        backgroundMethod: block.backgroundMethod,
         resourceAllowed: cmd.resourceAllowed
       };
       const nodes = block.steps.map(step => {

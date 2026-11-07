@@ -1,3 +1,4 @@
+import { BACKGROUND_METHODS } from './background.js';
 import { escapeHtml as esc } from '../../core/utils.js';
 import { state } from '../../core/state.js';
 import { partyMembers } from './model.js';
@@ -37,7 +38,7 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
           [
             ['', 'Выберите команду'],
             ...c.commands
-              .filter(cmd => cmd.id !== row?.id && !['mirror', 'pause'].includes(cmd.action))
+              .filter(cmd => cmd.id !== row?.id && !['mirror', 'mouse-mirror', 'pause'].includes(cmd.action))
               .map(cmd => [cmd.id, cmd.name])
           ],
           step.commandId
@@ -140,7 +141,7 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
               ['background', 'В фоне (эксперимент)']
             ],
             block.delivery
-          )}</label></div>${
+          )}</label>${block.delivery === 'background' ? `<label>Способ для клавиш ${select('backgroundMethod', Object.entries(BACKGROUND_METHODS), block.backgroundMethod || 'post')}</label><small>Клики и непрерывный повтор используют PostMessage. Другие способы здесь проверяются только для клавиш; без перебора и переключения.</small>` : ''}</div>${
             block.target === 'subset'
               ? `<fieldset><legend>Участники</legend>${partyMembers(state, block.partyId || c.partyId)
                   .map(
@@ -149,7 +150,7 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
                   )
                   .join('')}</fieldset>`
               : ''
-          }<ol>${block.steps.map((step, i) => `<li data-step="${i}"><div class="gm-compose-fields"><label>Действие ${select('type', Object.entries(STEP_LABELS), step.type)}</label>${fields(step)}</div><button type="button" class="btn ghost" data-step-up ${i === 0 ? 'disabled' : ''}>↑</button><button type="button" class="btn danger" data-step-delete>Удалить шаг</button></li>`).join('')}</ol><div class="row gap"><button type="button" class="btn" data-step-add>＋ Действие</button><select data-insert-command>${[['', 'Добавить существующую команду…'], ...c.commands.filter(cmd => cmd.id !== row?.id && !['mirror', 'pause'].includes(cmd.action)).map(cmd => [cmd.id, cmd.name])].map(([v, l]) => option(v, l, '')).join('')}</select><button type="button" class="btn" data-new-point>＋ Именованная точка</button></div><div data-recorder></div></section>`
+          }<ol>${block.steps.map((step, i) => `<li data-step="${i}"><div class="gm-compose-fields"><label>Действие ${select('type', Object.entries(STEP_LABELS), step.type)}</label>${fields(step)}</div><button type="button" class="btn ghost" data-step-up ${i === 0 ? 'disabled' : ''}>↑</button><button type="button" class="btn danger" data-step-delete>Удалить шаг</button></li>`).join('')}</ol><div class="row gap"><button type="button" class="btn" data-step-add>＋ Действие</button><button type="button" class="btn ghost" data-command-choose>＋ Добавить готовую команду</button><label class="gm-field" data-command-picker hidden>Команда из «Моих команд»<select data-insert-command>${[['', 'Добавить существующую команду…'], ...c.commands.filter(cmd => cmd.id !== row?.id && !['mirror', 'mouse-mirror', 'pause'].includes(cmd.action)).map(cmd => [cmd.id, cmd.name])].map(([v, l]) => option(v, l, '')).join('')}</select><small>Вставляется ссылка на сохранённую команду с её настройками. Изменения исходной команды применятся и здесь; циклы запрещены. Переключатели повтора не вставляются.</small></label><button type="button" class="btn" data-new-point>＋ Именованная точка</button></div><div data-recorder></div></section>`
       )
       .join(
         ''
@@ -205,7 +206,7 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
         : ['ms', 'x', 'y', 'width', 'height', 'count'].includes(field)
           ? Number(e.target.value)
           : e.target.value;
-    if (!stepEl && ['partyId', 'target', 'scope'].includes(field)) {
+    if (!stepEl && ['partyId', 'target', 'scope', 'delivery'].includes(field)) {
       if (field === 'partyId') object.charIds = [];
       if (object.scope === 'managed') object.target = 'all';
       draw();
@@ -221,6 +222,11 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
       b = Number(el?.dataset.block),
       step = button.closest('[data-step]'),
       i = Number(step?.dataset.step);
+    if (button.hasAttribute('data-command-choose')) {
+      el.querySelector('[data-command-picker]').hidden = false;
+      el.querySelector('[data-insert-command]').focus();
+      return;
+    }
     if (button.hasAttribute('data-block-add')) {
       if (blocks.length >= 8) return;
       blocks.push(newBlock(blocks.length + 1));
@@ -259,5 +265,12 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
     }
   };
   draw();
-  return { read: () => normalizeComposition(blocks), dispose: () => disposeRecorder() };
+  return {
+    read: () => normalizeComposition(blocks),
+    setBlocks: next => {
+      blocks = normalizeComposition(next);
+      draw();
+    },
+    dispose: () => disposeRecorder()
+  };
 }

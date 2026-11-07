@@ -528,3 +528,56 @@ it('prepares the window snapshot while waiting for the launching chord to be rel
   expect(runtime.snapshot().logs.join(' ')).toContain('Первый запрос ввода');
   expect(runtime.snapshot().logs.join(' ')).toContain('Отправлено: F7');
 });
+it('marks successful completion explicitly without claiming game execution and marks cancellation separately', async () => {
+  await runtime.run('test');
+  expect(runtime.snapshot()).toMatchObject({ busy: false, executionState: 'finished' });
+  expect(runtime.snapshot().notice).toContain('Завершена: test');
+  expect(runtime.snapshot().logEntries.at(-1).terminal).toBe(true);
+  runtime.stop();
+  expect(runtime.snapshot().executionState).toBe('stopped');
+});
+it('dispatches only the chosen background method, without foreground activation or a fallback', async () => {
+  for (const backgroundMethod of ['post', 'send-timeout', 'notify']) {
+    invoke.mockClear();
+    Object.assign(state.settings.gameMacros.commands[0], {
+      delivery: 'background',
+      backgroundMethod,
+      sequence: 'CTRL+F9'
+    });
+    await runtime.run('test');
+    const actions = invoke.mock.calls.filter(([c]) => c === 'game_macro_action').map(([, args]) => args);
+    expect(actions).toHaveLength(1);
+    expect(actions[0]).toMatchObject({ action: 'key-background', key: 'CTRL+F9', timing: { backgroundMethod } });
+  }
+});
+it('stops a failed background method rather than trying another transport', async () => {
+  Object.assign(state.settings.gameMacros.commands[0], {
+    delivery: 'background',
+    backgroundMethod: 'send-timeout',
+    sequence: 'F8\nF9'
+  });
+  invoke.mockImplementation(async (c, args) => {
+    if (c === 'launcher_running_details') return [client];
+    if (args?.action === 'key-background') throw new Error('Cannot deliver background key');
+    return null;
+  });
+  await runtime.run('test');
+  expect(invoke.mock.calls.filter(([, a]) => a?.action === 'key-background')).toHaveLength(1);
+  expect(runtime.snapshot().executionState).toBe('failed');
+});
+it('does not send the first key if stop was requested while native activation was in flight', async () => {
+  let activate;
+  state.settings.gameMacros.commands[0].sequence = 'F8';
+  invoke.mockImplementation(async (c, args) => {
+    if (c === 'launcher_running_details') return [client];
+    if (args?.action === 'focus') return new Promise(resolve => (activate = resolve));
+    return null;
+  });
+  const pending = runtime.run('test');
+  await vi.waitFor(() => expect(activate).toBeTypeOf('function'));
+  runtime.stop();
+  activate(null);
+  await pending;
+  expect(invoke.mock.calls.some(([, a]) => a?.action === 'key')).toBe(false);
+  expect(runtime.snapshot().executionState).toBe('stopped');
+});

@@ -141,3 +141,19 @@ it('logs only the active session input diagnostics and identifies the delayed ke
   expect(runtime.snapshot().notice).toContain('F9');
   expect(runtime.snapshot().notice).toContain('265 мс');
 });
+it('pins the configured PL as source while keeping all recognized recipients in the snapshot', async () => {
+  state.settings.gameMacros.mirrorSource = 'leader';
+  state.settings.gameMacros.partyId = 'p';
+  state.settings.gameMacros.leaders = { p: 'a' };
+  await runtime.toggleKeyboardMirror();
+  const args = m.invoke.mock.calls.find(([c, a]) => c === 'game_macro_mirror' && a.operation === 'start')[1];
+  expect(args.source).toEqual({ pid: 10, startedAt: 100, hwnd: 1000 });
+  expect(args.targets).toHaveLength(2);
+});
+it('refuses PL-only mirroring without a recognized PL, without silently using another window', async () => {
+  state.settings.gameMacros.mirrorSource = 'leader';
+  await runtime.toggleKeyboardMirror();
+  expect(runtime.snapshot().executionState).toBe('failed');
+  expect(runtime.snapshot().notice).toContain('назначьте ПЛ');
+  expect(m.invoke.mock.calls.some(([c, a]) => c === 'game_macro_mirror' && a.operation === 'start')).toBe(false);
+});
