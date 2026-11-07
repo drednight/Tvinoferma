@@ -229,3 +229,8 @@ it('requires explicit opt-in before the one-key activity experiment', async () =
   await vi.waitFor(() => expect(mocks.diagnoseBackground).toHaveBeenCalledWith('a', 'B', true));
   expect(mocks.run).not.toHaveBeenCalled();
 });
+it('does not render the command execution notice below the repeat source', () => {
+  expect(document.querySelector('[data-gm-runtime]')).toBeNull();
+  expect(document.querySelector('[data-gm-mirror-source]')).not.toBeNull();
+  expect(document.querySelector('[data-gm-logs]')).not.toBeNull();
+});

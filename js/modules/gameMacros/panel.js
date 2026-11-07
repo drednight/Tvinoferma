@@ -80,7 +80,7 @@ export function mountGameMacros(host) {
   <header class="gm-heading"><div><span class="gm-eyebrow">Управление игровыми окнами</span><h3>🎮 Управление пати и макросы</h3><p>Выберите пати, настройте команды и запускайте их кнопкой или сочетанием клавиш.</p></div><div class="gm-mirror-buttons"><button class="btn" data-gm-mirror aria-pressed="false">⌨ Включить повтор клавиатуры</button><button class="btn" data-gm-mirror-mouse aria-pressed="false">🖱 Включить повтор мыши</button></div><button class="btn danger" data-gm-stop>■ Остановить</button></header>
   <div class="gm-control-bar gm-party-bar"><label class="gm-field">Пати для всех команд<select data-gm-party><option value="">Выберите пати</option>${state.parties.map(p => option(p.id, p.name, c.partyId)).join('')}</select></label></div>
   <p class="gm-key-note">Если переключатель выключен, работает ручной запуск кнопкой ▶. При включении Windows закрепляет сочетания за приложением; игровые команды срабатывают только из окон выбранной пати. Остановка — <kbd>Ctrl+Alt+Pause</kbd>.</p>
-  <div class="gm-repeat-toolbar"><button class="btn ghost" data-gm-diagnostics>◎ Проверить окна</button><button class="btn ghost" data-gm-background-probe>◎ Диагностика фона (без клавиш)</button><button class="btn ghost" data-gm-recognize>Распознать пати / порядок</button></div><label class="gm-field">Источник повтора<select data-gm-mirror-source><option value="any" ${c.mirrorSource === 'any' ? 'selected' : ''}>Любое распознанное игровое окно</option><option value="leader" ${c.mirrorSource === 'leader' ? 'selected' : ''}>Только ПЛ выбранной пати</option></select><small>Получатели — все остальные проверенные клиенты. Изменение настроек выключает активный повтор.</small></label><small>Клавиатура и мышь включаются независимо. Мышь: абсолютные экранные координаты, без масштабирования. Возможен расход ресурсов.</small><div class="gm-status" role="status" data-gm-runtime></div>
+  <div class="gm-repeat-toolbar"><button class="btn ghost" data-gm-diagnostics>◎ Проверить окна</button><button class="btn ghost" data-gm-background-probe>◎ Диагностика фона (без клавиш)</button><button class="btn ghost" data-gm-recognize>Распознать пати / порядок</button></div><label class="gm-field">Источник повтора<select data-gm-mirror-source><option value="any" ${c.mirrorSource === 'any' ? 'selected' : ''}>Любое распознанное игровое окно</option><option value="leader" ${c.mirrorSource === 'leader' ? 'selected' : ''}>Только ПЛ выбранной пати</option></select><small>Получатели — все остальные проверенные клиенты. Изменение настроек обновляет повтор, не сбрасывая выбранные режимы.</small></label><small>Клавиатура и мышь включаются независимо. Мышь: абсолютные экранные координаты, без масштабирования. Возможен расход ресурсов.</small>
   <div class="gm-section-top"><h4>Мои команды <span>${c.commands.length}</span></h4><button class="btn primary" data-gm-create>＋ Создать команду</button></div>
   <div class="gm-command-workbench"><nav class="gm-command-menu" aria-label="Команды">${c.commands.map(row => `<button class="gm-command-choice ${row.id === selectedId ? 'is-selected' : ''}" data-gm-select="${esc(row.id)}" aria-pressed="${row.id === selectedId}"><b>${esc(row.name)}</b><kbd>${esc(row.hotkey || 'Без сочетания')}</kbd></button>`).join('') || '<p class="muted">Пока нет команд. Создайте первую.</p>'}</nav>
   <article class="gm-command-detail">${
@@ -420,21 +420,19 @@ export function mountGameMacros(host) {
     const mouse = host.querySelector('[data-gm-mirror-mouse]');
     mouse.textContent = data.mirrorMouse ? '🖱 Выключить повтор мыши' : '🖱 Включить повтор мыши';
     mouse.setAttribute('aria-pressed', String(!!data.mirrorMouse));
-    host.querySelector('[data-gm-runtime]').dataset.executionState = data.executionState || 'idle';
-    host.querySelector('[data-gm-runtime]').textContent =
-      data.notice ||
-      (data.mirroring
-        ? `Повтор: клавиатура ${data.mirrorKeys ? 'ВКЛ' : 'выкл'} · мышь ${data.mirrorMouse ? 'ВКЛ' : 'выкл'} · Ctrl+Alt+Pause — выключить`
-        : data.paused
-          ? 'Команды на паузе'
-          : data.busy
-            ? `Выполняется: ${data.runningName || 'команда'}…`
-            : data.registered
-              ? 'Управление клавишами включено'
-              : 'Ручной режим · команды запускаются кнопкой ▶');
-    host.querySelectorAll('button:not([data-gm-stop]):not([data-gm-pause]),input,select').forEach(input => {
-      input.disabled = data.busy;
-    });
+    if (!data.mirroring && !data.mirrorPending) {
+      if (data.mirrorKeys) mirror.textContent = '⌨ Выключить повтор клавиатуры (приостановлен)';
+      if (data.mirrorMouse) mouse.textContent = '🖱 Выключить повтор мыши (приостановлен)';
+    }
+    host
+      .querySelectorAll(
+        'button:not([data-gm-stop]):not([data-gm-pause]):not([data-gm-mirror]):not([data-gm-mirror-mouse]),input,select'
+      )
+      .forEach(input => {
+        input.disabled = data.busy;
+      });
+    mirror.disabled = data.busy && !data.mirrorKeys;
+    mouse.disabled = data.busy && !data.mirrorMouse;
     const log = document.querySelector('[data-gm-log-text]');
     if (log) log.textContent = data.logs.join('\n') || 'Журнал пуст.';
   };

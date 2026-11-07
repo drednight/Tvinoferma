@@ -99,8 +99,8 @@ function log(text, commandName = activeCommandName, notify = true, terminal = fa
   }
   if (notify) void broadcast();
 }
-export function stop() {
-  if (mirroring || mirrorPending) void disableKeyboardMirror();
+export function stop(stopMirror = true) {
+  if (stopMirror && (mirroring || mirrorPending)) void disableKeyboardMirror();
   cancelled = true;
   executionState = busy ? 'stopping' : 'stopped';
   notice = busy ? 'Остановка запрошена…' : 'Остановлено пользователем.';
@@ -123,7 +123,9 @@ export function configure() {
   return configureQueue;
 }
 async function applyConfig() {
-  if (mirroring || mirrorPending) await disableKeyboardMirror();
+  if (mirrorPending) mirrorConfigDirty = true;
+  else if ((mirroring || mirrorKeys || mirrorMouse) && mirrorConfigKey !== mirrorFingerprint())
+    await toggleKeyboardMirror('keyboard', '', { keys: mirrorKeys, mouse: mirrorMouse });
   const c = config();
   registered = false;
   if (!window.__TAURI_INTERNALS__) {
@@ -328,8 +330,7 @@ export async function run(id, hotkey = false) {
   const requested = config().commands.find(row => row.id === id);
   if (requested?.action === 'pause') {
     paused = !paused;
-    if (!composing) stop();
-    else if (mirroring || mirrorPending) void disableKeyboardMirror();
+    if (!composing) stop(false);
     log(paused ? 'Макросы на паузе.' : 'Макросы возобновлены.');
     void broadcast();
     return;
@@ -369,7 +370,6 @@ export async function run(id, hotkey = false) {
   cancelled = false;
   log(`Запуск: ${command.name}. Проверка окон и отпускания клавиш…`);
   try {
-    if (mirroring || mirrorPending) await disableKeyboardMirror();
     const idleArgs = { chord: hotkey ? command.hotkey : null };
     let idle = await native('game_macro_input_idle', idleArgs);
     const preparedRows = !['composite', 'launch'].includes(command.action) ? listMacroWindows() : null;
@@ -1106,14 +1106,29 @@ function ensureMirror() {
     await native('game_macro_mirror', mirrorArgs('stop', ''));
   })());
 }
-export async function disableKeyboardMirror() {
+let mirrorConfigKey = '',
+  mirrorConfigDirty = false;
+function mirrorFingerprint() {
+  const c = config();
+  return JSON.stringify({
+    source: c.mirrorSource,
+    leader: c.mirrorSource === 'leader' ? c.leaders[c.partyId] : null,
+    shortcuts: c.commands
+      .map(row => row.hotkey)
+      .filter(Boolean)
+      .sort()
+  });
+}
+export async function disableKeyboardMirror(preserveModes = false) {
   const sessionId = mirrorSession;
   mirrorSession = '';
   ++mirrorEpoch;
   mirroring = false;
-  mirrorKeys = false;
-  mirrorMouse = false;
-  if (!busy) {
+  if (!preserveModes) {
+    mirrorKeys = false;
+    mirrorMouse = false;
+  }
+  if (!busy && !preserveModes) {
     executionState = 'stopped';
     notice = 'Повтор выключен.';
   }
@@ -1125,16 +1140,24 @@ export async function disableKeyboardMirror() {
     log('Не удалось подтвердить выключение повтора; защита связи отключит его автоматически.');
   }
 }
-export async function toggleKeyboardMirror(kind = 'keyboard', commandName = '') {
+export async function toggleKeyboardMirror(kind = 'keyboard', commandName = '', refreshModes = null) {
   kind = kind === 'mouse' ? 'mouse' : 'keyboard';
   if (mirrorPending) return;
-  const desiredKeys = kind === 'keyboard' ? !mirrorKeys : mirrorKeys,
-    desiredMouse = kind === 'mouse' ? !mirrorMouse : mirrorMouse;
-  if (mirroring) await disableKeyboardMirror();
-  if (!desiredKeys && !desiredMouse) return;
-  if (busy || paused) {
+  const turningOff = kind === 'keyboard' ? mirrorKeys : mirrorMouse;
+  const desiredKeys = refreshModes ? refreshModes.keys : kind === 'keyboard' ? !mirrorKeys : mirrorKeys,
+    desiredMouse = refreshModes ? refreshModes.mouse : kind === 'mouse' ? !mirrorMouse : mirrorMouse;
+  if ((busy || paused) && !refreshModes && !turningOff) {
     log('Сначала остановите команду и снимите паузу.');
     return;
+  }
+  if (!desiredKeys && !desiredMouse) {
+    await disableKeyboardMirror();
+    return;
+  }
+  if (mirroring) await disableKeyboardMirror(true);
+  if (mirrorKeys || mirrorMouse) {
+    mirrorKeys = desiredKeys;
+    mirrorMouse = desiredMouse;
   }
   mirrorPending = true;
   notice = '';
@@ -1157,6 +1180,7 @@ export async function toggleKeyboardMirror(kind = 'keyboard', commandName = '') 
     const sourceRow = c.mirrorSource === 'leader' ? rows.find(row => row.charId === c.leaders[c.partyId]) : null;
     if (c.mirrorSource === 'leader' && !sourceRow)
       throw new Error('Для повтора только из ПЛ выберите пати, назначьте ПЛ и запустите его распознанное окно.');
+    const settingsKey = mirrorFingerprint();
     const id = crypto.randomUUID();
     mirrorSession = id;
     const active = await native(
@@ -1179,6 +1203,7 @@ export async function toggleKeyboardMirror(kind = 'keyboard', commandName = '') 
       return;
     }
     if (!active) throw new Error('Повтор клавиатуры не включён.');
+    mirrorConfigKey = settingsKey;
     executionState = 'running';
     mirroring = true;
     mirrorKeys = desiredKeys;
@@ -1215,6 +1240,10 @@ export async function toggleKeyboardMirror(kind = 'keyboard', commandName = '') 
   } finally {
     mirrorPending = false;
     void broadcast();
+    if (mirrorConfigDirty) {
+      mirrorConfigDirty = false;
+      void configure();
+    }
   }
 }
 
@@ -1350,7 +1379,6 @@ export async function overlayPartyAction(request) {
   overlayWindowNotice = 'Проверка окон…';
   void broadcast();
   try {
-    if (mirroring || mirrorPending) await disableKeyboardMirror();
     if (request.action === 'party-launch') {
       const party = (state.parties || []).find(p => p.id === request.partyId);
       if (!party) throw new Error('Выберите существующую пати.');

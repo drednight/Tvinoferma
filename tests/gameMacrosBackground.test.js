@@ -69,3 +69,13 @@ it('allows bounded modifier sequences but not composition or mouse activity deli
     expect(() => validateActivityCommand({ ...valid, action })).toThrow();
   expect(() => validateActivityCommand(valid, true)).toThrow();
 });
+it('accepts wait 100 between complete activity chords', () => {
+  expect(() =>
+    validateActivityCommand({
+      action: 'sequence',
+      delivery: 'background',
+      backgroundMethod: 'activity',
+      sequence: 'SHIFT+1\nwait 100\nF2'
+    })
+  ).not.toThrow();
+});

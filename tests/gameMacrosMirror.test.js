@@ -157,3 +157,46 @@ it('refuses PL-only mirroring without a recognized PL, without silently using an
   expect(runtime.snapshot().notice).toContain('назначьте ПЛ');
   expect(m.invoke.mock.calls.some(([c, a]) => c === 'game_macro_mirror' && a.operation === 'start')).toBe(false);
 });
+it('keeps keyboard and mouse enabled through an ordinary command and unchanged hotkey configuration', async () => {
+  await runtime.toggleKeyboardMirror();
+  await runtime.toggleKeyboardMirror('mouse');
+  state.settings.gameMacros.commands.push({ id: 'key', action: 'sequence', sequence: 'F8', target: 'all' });
+  m.invoke.mockClear();
+  await runtime.run('key');
+  await runtime.configure();
+  expect(runtime.snapshot()).toMatchObject({ mirroring: true, mirrorKeys: true, mirrorMouse: true });
+  expect(m.invoke.mock.calls.some(([name, args]) => name === 'game_macro_mirror' && args.operation === 'stop')).toBe(
+    false
+  );
+});
+it('reconfigures shortcuts without resetting selected repeat modes', async () => {
+  await runtime.toggleKeyboardMirror();
+  await runtime.toggleKeyboardMirror('mouse');
+  const modes = [];
+  const capture = () => modes.push(runtime.snapshot());
+  window.addEventListener('tf-game-macros-changed', capture);
+  try {
+    state.settings.gameMacros.commands[0].hotkey = 'CTRL+ALT+F11';
+    m.invoke.mockClear();
+    await runtime.configure();
+    expect(runtime.snapshot()).toMatchObject({ mirroring: true, mirrorKeys: true, mirrorMouse: true });
+    const start = m.invoke.mock.calls.find(
+      ([name, args]) => name === 'game_macro_mirror' && args.operation === 'start'
+    );
+    expect(start[1]).toMatchObject({ keyboard: true, mouse: true });
+    expect(start[1].shortcuts).toContain('CTRL+ALT+F11');
+    expect(modes.every(row => row.mirrorKeys && row.mirrorMouse)).toBe(true);
+  } finally {
+    window.removeEventListener('tf-game-macros-changed', capture);
+  }
+});
+it('does not disable repeat when pausing macros, but explicit stop still disables both modes', async () => {
+  await runtime.toggleKeyboardMirror();
+  await runtime.toggleKeyboardMirror('mouse');
+  state.settings.gameMacros.commands.push({ id: 'pause', action: 'pause' });
+  await runtime.run('pause');
+  expect(runtime.snapshot()).toMatchObject({ mirroring: true, mirrorKeys: true, mirrorMouse: true });
+  runtime.stop();
+  await vi.waitFor(() => expect(runtime.snapshot().mirroring).toBe(false));
+  expect(runtime.snapshot()).toMatchObject({ mirrorKeys: false, mirrorMouse: false });
+});
