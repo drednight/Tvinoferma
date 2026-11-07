@@ -51,8 +51,8 @@ export function hasAnySavedLogin(char) {
  * @param {any} char
  * @returns {'no-gc' | 'no-login' | null}
  */
-export function launchBlocker(char) {
-  const target = resolveGameCenter(char, { gameCenters: gcs() });
+export function launchBlocker(char, preferredId = launcherSettings().preferredGcId) {
+  const target = resolveGameCenter(char, { gameCenters: gcs(), preferredId });
   if (!target) return 'no-gc';
   if (!target.saved) return 'no-login';
   return null;

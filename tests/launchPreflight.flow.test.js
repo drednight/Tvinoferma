@@ -302,3 +302,40 @@ describe('история запусков', () => {
     expect(log.loadLaunchLog()).toEqual([]);
   });
 });
+
+describe('safe single launch and explicit GameCenter selection', () => {
+  it('does not start a second client automatically after an uncertain timeout', async () => {
+    const char = A();
+    state.characters = [char];
+    invoke.mockImplementation(async cmd => {
+      if (cmd === 'launcher_running_details') return [];
+      if (cmd === 'launcher_start') throw new Error('Клиент игры не запустился за 60 с (GameCenter: folder)');
+      return {};
+    });
+    await partyLaunch.launchOne(char, { interactive: false });
+    expect(started()).toEqual(['a']);
+  });
+  it('uses the explicitly selected launcher for preflight as well as the actual start', async () => {
+    const second = { id: 'gc-2', name: 'Папка 2', path: 'D:\\GC2\\GameCenter.exe' };
+    state.settings.launcher.gameCenters = [GC1, second];
+    state.settings.launcher.preferredGcId = 'gc-1';
+    const char = ch('a', 'Аа', ['gc-1', 'gc-2']);
+    delete char.launch.gcAccounts['gc-1'];
+    state.characters = [char];
+    await partyLaunch.launchGroup('Явный GameCenter', [char], { gcId: 'gc-2', interactive: false });
+    expect(started()).toEqual(['a']);
+    expect(invoke.mock.calls.find(([cmd]) => cmd === 'launcher_start')[1]).toMatchObject({
+      path: second.path,
+      charId: 'a@gc-2',
+      loginSaved: true
+    });
+  });
+  it('does not pass preflight with a saved account belonging only to a different launcher', async () => {
+    state.settings.launcher.gameCenters = [GC1, { id: 'gc-2', name: 'Папка 2', path: 'D:\\GC2\\GameCenter.exe' }];
+    const char = ch('a', 'Аа', ['gc-1', 'gc-2']);
+    delete char.launch.gcAccounts['gc-2'];
+    state.characters = [char];
+    await partyLaunch.launchGroup('Другой GameCenter', [char], { gcId: 'gc-2', interactive: false });
+    expect(started()).toEqual([]);
+  });
+});

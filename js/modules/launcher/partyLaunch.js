@@ -112,7 +112,14 @@ async function runPreflight(characters, ctx = launchContext()) {
  */
 function launchContextForGroup(characters, gcId) {
   const base = launchContext();
-  const empty = { ctx: base, gcId, gcName: '', count: 0, total: 0, distinct: 0 };
+  const empty = {
+    ctx: gcId ? { ...base, preferredId: gcId } : base,
+    gcId,
+    gcName: '',
+    count: 0,
+    total: 0,
+    distinct: 0
+  };
   const list = characters || [];
   if (gcId || list.length < 2) return empty;
   const major = pickMajorityGc(list, base);
@@ -217,21 +224,28 @@ async function openGameCentersForFix(pre, opts) {
  *   interactive: false — без экрана проверок (запуск из трея: окно приложения может быть скрыто).
  */
 /**
- * Кого стоит повторить: не запустились, но и не отменены пользователем.
- *
- * Отменённые повторять нельзя — человек сам остановил запуск.
+ * Повторяем только подтверждённый отказ закрытия лаунчера ДО отправки запуска.
+ * Таймаут появления клиента и неизвестная ошибка не доказывают, что игра не запустится позже.
+ * Отменённые пользователем попытки также не повторяются.
  */
 export function retryableCharacters(characters, results) {
-  const failed = new Set((results || []).filter(r => !r.ok && !r.cancelled).map(r => String(r.id)));
+  // Only failures known to occur BEFORE spawn may be retried. A timeout after spawn
+  // is uncertain: a late client could already be on its way.
+  const safeBeforeSpawn =
+    /^(?:GameCenter не закрылся после \d+ попыток закрытия|Astrum Play не закрылся \(запущенных осталось:)/;
+  const failed = new Set(
+    (results || [])
+      .filter(r => !r.ok && !r.cancelled && safeBeforeSpawn.test(String(r.error || '')))
+      .map(r => String(r.id))
+  );
   return characters.filter(c => failed.has(String(c.id)));
 }
 
 /**
  * Повторный проход по персонажам, которые не запустились.
  *
- * Зачем: часть отказов временная, а не «этот персонаж не запускается никогда» — GameCenter не
- * успел закрыться между окнами, окно клиента не появилось за отведённое время. Второй проход
- * по тем же персонажам это снимает, и повторять запуск всей пати вручную не нужно.
+ * Только безопасный повтор отказа до запуска процесса. Неопределённый результат после
+ * отправки запуска нельзя превращать в новую попытку автоматически.
  *
  * Возвращает объединённый список: удачный повтор заменяет провал, неудачный — оставляет
  * первую ошибку (второй раз то же самое только на словах). Замеры этапов складываются, иначе
@@ -361,20 +375,34 @@ export async function launchGroup(title, characters, opts = {}) {
       );
     }
 
-    const firstPass = await launchCharacters(ready, {
-      signal,
-      gcId,
-      onStart: c => task.setStep(`${c.nick}: запуск…`),
-      onDone: (e, done, total) => {
-        task.log(`${e.nick}: ${e.ok ? 'клиент игры запущен' : `ошибка — ${e.error}`}`, e.ok ? 'ok' : 'error');
-        launchWarnings(e.info).forEach(w => task.log(`${e.nick}: ${w}`, 'warn'));
-        task.progress(done, total);
-      }
-    });
+    const firstPass = await launchCharacters(
+      ready,
+      {
+        signal,
+        gcId,
+        onStart: c => {
+          task.setStep(`${c.nick}: запуск…`);
+          const target = resolveGameCenter(c, group.ctx);
+          task.log(
+            `${c.nick}: GameCenter «${target?.gc?.name || 'свой путь'}»; сохранённый вход — ${target?.saved ? 'да' : 'нет'}.`
+          );
+        },
+        onDone: (e, done, total) => {
+          task.log(`${e.nick}: ${e.ok ? 'клиент игры запущен' : `ошибка — ${e.error}`}`, e.ok ? 'ok' : 'error');
+          launchWarnings(e.info).forEach(w => task.log(`${e.nick}: ${w}`, 'warn'));
+          task.progress(done, total);
+        }
+      },
+      { ctx: group.ctx }
+    );
 
-    // Повторный проход по тем, кто не запустился. Часть отказов временная (GameCenter не успел
-    // закрыться, окно клиента не появилось за отведённое время), и второй проход по тем же
-    // персонажам это снимает — иначе пришлось бы повторять запуск всей пати вручную.
+    // Retry only a verified pre-spawn close failure. Never retry uncertain post-spawn results.
+    for (const result of firstPass.filter(row => !row.ok && /^Клиент игры не запустился за /.test(row.error || ''))) {
+      task.log(
+        `${result.nick}: появление клиента не подтверждено вовремя. Автоповтор отключён: поздний запуск мог бы создать лишнее окно. Проверьте окна перед ручным повтором.`,
+        'warn'
+      );
+    }
     let results = firstPass;
     const retry = signal.cancelled ? [] : retryableCharacters(ready, firstPass);
     if (retry.length) {
@@ -383,17 +411,21 @@ export async function launchGroup(title, characters, opts = {}) {
         `Не запустились: ${nicks}. Повторяю их — ${retry.length} ${retry.length === 1 ? 'окно' : 'окон'}`,
         'warn'
       );
-      const second = await launchCharacters(retry, {
-        signal,
-        gcId,
-        onStart: c => task.setStep(`${c.nick}: повтор…`),
-        onDone: e => {
-          task.log(
-            `${e.nick}: повтор — ${e.ok ? 'клиент игры запущен' : `снова ошибка — ${e.error}`}`,
-            e.ok ? 'ok' : 'error'
-          );
-        }
-      });
+      const second = await launchCharacters(
+        retry,
+        {
+          signal,
+          gcId,
+          onStart: c => task.setStep(`${c.nick}: повтор…`),
+          onDone: e => {
+            task.log(
+              `${e.nick}: повтор — ${e.ok ? 'клиент игры запущен' : `снова ошибка — ${e.error}`}`,
+              e.ok ? 'ok' : 'error'
+            );
+          }
+        },
+        { ctx: group.ctx }
+      );
       results = mergeLaunchResults(firstPass, second);
       const revived = second.filter(r => r.ok).length;
       if (revived) task.log(`Повтор помог: запустилось ${revived} из ${retry.length}`, 'ok');
@@ -477,7 +509,7 @@ export async function launchOne(char, opts = {}) {
   // Проверка та же, что у пати (launchBlocker), иначе одиночный запуск вёл себя иначе:
   // персонаж с GameCenter, но без запомненного входа проходил проверку и упирался в
   // сообщение про пати, в котором не упомянуто, что именно не так с этим персонажем.
-  const blocker = launchBlocker(char);
+  const blocker = launchBlocker(char, opts.gcId);
   if (blocker) {
     if (blocker === 'no-gc') {
       toast('Укажите GameCenter этого аккаунта', 'error');

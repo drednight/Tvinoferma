@@ -45,8 +45,6 @@ const DIALOG_CLASS: &str = "TYesNoForm";
 const DIALOG_TITLE: &str = "VK Play";
 /// Сколько ждать это окно после старта GameCenter, если клиент уже был запущен
 const DIALOG_WAIT: Duration = Duration::from_secs(30);
-/// Как часто повторять Enter в окно вопроса (один клик может не дойти)
-const DIALOG_PRESS_GAP: Duration = Duration::from_millis(700);
 /// Как часто опрашивать процессы, ожидая новый клиент игры.
 /// Опрос теперь почти бесплатный (снимок процессов, а не запуск `tasklist`), поэтому шаг мельче.
 const CLIENT_POLL_STEP: Duration = Duration::from_millis(250);
@@ -993,62 +991,62 @@ fn is_gc_dialog(class: &str, title: &str, visible: bool) -> bool {
         && !title.to_lowercase().contains("авториз")
 }
 
-fn find_dialogs() -> Vec<usize> {
-    win::all_windows()
-        .into_iter()
-        .filter(|w| is_gc_dialog(&w.class, &w.title, w.visible))
-        .map(|w| w.hwnd)
-        .collect()
+// Only the selected executable may own the dialog. Unknown paths fail closed.
+fn owned_gc_dialog(w: &win::WinInfo, owner_path: Option<&str>, selected_path: &str) -> bool {
+    is_gc_dialog(&w.class, &w.title, w.visible)
+        && owner_path.is_some_and(|path| path.eq_ignore_ascii_case(selected_path))
 }
 
-/// Нажимает Enter во всех окнах вопроса GameCenter. Один клик может не дойти (окно ещё
-/// перехватывает фокус), поэтому Enter повторяется, пока окно не исчезнет.
-fn press_dialog_enter() {
-    for _ in 0..5 {
-        let dialogs = find_dialogs();
-        if dialogs.is_empty() {
-            return;
-        }
-        for hwnd in dialogs {
-            win::press_enter(hwnd);
-        }
-        sleep(DIALOG_PRESS_GAP);
+/// At most one confirmation per launch, including dialogs recreated with a new HWND.
+fn fresh_launch_dialog(
+    dialogs: &[(u32, usize)],
+    pressed: &HashSet<(u32, usize)>,
+) -> Option<(u32, usize)> {
+    if dialogs.len() != 1 || !pressed.is_empty() {
+        return None;
     }
+    Some(dialogs[0])
 }
 
-/// Дожидается нового клиента игры, попутно подтверждая окно «Клиент игры уже запущен».
-///
-/// Раньше это были два последовательных ожидания: сначала полностью ждалось окно вопроса
-/// (до 30 с), и только потом начинался поиск нового процесса клиента. Оба ожидания независимы,
-/// поэтому идут одним циклом: как только клиент появился, возврат происходит сразу.
-///
-/// Окно вопроса нажимается не чаще, чем раз в `DIALOG_PRESS_GAP`: спамить Enter нельзя,
-/// а в окно «Попытка авторизации…» его посылать нельзя вовсе (см. `is_gc_dialog`).
-///
-/// Возвращает `(pid нового клиента, нажали ли Enter в окно вопроса)`.
+/// Check for a new client BEFORE touching dialogs. Confirm one owned dialog once.
 fn await_new_client(
     before: &HashSet<u32>,
     wait: Duration,
     expect_dialog: bool,
+    exe: &Path,
 ) -> Option<(u32, bool)> {
     let dialog_deadline = Instant::now() + DIALOG_WAIT;
     let client_deadline = Instant::now() + wait;
-    let mut dialog_clicked = false;
-    let mut last_press: Option<Instant> = None;
+    let selected_path = plain_path(exe);
+    let mut pressed = HashSet::new();
     loop {
-        if expect_dialog && Instant::now() < dialog_deadline {
-            let due = last_press.is_none_or(|t| t.elapsed() >= DIALOG_PRESS_GAP);
-            if due && !find_dialogs().is_empty() {
-                dialog_clicked = true;
-                last_press = Some(Instant::now());
-                press_dialog_enter();
-            }
-        }
         if let Some(pid) = new_client_pid(before, &client_pids().unwrap_or_default()) {
-            return Some((pid, dialog_clicked));
+            return Some((pid, !pressed.is_empty()));
         }
         if Instant::now() >= client_deadline {
             return None;
+        }
+        if expect_dialog && Instant::now() < dialog_deadline {
+            let dialogs: Vec<_> = win::all_windows()
+                .into_iter()
+                .filter(|w| is_gc_dialog(&w.class, &w.title, w.visible))
+                .filter(|w| owned_gc_dialog(w, gamecenter_path(w.pid).as_deref(), &selected_path))
+                .map(|w| (w.pid, w.hwnd))
+                .collect();
+            if let Some(candidate) = fresh_launch_dialog(&dialogs, &pressed) {
+                // Recheck both the client and ownership immediately before posting input.
+                if let Some(pid) = new_client_pid(before, &client_pids().unwrap_or_default()) {
+                    return Some((pid, !pressed.is_empty()));
+                }
+                let still_owned = win::all_windows().into_iter().any(|w| {
+                    (w.pid, w.hwnd) == candidate
+                        && owned_gc_dialog(&w, gamecenter_path(w.pid).as_deref(), &selected_path)
+                });
+                if still_owned {
+                    pressed.insert(candidate);
+                    win::press_enter(candidate.1);
+                }
+            }
         }
         sleep(CLIENT_POLL_STEP);
     }
@@ -2242,8 +2240,8 @@ pub async fn launcher_start(
         // Окно вопроса «Запустить новую копию клиента» и появление нового клиента ждём одним
         // циклом: раньше сначала полностью ждалось окно вопроса, и только потом начинался
         // поиск процесса клиента — на каждый аккаунт это лишние секунды ожидания.
-        let (client_pid, dialog_clicked) = await_new_client(&before, wait, !before.is_empty())
-            .ok_or_else(|| {
+        let (client_pid, dialog_clicked) =
+            await_new_client(&before, wait, !before.is_empty(), &exe).ok_or_else(|| {
                 format!(
                     "Клиент игры не запустился за {} с (GameCenter: {})",
                     wait.as_secs(),
@@ -3232,6 +3230,37 @@ mod tests {
         assert_eq!(style_icons(None, None, ""), None);
     }
 
+    #[test]
+    fn launch_confirmation_is_once_per_launch_and_ambiguity_is_not_clicked() {
+        let mut pressed = HashSet::new();
+        assert_eq!(fresh_launch_dialog(&[(7, 100)], &pressed), Some((7, 100)));
+        pressed.insert((7, 100));
+        assert_eq!(fresh_launch_dialog(&[(7, 100)], &pressed), None);
+        assert_eq!(fresh_launch_dialog(&[(8, 101)], &pressed), None);
+        assert_eq!(fresh_launch_dialog(&[(7, 100), (8, 101)], &pressed), None);
+        assert_eq!(fresh_launch_dialog(&[], &pressed), None);
+    }
+    #[test]
+    fn launch_dialog_must_belong_to_selected_gamecenter_not_another_folder() {
+        let window = win::WinInfo {
+            hwnd: 100,
+            pid: 7,
+            class: "TYesNoForm".into(),
+            title: "VK Play Игровой центр".into(),
+            visible: true,
+        };
+        assert!(owned_gc_dialog(
+            &window,
+            Some("D:/GC1/GameCenter.exe"),
+            "d:/gc1/gamecenter.exe"
+        ));
+        assert!(!owned_gc_dialog(
+            &window,
+            Some("D:/GC2/GameCenter.exe"),
+            "D:/GC1/GameCenter.exe"
+        ));
+        assert!(!owned_gc_dialog(&window, None, "D:/GC1/GameCenter.exe"));
+    }
     #[test]
     fn new_client_is_the_pid_that_was_not_there_before() {
         let before: HashSet<u32> = [10, 20].into_iter().collect();
