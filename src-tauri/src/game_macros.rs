@@ -460,9 +460,7 @@ pub async fn game_macro_action(
         tauri::async_runtime::spawn_blocking(move || {
             let client =
                 crate::launcher::macro_client_at(target.pid, target.started_at, target.hwnd)?;
-            if activity_test.unwrap_or(false)
-                && !compatible_integrity(client.elevated, crate::launcher::self_elevated())
-            {
+            if !compatible_integrity(client.elevated, crate::launcher::self_elevated()) {
                 return Err("Game client identity changed or access is unavailable".into());
             }
             let hwnd = client.hwnd.ok_or("No game window")?;
@@ -512,7 +510,9 @@ pub async fn game_macro_background_probe(
         tauri::async_runtime::spawn_blocking(move || {
             let client =
                 crate::launcher::macro_client_at(target.pid, target.started_at, target.hwnd)?;
-            if !compatible_integrity(client.elevated, crate::launcher::self_elevated()) {
+            if activity_test.unwrap_or(false)
+                && !compatible_integrity(client.elevated, crate::launcher::self_elevated())
+            {
                 return Err("Game window has higher integrity".into());
             }
             let raw = client.hwnd.ok_or("No game window")?;
