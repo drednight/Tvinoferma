@@ -244,8 +244,22 @@ describe('форма', () => {
     expect(mocks.invoke.mock.calls.map(c => c[0])).toEqual(['read_server_status']);
     expect(mocks.invoke.mock.calls[0][1]).toEqual({ timeoutSeconds: 20 }); // без charId: страница открыта всем
     expect(mocks.toast).not.toHaveBeenCalled();
-    expect(document.querySelector('[data-task-card]')).toBeNull(); // задачи в журнале нет
-    expect(JSON.parse(window.localStorage.getItem('tf_task_journal_v1') || '[]')).toEqual([]);
+    expect(document.querySelector('[data-task-card]')).toBeNull(); // фоновая запись не занимает док
+    await vi.waitFor(() => {
+      const journal = JSON.parse(window.localStorage.getItem('tf_task_journal_v1') || '[]');
+      const checks = journal.filter(task => task.title === 'Фоновая задача: Проверка серверов');
+      expect(checks).toHaveLength(1);
+      expect(checks[0]).toMatchObject({
+        status: 'done',
+        dock: false,
+        waiting: false,
+        summary: 'Статус серверов обновлён.'
+      });
+      expect(checks[0].entries.map(entry => entry.message)).toEqual([
+        'Начато: Фоновая задача: Проверка серверов',
+        'Статус серверов обновлён.'
+      ]);
+    });
     const names = [...document.querySelectorAll('.tr-top .srv')].map(li => li.textContent);
     expect(names).toEqual(['Центавр', 'Фенрир', 'Мицар', 'Капелла']); // как на странице сайта
     expect(document.querySelector('.tr-top .srv.is-off').textContent).toBe('Мицар');
