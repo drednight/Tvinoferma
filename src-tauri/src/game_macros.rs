@@ -530,7 +530,9 @@ mod win {
     };
     use std::time::Duration;
     use tauri::Emitter;
-    use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+    use windows::Win32::Foundation::{
+        GetLastError, SetLastError, HWND, LPARAM, LRESULT, POINT, RECT, WIN32_ERROR, WPARAM,
+    };
     use windows::Win32::Graphics::Gdi::{
         ClientToScreen, MonitorFromPoint, ScreenToClient, MONITOR_DEFAULTTONULL,
     };
@@ -558,8 +560,9 @@ mod win {
         wp: WPARAM,
         lp: LPARAM,
         method: BackgroundMethod,
-    ) -> bool {
-        match method {
+    ) -> Result<(), u32> {
+        SetLastError(WIN32_ERROR(0));
+        let accepted = match method {
             BackgroundMethod::Post => PostMessageW(Some(hwnd), msg, wp, lp).is_ok(),
             BackgroundMethod::Notify => background_notify(hwnd.0, msg, wp.0, lp.0) != 0,
             BackgroundMethod::SendTimeout => {
@@ -567,6 +570,11 @@ mod win {
                 // BLOCK | ABORTIFHUNG | ERRORONEXIT. No indefinite wait and no focus notifications.
                 background_send_timeout(hwnd.0, msg, wp.0, lp.0, 0x23, 25, &mut result) != 0
             }
+        };
+        if accepted {
+            Ok(())
+        } else {
+            Err(GetLastError().0)
         }
     }
     static GENERATION: AtomicU64 = AtomicU64::new(0);
@@ -609,6 +617,15 @@ mod win {
             mods.push(code);
         }
         Ok((mods, key))
+    }
+    #[cfg(test)]
+    mod background_key_tests {
+        #[test]
+        fn letter_case_is_a_virtual_key_not_shifted_text() {
+            assert_eq!(super::chord("B").unwrap(), (vec![], 0x42));
+            assert_eq!(super::chord("b").unwrap(), (vec![], 0x42));
+            assert_eq!(super::chord("SHIFT+B").unwrap(), (vec![0x10], 0x42));
+        }
     }
     pub fn point_origin(raw: u64, point: PointInput) -> Result<(i32, i32), String> {
         let hwnd = HWND(raw as usize as *mut _);
@@ -1012,23 +1029,25 @@ mod win {
                     };
                     let alt = mods.contains(&0x12);
                     let mut pressed = Vec::new();
-                    let mut ok = true;
+                    let mut failure = None;
                     for vk in mods.iter().copied().chain(std::iter::once(key)) {
                         // A timed-out down may still be processed. Always attempt its matching up.
                         pressed.push(vk);
-                        if !send(vk, false, alt) {
-                            ok = false;
+                        if let Err(code) = send(vk, false, alt) {
+                            failure = Some(code);
                             break;
                         }
                     }
-                    if ok {
+                    if failure.is_none() {
                         std::thread::sleep(Duration::from_millis(timing.hold_ms.clamp(10, 200)));
                     }
                     for vk in pressed.into_iter().rev() {
-                        ok = send(vk, true, alt) && ok;
+                        if let Err(code) = send(vk, true, alt) {
+                            failure.get_or_insert(code);
+                        }
                     }
-                    if !ok {
-                        return Err("Cannot deliver background key".into());
+                    if let Some(code) = failure {
+                        return Err(format!("Background delivery failed: {code}"));
                     }
                     if GetForegroundWindow() != original_foreground {
                         return Err("Focus changed during background test".into());

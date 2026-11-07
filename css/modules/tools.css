@@ -902,3 +902,10 @@
     max-height: 180px;
   }
 }
+
+.gm-mirror-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}

@@ -104,7 +104,6 @@ async function init() {
   const showView = view => {
     for (const id of ['shortcuts', 'journal', 'party', 'appearance'])
       document.getElementById(`${id}-screen`).hidden = id !== view;
-    document.getElementById('back').hidden = view === 'shortcuts';
     if (view === 'party') void partyRequest('party-refresh');
     document.querySelectorAll('[data-view]').forEach(button => {
       if (button.dataset.view === view) button.setAttribute('aria-current', 'page');
@@ -112,7 +111,6 @@ async function init() {
     });
   };
   document.querySelectorAll('[data-view]').forEach(button => (button.onclick = () => showView(button.dataset.view)));
-  document.getElementById('back').onclick = () => showView('shortcuts');
   document.querySelectorAll('.color-options input[type=radio]').forEach(
     input =>
       (input.onchange = () => {
@@ -149,12 +147,15 @@ async function init() {
     (document.getElementById('party-launch').disabled = partyBusy || !document.getElementById('party-select').value);
   document.getElementById('party-launch').onclick = () => partyRequest('party-launch');
   document.getElementById('party-refresh').onclick = () => partyRequest('party-refresh');
-  document.getElementById('info-toggle').onclick = () => {
+  const togglePanel = () => {
     const controls = document.getElementById('overlay-controls');
     controls.hidden = !controls.hidden;
     document.querySelectorAll('[data-service-heading]').forEach(el => (el.hidden = controls.hidden));
-    document.getElementById('info-toggle').setAttribute('aria-expanded', String(!controls.hidden));
+    for (const id of ['info-toggle', 'floating-panel-toggle'])
+      document.getElementById(id).setAttribute('aria-expanded', String(!controls.hidden));
   };
+  document.getElementById('info-toggle').onclick = togglePanel;
+  document.getElementById('floating-panel-toggle').onclick = togglePanel;
   document.getElementById('opacity').oninput = event => {
     document.getElementById('alpha-value').textContent = event.target.value + '%';
     document.documentElement.style.setProperty('--alpha', String(Number(event.target.value) / 100));

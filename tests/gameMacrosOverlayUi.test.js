@@ -51,14 +51,14 @@ it('does not start window dragging when a header button is pressed', () => {
   document.querySelector('header span').dispatchEvent(event);
   expect(mocks.drag).toHaveBeenCalledTimes(1);
 });
-it('keeps settings and journal inside the overlay with a return button', async () => {
+it('keeps settings and journal inside the overlay using only its top navigation', async () => {
   document.querySelector('header [data-action="stop"]').click();
   await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('game_macro_navigate', { action: 'stop' }));
   mocks.invoke.mockClear();
   document.querySelector('[data-view="appearance"]').click();
   expect(document.querySelector('#appearance-screen').hidden).toBe(false);
   expect(document.querySelector('#shortcuts-screen').hidden).toBe(true);
-  document.querySelector('#back').click();
+  document.querySelector('[data-view="shortcuts"]').click();
   expect(document.querySelector('#shortcuts-screen').hidden).toBe(false);
   document.querySelector('[data-view="journal"]').click();
   expect(document.querySelector('#journal-screen').hidden).toBe(false);
@@ -87,10 +87,10 @@ it('saves overlay appearance without opening the main app', async () => {
   );
 });
 
-it('hides the navigation and return together using the service-panel button', () => {
+it('hides navigation using the service-panel button without redundant return buttons', () => {
   document.querySelector('[data-view="journal"]').click();
   expect(document.querySelector('#back-hide')).toBeNull();
-  expect(document.querySelector('#back').closest('#overlay-controls')).not.toBeNull();
+  expect(document.querySelector('#back')).toBeNull();
   document.querySelector('#info-toggle').click();
   expect(document.querySelector('#overlay-controls').hidden).toBe(true);
   expect(document.querySelector('#journal-screen').hidden).toBe(false);
@@ -120,7 +120,7 @@ it('opens party management inside the overlay and requests launch of a selected 
   await vi.waitFor(() =>
     expect(mocks.invoke).toHaveBeenCalledWith('game_macro_navigate', { action: 'party-launch', partyId: 'p1' })
   );
-  document.querySelector('#back').click();
+  document.querySelector('[data-view="shortcuts"]').click();
   expect(document.querySelector('#shortcuts-screen').hidden).toBe(false);
 });
 it('uses visible labeled color swatches rather than dropdowns', () => {
@@ -195,4 +195,18 @@ it('marks terminal status and its journal entry red using the project terminal c
   expect(document.querySelector('#status').dataset.executionState).toBe('finished');
   expect(document.querySelector('#status').textContent).toContain('Завершена');
   expect(document.querySelector('#logs .gm-log-terminal')).not.toBeNull();
+});
+
+it('keeps a compact panel control outside the header when the header is hidden', () => {
+  mocks.handlers.get('game-macro-snapshot')({ payload: { appearance: { hideHeader: true } } });
+  const control = document.querySelector('#floating-panel-toggle');
+  expect(control.closest('header')).toBeNull();
+  expect(control.closest('#overlay-controls')).toBeNull();
+  control.click();
+  expect(document.querySelector('#overlay-controls').hidden).toBe(true);
+  expect(document.querySelector('#info-toggle').getAttribute('aria-expanded')).toBe('false');
+  control.click();
+  expect(document.querySelector('#overlay-controls').hidden).toBe(false);
+  document.querySelector('[data-view="appearance"]').click();
+  expect(document.querySelector('#appearance-screen').hidden).toBe(false);
 });

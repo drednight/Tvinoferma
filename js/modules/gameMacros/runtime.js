@@ -237,6 +237,19 @@ export async function saveProfile(name) {
 }
 export function macroErrorText(error) {
   const raw = String(error?.message || error || 'Не удалось выполнить команду.');
+  const deliveryFailure = /^Background delivery failed: (\d{1,10})$/.exec(raw);
+  if (deliveryFailure) {
+    const code = Number(deliveryFailure[1]);
+    const reason =
+      code === 5
+        ? 'Отказ в доступе Windows (код 5): возможное ограничение прав/UIPI.'
+        : code === 1460
+          ? 'Таймаут Windows (код 1460).'
+          : code === 0
+            ? 'Windows не подтвердила доставку и не сообщила код ошибки.'
+            : `Windows не подтвердила доставку (код ${code}).`;
+    return `${reason} Сделаны попытки отпускания тем же способом; автоповтора и переключения фокуса нет.`;
+  }
   const messages = {
     'Point is outside client area':
       'Абсолютная точка не попадает в клиентскую область получателя. Передача остановлена без клика по другому приложению.',

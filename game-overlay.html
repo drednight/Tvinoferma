@@ -180,9 +180,42 @@
         opacity: 0.5;
         cursor: wait;
       }
+      #floating-panel-toggle {
+        display: none;
+        position: fixed;
+        top: 6px;
+        right: 6px;
+        z-index: 10;
+        margin: 0;
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        border-radius: 50%;
+        opacity: 0.65;
+        box-shadow: 0 2px 8px #0005;
+      }
+      body.header-hidden #floating-panel-toggle {
+        display: block;
+      }
+      #floating-panel-toggle:hover,
+      #floating-panel-toggle:focus-visible {
+        opacity: 1;
+      }
+      body.header-hidden #overlay-controls {
+        padding-right: 30px;
+      }
     </style>
   </head>
   <body>
+    <button
+      id="floating-panel-toggle"
+      aria-controls="overlay-controls"
+      aria-expanded="true"
+      title="Скрыть или показать панель"
+      aria-label="Скрыть или показать панель"
+    >
+      ⋯
+    </button>
     <main>
       <header data-drag>
         <span>🎮 Управление пати</span
@@ -211,7 +244,6 @@
             ><button data-view="journal">Журнал</button><button data-view="party">Пати и окна</button
             ><button data-view="appearance">Настройки оверлея</button>
           </nav>
-          <button id="back" hidden>← В меню / назначенные клавиши</button>
           <p id="status">Ожидание главного окна…</p>
         </div>
         <section id="shortcuts-screen">
@@ -272,7 +304,10 @@
           </fieldset>
           <label>Размер текста<input id="font-size" type="range" min="10" max="24" value="14" /></label
           ><label><input id="hide-header" type="checkbox" /> Скрыть заголовок и кнопки окна</label>
-          <p class="muted">Для возврата заголовка откройте оверлей повторно из трея.</p>
+          <p class="muted">
+            При скрытом заголовке кнопка ⋯ остаётся в правом верхнем углу. Она показывает меню, через которое можно
+            вернуться в настройки и включить заголовок.
+          </p>
           <button id="save-appearance">Сохранить</button>
           <p id="appearance-error" role="status"></p>
         </section>

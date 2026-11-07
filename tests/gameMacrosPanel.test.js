@@ -166,3 +166,9 @@ it('creates three background test commands from the editor without running them'
   expect(state.settings.gameMacros.commands.slice(1).every(c => c.hotkey === '')).toBe(true);
   expect(mocks.run).not.toHaveBeenCalled();
 });
+
+it('groups keyboard and mouse repeat controls together', () => {
+  const group = document.querySelector('.gm-mirror-buttons');
+  expect(group.querySelector('[data-gm-mirror]')).not.toBeNull();
+  expect(group.querySelector('[data-gm-mirror-mouse]')).not.toBeNull();
+});

@@ -594,3 +594,19 @@ it('rejects a deleted or fabricated party before launching anything', async () =
   expect(invoke.mock.calls.some(([c]) => c === 'launcher_launch')).toBe(false);
   expect(runtime.snapshot().busy).toBe(false);
 });
+it.each([
+  [5, 'Отказ в доступе Windows (код 5)'],
+  [1460, 'Таймаут Windows (код 1460)'],
+  [0, 'не сообщила код ошибки']
+])('explains native background failure %s without retrying foreground input', async (code, message) => {
+  Object.assign(state.settings.gameMacros.commands[0], { delivery: 'background', sequence: 'B' });
+  invoke.mockImplementation(async (c, args) => {
+    if (c === 'launcher_running_details') return [client];
+    if (args?.action === 'key-background') throw new Error(`Background delivery failed: ${code}`);
+    return null;
+  });
+  await runtime.run('test');
+  expect(runtime.snapshot().notice).toContain(message);
+  expect(invoke.mock.calls.filter(([, a]) => a?.action === 'key-background')).toHaveLength(1);
+  expect(invoke.mock.calls.some(([, a]) => a?.action === 'focus' || a?.action === 'key')).toBe(false);
+});
