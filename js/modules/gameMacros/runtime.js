@@ -30,6 +30,8 @@ let mirroring = false,
   mirrorInit;
 let paused = false,
   composing = false;
+let overlayWindows = [],
+  overlayWindowNotice = 'Нажмите «Обновить окна», чтобы проверить запущенные клиенты.';
 const logs = [];
 const logEntries = [];
 let activeCommandName = '',
@@ -46,6 +48,10 @@ export function snapshot() {
   const c = config();
   return {
     busy,
+    parties: (state.parties || []).map(({ id, name }) => ({ id, name })),
+    partyId: c.partyId,
+    windows: overlayWindows,
+    windowNotice: overlayWindowNotice,
     executionState,
     runningName: activeCommandName,
     mirroring,
@@ -751,6 +757,9 @@ export async function initGameMacros() {
   await listen('game-overlay-ready', () => {
     void broadcast();
   });
+  await listen('game-overlay-party', event => {
+    void overlayPartyAction(event.payload);
+  });
   await listen('game-overlay-action', event => {
     if (event.payload === 'stop') stop();
   });
@@ -1230,5 +1239,43 @@ export async function previewComposition(id) {
   } finally {
     busy = false;
     void broadcast();
+  }
+}
+
+// Native bridge accepts requests only from main/overlay. Resolve IDs against current user data.
+export async function overlayPartyAction(request) {
+  if (!['party-refresh', 'party-launch'].includes(request?.action)) return;
+  if (busy) {
+    overlayWindowNotice = 'Сначала завершите текущую команду.';
+    await broadcast();
+    return;
+  }
+  busy = true;
+  cancelled = false;
+  overlayWindowNotice = 'Проверка окон…';
+  void broadcast();
+  try {
+    if (mirroring || mirrorPending) await disableKeyboardMirror();
+    if (request.action === 'party-launch') {
+      const party = (state.parties || []).find(p => p.id === request.partyId);
+      if (!party) throw new Error('Выберите существующую пати.');
+      overlayWindowNotice = `Запуск пати: ${party.name}…`;
+      void broadcast();
+      const { launchPartyByName } = await import('../launcher/partyLaunch.js');
+      if (cancelled) throw new Error('Остановлено пользователем.');
+      const result = await launchPartyByName(party.name, { cancelled: () => cancelled });
+      if (!result || result.some(r => r.ok === false || r.cancelled))
+        throw new Error('Запуск пати не завершён. Проверьте журнал скриптов.');
+    }
+    const rows = await listMacroWindows();
+    overlayWindows = rows.map(row => ({ name: row.nick || 'Нераспознанное окно', pid: row.pid, known: !!row.known }));
+    overlayWindowNotice = cancelled
+      ? 'Остановлено пользователем.'
+      : `Найдено окон: ${rows.length}. Обновите список после входа персонажей.`;
+  } catch (error) {
+    overlayWindowNotice = macroErrorText(error);
+  } finally {
+    busy = false;
+    await broadcast();
   }
 }

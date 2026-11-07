@@ -214,11 +214,19 @@ pub fn game_macro_navigate(
     window: tauri::WebviewWindow,
     app: tauri::AppHandle,
     action: String,
+    party_id: Option<String>,
 ) -> Result<(), String> {
     if !["main", "game-overlay"].contains(&window.label()) {
         return Err("Untrusted window".into());
     }
     match action.as_str() {
+        "party-refresh" | "party-launch" => app
+            .emit_to(
+                "main",
+                "game-overlay-party",
+                serde_json::json!({"action":action,"partyId":party_id}),
+            )
+            .map_err(|_| "Cannot request party action".into()),
         "stop" => app
             .emit_to("main", "game-overlay-action", "stop")
             .map_err(|_| "Cannot stop".into()),

@@ -126,12 +126,16 @@ it('edits point name and coordinates in a modal, preserving references and cance
   expect(state.settings.gameMacros.points[0]).toMatchObject({ id: 'point', x: 200 });
   expect(state.settings.gameMacros.commands[0].pointId).toBe('point');
 });
-it('keeps the master hotkey control before the collapsed macro workspace', () => {
+it('keeps the master switch in the always-visible summary', () => {
   const toggle = document.querySelector('[data-gm-enabled]');
   const details = document.querySelector('#game-macros-block');
-  expect(toggle.closest('details')).toBeNull();
-  expect(toggle.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(toggle.closest('summary')).toBe(details.querySelector('summary'));
+  expect(toggle.getAttribute('role')).toBe('switch');
   expect(toggle.checked).toBe(false);
+  const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+  toggle.closest('label').dispatchEvent(click);
+  expect(details.open).toBe(false);
+  expect(toggle.checked).toBe(true);
   expect(document.querySelector('[data-gm-mirror-source]').value).toBe('any');
 });
 it('converts key steps to a composition and exposes an explicit saved-command picker without losing them', () => {

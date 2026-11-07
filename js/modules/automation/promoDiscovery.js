@@ -1,3 +1,4 @@
+import { backgroundTask } from '../../core/backgroundTask.js';
 import { promoDeadlineState, promoExpiryKey } from './promoDeadlineLabel.js';
 import { createPublicNewsReader } from './publicNewsReader.js';
 import { newsArticles, articleCodes } from './promoNewsParser.js';
@@ -102,89 +103,103 @@ export function createPromoDiscovery({
       return snapshot();
     if (!force && started - cache.lastAttemptAt >= 0 && started - cache.lastAttemptAt < 600000 && cache.lastAttemptAt)
       return snapshot();
-    cache.lastAttemptAt = started;
-    cache.status = 'checking';
-    cache.errors = [];
-    cache.checked = 0;
-    cache.total = 0;
-    publish();
-    let failed = false;
-    const failure = error => {
-      failed = true;
-      const code = typeof error === 'string' ? error : error?.message;
-      const safe =
-        /^news_(?:network|timeout|http(?:_\d{3})?|size|body|client|content_type|challenge|markup|budget)$/.test(
-          code || ''
-        )
-          ? code
-          : 'news_network';
-      if (!cache.errors.includes(safe) && cache.errors.length < 10) cache.errors.push(safe);
-    };
-    const ids = new Set();
-    await Promise.all(
-      [1, 2].map(async page => {
-        try {
-          const r = await read({ page, article: null });
-          if (r?.status !== 200) throw Error(`news_http_${Number.isInteger(r?.status) ? r.status : 0}`);
-          newsArticles(r.html).forEach(id => ids.add(id));
-        } catch (error) {
-          failure(error);
-        }
-      })
-    );
-    const list = [...ids].slice(0, 80);
-    cache.total = list.length;
-    if (ids.size > 80) failed = true;
-    publish();
-    let cursor = 0;
-    async function worker() {
-      while (cursor < list.length) {
-        if (disposed || now() - started >= budgetMs) {
-          failure(Error('news_budget'));
-          return;
-        }
-        const id = list[cursor++];
-        try {
-          // Same-day successful articles are reusable after a partial scan/restart.
-          if (
-            !force &&
-            cache.articles[id] &&
-            cache.articles[id] <= started &&
-            (maxAgeMs ? started - cache.articles[id] < maxAgeMs : day(cache.articles[id]) === day(started))
-          ) {
+    const journal = backgroundTask('Поиск промокодов');
+    try {
+      cache.lastAttemptAt = started;
+      cache.status = 'checking';
+      cache.errors = [];
+      cache.checked = 0;
+      cache.total = 0;
+      publish();
+      let failed = false;
+      const failure = error => {
+        failed = true;
+        const code = typeof error === 'string' ? error : error?.message;
+        const safe =
+          /^news_(?:network|timeout|http(?:_\d{3})?|size|body|client|content_type|challenge|markup|budget)$/.test(
+            code || ''
+          )
+            ? code
+            : 'news_network';
+        if (!cache.errors.includes(safe) && cache.errors.length < 10) cache.errors.push(safe);
+      };
+      const ids = new Set();
+      await Promise.all(
+        [1, 2].map(async page => {
+          try {
+            const r = await read({ page, article: null });
+            if (r?.status !== 200) throw Error(`news_http_${Number.isInteger(r?.status) ? r.status : 0}`);
+            newsArticles(r.html).forEach(id => ids.add(id));
+          } catch (error) {
+            failure(error);
+          }
+        })
+      );
+      const list = [...ids].slice(0, 80);
+      cache.total = list.length;
+      journal.log(`Списки новостей прочитаны. К проверке: ${list.length}.`);
+      if (ids.size > 80) failed = true;
+      publish();
+      let cursor = 0;
+      async function worker() {
+        while (cursor < list.length) {
+          if (disposed || now() - started >= budgetMs) {
+            failure(Error('news_budget'));
+            return;
+          }
+          const id = list[cursor++];
+          try {
+            // Same-day successful articles are reusable after a partial scan/restart.
+            if (
+              !force &&
+              cache.articles[id] &&
+              cache.articles[id] <= started &&
+              (maxAgeMs ? started - cache.articles[id] < maxAgeMs : day(cache.articles[id]) === day(started))
+            ) {
+              cache.checked++;
+              continue;
+            }
+            const r = await read({ page: null, article: id });
+            if (r?.status !== 200) throw Error(`news_http_${Number.isInteger(r?.status) ? r.status : 0}`);
+            if (disposed) return;
+            const rows = articleCodes(r.html, id);
+            for (const row of rows) {
+              const existing = cache.codes.find(c => c.code === row.code);
+              if (existing) Object.assign(existing, row, { lastSeenAt: now() });
+              else cache.codes.push({ ...row, firstSeenAt: now(), lastSeenAt: now() });
+            }
+            cache.articles[id] = now();
             cache.checked++;
-            continue;
+          } catch (error) {
+            failure(error);
           }
-          const r = await read({ page: null, article: id });
-          if (r?.status !== 200) throw Error(`news_http_${Number.isInteger(r?.status) ? r.status : 0}`);
-          if (disposed) return;
-          const rows = articleCodes(r.html, id);
-          for (const row of rows) {
-            const existing = cache.codes.find(c => c.code === row.code);
-            if (existing) Object.assign(existing, row, { lastSeenAt: now() });
-            else cache.codes.push({ ...row, firstSeenAt: now(), lastSeenAt: now() });
-          }
-          cache.articles[id] = now();
-          cache.checked++;
-        } catch (error) {
-          failure(error);
+          publish();
         }
-        publish();
       }
+      await Promise.all([worker(), worker()]);
+      if (disposed) {
+        journal.finish('Поиск остановлен.', 'warn');
+        return empty();
+      }
+      cache.codes = cache.codes.sort((a, b) => b.firstSeenAt - a.firstSeenAt).slice(0, 200);
+      cache.articles = Object.fromEntries(
+        Object.entries(cache.articles)
+          .sort((a, b) => Number(b[1]) - Number(a[1]))
+          .slice(0, 160)
+      );
+      cache.status = failed ? 'partial' : 'checked';
+      if (!failed) cache.lastCompleteAt = now();
+      cache.durationMs = Math.max(0, now() - started);
+      publish();
+      journal.finish(
+        `Проверено новостей: ${cache.checked}. Промокодов в списке: ${cache.codes.length}.`,
+        failed ? 'warn' : 'done'
+      );
+      return snapshot();
+    } catch (error) {
+      journal.finish('Поиск промокодов не завершён.', 'error');
+      throw error;
     }
-    await Promise.all([worker(), worker()]);
-    if (disposed) return empty();
-    cache.codes = cache.codes.sort((a, b) => b.firstSeenAt - a.firstSeenAt).slice(0, 200);
-    cache.articles = Object.fromEntries(
-      Object.entries(cache.articles)
-        .sort((a, b) => Number(b[1]) - Number(a[1]))
-        .slice(0, 160)
-    );
-    cache.status = failed ? 'partial' : 'checked';
-    if (!failed) cache.lastCompleteAt = now();
-    cache.durationMs = Math.max(0, now() - started);
-    publish();
-    return snapshot();
   }
   let deadlineDay = day(now());
   const deadlineTimer = setInterval(() => {

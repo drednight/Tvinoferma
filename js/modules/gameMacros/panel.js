@@ -73,7 +73,7 @@ export function mountGameMacros(host) {
   const selected = c.commands.find(row => row.id === selectedId) || c.commands[0];
   selectedId = selected?.id || '';
   const point = c.points.find(p => p.id === selected?.pointId);
-  host.innerHTML = `<div class="gm-control-bar gm-hotkey-master"><label class="gm-switch"><input type="checkbox" data-gm-enabled ${c.enabled ? 'checked' : ''}><span><b>Управление сочетаниями клавиш</b><small>Можно запускать команды, когда открыта игра, без перехода в Твиноферму.</small></span></label><p class="muted">Выкл — команды работают только кнопками. Обычные сочетания не регистрируются. Во время выполнения аварийная остановка остаётся доступной.</p></div><details id="game-macros-block" class="tools-block gm-workspace"><summary class="gm-collapsed-title">🎮 Управление пати и макросы</summary>
+  host.innerHTML = `<details id="game-macros-block" class="tools-block gm-workspace"><summary class="gm-collapsed-title"><span>🎮 Управление пати и макросами</span><label class="gm-hotkey-master gm-slider-switch" title="Выкл — ручной запуск; аварийная остановка при выполнении остаётся доступной"><span>Сочетания клавиш</span><input type="checkbox" role="switch" aria-label="Управление сочетаниями клавиш" data-gm-enabled ${c.enabled ? 'checked' : ''}><i aria-hidden="true"></i></label></summary>
   <header class="gm-heading"><div><span class="gm-eyebrow">Управление игровыми окнами</span><h3>🎮 Управление пати и макросы</h3><p>Выберите пати, настройте команды и запускайте их кнопкой или сочетанием клавиш.</p></div><button class="btn" data-gm-mirror aria-pressed="false">⌨ Включить повтор клавиатуры</button><button class="btn danger" data-gm-stop>■ Остановить</button></header>
   <div class="gm-control-bar gm-party-bar"><label class="gm-field">Пати для всех команд<select data-gm-party><option value="">Выберите пати</option>${state.parties.map(p => option(p.id, p.name, c.partyId)).join('')}</select></label></div>
   <p class="gm-key-note">Если переключатель выключен, работает ручной запуск кнопкой ▶. При включении Windows закрепляет сочетания за приложением; игровые команды срабатывают только из окон выбранной пати. Остановка — <kbd>Ctrl+Alt+Pause</kbd>.</p>
@@ -126,7 +126,7 @@ export function mountGameMacros(host) {
     .map(char => option(char.id, `${char.class || ''} — ${char.nick}`, c.leaders[c.partyId]))
     .join(
       ''
-    )}</select></label><button class="btn primary">⊕ Задать координаты</button></form><p class="muted">Размер окна и DPI определяются автоматически. Для другого размера окна создайте вариант точки; после перемещения элементов интерфейса задайте точку заново.</p><div class="gm-command-workbench"><nav class="gm-command-menu gm-point-list">${c.points.map(p => `<button class="gm-command-choice" data-gm-point="${esc(p.id)}"><b>${esc(p.name)}</b><small>${p.width} × ${p.height}</small></button>`).join('') || '<p>Нет сохранённых точек.</p>'}</nav><article data-gm-point-detail></article></div></section>
+    )}</select></label><button class="btn primary">⊕ Задать координаты</button></form><p class="muted">Размер окна и DPI определяются автоматически. Для другого размера окна создайте вариант точки; после перемещения элементов интерфейса задайте точку заново.</p><div class="gm-points-workbench"><nav class="gm-point-list" aria-label="Сохранённые координатные точки">${c.points.map(p => `<button class="gm-point-choice" data-gm-point="${esc(p.id)}"><b>${esc(p.name)}</b><small>${p.width} × ${p.height}</small></button>`).join('') || '<p>Нет сохранённых точек.</p>'}</nav><article class="gm-point-detail" data-gm-point-detail></article></div></section>
   <footer class="gm-bottom-actions"><button class="btn" data-gm-logs>≡ Журнал сеанса</button><button class="btn" data-gm-overlay>▣ Открыть оверлей</button><button class="btn ghost" data-gm-overlay-settings>⚙ Настройки оверлея</button></footer></details>`;
   host.querySelector('#game-macros-block').open = wasOpen;
   host.querySelectorAll('[data-gm-resolution]').forEach(
@@ -168,6 +168,7 @@ export function mountGameMacros(host) {
   });
   host.querySelector('[data-gm-party]').onchange = safe(e => save({ partyId: e.target.value }));
   host.querySelector('[data-gm-mirror-source]').onchange = safe(event => save({ mirrorSource: event.target.value }));
+  host.querySelector('.gm-hotkey-master').onclick = e => e.stopPropagation();
   host.querySelector('[data-gm-enabled]').onchange = safe(e => save({ enabled: e.target.checked }));
   host.querySelector('[data-gm-create]').onclick = () => openCommandEditor(config(), save);
   host.querySelectorAll('[data-gm-select]').forEach(button => {
@@ -264,6 +265,9 @@ export function mountGameMacros(host) {
       return;
     }
     selectedPointId = point.id;
+    host
+      .querySelectorAll('[data-gm-point]')
+      .forEach(button => button.setAttribute('aria-pressed', String(button.dataset.gmPoint === point.id)));
     detail.innerHTML = `<h4>${esc(point.name)}</h4><p>${point.width} × ${point.height} · DPI ${point.dpi} · (${point.x}, ${point.y}). Схема, не снимок игры.</p><div class="gm-point-map" style="aspect-ratio:${point.width}/${point.height}"><span style="left:${(point.x / point.width) * 100}%;top:${(point.y / point.height) * 100}%">⊕</span></div><button class="btn" data-point-edit>✎ Редактировать</button><button class="btn danger" data-point-delete aria-label="Удалить точку">🗑</button>`;
     detail.querySelector('[data-point-delete]').onclick = safe(() =>
       save({ points: config().points.filter(p => p.id !== point.id) })

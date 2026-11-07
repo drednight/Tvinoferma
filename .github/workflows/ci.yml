@@ -125,6 +125,7 @@ jobs:
     name: rust-${{ matrix.check }}
     env:
       CARGO_PROFILE_TEST_DEBUG: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -151,6 +152,9 @@ jobs:
         id: rust-cache
         with:
           workspaces: src-tauri -> target
+          # Do not let parallel test/clippy jobs race to save one incomplete cache.
+          key: ${{ matrix.check }}-debug0-v2-${{ hashFiles('src-tauri/**') }}
+          cache-workspace-crates: true
       - name: Record Rust cache result
         shell: pwsh
         env:

@@ -87,15 +87,48 @@ it('saves overlay appearance without opening the main app', async () => {
   );
 });
 
-it('can hide and restore the journal return control without leaving the journal', () => {
+it('hides the navigation and return together using the service-panel button', () => {
   document.querySelector('[data-view="journal"]').click();
-  expect(document.querySelector('#back').hidden).toBe(false);
-  document.querySelector('#back-hide').click();
-  expect(document.querySelector('#back').hidden).toBe(true);
+  expect(document.querySelector('#back-hide')).toBeNull();
+  expect(document.querySelector('#back').closest('#overlay-controls')).not.toBeNull();
+  document.querySelector('#info-toggle').click();
+  expect(document.querySelector('#overlay-controls').hidden).toBe(true);
   expect(document.querySelector('#journal-screen').hidden).toBe(false);
-  document.querySelector('#back-hide').click();
-  expect(document.querySelector('#back').hidden).toBe(false);
-  expect(document.querySelector('#opacity').min).toBe('10');
+  document.querySelector('#info-toggle').click();
+  expect(document.querySelector('#overlay-controls').hidden).toBe(false);
+});
+
+it('opens party management inside the overlay and requests launch of a selected party', async () => {
+  mocks.handlers.get('game-macro-snapshot')({
+    payload: {
+      parties: [{ id: 'p1', name: 'Пати 1' }],
+      partyId: 'p1',
+      windows: [{ name: 'Игрок', pid: 123, known: true }]
+    }
+  });
+  document.querySelector('[data-view="party"]').click();
+  expect(document.querySelector('#party-screen').hidden).toBe(false);
+  expect(document.querySelector('#windows').textContent).toContain('Игрок');
+  await vi.waitFor(() =>
+    expect(mocks.invoke).toHaveBeenCalledWith('game_macro_navigate', { action: 'party-refresh', partyId: 'p1' })
+  );
+  // Refresh completion comes from main's snapshot, not just the IPC acknowledgement.
+  mocks.handlers.get('game-macro-snapshot')({
+    payload: { parties: [{ id: 'p1', name: 'Пати 1' }], partyId: 'p1', busy: false }
+  });
+  document.querySelector('#party-launch').click();
+  await vi.waitFor(() =>
+    expect(mocks.invoke).toHaveBeenCalledWith('game_macro_navigate', { action: 'party-launch', partyId: 'p1' })
+  );
+  document.querySelector('#back').click();
+  expect(document.querySelector('#shortcuts-screen').hidden).toBe(false);
+});
+it('uses visible labeled color swatches rather than dropdowns', () => {
+  expect(document.querySelectorAll('.color-options select')).toHaveLength(0);
+  const option = document.querySelector('[name="key-color-choice"][value="blue"]');
+  option.checked = true;
+  option.dispatchEvent(new Event('change'));
+  expect(document.querySelector('#key-color').value).toBe('blue');
 });
 
 it('puts the latest log entry first and keeps long command names in a separate element from their key', () => {

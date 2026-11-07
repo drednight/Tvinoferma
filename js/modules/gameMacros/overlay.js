@@ -7,6 +7,23 @@ async function init() {
   await listen('game-macro-snapshot', event => {
     if (event.payload == null) return;
     const data = event.payload;
+    const partySelect = document.getElementById('party-select'),
+      selected = partySelect.value || data.partyId;
+    partySelect.replaceChildren(
+      new Option('Выберите пати', ''),
+      ...(data.parties || []).map(p => new Option(p.name, p.id))
+    );
+    partySelect.value = selected || '';
+    document.getElementById('party-launch').disabled = !!data.busy || !partySelect.value;
+    document.getElementById('party-refresh').disabled = !!data.busy;
+    document.getElementById('window-notice').textContent = data.windowNotice || 'Нажмите «Обновить окна».';
+    document.getElementById('windows').replaceChildren(
+      ...(data.windows || []).map(row => {
+        const li = document.createElement('li');
+        li.textContent = `${row.name} · PID ${row.pid}${row.known ? '' : ' · не распознано'}`;
+        return li;
+      })
+    );
     const a = normalizeAppearance(data.appearance);
     document.documentElement.style.setProperty('--overlay-text', TEXT_PRESETS[a.textColor]);
     document.documentElement.style.setProperty('--overlay-key', KEY_PRESETS[a.keyColor]);
@@ -17,6 +34,10 @@ async function init() {
       document.getElementById('text-color').value = a.textColor;
       document.getElementById('key-color').value = a.keyColor;
       document.getElementById('command-color').value = a.commandColor;
+      for (const id of ['text-color', 'key-color', 'command-color'])
+        document
+          .querySelectorAll(`[name="${id}-choice"]`)
+          .forEach(input => (input.checked = input.value === document.getElementById(id).value));
       document.getElementById('font-size').value = String(a.fontSize);
       document.getElementById('hide-header').checked = a.hideHeader;
     }
@@ -81,23 +102,53 @@ async function init() {
     );
   });
   const showView = view => {
-    document.getElementById('shortcuts-screen').hidden = view !== 'shortcuts';
-    document.getElementById('appearance-screen').hidden = view !== 'appearance';
-    document.getElementById('journal-screen').hidden = view !== 'journal';
+    for (const id of ['shortcuts', 'journal', 'party', 'appearance'])
+      document.getElementById(`${id}-screen`).hidden = id !== view;
     document.getElementById('back').hidden = view === 'shortcuts';
-    document.getElementById('back-hide').hidden = view !== 'journal';
-    document.getElementById('back-hide').textContent = '◌';
-    document.getElementById('back-hide').title = 'Скрыть кнопку возврата';
+    if (view === 'party') void partyRequest('party-refresh');
+    document.querySelectorAll('[data-view]').forEach(button => {
+      if (button.dataset.view === view) button.setAttribute('aria-current', 'page');
+      else button.removeAttribute('aria-current');
+    });
   };
   document.querySelectorAll('[data-view]').forEach(button => (button.onclick = () => showView(button.dataset.view)));
-  document.getElementById('back-hide').onclick = () => {
-    const back = document.getElementById('back');
-    back.hidden = !back.hidden;
-    const toggle = document.getElementById('back-hide');
-    toggle.textContent = back.hidden ? '◉' : '◌';
-    toggle.title = back.hidden ? 'Показать кнопку возврата' : 'Скрыть кнопку возврата';
-  };
   document.getElementById('back').onclick = () => showView('shortcuts');
+  document.querySelectorAll('.color-options input[type=radio]').forEach(
+    input =>
+      (input.onchange = () => {
+        document.getElementById(input.name.replace('-choice', '')).value = input.value;
+      })
+  );
+  for (const [id, colors] of Object.entries({
+    'text-color': TEXT_PRESETS,
+    'key-color': KEY_PRESETS,
+    'command-color': COMMAND_PRESETS
+  }))
+    document
+      .querySelectorAll(`[name="${id}-choice"]`)
+      .forEach(input => (input.nextElementSibling.style.color = colors[input.value]));
+  let partyBusy = false;
+  document.getElementById('party-launch').disabled = true;
+  const partyRequest = async action => {
+    if (partyBusy) return;
+    partyBusy = true;
+    document.getElementById('party-launch').disabled = true;
+    document.getElementById('party-refresh').disabled = true;
+    try {
+      await invoke('game_macro_navigate', { action, partyId: document.getElementById('party-select').value || null });
+    } catch {
+      document.getElementById('window-notice').textContent =
+        'Не удалось отправить запрос. Откройте главное приложение.';
+      document.getElementById('party-refresh').disabled = false;
+      document.getElementById('party-launch').disabled = !document.getElementById('party-select').value;
+    } finally {
+      partyBusy = false;
+    }
+  };
+  document.getElementById('party-select').onchange = () =>
+    (document.getElementById('party-launch').disabled = partyBusy || !document.getElementById('party-select').value);
+  document.getElementById('party-launch').onclick = () => partyRequest('party-launch');
+  document.getElementById('party-refresh').onclick = () => partyRequest('party-refresh');
   document.getElementById('info-toggle').onclick = () => {
     const controls = document.getElementById('overlay-controls');
     controls.hidden = !controls.hidden;

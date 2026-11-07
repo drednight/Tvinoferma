@@ -795,3 +795,110 @@
 .gm-workspace [hidden] {
   display: none !important;
 }
+
+.gm-collapsed-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.gm-slider-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+  font-size: 0.84rem;
+  font-weight: 500;
+  cursor: pointer;
+  margin-left: auto;
+}
+.gm-slider-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.gm-slider-switch i {
+  width: 38px;
+  height: 22px;
+  border-radius: 20px;
+  background: var(--muted);
+  position: relative;
+  transition: background 0.15s;
+}
+.gm-slider-switch i::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 16px;
+  height: 16px;
+  background: var(--bg);
+  border-radius: 50%;
+  transition: transform 0.15s;
+}
+.gm-slider-switch input:checked + i {
+  background: var(--accent);
+}
+.gm-slider-switch input:checked + i::after {
+  transform: translateX(16px);
+}
+.gm-slider-switch input:focus-visible + i {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.gm-points-workbench {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(0, 2fr);
+  gap: 16px;
+  margin-top: 16px;
+  align-items: start;
+}
+.gm-point-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 420px;
+  overflow: auto;
+}
+.gm-point-choice {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+.gm-point-choice small {
+  color: var(--muted);
+}
+.gm-point-choice[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft, var(--bg));
+}
+.gm-point-detail {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  min-width: 0;
+  background: var(--bg);
+}
+.gm-point-detail h4 {
+  margin: 0 0 8px;
+}
+.gm-point-detail > .btn {
+  margin: 12px 8px 0 0;
+}
+@media (max-width: 640px) {
+  .gm-points-workbench {
+    grid-template-columns: 1fr;
+  }
+  .gm-point-list {
+    max-height: 180px;
+  }
+}

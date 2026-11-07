@@ -581,3 +581,16 @@ it('does not send the first key if stop was requested while native activation wa
   expect(invoke.mock.calls.some(([, a]) => a?.action === 'key')).toBe(false);
   expect(runtime.snapshot().executionState).toBe('stopped');
 });
+it('refreshes the overlay window list without activating game windows or sending input', async () => {
+  await runtime.overlayPartyAction({ action: 'party-refresh' });
+  expect(runtime.snapshot().windows).toEqual([{ name: 'Alpha', pid: 10, known: true }]);
+  expect(invoke.mock.calls.some(([c]) => c === 'game_macro_action')).toBe(false);
+  expect(runtime.snapshot().busy).toBe(false);
+});
+it('rejects a deleted or fabricated party before launching anything', async () => {
+  state.parties = [];
+  await runtime.overlayPartyAction({ action: 'party-launch', partyId: 'missing' });
+  expect(runtime.snapshot().windowNotice).toContain('Выберите существующую пати');
+  expect(invoke.mock.calls.some(([c]) => c === 'launcher_launch')).toBe(false);
+  expect(runtime.snapshot().busy).toBe(false);
+});
