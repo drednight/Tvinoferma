@@ -166,3 +166,26 @@ it('inserts templates and saved commands as editable snapshots, never exclusive 
   expect(editor.read()[2].steps[0]).toEqual({ type: 'keys', value: 'F8' });
   editor.dispose();
 });
+
+it('replaces the empty placeholder before applying the eight-block import limit', () => {
+  state.parties = [];
+  state.characters = [];
+  document.body.innerHTML = '<div id="editor"></div>';
+  const host = document.getElementById('editor');
+  const saved = {
+    id: 'full',
+    name: 'Восемь блоков',
+    action: 'composite',
+    blocks: Array.from({ length: 8 }, (_, i) => ({
+      name: `Блок ${i + 1}`,
+      scope: 'party',
+      target: 'all',
+      steps: [{ type: 'keys', value: 'F2' }]
+    }))
+  };
+  const editor = mountCompositionEditor(host, { partyId: '', commands: [saved], points: [], profiles: [] }, null);
+  host.querySelector('[data-unpack-command="full"]').click();
+  expect(editor.read()).toHaveLength(8);
+  expect(host.querySelector('[data-compose-error]').textContent).toBe('');
+  editor.dispose();
+});

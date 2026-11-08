@@ -352,9 +352,10 @@ export function mountCompositionEditor(host, c, row) {
               partyId: blocks[b]?.partyId || c.partyId
             };
         const added = commandBlocks(source, c);
+        const retained = blocks.length === 1 && !blocks[0].steps.length ? [] : blocks;
         if (
-          blocks.length + added.length > 8 ||
-          blocks.reduce((n, block) => n + block.steps.length, 0) +
+          retained.length + added.length > 8 ||
+          retained.reduce((n, block) => n + block.steps.length, 0) +
             added.reduce((n, block) => n + block.steps.length, 0) >
             128
         )
