@@ -53,6 +53,10 @@ it('offers an action library, duplicates steps, undoes deletion and collapses bl
     newPoint: vi.fn()
   });
   expect(host.querySelector('.gm-action-library')).not.toBeNull();
+  host.querySelector('[data-add-type="keys"]').click();
+  const initialKey = host.querySelector('[data-field="value"]');
+  initialKey.value = 'F8';
+  initialKey.dispatchEvent(new Event('input', { bubbles: true }));
   host.querySelector('[data-add-type="wait"]').click();
   expect(editor.read()[0].steps.map(s => s.type)).toEqual(['keys', 'wait']);
   expect(host.querySelector('[data-step="0"] .gm-step-editor').hidden).toBe(true);
@@ -86,8 +90,8 @@ it('opens and highlights an invalid step on save instead of silently accepting i
   host.querySelector('[data-add-type="launch"]').click();
   host.querySelector('[data-block-collapse]').click();
   expect(() => editor.read()).toThrow();
-  expect(host.querySelector('[data-step="1"]').classList.contains('is-invalid')).toBe(true);
-  expect(host.querySelector('[data-compose-error]').textContent).toContain('шаг 2');
+  expect(host.querySelector('[data-step="0"]').classList.contains('is-invalid')).toBe(true);
+  expect(host.querySelector('[data-compose-error]').textContent).toContain('шаг 1');
   editor.dispose();
 });
 
@@ -107,19 +111,58 @@ it('has only the action library, accepts custom chords and stores finite block l
     '[data-field="type"]'
   ])
     expect(host.querySelector(selector)).toBeNull();
-  const chord = host.querySelector('[data-key-chord]');
+  expect(host.querySelector('[data-key-chord]')).toBeNull();
+  host.querySelector('[data-add-type="keys"]').click();
+  const chord = host.querySelector('[data-step="0"] [data-field="value"]');
   chord.value = 'ctrl+shift+2';
   chord.dispatchEvent(new Event('input', { bubbles: true }));
-  host.querySelector('[data-add-type="keys"]').click();
-  expect(editor.read()[0].steps[1]).toEqual({ type: 'keys', value: 'CTRL+SHIFT+2' });
+  expect(editor.read()[0].steps[0]).toEqual({ type: 'keys', value: 'CTRL+SHIFT+2' });
   const repeat = host.querySelector('[data-field="repeat"]');
   repeat.value = '3';
   repeat.dispatchEvent(new Event('input', { bubbles: true }));
   expect(editor.read()[0].repeat).toBe(3);
-  const invalid = host.querySelector('[data-key-chord]');
-  invalid.value = 'wrong';
-  host.querySelector('[data-add-type="keys"]').click();
-  expect(editor.read()[0].steps).toHaveLength(2);
-  expect(host.querySelector('[data-compose-error]').textContent).toContain('SHIFT+1');
+  chord.value = 'wrong';
+  chord.dispatchEvent(new Event('input', { bubbles: true }));
+  expect(() => editor.read()).toThrow();
+  editor.dispose();
+});
+
+it('switches the same click between custom coordinates and a saved template without losing mouse choices', () => {
+  document.body.innerHTML = '<div id="editor"></div>';
+  const host = document.getElementById('editor');
+  const editor = mountCompositionEditor(
+    host,
+    { partyId: '', commands: [], points: [{ id: 'p', name: 'Кнопка' }], profiles: [] },
+    null
+  );
+  host.querySelector('[data-add-type="screen"]').click();
+  const change = (selector, value) => {
+    const input = host.querySelector(selector);
+    input.value = value;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  change('[data-field="x"]', '123');
+  change('[data-field="y"]', '456');
+  change('[data-field="button"]', 'right');
+  change('[data-click-source]', 'point');
+  change('[data-field="pointId"]', 'p');
+  expect(editor.read()[0].steps[0]).toMatchObject({ type: 'point', pointId: 'p', button: 'right' });
+  change('[data-click-source]', 'screen');
+  expect(editor.read()[0].steps[0]).toMatchObject({ type: 'screen', x: 123, y: 456, button: 'right' });
+  editor.dispose();
+});
+it('inserts templates and saved commands as editable snapshots, never exclusive references', () => {
+  document.body.innerHTML = '<div id="editor"></div>';
+  const host = document.getElementById('editor');
+  const command = { id: 'keys', name: 'Баф', action: 'sequence', sequence: 'F8', target: 'all' };
+  const editor = mountCompositionEditor(host, { partyId: 'p', commands: [command], points: [], profiles: [] }, null);
+  host.querySelector('[data-template="f6f1"]').click();
+  expect(editor.read().map(b => b.steps[0])).toEqual([
+    { type: 'keys', value: 'F6' },
+    { type: 'keys', value: 'F1' }
+  ]);
+  host.querySelector('[data-unpack-command="keys"]').click();
+  command.sequence = 'F9';
+  expect(editor.read()[2].steps[0]).toEqual({ type: 'keys', value: 'F8' });
   editor.dispose();
 });

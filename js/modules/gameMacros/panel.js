@@ -17,6 +17,7 @@ import {
   openOverlay,
   run,
   stop,
+  togglePause,
   saveProfile,
   pickPoint,
   previewCommand,
@@ -79,7 +80,7 @@ export function mountGameMacros(host) {
   selectedId = selected?.id || '';
   const point = c.points.find(p => p.id === selected?.pointId);
   host.innerHTML = `<details id="game-macros-block" class="tools-block gm-workspace"><summary class="gm-collapsed-title"><span>🎮 Управление пати и макросами</span><label class="gm-hotkey-master gm-slider-switch" title="Выкл — ручной запуск; аварийная остановка при выполнении остаётся доступной"><span>Сочетания клавиш</span><input type="checkbox" role="switch" aria-label="Управление сочетаниями клавиш" data-gm-enabled ${c.enabled ? 'checked' : ''}><i aria-hidden="true"></i></label></summary>
-  <header class="gm-heading"><div><span class="gm-eyebrow">Управление игровыми окнами</span><h3>🎮 Управление пати и макросы</h3><p>Выберите пати, настройте команды и запускайте их кнопкой или сочетанием клавиш.</p></div><div class="gm-mirror-buttons"><button class="btn" data-gm-mirror aria-pressed="false">⌨ Включить повтор клавиатуры</button><button class="btn" data-gm-mirror-mouse aria-pressed="false">🖱 Включить повтор мыши</button></div><button class="btn danger" data-gm-stop>■ Остановить</button></header>
+  <header class="gm-heading"><div><span class="gm-eyebrow">Управление игровыми окнами</span><h3>🎮 Управление пати и макросы</h3><p>Выберите пати, настройте команды и запускайте их кнопкой или сочетанием клавиш.</p></div><div class="gm-mirror-buttons"><button class="btn" data-gm-mirror aria-pressed="false">⌨ Включить повтор клавиатуры</button><button class="btn" data-gm-mirror-mouse aria-pressed="false">🖱 Включить повтор мыши</button></div><button class="btn" data-gm-pause>Ⅱ Пауза</button><button class="btn danger" data-gm-stop>■ Остановить</button></header>
   <div class="gm-control-bar gm-party-bar"><label class="gm-field">Пати для всех команд<select data-gm-party><option value="">Выберите пати</option>${state.parties.map(p => option(p.id, p.name, c.partyId)).join('')}</select></label></div>
   <p class="gm-key-note">Если переключатель выключен, работает ручной запуск кнопкой ▶. При включении Windows закрепляет сочетания за приложением; игровые команды срабатывают только из окон выбранной пати. Остановка — <kbd>Ctrl+Alt+Pause</kbd>.</p>
   <div class="gm-repeat-toolbar"><button class="btn ghost" data-gm-reconnect title="Заново зарегистрировать сочетания и подключить включённые режимы повтора; настройки и данные не сбрасываются">↻ Переподключить ввод</button><button class="btn ghost" data-gm-diagnostics>◎ Проверить окна</button><button class="btn ghost" data-gm-background-probe>◎ Диагностика фона (без клавиш)</button><button class="btn ghost" data-gm-recognize>Распознать пати / порядок</button></div><label class="gm-field">Источник повтора<select data-gm-mirror-source><option value="any" ${c.mirrorSource === 'any' ? 'selected' : ''}>Любое распознанное игровое окно</option><option value="leader" ${c.mirrorSource === 'leader' ? 'selected' : ''}>Только ПЛ выбранной пати</option></select><small>Получатели — все остальные проверенные клиенты. Изменение настроек обновляет повтор, не сбрасывая выбранные режимы.</small></label><small>Клавиатура и мышь включаются независимо. Мышь: абсолютные экранные координаты, без масштабирования. Возможен расход ресурсов.</small>
@@ -144,6 +145,7 @@ export function mountGameMacros(host) {
       })
   );
   host.querySelector('[data-gm-reconnect]').onclick = safe(reconnectInput);
+  host.querySelector('[data-gm-pause]').onclick = togglePause;
   host.querySelector('[data-gm-stop]').onclick = stop;
   host.querySelector('[data-gm-mirror]').onclick = safe(toggleKeyboardMirror);
   host.querySelector('[data-gm-mirror-mouse]').onclick = safe(() => toggleKeyboardMirror('mouse'));
@@ -420,6 +422,9 @@ export function mountGameMacros(host) {
         ? '⌨ Включение…'
         : '⌨ Включить повтор клавиатуры';
     mirror.setAttribute('aria-pressed', String(!!data.mirrorKeys));
+    const pause = host.querySelector('[data-gm-pause]');
+    pause.textContent = data.paused ? '▶ Продолжить' : 'Ⅱ Пауза';
+    pause.setAttribute('aria-pressed', String(!!data.paused));
     const mouse = host.querySelector('[data-gm-mirror-mouse]');
     mouse.textContent = data.mirrorMouse ? '🖱 Выключить повтор мыши' : '🖱 Включить повтор мыши';
     mouse.setAttribute('aria-pressed', String(!!data.mirrorMouse));

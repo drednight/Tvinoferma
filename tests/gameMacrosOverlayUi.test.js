@@ -415,3 +415,8 @@ it('requests input reconnect without toggling keyboard or mouse modes', async ()
   await vi.waitFor(() => expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-reconnect'));
   expect(mocks.emitTo.mock.calls.some(([, name]) => /keyboard-toggle|mouse-toggle/.test(name))).toBe(false);
 });
+
+it('has a dedicated pause/resume control even when no pause macro is saved', async () => {
+  document.getElementById('pause-macros').click();
+  await vi.waitFor(() => expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-pause'));
+});

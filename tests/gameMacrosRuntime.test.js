@@ -1004,3 +1004,111 @@ describe('hotkey reconnect and partial registration', () => {
     expect(runtime.snapshot().notice).toContain('аварийная остановка');
   });
 });
+
+describe('unified primitive execution', () => {
+  const clients = () => [client, { ...client, pid: 20, startedAt: 2000, hwnd: 200, title: 'Beta — Воин' }];
+  const setup = async (raw, two = true) => {
+    if (two) state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['p'] });
+    invoke.mockImplementation(async c => (c === 'launcher_running_details' ? (two ? clients() : [client]) : null));
+    const { unifiedCommand } = await import('../js/modules/gameMacros/unified.js');
+    state.settings.gameMacros.commands = [
+      unifiedCommand({ id: 'unified', name: 'Общие шаги', returnTo: 'last', ...raw }, runtime.config())
+    ];
+  };
+  it('runs F6 for followers before F1 for anyone and handles a party with only its leader', async () => {
+    await setup({ action: 'f6f1', target: 'all' });
+    await runtime.run('unified');
+    const keys = () => invoke.mock.calls.filter(([, a]) => a?.action === 'key').map(([, a]) => [a.target.pid, a.key]);
+    expect(keys()).toEqual([
+      [20, 'F6'],
+      [10, 'F1'],
+      [20, 'F1']
+    ]);
+    state.characters.pop();
+    invoke.mockImplementation(async c => (c === 'launcher_running_details' ? [client] : null));
+    invoke.mockClear();
+    await runtime.run('unified');
+    expect(keys()).toEqual([[10, 'F1']]);
+  });
+  it('previews all click recipients first, then preserves the per-window follow key/click order', async () => {
+    const point = { id: 'portrait', name: 'portrait', uiScale: '100%', x: 10, y: 20, width: 800, height: 600, dpi: 96 };
+    state.settings.gameMacros.points = [point, { ...point, id: 'menu', x: 40 }];
+    await setup({ action: 'follow', target: 'all', pointId: 'portrait', menuPointId: 'menu', resourceAllowed: true });
+    await runtime.previewComposition('unified');
+    await runtime.run('unified');
+    const events = invoke.mock.calls.flatMap(([c, a]) =>
+      c === 'game_macro_action' && a.action === 'key'
+        ? [[a.target.pid, a.key]]
+        : c === 'game_macro_action' && a.action === 'click'
+          ? [[a.target.pid, 'left']]
+          : c === 'game_macro_pointer' && !a.input.checkOnly
+            ? [[a.target.pid, a.input.button]]
+            : []
+    );
+    expect(events).toEqual([
+      [10, 'SHIFT+1'],
+      [10, 'right'],
+      [10, 'left'],
+      [20, 'SHIFT+1'],
+      [20, 'right'],
+      [20, 'left']
+    ]);
+    expect(runtime.snapshot().executionState).toBe('finished');
+  });
+  it('rejects a changed process identity between steps rather than retargeting or broadening input', async () => {
+    await setup({ action: 'sequence', target: 'all', sequence: 'F1\nF2' });
+    let changed = false;
+    invoke.mockImplementation(async (c, a) => {
+      if (c === 'launcher_running_details') return changed ? [{ ...client, startedAt: 1001 }, clients()[1]] : clients();
+      if (c === 'game_macro_action' && a.action === 'key') changed = true;
+      return null;
+    });
+    await runtime.run('unified');
+    expect(invoke.mock.calls.filter(([, a]) => a?.action === 'key').map(([, a]) => a.key)).toEqual(['F1']);
+    expect(runtime.snapshot().executionState).toBe('failed');
+  });
+});
+
+it('resumes a composition waiting step through the always-available pause control, without a saved pause macro', async () => {
+  state.settings.gameMacros.commands = [
+    {
+      id: 'wait',
+      name: 'Ожидание',
+      action: 'composite',
+      returnTo: 'last',
+      blocks: [{ target: 'all', partyId: 'p', steps: [{ type: 'pause' }, { type: 'keys', value: 'F2' }] }]
+    }
+  ];
+  const running = runtime.run('wait');
+  await vi.waitFor(() => expect(runtime.snapshot().paused).toBe(true));
+  runtime.togglePause();
+  await running;
+  expect(runtime.snapshot()).toMatchObject({ paused: false, executionState: 'finished' });
+  expect(invoke.mock.calls.some(([, a]) => a?.key === 'F2')).toBe(true);
+});
+
+it('retains explicit all-managed-window F6/F1 routing, validates the PL, and refuses unknown windows before input', async () => {
+  const { unifiedCommand } = await import('../js/modules/gameMacros/unified.js');
+  state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['q'] });
+  const beta = { ...client, pid: 20, startedAt: 2000, hwnd: 200, title: 'Beta — Воин' };
+  state.settings.gameMacros.commands = [
+    unifiedCommand(
+      { id: 'global', name: 'Общий проход', action: 'f6f1', scope: 'managed', target: 'all', returnTo: 'last' },
+      runtime.config()
+    )
+  ];
+  invoke.mockImplementation(async c => (c === 'launcher_running_details' ? [client, beta] : null));
+  await runtime.run('global');
+  expect(invoke.mock.calls.filter(([, a]) => a?.action === 'key').map(([, a]) => [a.target.pid, a.key])).toEqual([
+    [20, 'F6'],
+    [10, 'F1'],
+    [20, 'F1']
+  ]);
+  invoke.mockClear();
+  invoke.mockImplementation(async c =>
+    c === 'launcher_running_details' ? [client, { ...beta, title: 'Perfect World' }] : null
+  );
+  await runtime.run('global');
+  expect(invoke.mock.calls.some(([, a]) => a?.action === 'key')).toBe(false);
+  expect(runtime.snapshot().executionState).toBe('failed');
+});

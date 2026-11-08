@@ -282,3 +282,38 @@ it('reconnects only enabled mirror modes and explicit Stop wins over a pending r
   await reconnect;
   expect(runtime.snapshot()).toMatchObject({ mirrorKeys: false, mirrorMouse: false, mirroring: false });
 });
+
+it('explicit composition mode steps persist keyboard/mouse modes after completion, and a later off step preserves the other mode', async () => {
+  state.settings.gameMacros.commands = [
+    {
+      id: 'modes',
+      action: 'composite',
+      returnTo: 'last',
+      blocks: [
+        {
+          steps: [
+            { type: 'repeat', device: 'keyboard', mode: 'on' },
+            { type: 'repeat', device: 'mouse', mode: 'on' }
+          ]
+        }
+      ]
+    }
+  ];
+  await runtime.run('modes');
+  expect(runtime.snapshot()).toMatchObject({
+    mirrorKeys: true,
+    mirrorMouse: true,
+    mirroring: true,
+    executionState: 'finished'
+  });
+  state.settings.gameMacros.commands = [
+    {
+      id: 'off',
+      action: 'composite',
+      returnTo: 'last',
+      blocks: [{ steps: [{ type: 'repeat', device: 'keyboard', mode: 'off' }] }]
+    }
+  ];
+  await runtime.run('off');
+  expect(runtime.snapshot()).toMatchObject({ mirrorKeys: false, mirrorMouse: true, mirroring: true });
+});

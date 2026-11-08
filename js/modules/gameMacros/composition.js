@@ -16,6 +16,7 @@ export const STEP_LABELS = {
   resize: 'Размер игровой области',
   launch: 'Запуск выбранной пати',
   focus: 'Следующее / предыдущее окно / ПЛ',
+  repeat: 'Режим повтора ввода',
   pause: 'Пауза до продолжения'
 };
 export function normalizeComposition(value) {
@@ -25,7 +26,13 @@ export function normalizeComposition(value) {
     if (!block || !Array.isArray(block.steps) || !block.steps.length || block.steps.length > 64)
       throw new Error(`Блок ${i + 1}: нужно 1–64 действия.`);
     if (i === 0 && block.parallel) throw new Error('Первый блок не может быть параллельным предыдущему.');
+    if (block.perWindow && block.steps.some(s => !['keys', 'wait', 'point', 'screen', 'resize'].includes(s?.type)))
+      throw new Error(
+        'Обход по окнам поддерживает клавиши, клики, размеры и паузы; управление пати/повтором вынесите в отдельный блок.'
+      );
     return {
+      perWindow: block.perWindow === true,
+      leaderSplit: block.leaderSplit === true,
       name: text(block.name || `Блок ${i + 1}`, 80),
       parallel: block.parallel === true,
       repeat: integer(block.repeat ?? 1, 1, 100, 'Повторений блока'),
@@ -52,9 +59,20 @@ export function normalizeComposition(value) {
           case 'command':
             if (!step.commandId) throw new Error('Выберите существующую команду.');
             return { ...base, commandId: text(step.commandId, 80) };
+          case 'repeat':
+            if (!['keyboard', 'mouse'].includes(step.device) || !['on', 'off', 'toggle'].includes(step.mode))
+              throw new Error('Выберите режим повтора.');
+            return { ...base, device: step.device, mode: step.mode };
           case 'point':
             if (!step.pointId) throw new Error('Выберите именованную точку.');
-            return { ...base, pointId: text(step.pointId, 80), ...mouse(step) };
+            return {
+              ...base,
+              pointId: text(step.pointId, 80),
+              ...(step.pointIds?.length
+                ? { pointIds: [...new Set(step.pointIds.filter(id => typeof id === 'string'))].slice(0, 30) }
+                : {}),
+              ...mouse(step)
+            };
           case 'screen':
             return {
               ...base,
@@ -132,6 +150,8 @@ export function compileComposition(command, config) {
       }
       const selector = {
         target: block.target,
+        allowEmptyOthers: block.target === 'others',
+        allowManagedLeaderSplit: block.leaderSplit,
         scope: block.scope,
         charIds: block.charIds,
         partyId: block.partyId,
@@ -164,6 +184,7 @@ export function compileComposition(command, config) {
             point: {
               action: 'click',
               pointId: step.pointId,
+              pointIds: step.pointIds || [],
               button: step.button,
               count: step.count,
               modifiers: step.modifiers
@@ -179,6 +200,7 @@ export function compileComposition(command, config) {
             profile: { action: 'layout', profileId: step.profileId },
             resize: { action: 'resize', width: step.width, height: step.height },
             launch: { action: 'launch', partyId: step.partyId },
+            repeat: { action: 'repeat-mode', device: step.device, mode: step.mode },
             focus: { action: step.direction }
           };
           return {
@@ -192,7 +214,9 @@ export function compileComposition(command, config) {
           };
         })
       ).flat();
-      lanes.push({ kind: 'serial', children: nodes });
+      lanes.push(
+        block.perWindow ? { kind: 'per-window', selector, children: nodes } : { kind: 'serial', children: nodes }
+      );
       if (lanes.length > 4) throw new Error('Не более 4 параллельных блоков.');
     }
     if (lanes.length) groups.push({ kind: 'parallel', children: lanes });
@@ -201,10 +225,10 @@ export function compileComposition(command, config) {
   return expand(command);
 }
 /** Only actions share the input lock. Waits in independent branches overlap. */
-export async function executeComposition(tree, { action, wait, checkpoint, pause }) {
+export async function executeComposition(tree, { action, wait, checkpoint, pause, targets }) {
   let tail = Promise.resolve();
   let failed = false;
-  const visit = async node => {
+  const visit = async (node, target) => {
     if (failed) throw new Error('Параллельный блок остановлен.');
     await checkpoint(() => failed);
     if (node.kind === 'wait') {
@@ -223,7 +247,7 @@ export async function executeComposition(tree, { action, wait, checkpoint, pause
       const job = tail.then(async () => {
         if (failed) throw new Error('Параллельный блок остановлен.');
         await checkpoint(() => failed);
-        return action(node.command);
+        return action(node.command, target);
       });
       tail = job.catch(() => {});
       try {
@@ -233,11 +257,23 @@ export async function executeComposition(tree, { action, wait, checkpoint, pause
         throw error;
       }
     }
-    if (node.kind === 'serial') {
-      for (const child of node.children) await visit(child);
+    if (node.kind === 'per-window') {
+      if (!targets) throw new Error('Обход окон недоступен.');
+      let rows;
+      try {
+        rows = await targets(node.selector);
+      } catch (error) {
+        failed = true;
+        throw error;
+      }
+      for (const row of rows) for (const child of node.children) await visit(child, row);
       return;
     }
-    const results = await Promise.allSettled(node.children.map(visit));
+    if (node.kind === 'serial') {
+      for (const child of node.children) await visit(child, target);
+      return;
+    }
+    const results = await Promise.allSettled(node.children.map(child => visit(child, target)));
     const failure = results.find(r => r.status === 'rejected');
     if (failure) throw failure.reason;
   };

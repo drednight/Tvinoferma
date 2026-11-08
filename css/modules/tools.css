@@ -1081,23 +1081,6 @@
   border-color: var(--danger, #f7768e);
 }
 
-.gm-key-library {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
-.gm-key-library > label {
-  display: grid;
-  gap: 4px;
-  font-size: 11px;
-  margin: 6px 0;
-}
-.gm-key-library small {
-  display: block;
-  white-space: normal;
-  font-size: 10px;
-  overflow-wrap: anywhere;
-}
 .gm-loop-setting {
   display: flex;
   flex-wrap: wrap;
@@ -1110,10 +1093,30 @@
   width: 72px;
 }
 .gm-compose-workbench {
-  grid-template-columns: 152px minmax(0, 1fr);
+  grid-template-columns: 176px minmax(0, 1fr);
 }
 @media (max-width: 620px) {
   .gm-compose-workbench {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+.gm-action-library {
+  min-width: 0;
+}
+.gm-action-library .btn {
+  width: 100%;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.gm-action-library details .btn {
+  margin-top: 5px;
+}
+.gm-dialog .gm-loop-setting {
+  display: flex;
+}
+.gm-dialog .gm-loop-setting input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='hidden']) {
+  width: 76px;
+  flex: 0 0 76px;
 }

@@ -24,6 +24,7 @@ vi.mock('../js/modules/gameMacros/runtime.js', async () => {
     openOverlay: mocks.openOverlay,
     run: mocks.run,
     stop: vi.fn(),
+    togglePause: vi.fn(),
     saveProfile: vi.fn(),
     pickPoint: mocks.pickPoint,
     previewCommand: vi.fn(),
@@ -72,13 +73,17 @@ describe('party command workspace', () => {
     document.querySelector('[data-gm-create]').click();
     const form = document.querySelector('[data-gm-form]');
     form.elements.namedItem('name').value = 'Моя команда';
-    form.elements.namedItem('sequence').value = 'F7';
+    form.querySelector('[data-add-type="keys"]').click();
+    const key = form.querySelector('[data-step="0"] [data-field="value"]');
+    key.value = 'F7';
+    key.dispatchEvent(new Event('input', { bubbles: true }));
     document.querySelector('.modal-footer .primary').click();
     await vi.waitFor(() => expect(state.settings.gameMacros.commands).toHaveLength(2));
     expect(state.settings.gameMacros.commands[1]).toMatchObject({
       name: 'Моя команда',
-      sequence: 'F7',
-      scope: 'party'
+      action: 'composite',
+      scope: 'party',
+      blocks: [expect.objectContaining({ steps: [{ type: 'keys', value: 'F7' }] })]
     });
   });
   it('opens overlay preferences and session logs only on request', () => {
@@ -95,13 +100,12 @@ describe('party command workspace', () => {
     document.querySelector('[data-gm-show-size="leader"]').click();
     await vi.waitFor(() => expect(mocks.showSize).toHaveBeenCalledWith(1920, 1400, 'leader'));
   });
-  it('only shows fields for the selected action in the creation dialog', () => {
+  it('creates commands in a single composition editor, with no exclusive action chooser', () => {
     document.querySelector('[data-gm-create]').click();
     const form = document.querySelector('[data-gm-form]');
-    expect(form.querySelector('[data-gm-click-field]').hidden).toBe(true);
-    form.elements.namedItem('action').value = 'click';
-    form.dispatchEvent(new Event('change'));
-    expect(form.querySelector('[data-gm-click-field]').hidden).toBe(false);
+    expect(form.querySelector('.gm-action-picker').hidden).toBe(true);
+    expect(form.querySelector('[data-gm-composition]').hidden).toBe(false);
+    expect(form.querySelector('[data-add-type="keys"]')).not.toBeNull();
     expect(form.querySelector('[data-gm-sequence-field]').hidden).toBe(true);
   });
 });

@@ -1,6 +1,7 @@
 import { BACKGROUND_METHODS, backgroundVariants, validateActivityCommand } from './background.js';
 import { mountCompositionEditor } from './compositionEditor.js';
 import { compileComposition } from './composition.js';
+import { unifiedCommand, materializeUnifiedCommand } from './unified.js';
 import { openOverlay } from '../marathons/overlay.js';
 import { state } from '../../core/state.js';
 import { escapeHtml as esc } from '../../core/utils.js';
@@ -42,7 +43,7 @@ export const actionHelp = {
   'mouse-mirror':
     'Независимый переключатель кнопок мыши из активной игры в остальные распознанные окна. Абсолютные экранные координаты, без масштабирования. Если точка вне получателя, повтор останавливается. Возможен расход ресурсов. Совместимость PW не подтверждена. Ctrl+Alt+Pause выключает оба режима.',
   composite:
-    'Блоки с собственными получателями, независимыми паузами и совместным планированием. Можно вставлять существующие команды, точки, профили, запуск пати. Запись доступна только внутри выделенной области редактора.',
+    'Все конечные действия собираются из редактируемых шагов. Параметры справа, действия слева; получатели и порядок обхода задаются для блока.',
   resize: 'Изменяет ширину и высоту игровой области выбранных окон. Клавиши в игру не отправляются.',
   pause: 'Останавливает остаток команды и запрещает новые запуски до повторного нажатия.'
 };
@@ -99,18 +100,20 @@ export function insertKeyToken(input, token) {
 }
 
 export function openCommandEditor(c, save, row = null) {
+  const unified = !row || row.action !== 'pause';
+  if (row && unified) row = unifiedCommand(row, c);
   let builder;
   showModal({
     onClose: () => builder?.dispose(),
     title: row ? 'Изменить команду' : 'Создать команду',
     wide: true,
-    content: `<div class="gm-dialog"><form data-gm-form><input type="hidden" name="id"><label>Название <input class="input" name="name" maxlength="80" required></label><div class="gm-action-picker"><fieldset class="gm-action-choices"><legend>Что делает команда</legend>${Object.entries(
+    content: `<div class="gm-dialog"><form data-gm-form><input type="hidden" name="id"><label>Название <input class="input" name="name" maxlength="80" required></label><div class="gm-action-picker" ${unified ? 'hidden' : ''}><fieldset class="gm-action-choices"><legend>Что делает команда</legend>${Object.entries(
       commandLabels
     )
-      .filter(([key]) => row || !['follow', 'f6f1', 'optimize'].includes(key))
+      .filter(([key]) => unified || key === 'pause')
       .map(
         ([key, value]) =>
-          `<label class="gm-choice" ${commandVisible({ action: key }) ? '' : 'hidden'}><input type="radio" name="action" value="${key}"><span>${esc(value)}</span></label>`
+          `<label class="gm-choice" ${commandVisible({ action: key }) ? '' : 'hidden'}><input type="radio" name="action" value="${key}" ${!unified && key === 'pause' ? 'checked' : ''}><span>${esc(value)}</span></label>`
       )
       .join(
         ''
@@ -164,7 +167,7 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
           throw new Error('Пауза переключения: 0–500 мс; удержание клавиши: 10–200 мс. Только целые числа.');
         if (value.hotkey && !chord(value.hotkey)) throw new Error('Пример сочетания: CTRL+ALT+F8.');
         if (value.action === 'sequence') steps(value.sequence);
-        validateActivityCommand(value);
+        if (value.action !== 'composite') validateActivityCommand(value);
         if (
           value.action === 'resize' &&
           ![value.width, value.height].every(n => Number.isInteger(Number(n)) && Number(n) >= 160 && Number(n) <= 8000)
@@ -192,19 +195,28 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
         value.pointIds = data.getAll('pointIds');
         value.resourceAllowed =
           value.action === 'composite' ? data.has('compositeConsent') : data.has('resourceAllowed');
-        if (value.action === 'composite') value.blocks = builder.read();
+        if (value.action === 'composite') {
+          value.blocks = builder.read();
+          value.target = 'all';
+          value.charIds = [];
+        }
         value.count = Number(value.count) || 1;
         if (value.target === 'subset' && !value.charIds.length) throw new Error('Отметьте участников команды.');
         if (['click', 'follow'].includes(value.action) && (!value.pointId || !value.resourceAllowed))
           throw new Error('Выберите точку и разрешите координатное действие.');
         if (value.action === 'follow' && !value.menuPointId) throw new Error('Выберите точку пункта Follow.');
         if (!row && c.commands.length >= 64) throw new Error('Не более 64 команд.');
-        const entry = { ...value, id: row?.id || crypto.randomUUID() };
+        const entry = materializeUnifiedCommand({
+          ...value,
+          ...(value.action === 'composite' ? { delivery: 'foreground', backgroundMethod: 'post' } : {}),
+          id: row?.id || crypto.randomUUID()
+        });
+        validateActivityCommand(entry);
         const commands = [...c.commands.filter(item => item.id !== entry.id), entry];
         const keys = commands.filter(item => item.hotkey).map(item => chord(item.hotkey));
         if (new Set(keys).size !== keys.length || keys.includes('CTRL+ALT+PAUSE'))
           throw new Error('Сочетание занято другой командой или остановкой.');
-        if (value.action === 'composite') compileComposition(entry, { ...c, commands });
+        if (entry.action === 'composite') compileComposition(entry, { ...c, commands });
         await save({ commands });
       } catch (error) {
         const box = document.querySelector('[data-gm-form-error]');
@@ -220,11 +232,11 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
   if (!form) return;
   const initial = row || {
     name: '',
-    action: 'sequence',
+    action: 'composite',
     target: 'all',
     hotkey: '',
     scope: 'party',
-    returnTo: 'leader',
+    returnTo: 'last',
     switchMs: 30,
     holdMs: 30,
     delivery: 'foreground',
@@ -303,10 +315,10 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
       })
   });
   form.querySelectorAll('[name="charIds"]').forEach(input => {
-    input.checked = !!row?.charIds.includes(input.value);
+    input.checked = !!row?.charIds?.includes(input.value);
   });
   form.querySelectorAll('[name="pointIds"]').forEach(input => {
-    input.checked = !!row?.pointIds.includes(input.value);
+    input.checked = !!row?.pointIds?.includes(input.value);
   });
   for (const name of ['hotkey', 'sequence', 'followSequence']) {
     const input = form.elements.namedItem(name),

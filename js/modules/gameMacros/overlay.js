@@ -45,6 +45,11 @@ async function init() {
       mouseToggle.disabled = mouseDisabled();
     }
   };
+  const pauseButton = document.getElementById('pause-macros');
+  pauseButton.onclick = () =>
+    emitTo('main', 'game-overlay-pause').catch(() => {
+      document.getElementById('status').textContent = 'Не удалось изменить паузу.';
+    });
   const reconnectButton = document.getElementById('reconnect-input');
   reconnectButton.onclick = async () => {
     reconnectButton.disabled = true;
@@ -71,6 +76,8 @@ async function init() {
     if (event.payload == null) return;
     const data = event.payload;
     repeatState = data;
+    pauseButton.textContent = data.paused ? '▶ Продолжить' : 'Ⅱ Пауза';
+    pauseButton.setAttribute('aria-pressed', String(!!data.paused));
     reconnectButton.disabled = !!data.busy || !!data.mirrorPending;
     const keyboardOn = !!data.mirrorKeys,
       keyboardPaused = keyboardOn && !data.mirroring && !data.mirrorPending;

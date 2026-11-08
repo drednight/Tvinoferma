@@ -12,7 +12,8 @@ import {
   commandPoint,
   validPoint,
   backgroundCompatible,
-  orderManagedTargets
+  orderManagedTargets,
+  partyMembers
 } from './model.js';
 let invoke;
 let rootTiming = { switchMs: 30, holdMs: 30, backgroundMethod: 'post' },
@@ -218,7 +219,8 @@ export async function windowTargets(
   selected = scopedConfig(selected, command);
   const rows = snapshotRows || (await listMacroWindows());
   if (command.scope === 'managed') {
-    if (command.target !== 'all' || command.action === 'leader')
+    const split = command.allowManagedLeaderSplit && ['others', 'leader'].includes(command.target);
+    if ((!split && command.target !== 'all') || command.action === 'leader')
       throw new Error('Глобальная область требует явного выбора всех распознанных окон.');
     if (
       !rows.length ||
@@ -232,7 +234,22 @@ export async function windowTargets(
       new Set(rows.map(row => row.charId)).size !== rows.length
     )
       throw new Error('Все окна должны быть однозначно распознаны.');
+    if (split) {
+      const leader = selected.leaders[selected.partyId];
+      if (!partyMembers(state, selected.partyId).some(c => c.id === leader) || !rows.some(r => r.charId === leader))
+        throw new Error('PL required');
+      return orderManagedTargets(state, selected, rows).filter(r =>
+        command.target === 'leader' ? r.charId === leader : r.charId !== leader
+      );
+    }
     return orderManagedTargets(state, selected, rows);
+  }
+  if (command.allowEmptyOthers && command.target === 'others') {
+    const members = partyMembers(state, selected.partyId);
+    if (members.length === 1 && members[0].id === selected.leaders[selected.partyId]) {
+      resolveTargets(state, selected, { ...command, target: 'leader' }, rows);
+      return [];
+    }
   }
   return resolveTargets(state, selected, command, rows);
 }
@@ -359,6 +376,12 @@ export function macroErrorText(error) {
       : 'Не удалось проверить или выполнить действие Windows. Откройте «Проверить окна»; ввод не повторяется автоматически.')
   );
 }
+export function togglePause() {
+  paused = !paused;
+  if (!composing) stop(false);
+  log(paused ? 'Макросы на паузе.' : 'Макросы возобновлены.');
+  void broadcast();
+}
 export async function run(id, hotkey = false) {
   if (id === 'stop') {
     stop();
@@ -366,10 +389,7 @@ export async function run(id, hotkey = false) {
   }
   const requested = config().commands.find(row => row.id === id);
   if (requested?.action === 'pause') {
-    paused = !paused;
-    if (!composing) stop(false);
-    log(paused ? 'Макросы на паузе.' : 'Макросы возобновлены.');
-    void broadcast();
+    togglePause();
     return;
   }
   if (paused) {
@@ -436,7 +456,8 @@ export async function run(id, hotkey = false) {
       const plan = compileComposition(command, c);
       await preflightComposition(plan, c, false);
       await executeComposition(plan, {
-        action: cmd => executeLegacy(cmd, c, false, false),
+        action: (cmd, target) => executeLegacy(cmd, c, false, false, null, target),
+        targets: selector => windowTargets(selector, scopedConfig(c, selector)),
         wait,
         checkpoint,
         pause: async () => {
@@ -486,7 +507,7 @@ export async function run(id, hotkey = false) {
   }
 }
 
-async function executeLegacy(command, c, hotkey = false, restore = true, preparedRows = null) {
+async function executeLegacy(command, c, hotkey = false, restore = true, preparedRows = null, exactTarget = null) {
   await checkpoint();
   c = scopedConfig(c, command);
   inputTiming = {
@@ -494,6 +515,18 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
     holdMs: command.holdMs ?? rootTiming.holdMs ?? 30,
     backgroundMethod: backgroundMethod(command.backgroundMethod ?? rootTiming.backgroundMethod)
   };
+  if (command.action === 'repeat-mode') {
+    const keyboard = command.device === 'keyboard';
+    const current = keyboard ? mirrorKeys : mirrorMouse;
+    const desired = command.mode === 'toggle' ? !current : command.mode === 'on';
+    if (current !== desired)
+      await toggleKeyboardMirror(keyboard ? 'keyboard' : 'mouse', command.name, {
+        keys: keyboard ? desired : mirrorKeys,
+        mouse: keyboard ? mirrorMouse : desired
+      });
+    if ((keyboard ? mirrorKeys : mirrorMouse) !== desired) throw new Error('Не удалось изменить режим повтора.');
+    return;
+  }
   if (command.action === 'launch') {
     const party = state.parties.find(p => p.id === (command.partyId || c.partyId));
     if (!party) throw new Error('no party');
@@ -532,7 +565,7 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
   try {
     rows = await windowTargets(command, c, snapshotRows);
   } catch (error) {
-    if (composing || command.action !== 'sequence' || command.scope === 'managed') throw error;
+    if (exactTarget || composing || command.action !== 'sequence' || command.scope === 'managed') throw error;
     // Resolution-only fallback, before input. Never retry/broaden after a delivery failure.
     if (
       !snapshotRows.length ||
@@ -564,6 +597,16 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
       `Управляющая пати недоступна: ${macroErrorText(error)} Резерв: ВСЕ проверенные игровые окна (${rows.length}). Фильтр ПЛ/поднабора не применяется.`,
       command.name
     );
+  }
+  if (exactTarget) {
+    rows = rows.filter(
+      row =>
+        row.pid === exactTarget.pid &&
+        row.startedAt === exactTarget.startedAt &&
+        row.hwnd === exactTarget.hwnd &&
+        row.charId === exactTarget.charId
+    );
+    if (rows.length !== 1) throw new Error('Получатель изменился во время обхода окон. Ввод остановлен.');
   }
   if (hotkey) {
     let foreground = false;
@@ -896,6 +939,7 @@ export async function initGameMacros() {
     await applyOverlayPreferences();
     await broadcast();
   });
+  await listen('game-overlay-pause', () => togglePause());
   await listen('game-overlay-reconnect', () => {
     void reconnectInput().catch(error => log(macroErrorText(error)));
   });
@@ -1374,6 +1418,7 @@ async function preflightComposition(plan, c, preview) {
   for (const cmd of actions) validateActivityCommand(cmd, true);
   for (const cmd of actions) {
     await checkpoint();
+    if (cmd.action === 'repeat-mode') continue;
     const scoped = scopedConfig(c, cmd),
       party = scoped.partyId;
     if (
