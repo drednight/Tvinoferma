@@ -377,10 +377,6 @@ it('renders real party launch percent and stage without fabricating elapsed-time
   expect(document.getElementById('launch-percent').value).toBe(48);
   expect(document.getElementById('launch-stage').textContent).toContain('48% · Alpha: ожидание нового клиента… · 2/4');
 });
-it('opens a separate TeamSpeak window, not a page in the party overlay', async () => {
-  document.getElementById('teamspeak-open').click();
-  await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('teamspeak_overlay'));
-});
 
 it('shows current character, elapsed stage time and terminal launch counts', async () => {
   const started = Date.now() - 65000;

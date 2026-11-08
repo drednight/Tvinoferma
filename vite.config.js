@@ -28,8 +28,7 @@ export default defineConfig({
       input: {
         main: 'index.html',
         overlay: 'game-overlay.html',
-        guide: 'game-guide.html',
-        teamspeak: 'teamspeak-overlay.html'
+        guide: 'game-guide.html'
       }
     },
     target: 'es2021'

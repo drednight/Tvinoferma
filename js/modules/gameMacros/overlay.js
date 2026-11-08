@@ -4,13 +4,6 @@ import { listen, emitTo } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 async function init() {
-  document.getElementById('teamspeak-open').onclick = async () => {
-    try {
-      await invoke('teamspeak_overlay');
-    } catch {
-      document.getElementById('status').textContent = 'Не удалось открыть оверлей TeamSpeak.';
-    }
-  };
   const current = getCurrentWindow();
   let latestLaunch = null;
   const renderElapsed = () => {
