@@ -40,6 +40,7 @@ import { refreshRunningWindows } from './modules/launcher/runningWindows.js';
 import { bindParties, renderParties } from './modules/parties/index.js';
 import { bindMarathons, renderMarathons, resetMarathonView } from './modules/marathons/page.js';
 import { bindRunes, renderRunes } from './modules/runes/index.js';
+import { mountGameMacros } from './modules/gameMacros/panel.js';
 import { bindTools, renderTools } from './modules/tools/index.js';
 import { initTaskLog } from './core/taskLog.js';
 import { initStickyHeader } from './core/stickyHeader.js';
@@ -585,6 +586,9 @@ function renderActiveTab(sectionName) {
         break;
       case 'runes':
         renderRunes();
+        break;
+      case 'game-macros':
+        mountGameMacros(document.getElementById('game-macros-root'));
         break;
       case 'tools':
         renderTools();

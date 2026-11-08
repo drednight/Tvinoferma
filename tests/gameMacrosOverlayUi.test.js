@@ -424,3 +424,43 @@ it('has a dedicated pause/resume control even when no pause macro is saved', asy
   document.getElementById('pause-macros').click();
   await vi.waitFor(() => expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-pause'));
 });
+
+it('toggles persisted hotkey intent independently of keyboard/mouse repeat, even with the service header hidden', async () => {
+  const update = mocks.handlers.get('game-macro-snapshot'),
+    button = document.getElementById('hotkeys-toggle');
+  update({ payload: { hotkeysEnabled: false, registered: false } });
+  expect(button.textContent).toBe('Сочетания: ВЫКЛ');
+  expect(button.dataset.state).toBe('off');
+  document.getElementById('info-toggle').click();
+  expect(button.closest('[hidden]')).toBeNull();
+  mocks.emitTo.mockClear();
+  button.click();
+  await vi.waitFor(() =>
+    expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-hotkeys-toggle', { enabled: true })
+  );
+  expect(mocks.emitTo.mock.calls.some(([, name]) => /keyboard-toggle|mouse-toggle/.test(name))).toBe(false);
+  update({ payload: { hotkeysEnabled: true, registered: true } });
+  expect(button.getAttribute('aria-pressed')).toBe('true');
+  expect(button.dataset.state).toBe('on');
+  button.click();
+  await vi.waitFor(() =>
+    expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-hotkeys-toggle', { enabled: false })
+  );
+  update({ payload: { hotkeysEnabled: true, registered: true, hotkeyFailures: ['CTRL+F'] } });
+  expect(button.dataset.state).toBe('paused');
+  expect(button.title).toContain('незарегистрированные');
+});
+it('keeps hotkey controls honest on transport failure and disables them during command execution', async () => {
+  const update = mocks.handlers.get('game-macro-snapshot'),
+    button = document.getElementById('hotkeys-toggle');
+  update({ payload: { hotkeysEnabled: false, busy: true } });
+  expect(button.disabled).toBe(true);
+  update({ payload: { hotkeysEnabled: false, busy: false } });
+  mocks.emitTo.mockRejectedValueOnce(new Error('offline'));
+  button.click();
+  await vi.waitFor(() =>
+    expect(document.getElementById('status').textContent).toContain('Не удалось изменить сочетания')
+  );
+  expect(button.textContent).toBe('Сочетания: ВЫКЛ');
+  expect(button.disabled).toBe(false);
+});

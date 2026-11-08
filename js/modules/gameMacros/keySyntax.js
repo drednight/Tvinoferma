@@ -23,7 +23,7 @@ export function steps(text) {
   return rows.map(row => {
     if (/^wait\s+\d+$/i.test(row)) {
       const ms = Number(row.split(/\s+/)[1]);
-      if (ms < 50 || ms > 3000) throw new Error('Пауза — от 50 до 3000 мс.');
+      if (ms < 50 || ms > 3000) throw new Error('Задержка — от 50 до 3000 мс.');
       return { wait: ms };
     }
     const key = chord(row);

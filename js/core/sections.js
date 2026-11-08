@@ -48,6 +48,7 @@ export const SECTIONS = [
   { id: 'runes', title: 'Руны', paletteIcon: '🔮' },
   { id: 'finance', title: 'Банк', paletteIcon: '₽' },
   { id: 'tools', title: 'Инструменты', paletteIcon: '⚡' },
+  { id: 'game-macros', title: 'Управление пати и макросами', paletteIcon: '🎮' },
   {
     id: 'settings',
     title: 'Настройки',
@@ -94,6 +95,9 @@ export function normalizeSectionsSettings(input = {}) {
 
   const orderRaw = Array.isArray(input?.order) ? input.order.map(String) : [];
   const knownOrder = [...new Set(orderRaw.filter(id => BY_ID.has(id)))];
+  // Introduce the new page next to Tools without reordering existing custom sections.
+  if (!knownOrder.includes('game-macros') && knownOrder.includes('tools'))
+    knownOrder.splice(knownOrder.indexOf('tools') + 1, 0, 'game-macros');
   // Всё, чего в настройке не было, дописываем в конце — в порядке по умолчанию
   for (const id of known) if (!knownOrder.includes(id)) knownOrder.push(id);
 

@@ -1122,14 +1122,6 @@
 }
 
 /* Repeat buttons keep device/action descriptions in accessible labels, not long captions. */
-.gm-mirror-buttons .gm-repeat-toggle {
-  min-height: 30px;
-  min-width: 0;
-  flex: 0 0 auto;
-  padding: 4px 8px;
-  font-size: 12px;
-  white-space: nowrap;
-}
 .gm-repeat-toggle[data-state='on'] {
   background: #214c40;
   border-color: #66d9ad;
@@ -1143,4 +1135,58 @@
 .gm-repeat-toggle[data-state='pending'] {
   border-color: #e6b86a;
   color: #f5cc76;
+}
+
+.gm-page-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.gm-page-heading h3 {
+  margin: 5px 0;
+}
+.gm-page-heading p {
+  color: var(--muted);
+  margin: 6px 0;
+}
+.gm-control-buttons {
+  margin-bottom: 18px;
+  gap: 8px;
+}
+.gm-control-buttons > .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 136px;
+  min-width: 136px;
+  height: 36px;
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: 13px;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.gm-repeat-settings {
+  margin: 16px 0 24px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-1);
+  min-width: 0;
+}
+.gm-repeat-settings legend {
+  padding: 0 8px;
+  font-weight: 700;
+}
+.gm-repeat-settings > p {
+  color: var(--muted);
+  margin: 0 0 14px;
+}
+.gm-repeat-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 16px;
 }

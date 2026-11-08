@@ -8,7 +8,7 @@ const integer = (v, min, max, label) => {
 };
 export const STEP_LABELS = {
   keys: 'Клавиша / сочетание',
-  wait: 'Пауза',
+  wait: 'Задержка',
   command: 'Существующая команда',
   point: 'Именованный клик / двойной клик',
   screen: 'Клик в экранной точке',
@@ -55,7 +55,7 @@ export function normalizeComposition(value) {
             return { ...base, value };
           }
           case 'wait':
-            return { ...base, ms: integer(step.ms, 0, 10000, 'Пауза, мс') };
+            return { ...base, ms: integer(step.ms, 0, 10000, 'Задержка, мс') };
           case 'command':
             if (!step.commandId) throw new Error('Выберите существующую команду.');
             return { ...base, commandId: text(step.commandId, 80) };

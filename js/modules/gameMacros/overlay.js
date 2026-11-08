@@ -46,6 +46,21 @@ async function init() {
       mouseToggle.disabled = mouseDisabled();
     }
   };
+  const hotkeysToggle = document.getElementById('hotkeys-toggle');
+  let hotkeysPending = false;
+  const hotkeysDisabled = () => hotkeysPending || !!repeatState.busy || !!repeatState.mirrorPending;
+  hotkeysToggle.onclick = async () => {
+    hotkeysPending = true;
+    hotkeysToggle.disabled = true;
+    try {
+      await emitTo('main', 'game-overlay-hotkeys-toggle', { enabled: !repeatState.hotkeysEnabled });
+    } catch {
+      document.getElementById('status').textContent = 'Не удалось изменить сочетания клавиш.';
+    } finally {
+      hotkeysPending = false;
+      hotkeysToggle.disabled = hotkeysDisabled();
+    }
+  };
   const pauseButton = document.getElementById('pause-macros');
   pauseButton.onclick = () =>
     emitTo('main', 'game-overlay-pause').catch(() => {
@@ -77,6 +92,15 @@ async function init() {
     if (event.payload == null) return;
     const data = event.payload;
     repeatState = data;
+    const hotkeysOn = !!data.hotkeysEnabled;
+    const hotkeysConflict = hotkeysOn && (!data.registered || data.hotkeyFailures?.length);
+    hotkeysToggle.textContent = `Сочетания: ${hotkeysOn ? 'ВКЛ' : 'ВЫКЛ'}`;
+    hotkeysToggle.dataset.state = hotkeysConflict ? 'paused' : hotkeysOn ? 'on' : 'off';
+    hotkeysToggle.setAttribute('aria-pressed', String(hotkeysOn));
+    hotkeysToggle.title = `${hotkeysOn ? 'Выключить' : 'Включить'} сочетания клавиш${hotkeysConflict ? ' · есть незарегистрированные сочетания, см. журнал' : ''}`;
+    hotkeysToggle.setAttribute('aria-label', hotkeysToggle.title);
+    hotkeysToggle.disabled = hotkeysDisabled();
+
     pauseButton.textContent = data.paused ? '▶ Продолжить' : 'Ⅱ Пауза';
     pauseButton.setAttribute('aria-pressed', String(!!data.paused));
     reconnectButton.disabled = !!data.busy || !!data.mirrorPending;

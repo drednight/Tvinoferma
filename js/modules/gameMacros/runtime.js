@@ -66,6 +66,7 @@ export function snapshot() {
     mirrorPending,
     paused,
     registered,
+    hotkeysEnabled: c.enabled,
     hotkeyFailures,
     opacity: c.opacity,
     appearance: c.appearance,
@@ -905,11 +906,40 @@ export async function previewCommand(id) {
   }
 }
 export function openSettings() {
-  document.querySelector('.tab[data-tab="tools"]')?.click();
+  document.querySelector('.tab[data-tab="game-macros"]')?.click();
   setTimeout(
     () => document.getElementById('game-macros-block')?.scrollIntoView({ block: 'start', behavior: 'smooth' }),
     0
   );
+}
+let hotkeysQueue = Promise.resolve();
+export function setHotkeysEnabled(enabled) {
+  if (typeof enabled !== 'boolean') return Promise.resolve();
+  hotkeysQueue = hotkeysQueue
+    .catch(() => {})
+    .then(async () => {
+      if (busy || mirrorPending) throw new Error('Дождитесь окончания команды или обновления повтора.');
+      const previous = config().enabled;
+      if (previous === enabled) {
+        await broadcast();
+        return;
+      }
+      state.settings.gameMacros = normalizeGameMacros({ ...config(), enabled });
+      try {
+        await (await import('../../core/storage.js')).persist();
+      } catch (error) {
+        state.settings.gameMacros = normalizeGameMacros({ ...config(), enabled: previous });
+        log('Не удалось сохранить переключение сочетаний клавиш.');
+        await broadcast();
+        throw error;
+      }
+      try {
+        await configure();
+      } finally {
+        await broadcast();
+      }
+    });
+  return hotkeysQueue;
 }
 export async function initGameMacros() {
   if (initialized || !window.__TAURI_INTERNALS__) return;
@@ -938,6 +968,9 @@ export async function initGameMacros() {
     }
     await applyOverlayPreferences();
     await broadcast();
+  });
+  await listen('game-overlay-hotkeys-toggle', event => {
+    void setHotkeysEnabled(event.payload?.enabled).catch(() => log('Не удалось изменить сочетания клавиш из оверлея.'));
   });
   await listen('game-overlay-pause', () => togglePause());
   await listen('game-overlay-reconnect', () => {

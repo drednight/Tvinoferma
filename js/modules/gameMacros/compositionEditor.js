@@ -67,7 +67,7 @@ export function mountCompositionEditor(host, c, row) {
       case 'keys':
         return `<label>Клавиша ${input('value', step.value)}</label><small>Например SHIFT+1, CTRL+F2 или F8. Сочетание задаётся здесь, без отдельного окна ввода.</small>`;
       case 'wait':
-        return `<label>Миллисекунды ${input('ms', step.ms, 'number')}</label>`;
+        return `<label>Задержка, мс ${input('ms', step.ms, 'number')}</label>`;
       case 'command':
         return `<label>Команда ${select(
           'commandId',
@@ -227,7 +227,7 @@ export function mountCompositionEditor(host, c, row) {
               : ''
           }${block.scope === 'managed' ? `<label><input type="checkbox" data-field="leaderSplit" ${block.leaderSplit ? 'checked' : ''}> Разделять ПЛ выбранной пати и остальные распознанные окна</label>` : ''}<label><input type="checkbox" data-field="perWindow" ${block.perWindow ? 'checked' : ''} ${block.delivery === 'background' && block.backgroundMethod === 'activity' ? 'disabled' : ''}> Выполнить все шаги в одном окне, затем перейти к следующему</label><label class="gm-loop-setting">Повторить блок ${input('repeat', block.repeat ?? 1, 'number')} раз <small>1–100; Стоп прерывает цикл. Все повторы проверяются до запуска.</small></label><div class="gm-compose-workbench"><aside class="gm-action-library" aria-label="Добавить действие"><strong>Мышь и управление</strong>${[
             ['keys', '⌨', 'Клавиша'],
-            ['wait', '◷', 'Пауза'],
+            ['wait', '◷', 'Задержка'],
             ['screen', '↗', 'Клик'],
             ['focus', '▣', 'Окно'],
             ['launch', '▶', 'Пати'],

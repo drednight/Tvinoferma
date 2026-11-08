@@ -27,13 +27,13 @@ vi.mock('../js/modules/launcher/runningWindows.js', () => ({
 const html = () => readFileSync('index.html', 'utf8');
 
 describe('разметка раздела «Инструменты»', () => {
-  it('пункт меню стоит шестым, после «Руны», и у него свой горячий ключ', () => {
+  it('«Инструменты» и страница макросов идут рядом с собственными горячими клавишами', () => {
     const doc = new DOMParser().parseFromString(html(), 'text/html');
     const tabs = [...doc.querySelectorAll('.next-nav [data-tab]')].map(b => b.dataset.tab);
-    expect(tabs).toEqual(['today', 'characters', 'parties', 'marathons', 'runes', 'finance', 'tools']);
-    // «Настройки» живёт отдельно, внизу, и теперь это Ctrl+8 — седьмым стали «Инструменты»
+    expect(tabs).toEqual(['today', 'characters', 'parties', 'marathons', 'runes', 'finance', 'tools', 'game-macros']);
+    // Настройки остаются отдельно внизу; новая страница занимает Ctrl+8.
     const settings = doc.querySelector('.next-settings-tab');
-    expect(settings.title).toBe('Ctrl+8');
+    expect(settings.title).toBe('Ctrl+9');
     expect(doc.querySelector('.next-nav [data-tab="finance"]').title).toBe('Ctrl+6');
     expect(doc.querySelector('.next-nav [data-tab="tools"]').title).toBe('Ctrl+7');
   });
@@ -141,4 +141,12 @@ describe('содержимое раздела', () => {
     expect(root.querySelector('[data-tools-act="pick-windows"]')).not.toBeNull();
     expect(root.querySelector('[data-tools-act="close-all-windows"]')).not.toBeNull();
   });
+});
+
+it('places macros below Tools as a standalone page, not a workspace inside Tools', () => {
+  const doc = new DOMParser().parseFromString(html(), 'text/html');
+  expect(doc.querySelector('[data-tab="tools"]').nextElementSibling.dataset.tab).toBe('game-macros');
+  expect(doc.querySelector('[data-section="game-macros"] #game-macros-root')).not.toBeNull();
+  expect(readFileSync('js/modules/tools/index.js', 'utf8')).not.toContain('mountGameMacros');
+  expect(readFileSync('js/main.js', 'utf8')).toContain("case 'game-macros':");
 });

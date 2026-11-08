@@ -74,17 +74,16 @@ export function mountGameMacros(host) {
             ? '[data-gm-point-detail]'
             : '.' + node.classList[0]
   }));
-  const wasOpen = host.querySelector('#game-macros-block')?.open === true;
   const c = config();
   const visibleCommands = c.commands.filter(commandVisible);
   const selected = visibleCommands.find(row => row.id === selectedId) || visibleCommands[0];
   selectedId = selected?.id || '';
   const point = c.points.find(p => p.id === selected?.pointId);
-  host.innerHTML = `<details id="game-macros-block" class="tools-block gm-workspace"><summary class="gm-collapsed-title"><span>🎮 Управление пати и макросами</span><label class="gm-hotkey-master gm-slider-switch" title="Выкл — ручной запуск; аварийная остановка при выполнении остаётся доступной"><span>Сочетания клавиш</span><input type="checkbox" role="switch" aria-label="Управление сочетаниями клавиш" data-gm-enabled ${c.enabled ? 'checked' : ''}><i aria-hidden="true"></i></label></summary>
-  <header class="gm-heading"><div><span class="gm-eyebrow">Управление игровыми окнами</span><h3>🎮 Управление пати и макросы</h3><p>Выберите пати, настройте команды и запускайте их кнопкой или сочетанием клавиш.</p></div><div class="gm-mirror-buttons"><button class="btn gm-repeat-toggle" data-gm-mirror aria-label="Включить повтор клавиатуры" title="Включить повтор клавиатуры" data-state="off" aria-pressed="false">⌨ ВЫКЛ</button><button class="btn gm-repeat-toggle" data-gm-mirror-mouse aria-label="Включить повтор мыши" title="Включить повтор мыши" data-state="off" aria-pressed="false">🖱 ВЫКЛ</button></div><button class="btn" data-gm-pause>Ⅱ Пауза</button><button class="btn danger" data-gm-stop>■ Остановить</button></header>
+  host.innerHTML = `<section id="game-macros-block" class="tools-block gm-workspace"><header class="gm-page-heading"><div><span class="gm-eyebrow">Управление игровыми окнами</span><h3>Управление пати и макросами</h3><p>Выберите пати, настройте команды и запускайте их кнопкой или сочетанием клавиш.</p></div><label class="gm-hotkey-master gm-slider-switch" title="Выкл — ручной запуск; аварийная остановка при выполнении остаётся доступной"><span>Сочетания клавиш</span><input type="checkbox" role="switch" aria-label="Управление сочетаниями клавиш" data-gm-enabled ${c.enabled ? 'checked' : ''}><i aria-hidden="true"></i></label></header>
+  <div class="gm-control-buttons gm-mirror-buttons" role="group" aria-label="Управление выполнением и повтором"><button class="btn gm-repeat-toggle" data-gm-mirror aria-label="Включить повтор клавиатуры" title="Включить повтор клавиатуры" data-state="off" aria-pressed="false">⌨ ВЫКЛ</button><button class="btn gm-repeat-toggle" data-gm-mirror-mouse aria-label="Включить повтор мыши" title="Включить повтор мыши" data-state="off" aria-pressed="false">🖱 ВЫКЛ</button><button class="btn" data-gm-pause>Ⅱ Пауза</button><button class="btn danger" data-gm-stop>■ Остановить</button></div>
   <div class="gm-control-bar gm-party-bar"><label class="gm-field">Пати для всех команд<select data-gm-party><option value="">Выберите пати</option>${state.parties.map(p => option(p.id, p.name, c.partyId)).join('')}</select></label></div>
   <p class="gm-key-note">Если переключатель выключен, работает ручной запуск кнопкой ▶. При включении Windows закрепляет сочетания за приложением; игровые команды срабатывают только из окон выбранной пати. Остановка — <kbd>Ctrl+Alt+Pause</kbd>.</p>
-  <div class="gm-repeat-toolbar"><button class="btn ghost" data-gm-reconnect title="Заново зарегистрировать сочетания и подключить включённые режимы повтора; настройки и данные не сбрасываются">↻ Переподключить ввод</button><button class="btn ghost" data-gm-diagnostics>◎ Проверить окна</button><button class="btn ghost" data-gm-background-probe>◎ Диагностика фона (без клавиш)</button><button class="btn ghost" data-gm-recognize>Распознать пати / порядок</button></div><label class="gm-field">Источник повтора<select data-gm-mirror-source><option value="any" ${c.mirrorSource === 'any' ? 'selected' : ''}>Любое распознанное игровое окно</option><option value="leader" ${c.mirrorSource === 'leader' ? 'selected' : ''}>Только ПЛ выбранной пати</option></select><small>Получатели — все остальные проверенные клиенты. Изменение настроек обновляет повтор, не сбрасывая выбранные режимы.</small></label><label class="gm-field">ЛКМ только твинам — модификатор<select data-gm-twins-modifier>${[
+  <div class="gm-repeat-toolbar"><button class="btn ghost" data-gm-reconnect title="Заново зарегистрировать сочетания и подключить включённые режимы повтора; настройки и данные не сбрасываются">↻ Переподключить ввод</button><button class="btn ghost" data-gm-diagnostics>◎ Проверить окна</button><button class="btn ghost" data-gm-background-probe>◎ Диагностика фона (без клавиш)</button><button class="btn ghost" data-gm-recognize>Распознать пати / порядок</button></div><fieldset class="gm-repeat-settings"><legend>Повтор клавиатуры и мыши — настройки</legend><p>Общий источник для обоих режимов и дополнительный модификатор ЛКМ для мыши. Кнопки включения находятся выше.</p><div class="gm-repeat-settings-grid"><label class="gm-field">Источник повтора клавиатуры и мыши<select data-gm-mirror-source><option value="any" ${c.mirrorSource === 'any' ? 'selected' : ''}>Любое распознанное игровое окно</option><option value="leader" ${c.mirrorSource === 'leader' ? 'selected' : ''}>Только ПЛ выбранной пати</option></select><small>Получатели — все остальные проверенные клиенты. Изменение настроек обновляет повтор, не сбрасывая выбранные режимы.</small></label><label class="gm-field">ЛКМ только твинам — модификатор<select data-gm-twins-modifier>${[
     ['', 'Выключено'],
     ['CTRL', 'Ctrl'],
     ['ALT', 'Alt'],
@@ -100,7 +99,7 @@ export function mountGameMacros(host) {
     )
     .join(
       ''
-    )}</select><small>Работает при включённом повторе мыши в активном окне ПЛ выбранной пати. Зажмите ровно выбранные модификаторы и нажмите ЛКМ: исходный клик блокируется, остальным проверенным клиентам отправляется ЛКМ без модификаторов. Без модификатора — обычный повтор. Выбранные служебные модификаторы с ПЛ не повторяются клавиатурой. При ошибке клик не передаётся ПЛ вместо твинов; повтор останавливается. Работа в PW требует проверки.</small></label><small>Клавиатура и мышь включаются независимо. Мышь: абсолютные экранные координаты, без масштабирования. Возможен расход ресурсов.</small>
+    )}</select><small>Работает при включённом повторе мыши в активном окне ПЛ выбранной пати. Зажмите ровно выбранные модификаторы и нажмите ЛКМ: исходный клик блокируется, остальным проверенным клиентам отправляется ЛКМ без модификаторов. Без модификатора — обычный повтор. Выбранные служебные модификаторы с ПЛ не повторяются клавиатурой. При ошибке клик не передаётся ПЛ вместо твинов; повтор останавливается. Работа в PW требует проверки.</small></label></div><small>Клавиатура и мышь включаются независимо. Мышь: абсолютные экранные координаты, без масштабирования. Возможен расход ресурсов.</small></fieldset>
   <div class="gm-section-top"><h4>Мои команды <span>${visibleCommands.length}</span></h4><button class="btn primary" data-gm-create>＋ Создать команду</button></div>
   <div class="gm-command-workbench"><nav class="gm-command-menu" aria-label="Команды">${visibleCommands.map(row => `<button class="gm-command-choice ${row.id === selectedId ? 'is-selected' : ''}" data-gm-select="${esc(row.id)}" aria-pressed="${row.id === selectedId}"><b>${esc(row.name)}</b><kbd>${esc(row.hotkey || 'Без сочетания')}</kbd></button>`).join('') || '<p class="muted">Пока нет команд. Создайте первую.</p>'}</nav>
   <article class="gm-command-detail">${
@@ -150,8 +149,7 @@ export function mountGameMacros(host) {
     .join(
       ''
     )}</select></label><button class="btn primary">⊕ Задать координаты</button></form><p class="muted">Размер окна и DPI определяются автоматически. Для другого размера окна создайте вариант точки; после перемещения элементов интерфейса задайте точку заново.</p><div class="gm-points-workbench"><nav class="gm-point-list" aria-label="Сохранённые координатные точки">${c.points.map(p => `<button class="gm-point-choice" data-gm-point="${esc(p.id)}"><b>${esc(p.name)}</b><small>${p.width} × ${p.height}</small></button>`).join('') || '<p>Нет сохранённых точек.</p>'}</nav><article class="gm-point-detail" data-gm-point-detail></article></div></section>
-  <footer class="gm-bottom-actions"><button class="btn" data-gm-logs>≡ Журнал сеанса</button><button class="btn" data-gm-overlay>▣ Открыть оверлей</button><button class="btn ghost" data-gm-overlay-settings>⚙ Настройки оверлея</button></footer></details>`;
-  host.querySelector('#game-macros-block').open = wasOpen;
+  <footer class="gm-bottom-actions"><button class="btn" data-gm-logs>≡ Журнал сеанса</button><button class="btn" data-gm-overlay>▣ Открыть оверлей</button><button class="btn ghost" data-gm-overlay-settings>⚙ Настройки оверлея</button></footer></section>`;
   host.querySelectorAll('[data-gm-resolution]').forEach(
     select =>
       (select.onchange = () => {
@@ -435,6 +433,7 @@ export function mountGameMacros(host) {
   const update = () => {
     if (!host.isConnected) return;
     const data = snapshot();
+    host.querySelector('[data-gm-enabled]').checked = config().enabled;
     const mirror = host.querySelector('[data-gm-mirror]');
     updateRepeatButton(mirror, 'keyboard', data);
     const pause = host.querySelector('[data-gm-pause]');
