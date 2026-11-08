@@ -340,7 +340,6 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
       const radio = form.querySelector('[name="action"][value="composite"]');
       radio.checked = true;
       radio.dispatchEvent(new Event('change', { bubbles: true }));
-      form.querySelector('[data-command-choose]')?.click();
     } catch (error) {
       errorBox.hidden = false;
       errorBox.textContent = error.message || 'Не удалось преобразовать последовательность.';

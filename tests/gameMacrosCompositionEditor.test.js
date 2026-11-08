@@ -83,10 +83,43 @@ it('opens and highlights an invalid step on save instead of silently accepting i
     cursor: vi.fn(),
     newPoint: vi.fn()
   });
-  host.querySelector('[data-add-type="point"]').click();
+  host.querySelector('[data-add-type="launch"]').click();
   host.querySelector('[data-block-collapse]').click();
   expect(() => editor.read()).toThrow();
   expect(host.querySelector('[data-step="1"]').classList.contains('is-invalid')).toBe(true);
   expect(host.querySelector('[data-compose-error]').textContent).toContain('шаг 2');
+  editor.dispose();
+});
+
+it('has only the action library, accepts custom chords and stores finite block loops', () => {
+  state.parties = [];
+  state.characters = [];
+  document.body.innerHTML = '<div id="editor"></div>';
+  const host = document.getElementById('editor');
+  const editor = mountCompositionEditor(host, { partyId: '', commands: [], points: [], profiles: [] }, null);
+  for (const selector of [
+    '[data-step-add]',
+    '[data-command-choose]',
+    '[data-command-picker]',
+    '[data-new-point]',
+    '[data-recorder]',
+    '[data-record-area]',
+    '[data-field="type"]'
+  ])
+    expect(host.querySelector(selector)).toBeNull();
+  const chord = host.querySelector('[data-key-chord]');
+  chord.value = 'ctrl+shift+2';
+  chord.dispatchEvent(new Event('input', { bubbles: true }));
+  host.querySelector('[data-add-type="keys"]').click();
+  expect(editor.read()[0].steps[1]).toEqual({ type: 'keys', value: 'CTRL+SHIFT+2' });
+  const repeat = host.querySelector('[data-field="repeat"]');
+  repeat.value = '3';
+  repeat.dispatchEvent(new Event('input', { bubbles: true }));
+  expect(editor.read()[0].repeat).toBe(3);
+  const invalid = host.querySelector('[data-key-chord]');
+  invalid.value = 'wrong';
+  host.querySelector('[data-add-type="keys"]').click();
+  expect(editor.read()[0].steps).toHaveLength(2);
+  expect(host.querySelector('[data-compose-error]').textContent).toContain('SHIFT+1');
   editor.dispose();
 });

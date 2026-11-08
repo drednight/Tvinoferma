@@ -146,13 +146,13 @@ it('keeps the master switch in the always-visible summary', () => {
   expect(toggle.checked).toBe(true);
   expect(document.querySelector('[data-gm-mirror-source]').value).toBe('any');
 });
-it('converts key steps to a composition and exposes an explicit saved-command picker without losing them', () => {
+it('converts key steps to a composition without legacy add-command controls or losing steps', () => {
   document.querySelector('[data-gm-edit]').click();
   const form = document.querySelector('[data-gm-form]');
   form.elements.namedItem('sequence').value = 'CTRL+F9\nwait 200\nF8';
   form.querySelector('[data-gm-to-composition]').click();
   expect(form.elements.namedItem('action').value).toBe('composite');
-  expect(form.querySelector('[data-command-picker]').hidden).toBe(false);
+  expect(form.querySelector('[data-command-picker]')).toBeNull();
   expect([...form.querySelectorAll('[data-step] [data-field="value"]')].map(e => e.value)).toEqual(['CTRL+F9', 'F8']);
   expect(form.querySelector('[data-field="ms"]').value).toBe('200');
 });

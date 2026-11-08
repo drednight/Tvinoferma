@@ -3,10 +3,10 @@ import { escapeHtml as esc } from '../../core/utils.js';
 import { state } from '../../core/state.js';
 import { partyMembers, commandVisible } from './model.js';
 import { STEP_LABELS, normalizeComposition } from './composition.js';
-import { mountRecorder } from './recorder.js';
-export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
+import { chord } from './keySyntax.js';
+export function mountCompositionEditor(host, c, row) {
   let blocks = row?.blocks?.length ? structuredClone(row.blocks) : [newBlock()];
-  let disposeRecorder = () => {};
+  const keyDrafts = new Map();
   const selected = new Map();
   const collapsed = new Set();
   const undo = [];
@@ -44,6 +44,7 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
     return {
       name: `Блок ${index}`,
       parallel: false,
+      repeat: 1,
       scope: 'party',
       partyId: c.partyId,
       target: 'all',
@@ -75,7 +76,7 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
               .map(cmd => [cmd.id, cmd.name])
           ],
           step.commandId
-        )}</label><small>Ссылка: изменения исходной команды применяются здесь. Циклы запрещены.</small>`;
+        )}</label><small>Ссылка: изменения исходной команды применяются здесь. Рекурсивные ссылки запрещены; повторения задаются для блока.</small>`;
       case 'point':
         return `<label>Точка ${select('pointId', [['', 'Выбрать точку'], ...c.points.map(p => [p.id, p.name])], step.pointId)}</label>${mouse(step)}`;
       case 'screen':
@@ -147,11 +148,10 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
     );
   }
   function draw() {
-    disposeRecorder();
     host.innerHTML = `<div class="gm-compose-title"><h4>Составная команда</h4><button type="button" class="btn ghost small" data-undo ${undo.length ? '' : 'disabled'}>↶ Отменить изменение</button></div><p>До 8 блоков / 128 действий. Включите «Одновременно с предыдущим» для соседних блоков. Паузы ветвей перекрываются, ввод сериализован. Получатели задаются для каждого блока. Клики требуют разрешения и предпросмотра после сохранения.</p>${blocks
       .map(
         (block, b) =>
-          `<section class="gm-compose-block" data-block="${b}"><header><button type="button" class="btn ghost small" data-block-collapse aria-expanded="${!collapsed.has(b)}" title="Свернуть или раскрыть блок">${collapsed.has(b) ? '▸' : '▾'}</button><label>Название ${input('name', block.name)}</label><button class="btn ghost" type="button" data-block-up ${b === 0 ? 'disabled' : ''}>↑</button><button class="btn danger" type="button" data-block-delete>Удалить блок</button></header><p class="gm-compose-summary">${esc(block.name)} · ${block.steps.length} действий · ${block.scope === 'managed' ? 'Все распознанные окна' : esc(state.parties.find(p => p.id === (block.partyId || c.partyId))?.name || 'Текущая пати')} · ${block.delivery === 'background' ? 'В фоне' : 'С активацией'}</p><div ${collapsed.has(b) ? 'hidden' : ''}><label><input type="checkbox" data-field="parallel" ${block.parallel ? 'checked' : ''} ${b === 0 ? 'disabled' : ''}> Одновременно с предыдущим</label><div class="gm-compose-fields"><label>Область ${select(
+          `<section class="gm-compose-block" data-block="${b}"><header><button type="button" class="btn ghost small" data-block-collapse aria-expanded="${!collapsed.has(b)}" title="Свернуть или раскрыть блок">${collapsed.has(b) ? '▸' : '▾'}</button><label>Название ${input('name', block.name)}</label><button class="btn ghost" type="button" data-block-up ${b === 0 ? 'disabled' : ''}>↑</button><button class="btn danger" type="button" data-block-delete>Удалить блок</button></header><p class="gm-compose-summary">${esc(block.name)} · ${block.steps.length} действий × ${block.repeat ?? 1} · ${block.scope === 'managed' ? 'Все распознанные окна' : esc(state.parties.find(p => p.id === (block.partyId || c.partyId))?.name || 'Текущая пати')} · ${block.delivery === 'background' ? 'В фоне' : 'С активацией'}</p><div ${collapsed.has(b) ? 'hidden' : ''}><label><input type="checkbox" data-field="parallel" ${block.parallel ? 'checked' : ''} ${b === 0 ? 'disabled' : ''}> Одновременно с предыдущим</label><div class="gm-compose-fields"><label>Область ${select(
             'scope',
             [
               ['party', 'Пати'],
@@ -191,10 +191,8 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
                   )
                   .join('')}</fieldset>`
               : ''
-          }<div class="gm-compose-workbench"><aside class="gm-action-library" aria-label="Добавить действие"><strong>Добавить</strong>${[
-            ['keys', '⌨', 'Клавиша'],
+          }<label class="gm-loop-setting">Повторить блок ${input('repeat', block.repeat ?? 1, 'number')} раз <small>1–100; Стоп прерывает цикл. Все повторы проверяются до запуска.</small></label><div class="gm-compose-workbench"><aside class="gm-action-library" aria-label="Добавить действие"><details open class="gm-key-library"><summary>Клавиши</summary><label>Сочетание<input class="input" data-key-chord value="${esc(keyDrafts.get(b) || 'SHIFT+1')}" placeholder="SHIFT+1" aria-label="Сочетание клавиш"></label><button type="button" class="btn ghost small" data-add-type="keys">＋ Клавиша</button><small>Например: SHIFT+1, CTRL+F2, ALT+3</small></details><strong>Мышь и управление</strong>${[
             ['wait', '◷', 'Пауза'],
-            ['point', '⌖', 'Точка'],
             ['screen', '↗', 'Клик'],
             ['focus', '▣', 'Окно'],
             ['launch', '▶', 'Пати'],
@@ -206,27 +204,11 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
             )
             .join(
               ''
-            )}</aside><ol class="gm-compose-steps">${block.steps.map((step, i) => `<li class="gm-action-row ${i === (selected.get(b) || 0) ? 'is-selected' : ''}" data-step="${i}" ${['resize', 'profile'].includes(step.type) || (step.type === 'command' && c.commands.some(cmd => cmd.id === step.commandId && !commandVisible(cmd))) ? 'hidden' : ''}><div class="gm-step-heading"><button type="button" class="gm-step-select" data-step-select aria-expanded="${i === (selected.get(b) || 0)}"><span class="gm-step-number">${i + 1}</span><span class="gm-step-kind">${esc(STEP_LABELS[step.type])}</span><strong data-step-summary>${esc(summary(step))}</strong></button><div class="gm-step-actions"><button type="button" class="btn ghost small" data-step-up title="Переместить шаг вверх" aria-label="Переместить шаг вверх" ${i === 0 ? 'disabled' : ''}>↑</button><button type="button" class="btn ghost small" data-step-down title="Переместить шаг вниз" aria-label="Переместить шаг вниз" ${i === block.steps.length - 1 ? 'disabled' : ''}>↓</button><button type="button" class="btn ghost small" data-step-copy title="Дублировать шаг" aria-label="Дублировать шаг">⧉</button><button type="button" class="btn danger small" data-step-delete title="Удалить шаг" aria-label="Удалить шаг">×</button></div></div><div class="gm-compose-fields gm-step-editor" ${i === (selected.get(b) || 0) ? '' : 'hidden'}><label>Действие ${select('type', Object.entries(STEP_LABELS), step.type)}</label>${fields(step)}</div></li>`).join('')}</ol></div><div class="row gap"><button type="button" class="btn" data-step-add>＋ Действие</button><button type="button" class="btn ghost" data-command-choose>＋ Добавить готовую команду</button><label class="gm-field" data-command-picker hidden>Команда из «Моих команд»<select data-insert-command>${[['', 'Добавить существующую команду…'], ...c.commands.filter(cmd => cmd.id !== row?.id && commandVisible(cmd) && !['mirror', 'mouse-mirror', 'pause'].includes(cmd.action)).map(cmd => [cmd.id, cmd.name])].map(([v, l]) => option(v, l, '')).join('')}</select><small>Вставляется ссылка на сохранённую команду с её настройками. Изменения исходной команды применятся и здесь; циклы запрещены. Переключатели повтора не вставляются.</small></label><button type="button" class="btn" data-new-point>＋ Именованная точка</button></div><div data-recorder></div></div></section>`
+            )}</aside><ol class="gm-compose-steps">${block.steps.map((step, i) => `<li class="gm-action-row ${i === (selected.get(b) || 0) ? 'is-selected' : ''}" data-step="${i}" ${['resize', 'profile'].includes(step.type) || (step.type === 'command' && c.commands.some(cmd => cmd.id === step.commandId && !commandVisible(cmd))) ? 'hidden' : ''}><div class="gm-step-heading"><button type="button" class="gm-step-select" data-step-select aria-expanded="${i === (selected.get(b) || 0)}"><span class="gm-step-number">${i + 1}</span><span class="gm-step-kind">${esc(STEP_LABELS[step.type])}</span><strong data-step-summary>${esc(summary(step))}</strong></button><div class="gm-step-actions"><button type="button" class="btn ghost small" data-step-up title="Переместить шаг вверх" aria-label="Переместить шаг вверх" ${i === 0 ? 'disabled' : ''}>↑</button><button type="button" class="btn ghost small" data-step-down title="Переместить шаг вниз" aria-label="Переместить шаг вниз" ${i === block.steps.length - 1 ? 'disabled' : ''}>↓</button><button type="button" class="btn ghost small" data-step-copy title="Дублировать шаг" aria-label="Дублировать шаг">⧉</button><button type="button" class="btn danger small" data-step-delete title="Удалить шаг" aria-label="Удалить шаг">×</button></div></div><div class="gm-compose-fields gm-step-editor" ${i === (selected.get(b) || 0) ? '' : 'hidden'}>${fields(step)}</div></li>`).join('')}</ol></div></div></section>`
       )
       .join(
         ''
       )}<button type="button" class="btn" data-block-add>＋ Блок</button><p data-compose-error role="alert"></p>`;
-    const cleanups = [];
-    host.querySelectorAll('[data-block]').forEach(el => {
-      const b = Number(el.dataset.block);
-      cleanups.push(
-        mountRecorder(el.querySelector('[data-recorder]'), {
-          cursor,
-          limit: Math.min(64 - blocks[b].steps.length, 128 - blocks.reduce((n, block) => n + block.steps.length, 0)),
-          onRecorded: steps => {
-            remember();
-            blocks[b].steps.push(...steps);
-            draw();
-          }
-        })
-      );
-    });
-    disposeRecorder = () => cleanups.forEach(fn => fn());
   }
   host.onchange = e => {
     const field = e.target.dataset.field,
@@ -234,13 +216,6 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
     if (!el) return;
     const b = Number(el.dataset.block),
       stepEl = e.target.closest('[data-step]');
-    if (e.target.matches('[data-insert-command]')) {
-      if (!canAdd(b)) return;
-      remember();
-      if (e.target.value) blocks[b].steps.push({ type: 'command', commandId: e.target.value });
-      draw();
-      return;
-    }
     if (e.target.dataset.character) {
       const set = new Set(blocks[b].charIds);
       if (e.target.checked) set.add(e.target.dataset.character);
@@ -262,7 +237,7 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
     object[field] =
       e.target.type === 'checkbox'
         ? e.target.checked
-        : ['ms', 'x', 'y', 'width', 'height', 'count'].includes(field)
+        : ['ms', 'x', 'y', 'width', 'height', 'count', 'repeat'].includes(field)
           ? Number(e.target.value)
           : e.target.value;
     if (stepEl) stepEl.querySelector('[data-step-summary]').textContent = summary(object);
@@ -273,6 +248,10 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
     }
   };
   host.oninput = e => {
+    if (e.target.matches('[data-key-chord]')) {
+      keyDrafts.set(Number(e.target.closest('[data-block]').dataset.block), e.target.value);
+      return;
+    }
     if (e.target.matches('input[data-field]') && e.target.type !== 'checkbox') host.onchange(e);
   };
   host.onclick = async e => {
@@ -304,8 +283,17 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
     }
     if (button.hasAttribute('data-add-type')) {
       if (!canAdd(b)) return;
+      const newStep = blank(button.dataset.addType);
+      if (newStep.type === 'keys') {
+        const value = chord(el.querySelector('[data-key-chord]').value);
+        if (!value || value.includes('WHEEL')) {
+          host.querySelector('[data-compose-error]').textContent = 'Укажите сочетание, например SHIFT+1 или CTRL+F2.';
+          return;
+        }
+        newStep.value = value;
+      }
       remember();
-      blocks[b].steps.push(blank(button.dataset.addType));
+      blocks[b].steps.push(newStep);
       selected.set(b, blocks[b].steps.length - 1);
       draw();
       return;
@@ -316,11 +304,6 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
       blocks[b].steps.splice(i + 1, 0, structuredClone(blocks[b].steps[i]));
       selected.set(b, i + 1);
       draw();
-      return;
-    }
-    if (button.hasAttribute('data-command-choose')) {
-      el.querySelector('[data-command-picker]').hidden = false;
-      el.querySelector('[data-insert-command]').focus();
       return;
     }
     if (button.hasAttribute('data-block-add')) {
@@ -345,13 +328,6 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
       blocks[0].parallel = false;
       draw();
     }
-    if (button.hasAttribute('data-step-add')) {
-      if (!canAdd(b)) return;
-      remember();
-      blocks[b].steps.push(blank('keys'));
-      selected.set(b, blocks[b].steps.length - 1);
-      draw();
-    }
     if (button.hasAttribute('data-step-delete')) {
       remember();
       blocks[b].steps.splice(i, 1);
@@ -369,14 +345,6 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
       selected.set(b, i - 1);
       [blocks[b].steps[i - 1], blocks[b].steps[i]] = [blocks[b].steps[i], blocks[b].steps[i - 1]];
       draw();
-    }
-    if (button.hasAttribute('data-new-point')) {
-      try {
-        await newPoint(blocks[b].partyId || c.partyId);
-        draw();
-      } catch (error) {
-        host.querySelector('[data-compose-error]').textContent = error.message;
-      }
     }
   };
   draw();
@@ -409,6 +377,10 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
       blocks = normalizeComposition(next);
       draw();
     },
-    dispose: () => disposeRecorder()
+    dispose: () => {
+      host.onchange = null;
+      host.oninput = null;
+      host.onclick = null;
+    }
   };
 }

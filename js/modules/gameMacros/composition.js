@@ -28,6 +28,7 @@ export function normalizeComposition(value) {
     return {
       name: text(block.name || `Блок ${i + 1}`, 80),
       parallel: block.parallel === true,
+      repeat: integer(block.repeat ?? 1, 1, 100, 'Повторений блока'),
       scope: block.scope === 'managed' ? 'managed' : 'party',
       partyId: text(block.partyId),
       target: ['all', 'leader', 'others', 'subset'].includes(block.target) ? block.target : 'all',
@@ -132,57 +133,59 @@ export function compileComposition(command, config) {
         backgroundMethod: block.backgroundMethod,
         resourceAllowed: cmd.resourceAllowed
       };
-      const nodes = block.steps.map(step => {
-        if (++count > 256) throw new Error('После вставки команд получилось более 256 действий.');
-        if (step.type === 'wait') {
-          totalWait += step.ms;
-          if (totalWait > 120000) throw new Error('Сумма пауз превышает 120 секунд.');
-          return { kind: 'wait', ms: step.ms };
-        }
-        if (step.type === 'pause') return { kind: 'pause' };
-        if (step.type === 'command') {
-          const ref = refs.get(step.commandId);
-          if (!ref) throw new Error(`Команда ${step.commandId} удалена. Выберите замену.`);
-          return expand(ref, [...path, cmd.id]);
-        }
-        if (step.type === 'point' && !config.points.some(p => p.id === step.pointId))
-          throw new Error('Именованная точка удалена.');
-        if (step.type === 'profile' && !config.profiles.some(p => p.id === step.profileId))
-          throw new Error('Профиль размещения удалён.');
-        if (['point', 'screen'].includes(step.type) && !cmd.resourceAllowed)
-          throw new Error('Разрешите координатные действия для составной команды.');
-        const mapping = {
-          keys: { action: 'sequence', sequence: step.value },
-          point: {
-            action: 'click',
-            pointId: step.pointId,
-            button: step.button,
-            count: step.count,
-            modifiers: step.modifiers
-          },
-          screen: {
-            action: 'screen',
-            x: step.x,
-            y: step.y,
-            button: step.button,
-            count: step.count,
-            modifiers: step.modifiers
-          },
-          profile: { action: 'layout', profileId: step.profileId },
-          resize: { action: 'resize', width: step.width, height: step.height },
-          launch: { action: 'launch', partyId: step.partyId },
-          focus: { action: step.direction }
-        };
-        return {
-          kind: 'action',
-          command: {
-            ...selector,
-            ...mapping[step.type],
-            id: `${cmd.id}:${count}`,
-            name: `${block.name}: ${STEP_LABELS[step.type]}`
+      const nodes = Array.from({ length: block.repeat }, () =>
+        block.steps.map(step => {
+          if (++count > 256) throw new Error('После вставки команд получилось более 256 действий.');
+          if (step.type === 'wait') {
+            totalWait += step.ms;
+            if (totalWait > 120000) throw new Error('Сумма пауз превышает 120 секунд.');
+            return { kind: 'wait', ms: step.ms };
           }
-        };
-      });
+          if (step.type === 'pause') return { kind: 'pause' };
+          if (step.type === 'command') {
+            const ref = refs.get(step.commandId);
+            if (!ref) throw new Error(`Команда ${step.commandId} удалена. Выберите замену.`);
+            return expand(ref, [...path, cmd.id]);
+          }
+          if (step.type === 'point' && !config.points.some(p => p.id === step.pointId))
+            throw new Error('Именованная точка удалена.');
+          if (step.type === 'profile' && !config.profiles.some(p => p.id === step.profileId))
+            throw new Error('Профиль размещения удалён.');
+          if (['point', 'screen'].includes(step.type) && !cmd.resourceAllowed)
+            throw new Error('Разрешите координатные действия для составной команды.');
+          const mapping = {
+            keys: { action: 'sequence', sequence: step.value },
+            point: {
+              action: 'click',
+              pointId: step.pointId,
+              button: step.button,
+              count: step.count,
+              modifiers: step.modifiers
+            },
+            screen: {
+              action: 'screen',
+              x: step.x,
+              y: step.y,
+              button: step.button,
+              count: step.count,
+              modifiers: step.modifiers
+            },
+            profile: { action: 'layout', profileId: step.profileId },
+            resize: { action: 'resize', width: step.width, height: step.height },
+            launch: { action: 'launch', partyId: step.partyId },
+            focus: { action: step.direction }
+          };
+          return {
+            kind: 'action',
+            command: {
+              ...selector,
+              ...mapping[step.type],
+              id: `${cmd.id}:${count}`,
+              name: `${block.name}: ${STEP_LABELS[step.type]}`
+            }
+          };
+        })
+      ).flat();
       lanes.push({ kind: 'serial', children: nodes });
       if (lanes.length > 4) throw new Error('Не более 4 параллельных блоков.');
     }

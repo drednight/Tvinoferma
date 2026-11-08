@@ -1080,3 +1080,40 @@
 .gm-compose-workbench .gm-action-row.is-invalid {
   border-color: var(--danger, #f7768e);
 }
+
+.gm-key-library {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.gm-key-library > label {
+  display: grid;
+  gap: 4px;
+  font-size: 11px;
+  margin: 6px 0;
+}
+.gm-key-library small {
+  display: block;
+  white-space: normal;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.gm-loop-setting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+.gm-dialog .gm-loop-setting input {
+  width: 72px;
+}
+.gm-compose-workbench {
+  grid-template-columns: 152px minmax(0, 1fr);
+}
+@media (max-width: 620px) {
+  .gm-compose-workbench {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

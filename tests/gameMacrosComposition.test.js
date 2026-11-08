@@ -125,3 +125,62 @@ it('failure prevents queued actions and settles branches', async () => {
   ).rejects.toThrow();
   expect(action).toHaveBeenCalledTimes(1);
 });
+
+it('normalizes old blocks to one pass and repeats user sequences in order', async () => {
+  const cmd = make([
+    block(
+      [
+        { type: 'keys', value: 'SHIFT+1' },
+        { type: 'wait', ms: 100 },
+        { type: 'keys', value: 'F2' }
+      ],
+      { repeat: 3 }
+    )
+  ]);
+  expect(normalizeComposition([block([{ type: 'keys', value: 'F1' }])])[0].repeat).toBe(1);
+  const tree = compileComposition(cmd, config());
+  expect(compositionActions(tree).map(c => c.sequence)).toEqual(['SHIFT+1', 'F2', 'SHIFT+1', 'F2', 'SHIFT+1', 'F2']);
+  const calls = [];
+  await executeComposition(tree, {
+    action: async c => calls.push(c.sequence),
+    wait: async () => {},
+    checkpoint: async () => {},
+    pause: async () => {}
+  });
+  expect(calls).toEqual(['SHIFT+1', 'F2', 'SHIFT+1', 'F2', 'SHIFT+1', 'F2']);
+});
+it('rejects unsafe loops and excessive expanded actions or wait budgets before input', () => {
+  for (const repeat of [0, -1, 1.5, 101, Infinity])
+    expect(() => normalizeComposition([block([{ type: 'keys', value: 'F1' }], { repeat })])).toThrow();
+  expect(() =>
+    compileComposition(
+      make([
+        block(
+          Array.from({ length: 3 }, () => ({ type: 'keys', value: 'F1' })),
+          { repeat: 100 }
+        )
+      ]),
+      config()
+    )
+  ).toThrow(/256/);
+  expect(() => compileComposition(make([block([{ type: 'wait', ms: 2000 }], { repeat: 100 })]), config())).toThrow(
+    /120/
+  );
+});
+it('checks Stop inside repeated sequences, never sending the remaining iterations', async () => {
+  const tree = compileComposition(make([block([{ type: 'keys', value: 'F1' }], { repeat: 10 })]), config());
+  let calls = 0;
+  await expect(
+    executeComposition(tree, {
+      action: async () => {
+        calls++;
+      },
+      wait: async () => {},
+      pause: async () => {},
+      checkpoint: async () => {
+        if (calls >= 2) throw new Error('stop');
+      }
+    })
+  ).rejects.toThrow('stop');
+  expect(calls).toBe(2);
+});
