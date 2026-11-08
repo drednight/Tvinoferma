@@ -110,8 +110,14 @@ export function compileComposition(command, config) {
         throw new Error('Переключатели повтора/паузы нельзя вставлять как ссылку: используйте отдельный шаг паузы.');
       if (['click', 'follow'].includes(cmd.action) && !command.resourceAllowed)
         throw new Error('Разрешите клики для всей составной команды.');
-      const nested = cmd.action === 'sequence' ? steps(cmd.sequence) : [];
-      count += Math.max(1, nested.length);
+      const followSequence = String(cmd.followSequence ?? 'SHIFT+1').trim();
+      const nested =
+        cmd.action === 'sequence'
+          ? steps(cmd.sequence)
+          : cmd.action === 'follow' && followSequence
+            ? steps(followSequence)
+            : [];
+      count += cmd.action === 'follow' ? nested.length + 2 : Math.max(1, nested.length);
       totalWait += nested.reduce((n, s) => n + (s.wait || 0), 0);
       if (count > 256 || totalWait > 120000) throw new Error('Вставленные команды превышают предел действий/пауз.');
       return { kind: 'action', command: cmd };

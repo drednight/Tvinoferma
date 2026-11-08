@@ -562,7 +562,7 @@ pub async fn game_macro_bindings(
     window: tauri::WebviewWindow,
     app: tauri::AppHandle,
     bindings: Vec<Binding>,
-) -> Result<(), String> {
+) -> Result<Vec<String>, String> {
     main_only(&window)?;
     if bindings.len() > 65 {
         return Err("Too many hotkeys".into());
@@ -705,6 +705,24 @@ mod win {
             )
         }
     }
+    fn extended_key(vk: u16) -> bool {
+        matches!(vk, 0x21..=0x28 | 0x2d | 0x2e | 0x6f | 0x90)
+    }
+    fn background_key_message(vk: u16, scan: u32, up: bool, alt_down: bool) -> (u32, u32) {
+        let system = alt_down || vk == 0x12;
+        let msg = match (system, up) {
+            (true, true) => WM_SYSKEYUP,
+            (true, false) => WM_SYSKEYDOWN,
+            (false, true) => WM_KEYUP,
+            (false, false) => WM_KEYDOWN,
+        };
+        let flags = 1u32
+            | ((scan & 0xff) << 16)
+            | (u32::from(extended_key(vk)) << 24)
+            | (u32::from(alt_down) << 29)
+            | if up { 0xc0000000 } else { 0 };
+        (msg, flags)
+    }
     pub fn background_key(
         raw: u64,
         pid: u32,
@@ -724,23 +742,16 @@ mod win {
         let hwnd = verified_window(raw, pid)?;
         let mut report = background_probe(raw, pid, key, false)?;
         let (mods, vk) = chord(key)?;
-        let alt = mods.contains(&0x12);
+        let mut alt_down = false;
         let original = unsafe { GetForegroundWindow() };
         let mut messages = Vec::new();
         let mut failure = None;
         let mut send = |key: u16, up: bool| {
             let scan = unsafe { MapVirtualKeyW(key as u32, MAPVK_VK_TO_VSC) };
-            let flags = 1u32
-                | ((scan & 0xff) << 16)
-                | (u32::from(matches!(key, 0x21..=0x28 | 0x2d | 0x2e)) << 24)
-                | (u32::from(alt) << 29)
-                | if up { 0xc0000000 } else { 0 };
-            let msg = match (alt, up) {
-                (true, true) => WM_SYSKEYUP,
-                (true, false) => WM_SYSKEYDOWN,
-                (false, true) => WM_KEYUP,
-                (false, false) => WM_KEYDOWN,
-            };
+            let (msg, flags) = background_key_message(key, scan, up, alt_down);
+            if key == 0x12 {
+                alt_down = !up;
+            }
             let start = std::time::Instant::now();
             let result = if verified_window(raw, pid).is_err() {
                 Err(1400)
@@ -872,20 +883,13 @@ mod win {
         if window_ok {
             // Keep a list even when DOWN times out: every attempted key gets an UP.
             let mut pressed = Vec::new();
-            let alt = mods.contains(&0x12);
+            let mut alt_down = false;
             let mut key_message = |key: u16, up: bool| {
                 let scan = unsafe { MapVirtualKeyW(key as u32, MAPVK_VK_TO_VSC) };
-                let flags = 1
-                    | ((scan & 0xff) << 16)
-                    | (u32::from(matches!(key, 0x21..=0x28 | 0x2d | 0x2e)) << 24)
-                    | (u32::from(alt) << 29)
-                    | if up { 0xc0000000 } else { 0 };
-                let msg = match (alt, up) {
-                    (true, true) => WM_SYSKEYUP,
-                    (true, false) => WM_SYSKEYDOWN,
-                    (false, true) => WM_KEYUP,
-                    (false, false) => WM_KEYDOWN,
-                };
+                let (msg, flags) = background_key_message(key, scan, up, alt_down);
+                if key == 0x12 {
+                    alt_down = !up;
+                }
                 let phase = match (key == vk, up) {
                     (true, true) => "key-up",
                     (true, false) => "key-down",
@@ -970,10 +974,39 @@ mod win {
             "TAB" => 0x09,
             "PAUSE" => 0x13,
             "HOME" => 0x24,
+            "BACKSPACE" => 0x08,
+            "ESC" => 0x1b,
+            "END" => 0x23,
+            "PAGEUP" => 0x21,
+            "PAGEDOWN" => 0x22,
+            "INSERT" => 0x2d,
+            "DELETE" => 0x2e,
+            "CAPSLOCK" => 0x14,
+            "NUMLOCK" => 0x90,
+            "SCROLLLOCK" => 0x91,
+            "MULTIPLY" => 0x6a,
+            "ADD" => 0x6b,
+            "SUBTRACT" => 0x6d,
+            "DECIMAL" => 0x6e,
+            "DIVIDE" => 0x6f,
+            "SEMICOLON" => 0xba,
+            "EQUALS" => 0xbb,
+            "COMMA" => 0xbc,
+            "MINUS" => 0xbd,
+            "PERIOD" => 0xbe,
+            "SLASH" => 0xbf,
+            "BACKQUOTE" => 0xc0,
+            "BRACKETLEFT" => 0xdb,
+            "BACKSLASH" => 0xdc,
+            "BRACKETRIGHT" => 0xdd,
+            "QUOTE" => 0xde,
+            s if s.len() == 7 && s.starts_with("NUMPAD") && s.as_bytes()[6].is_ascii_digit() => {
+                0x60 + (s.as_bytes()[6] - b'0') as u16
+            }
             s if s.len() == 1 && s.as_bytes()[0].is_ascii_alphanumeric() => s.as_bytes()[0] as u16,
             s if s.starts_with('F') => {
                 let n: u16 = s[1..].parse().map_err(|_| "Invalid key")?;
-                if !(1..=12).contains(&n) {
+                if !(1..=24).contains(&n) {
                     return Err("Invalid function key".into());
                 }
                 0x70 + n - 1
@@ -1017,6 +1050,51 @@ mod win {
             assert_eq!(super::chord("B").unwrap(), (vec![], 0x42));
             assert_eq!(super::chord("b").unwrap(), (vec![], 0x42));
             assert_eq!(super::chord("SHIFT+B").unwrap(), (vec![0x10], 0x42));
+        }
+        #[test]
+        fn background_alt_context_follows_physical_transition_order() {
+            let (ctrl, flags) = super::background_key_message(0x11, 0x1d, false, false);
+            assert_eq!(ctrl, super::WM_KEYDOWN);
+            assert_eq!(flags & 0x20000000, 0);
+            assert_eq!(
+                super::background_key_message(0x12, 0x38, false, false).0,
+                super::WM_SYSKEYDOWN
+            );
+            assert_eq!(
+                super::background_key_message(0x12, 0x38, false, false).1 & 0x20000000,
+                0
+            );
+            assert_eq!(
+                super::background_key_message(0x41, 0x1e, false, true).1 & 0x20000000,
+                0x20000000
+            );
+            assert_eq!(
+                super::background_key_message(0x12, 0x38, true, true).0,
+                super::WM_SYSKEYUP
+            );
+            assert_eq!(
+                super::background_key_message(0x11, 0x1d, true, false).0,
+                super::WM_KEYUP
+            );
+            assert!(super::extended_key(0x6f));
+            assert!(!super::extended_key(0x69));
+        }
+        #[test]
+        fn shared_extended_key_vocabulary_is_bounded() {
+            for (name, vk) in [
+                ("F24", 0x87),
+                ("NUMPAD9", 0x69),
+                ("DELETE", 0x2e),
+                ("PAGEUP", 0x21),
+                ("BACKSPACE", 0x08),
+                ("DIVIDE", 0x6f),
+                ("QUOTE", 0xde),
+            ] {
+                assert_eq!(super::chord(name).unwrap(), (vec![], vk));
+            }
+            for name in ["F25", "NUMPAD10", "WIN+A", "CTRL+CTRL+A"] {
+                assert!(super::chord(name).is_err());
+            }
         }
     }
     pub fn point_origin(raw: u64, point: PointInput) -> Result<(i32, i32), String> {
@@ -1414,11 +1492,15 @@ mod win {
                         Anonymous: INPUT_0 {
                             ki: KEYBDINPUT {
                                 wVk: VIRTUAL_KEY(vk),
-                                dwFlags: if up {
+                                dwFlags: (if up {
                                     KEYEVENTF_KEYUP
                                 } else {
                                     KEYBD_EVENT_FLAGS(0)
-                                },
+                                }) | (if extended_key(vk) {
+                                    KEYEVENTF_EXTENDEDKEY
+                                } else {
+                                    KEYBD_EVENT_FLAGS(0)
+                                }),
                                 ..Default::default()
                             },
                         },
@@ -1648,7 +1730,7 @@ mod win {
         }
         CallNextHookEx(None, code, wp, lp)
     }
-    pub fn bindings(app: tauri::AppHandle, bindings: Vec<Binding>) -> Result<(), String> {
+    pub fn bindings(app: tauri::AppHandle, bindings: Vec<Binding>) -> Result<Vec<String>, String> {
         let parsed: Vec<_> = bindings
             .into_iter()
             .map(|b| {
@@ -1673,11 +1755,12 @@ mod win {
             let _ = thread.join();
         }
         if parsed.is_empty() {
-            return Ok(());
+            return Ok(Vec::new());
         }
         let (tx, rx) = std::sync::mpsc::channel();
         *guard = Some(std::thread::spawn(move || unsafe {
             let mut ids = Vec::new();
+            let mut failed = Vec::new();
             let wheel_bindings: Vec<_> = parsed
                 .iter()
                 .filter(|(_, _, key)| *key >= 0xff01)
@@ -1686,13 +1769,13 @@ mod win {
             let hook = if wheel_bindings.is_empty() {
                 None
             } else {
-                WHEEL.with(|ctx| *ctx.borrow_mut() = Some((app.clone(), wheel_bindings)));
+                WHEEL.with(|ctx| *ctx.borrow_mut() = Some((app.clone(), wheel_bindings.clone())));
                 match SetWindowsHookExW(WH_MOUSE_LL, Some(wheel_hook), None, 0) {
                     Ok(hook) => Some(hook),
                     Err(_) => {
                         WHEEL.with(|ctx| *ctx.borrow_mut() = None);
-                        let _ = tx.send(false);
-                        return;
+                        failed.extend(wheel_bindings.iter().map(|(id, _, _)| id.clone()));
+                        None
                     }
                 }
             };
@@ -1703,19 +1786,12 @@ mod win {
                 }
                 if RegisterHotKey(None, id, HOT_KEY_MODIFIERS(*mods | 0x4000), *key as u32).is_err()
                 {
-                    for id in ids {
-                        let _ = UnregisterHotKey(None, id);
-                    }
-                    if let Some(hook) = hook {
-                        let _ = UnhookWindowsHookEx(hook);
-                    }
-                    WHEEL.with(|ctx| *ctx.borrow_mut() = None);
-                    let _ = tx.send(false);
-                    return;
+                    failed.push(parsed[i].0.clone());
+                    continue;
                 }
                 ids.push(id);
             }
-            let _ = tx.send(true);
+            let _ = tx.send(failed);
             while GENERATION.load(Ordering::SeqCst) == generation {
                 let mut message = MSG::default();
                 while PeekMessageW(&mut message, None, 0, 0, PM_REMOVE).as_bool() {
@@ -1736,13 +1812,13 @@ mod win {
             WHEEL.with(|ctx| *ctx.borrow_mut() = None);
         }));
         match rx.recv_timeout(Duration::from_secs(3)) {
-            Ok(true) => Ok(()),
+            Ok(failed) => Ok(failed),
             _ => {
                 GENERATION.fetch_add(1, Ordering::SeqCst);
                 if let Some(thread) = guard.take() {
                     let _ = thread.join();
                 }
-                Err("Hotkey is occupied or unavailable; no hotkeys enabled".into())
+                Err("Hotkey worker unavailable; reconnect hotkeys".into())
             }
         }
     }

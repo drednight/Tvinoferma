@@ -93,7 +93,11 @@ export function openTransferDialog({ ids = [] } = {}) {
     return null;
   }
   pruneRosters(state.characters.map(c => c.id));
-  const selected = new Set(ids.filter(id => state.characters.some(c => c.id === id)));
+  const selected = new Set(
+    (ids.length ? ids : state.characters.filter(c => c.isLoggedIn === true).map(c => c.id)).filter(id =>
+      state.characters.some(c => c.id === id)
+    )
+  );
   let search = '';
   let loginFilter = 'all';
   const itemChoices = new Map();
@@ -279,15 +283,19 @@ export function openTransferDialog({ ids = [] } = {}) {
 `;
     updateAll();
 
-    layoutScriptWorkspace(dlg, {
-      selected: selected,
-      apply(ids, mode) {
-        loginFilter = mode === 'all' ? 'all' : 'selected';
-        selected.clear();
-        ids.forEach(id => selected.add(id));
-        renderForm();
-      }
-    });
+    layoutScriptWorkspace(
+      dlg,
+      {
+        selected: selected,
+        apply(ids, mode) {
+          loginFilter = mode === 'all' ? 'all' : 'selected';
+          selected.clear();
+          ids.forEach(id => selected.add(id));
+          renderForm();
+        }
+      },
+      { initialMode: ids.length ? 'manual' : 'logged' }
+    );
   }
 
   const notesHtml = () =>
@@ -1038,6 +1046,6 @@ export function openTransferDialog({ ids = [] } = {}) {
   renderForm();
   // Браузеры, выбранные заранее и ещё без списка серверов, читаются сразу (только чтение страницы)
   const fresh = selectedChars().filter(c => !rosters[c.id]);
-  if (fresh.length) scan(fresh);
+  if (ids.length && fresh.length) scan(fresh);
   return dlg;
 }

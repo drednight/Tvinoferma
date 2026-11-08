@@ -85,6 +85,9 @@ export function normalizeGameMacros(input = {}) {
       pointIds: [
         ...new Set((Array.isArray(row.pointIds) ? row.pointIds : []).filter(id => typeof id === 'string'))
       ].slice(0, 30),
+      followSequence: String(row.followSequence ?? 'SHIFT+1').slice(0, 1000),
+      followButton: ['left', 'right'].includes(row.followButton) ? row.followButton : 'right',
+      followMenuButton: ['left', 'right'].includes(row.followMenuButton) ? row.followMenuButton : 'left',
       menuPointId: String(row.menuPointId || '').slice(0, 80)
     });
   }

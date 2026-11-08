@@ -916,3 +916,91 @@ it('resolves a manual override for command recipients even if the old title matc
   forgetManualWindow(client.pid, client.startedAt);
   expect((await runtime.listMacroWindows())[0]).toMatchObject({ charId: 'a', ownershipSource: 'title' });
 });
+
+describe('configurable follow', () => {
+  const point = { id: 'portrait', name: 'portrait', uiScale: '100%', x: 10, y: 20, width: 800, height: 600, dpi: 96 };
+  const setupFollow = extra => {
+    state.settings.gameMacros.points = [point, { ...point, id: 'menu', name: 'menu', x: 40 }];
+    state.settings.gameMacros.commands = [
+      {
+        id: 'follow',
+        action: 'follow',
+        name: 'Follow',
+        target: 'all',
+        pointId: 'portrait',
+        menuPointId: 'menu',
+        resourceAllowed: true,
+        ...extra
+      }
+    ];
+  };
+  it('keeps the old SHIFT+1/right/left workflow for saved commands', async () => {
+    setupFollow();
+    await runtime.previewCommand('follow');
+    await runtime.run('follow');
+    const input = invoke.mock.calls
+      .filter(([c, a]) => c === 'game_macro_action' && ['key', 'click', 'right-click'].includes(a.action))
+      .map(([, a]) => [a.action, a.key, a.point?.id]);
+    expect(input).toEqual([
+      ['key', 'SHIFT+1', undefined],
+      ['right-click', null, 'portrait'],
+      ['click', null, 'menu']
+    ]);
+  });
+  it('sends configured keys and both configured mouse buttons at the saved coordinates', async () => {
+    setupFollow({ followSequence: 'CTRL+NUMPAD3\nwait 50\nF2', followButton: 'left', followMenuButton: 'right' });
+    await runtime.previewCommand('follow');
+    await runtime.run('follow');
+    const actions = invoke.mock.calls
+      .filter(([c, a]) => c === 'game_macro_action' && ['key', 'click', 'right-click'].includes(a.action))
+      .map(([, a]) => a);
+    expect(actions.map(a => a.key || a.action)).toEqual(['CTRL+NUMPAD3', 'F2', 'click', 'right-click']);
+    expect(actions.slice(-2).map(a => [a.point.x, a.point.y])).toEqual([
+      [10, 20],
+      [40, 20]
+    ]);
+  });
+  it('allows no keyboard prelude and refuses malformed keys before any focus or input', async () => {
+    setupFollow({ followSequence: '' });
+    await runtime.previewCommand('follow');
+    await runtime.run('follow');
+    expect(invoke.mock.calls.some(([, a]) => a?.action === 'key')).toBe(false);
+    invoke.mockClear();
+    state.settings.gameMacros.commands[0].followSequence = 'exec private';
+    await runtime.run('follow');
+    expect(invoke.mock.calls.some(([, a]) => ['focus', 'click', 'right-click', 'key'].includes(a?.action))).toBe(false);
+  });
+});
+
+describe('hotkey reconnect and partial registration', () => {
+  it('shows the exact failed chords while retaining other registered bindings', async () => {
+    state.settings.gameMacros.enabled = true;
+    Object.assign(state.settings.gameMacros.commands[0], { hotkey: 'CTRL+F7' });
+    invoke.mockImplementation(async (c, a) => (c === 'game_macro_bindings' && a.bindings.length ? ['test'] : null));
+    await runtime.configure();
+    expect(runtime.snapshot()).toMatchObject({ registered: true, hotkeyFailures: ['CTRL+F7'] });
+    expect(runtime.snapshot().logs.join('\n')).toContain('CTRL+F7');
+    invoke.mockImplementation(async c => (c === 'game_macro_input_idle' ? true : []));
+    await runtime.reconnectInput();
+    expect(runtime.snapshot()).toMatchObject({ registered: true, hotkeyFailures: [] });
+    expect(runtime.snapshot().logs.join('\n')).toContain('Обработка ввода игрой не подтверждена');
+  });
+  it('does not turn on optional hotkeys or repeat when reconnecting', async () => {
+    invoke.mockImplementation(async c => (c === 'game_macro_input_idle' ? true : []));
+    await runtime.reconnectInput();
+    expect(state.settings.gameMacros.enabled).not.toBe(true);
+    expect(runtime.snapshot()).toMatchObject({ registered: false, mirrorKeys: false, mirrorMouse: false });
+    expect(invoke.mock.calls.filter(([c]) => c === 'game_macro_bindings').every(([, a]) => !a.bindings.length)).toBe(
+      true
+    );
+    expect(invoke.mock.calls.some(([c]) => c === 'game_macro_mirror')).toBe(false);
+  });
+  it('does not send game input if emergency-stop registration failed', async () => {
+    invoke.mockImplementation(async c =>
+      c === 'launcher_running_details' ? [client] : c === 'game_macro_bindings' ? ['stop'] : null
+    );
+    await runtime.run('test');
+    expect(invoke.mock.calls.some(([c]) => c === 'game_macro_action')).toBe(false);
+    expect(runtime.snapshot().notice).toContain('аварийная остановка');
+  });
+});

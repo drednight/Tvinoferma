@@ -26,7 +26,7 @@ const rows = ['a', 'b', 'c'].map((charId, i) => ({
 describe('bounded game command model', () => {
   it('canonicalizes modifiers and rejects unsupported/duplicate keys', () => {
     expect(chord(' shift + ctrl + f8 ')).toBe('CTRL+SHIFT+F8');
-    for (const key of ['CTRL+CTRL+A', 'WIN+A', 'F13', 'A+B', 'ALT+', 'shell:abc']) expect(chord(key)).toBe('');
+    for (const key of ['CTRL+CTRL+A', 'WIN+A', 'F25', 'A+B', 'ALT+', 'shell:abc']) expect(chord(key)).toBe('');
   });
   it('parses only bounded key and wait steps', () => {
     expect(steps('SHIFT+1\nwait 100\nF7')).toEqual([{ key: 'SHIFT+1' }, { wait: 100 }, { key: 'F7' }]);

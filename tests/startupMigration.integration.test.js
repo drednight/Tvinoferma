@@ -225,7 +225,11 @@ describe('реальный порядок старта с имитацией nat
     });
     disk.file = initialRaw;
     mode = 'vault-unavailable';
-    await boot();
+    const pending = boot();
+    await vi.waitFor(() => expect(calls('secrets_available')).toHaveLength(1));
+    await vi.advanceTimersByTimeAsync(7000);
+    await pending;
+    expect(calls('secrets_available')).toHaveLength(4);
     expect(disk.file).toBe(initialRaw);
     expect(calls('save_state')).toHaveLength(0);
     expect(calls('save_state_if_unchanged')).toHaveLength(0);

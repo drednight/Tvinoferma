@@ -13,7 +13,7 @@ export const commandLabels = {
   sequence: 'Последовательность клавиш',
   layout: 'Применить профиль окон',
   click: 'Клик по откалиброванной точке',
-  follow: 'Следование: Shift+1 → ПКМ → Follow',
+  follow: 'Следование: клавиши и клики по точкам',
   f6f1: 'Два прохода: F6 кроме ПЛ → F1 всем',
   optimize: 'Размеры клиентов + Ctrl+F9 остальным',
   launch: 'Штатный запуск пати',
@@ -33,7 +33,7 @@ export const actionHelp = {
   layout: 'Возвращает окна в сохранённые позиции и размеры. Сначала сохраните профиль размещения в основном разделе.',
   click: 'Один левый клик по вашей экранной точке. Нужны калибровка, разрешение клика и предпросмотр в текущем сеансе.',
   follow:
-    'Shift+1, затем правая кнопка по портрету и левая по пункту Follow. Требует две сохранённые точки и предпросмотр.',
+    'Настраиваемые клавиши, затем ЛКМ/ПКМ по двум сохранённым точкам. Старые команды сохраняют Shift+1 → ПКМ → ЛКМ. Нужны разрешение и предпросмотр.',
   f6f1: 'Сначала отправляет F6 всем, кроме ПЛ. Затем F1 всей пати, включая ПЛ.',
   optimize: 'Применяет размеры из раздела F11. Остальным участникам также отправляет Ctrl+F9.',
   launch: 'Запускает выбранную пати через обычную очередь запуска Твинофермы.',
@@ -134,7 +134,7 @@ export function openCommandEditor(c, save, row = null) {
       partyMembers(state, c.partyId)
         .map(char => `<label><input type="checkbox" name="charIds" value="${esc(char.id)}"> ${esc(char.nick)}</label>`)
         .join('') || '<p class="muted">Сначала выберите пати.</p>'
-    }</fieldset><label data-gm-click-field>Точка для клика <select name="pointId"><option value="">Не выбрана</option>${c.points.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height} · UI ${esc(p.uiScale)}</option>`).join('')}</select></label><fieldset data-gm-variants-field><legend>Дополнительные профили точки для других размеров/DPI</legend><p class="muted">Для реса во всех окнах разного размера откалибруйте одну и ту же кнопку в каждом формате. Автоматического масштабирования нет. Для каждого окна должен подойти ровно один профиль.</p>${c.points.map(p => `<label><input type="checkbox" name="pointIds" value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height} · DPI ${p.dpi}</label>`).join('')}</fieldset><label data-gm-follow-field>Пункт меню Follow <select name="menuPointId"><option value="">Не выбран</option>${c.points.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height}</option>`).join('')}</select></label><p class="muted" data-gm-follow-field>Основная точка — портрет для ПКМ. Убедитесь, что Shift+1 и этот портрет выбирают именно назначенного ПЛ в игре. Внутриигровое лидерство программа не меняет.</p><label class="gm-consent" data-gm-click-field><input type="checkbox" name="resourceAllowed"> Разрешаю координатный клик, в том числе возможный расход игровых ресурсов; сверил масштаб и расположение UI с профилем</label><label data-gm-sequence-field>Последовательность (один шаг на строку)<textarea class="input" name="sequence" rows="4">F8
+    }</fieldset><label data-gm-click-field>Точка для клика <select name="pointId"><option value="">Не выбрана</option>${c.points.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height} · UI ${esc(p.uiScale)}</option>`).join('')}</select></label><fieldset data-gm-variants-field><legend>Дополнительные профили точки для других размеров/DPI</legend><p class="muted">Для реса во всех окнах разного размера откалибруйте одну и ту же кнопку в каждом формате. Автоматического масштабирования нет. Для каждого окна должен подойти ровно один профиль.</p>${c.points.map(p => `<label><input type="checkbox" name="pointIds" value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height} · DPI ${p.dpi}</label>`).join('')}</fieldset><label data-gm-follow-field>Пункт меню Follow <select name="menuPointId"><option value="">Не выбран</option>${c.points.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height}</option>`).join('')}</select></label><fieldset data-gm-follow-field><legend>Действия следования в каждом окне</legend><label>Клавиши перед кликами (можно оставить пустым)<textarea class="input" name="followSequence" rows="3">SHIFT+1</textarea></label><p class="muted">Один шаг на строку: SHIFT+1, F2 или wait 200. После клавиш — клик по основной точке, затем по пункту меню. Точки задаются в координатах игровой области с калибровкой DPI/UI; сначала выполните предпросмотр без кликов.</p><label>Клик по основной точке<select class="input" name="followButton"><option value="right">ПКМ</option><option value="left">ЛКМ</option></select></label><label>Клик по пункту меню<select class="input" name="followMenuButton"><option value="left">ЛКМ</option><option value="right">ПКМ</option></select></label><p class="muted">Проверьте, что клавиши и точки выбирают назначенного ПЛ. Внутриигровое лидерство программа не меняет. Для разных действий у отдельных персонажей используйте блоки составной команды с поднаборами.</p></fieldset><label class="gm-consent" data-gm-click-field><input type="checkbox" name="resourceAllowed"> Разрешаю координатный клик, в том числе возможный расход игровых ресурсов; сверил масштаб и расположение UI с профилем</label><label data-gm-sequence-field>Последовательность (один шаг на строку)<textarea class="input" name="sequence" rows="4">F8
 wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки клавиш меняют текущий шаг; «↵ Новая строка» добавляет следующий. Пример ассиста: SHIFT+1, wait 100, F7 — каждый шаг на новой строке. Проверьте игровые привязки; назначенный ПЛ не обязательно первый в игровом списке. Не более 20 шагов; бесконечных циклов и скриптов нет. Координатный клик — отдельное действие с калибровкой и разрешением расходов.</p><p data-gm-sequence-field><button type="button" class="btn ghost" data-gm-to-composition>＋ Добавить готовую команду в последовательность</button><small>Откроет составную последовательность. Текущие клавиши и паузы будут сохранены первым блоком; затем добавьте сохранённую команду.</small></p><div data-gm-composition hidden><div data-composition-editor></div><label><input type="checkbox" name="compositeConsent"> Разрешаю клики и возможный расход ресурсов в составной команде; сначала выполню предпросмотр</label></div><label data-gm-launch-field hidden>Пати для этой команды<select class="input" name="partyId"><option value="">Текущая управляющая пати</option>${state.parties.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></label><div data-gm-resize-field hidden><label>Ширина<input class="input" name="width" type="number" min="160" max="8000" value="2560"></label><label>Высота<input class="input" name="height" type="number" min="160" max="8000" value="1400"></label></div><label data-gm-profile-field hidden>Профиль<select class="input" name="profileId"><option value="">Выбранный в основном разделе</option>${c.profiles.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></label><div data-gm-pointer-buttons hidden><label>Кнопка мыши<select name="button">${[
       ['left', 'Левая'],
       ['right', 'Правая'],
@@ -151,6 +151,7 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
     onSubmit: async data => {
       try {
         const value = Object.fromEntries(data);
+        if (value.action === 'follow' && String(value.followSequence || '').trim()) steps(value.followSequence);
         if (!String(value.name || '').trim()) throw new Error('Введите название команды.');
         if (
           !Number.isInteger(Number(value.switchMs)) ||
@@ -258,6 +259,9 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
   };
   const configCommands = () => c.commands;
   form.querySelector('[name="compositeConsent"]').checked = row?.resourceAllowed === true;
+  form.elements.namedItem('followSequence').value = row?.followSequence ?? 'SHIFT+1';
+  form.elements.namedItem('followButton').value = row?.followButton || 'right';
+  form.elements.namedItem('followMenuButton').value = row?.followMenuButton || 'left';
   builder = mountCompositionEditor(form.querySelector('[data-composition-editor]'), c, row, {
     cursor: async () => (await import('./runtime.js')).recorderCursor(),
     newPoint: partyId =>
@@ -304,7 +308,7 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
   form.querySelectorAll('[name="pointIds"]').forEach(input => {
     input.checked = !!row?.pointIds.includes(input.value);
   });
-  for (const name of ['hotkey', 'sequence']) {
+  for (const name of ['hotkey', 'sequence', 'followSequence']) {
     const input = form.elements.namedItem(name),
       bar = document.createElement('div');
     bar.className = 'gm-key-tools';

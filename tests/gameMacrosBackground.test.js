@@ -79,3 +79,25 @@ it('accepts wait 100 between complete activity chords', () => {
     })
   ).not.toThrow();
 });
+
+it('activity keyboard sequences accept the same extended vocabulary without enabling mouse or continuous repeat', () => {
+  const sequence = [
+    'F24',
+    'CTRL+NUMPAD9',
+    'DELETE',
+    'SHIFT+PAGEUP',
+    'ESC',
+    'BACKSPACE',
+    'END',
+    'INSERT',
+    'DIVIDE',
+    'SEMICOLON'
+  ].join('\n');
+  expect(() =>
+    validateActivityCommand({ action: 'sequence', delivery: 'background', backgroundMethod: 'activity', sequence })
+  ).not.toThrow();
+  for (const action of ['follow', 'click', 'mirror', 'mouse-mirror'])
+    expect(() =>
+      validateActivityCommand({ action, delivery: 'background', backgroundMethod: 'activity', sequence })
+    ).toThrow();
+});

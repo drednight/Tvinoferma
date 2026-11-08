@@ -210,3 +210,13 @@
     flex-wrap: wrap;
   }
 }
+
+.winp-attach [data-attach-open] {
+  flex: 1;
+  text-align: left;
+}
+.winp-attach-menu {
+  max-height: 280px;
+  overflow-y: auto;
+  z-index: 1100;
+}

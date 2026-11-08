@@ -5,7 +5,12 @@ export function chord(value) {
     .replace(/\s/g, '')
     .split('+');
   const key = parts.pop();
-  if (!/^(F([1-9]|1[0-2])|[A-Z0-9]|LEFT|RIGHT|UP|DOWN|SPACE|ENTER|TAB|PAUSE|HOME)$/.test(key || '')) return '';
+  if (
+    !/^(F([1-9]|1[0-9]|2[0-4])|NUMPAD[0-9]|BACKSPACE|ESC|END|PAGEUP|PAGEDOWN|INSERT|DELETE|CAPSLOCK|NUMLOCK|SCROLLLOCK|MULTIPLY|ADD|SUBTRACT|DECIMAL|DIVIDE|SEMICOLON|EQUALS|COMMA|MINUS|PERIOD|SLASH|BACKQUOTE|BRACKETLEFT|BACKSLASH|BRACKETRIGHT|QUOTE|[A-Z0-9]|LEFT|RIGHT|UP|DOWN|SPACE|ENTER|TAB|PAUSE|HOME)$/.test(
+      key || ''
+    )
+  )
+    return '';
   if (parts.some(p => !['CTRL', 'ALT', 'SHIFT'].includes(p)) || new Set(parts).size !== parts.length) return '';
   return [...['CTRL', 'ALT', 'SHIFT'].filter(p => parts.includes(p)), key].join('+');
 }

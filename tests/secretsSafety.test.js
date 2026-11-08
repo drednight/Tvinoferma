@@ -379,3 +379,55 @@ describe('safe startup diagnostic categories', () => {
     expect(calls).not.toContain('secrets_delete_many');
   });
 });
+
+describe('bounded startup vault readiness', () => {
+  afterEach(() => vi.useRealTimers());
+  it('waits for transient probe and read failures without writing or partially applying contacts', async () => {
+    vi.useFakeTimers();
+    const vault = fakeVault([['a', original]]);
+    let probes = 0,
+      reads = 0;
+    __setInvoke(async (command, args) => {
+      if (command === 'secrets_available' && ++probes < 3) return false;
+      if (command === 'secrets_get_many' && ++reads < 2) throw new Error('PRIVATE-NOT-READY');
+      return vault.invoke(command, args);
+    });
+    const characters = [{ id: 'a', contacts: contact() }];
+    const result = hydrateSecrets(characters, { requiresVault: true, startupRetry: true });
+    await expect(prepareForDisk({ characters })).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(2999);
+    expect(characters[0].contacts).toEqual(contact());
+    await vi.advanceTimersByTimeAsync(1001);
+    expect(await result).toMatchObject({ migrated: 0 });
+    expect(contactsJson(characters[0].contacts)).toBe(original);
+    expect(probes).toBe(3);
+    expect(reads).toBe(2);
+    expect(vault.calls.some(c => /set_many|delete_many/.test(c))).toBe(false);
+  });
+  it('stops after four attempts, keeps characters intact and blocks writes if startup access never becomes ready', async () => {
+    vi.useFakeTimers();
+    const invoke = vi.fn(async () => false);
+    __setInvoke(invoke);
+    const characters = [{ id: 'a', contacts: contact('unchanged') }];
+    const before = structuredClone(characters);
+    const pending = hydrateSecrets(characters, { requiresVault: true, startupRetry: true });
+    await vi.advanceTimersByTimeAsync(7000);
+    expect(await pending).toMatchObject({ blocked: true });
+    expect(invoke).toHaveBeenCalledTimes(4);
+    expect(characters).toEqual(before);
+    await expect(prepareForDisk({ characters })).rejects.toThrow();
+  });
+  it('does not retry invalid records or source conflicts, even at startup', async () => {
+    for (const raw of ['{broken', original]) {
+      const vault = fakeVault([['a', raw]]);
+      __setInvoke(vault.invoke);
+      const characters = [{ id: 'a', contacts: contact('different') }];
+      const before = structuredClone(characters);
+      expect(await hydrateSecrets(characters, { requiresVault: true, startupRetry: true })).toMatchObject({
+        blocked: true
+      });
+      expect(vault.calls).toEqual(['secrets_available', 'secrets_get_many']);
+      expect(characters).toEqual(before);
+    }
+  });
+});

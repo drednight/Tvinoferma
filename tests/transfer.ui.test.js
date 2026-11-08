@@ -275,6 +275,7 @@ describe('форма', () => {
   it('«Обновить информацию по всем персонажам» — читает ВСЕХ, даже если никто не отмечен; серверы тоже', async () => {
     mocks.invoke.mockImplementation(async (cmd, a) => answer(cmd, a));
     openTransferDialog({ ids: [] });
+    $('[data-q="none"]').click();
     $('[data-act="refresh-all"]').click();
     await wait(900);
     const reads = mocks.invoke.mock.calls

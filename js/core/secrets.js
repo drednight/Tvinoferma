@@ -17,6 +17,7 @@ const UNSAFE_WRITE = 'Хранилище учётных данных измен�
 
 const vault = {
   ready: false,
+  reading: false,
   checked: false,
   blocked: false, // остановка до перезапуска в этом JS-контексте, не устойчивый карантин
   error: null,
@@ -35,6 +36,7 @@ async function invoke(cmd, args) {
 /** Для тестов: подменить транспорт к Rust. */
 export function __setInvoke(fn) {
   invokeImpl = fn;
+  vault.reading = false;
   vault.ready = false;
   vault.checked = false;
   vault.blocked = false;
@@ -197,10 +199,10 @@ export function blockUnsafeVaultRead(code = 'vault_reference_invalid') {
  */
 export async function hydrateSecrets(
   characters,
-  { tauri = true, aliases = {}, requiresVault = false, plaintextIds = new Set() } = {}
+  { tauri = true, aliases = {}, requiresVault = false, plaintextIds = new Set(), startupRetry = false } = {}
 ) {
   vault.checked = true;
-  if (vault.blocked) return { migrated: 0, error: vault.error, blocked: true };
+  if (vault.blocked || vault.reading) return { migrated: 0, error: vault.error || UNAVAILABLE, blocked: true };
   // Даже при выключенной настройке нужно прочитать vault, если файл ссылается
   // на него: иначе следующее сохранение запишет вместо контактов пустые значения.
   if (!tauri || (!useVault() && !requiresVault)) {
@@ -212,9 +214,24 @@ export async function hydrateSecrets(
     }
     return { migrated: 0 };
   }
+  // Startup only: retry transient access failures before validating or applying data.
+  // Never retry missing/invalid records, migrations, writes, or conflict resolution.
+  const read = async (command, args) => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const result = await invoke(command, args);
+        if (command === 'secrets_available' && result !== true) throw new Error(UNAVAILABLE);
+        return result;
+      } catch (error) {
+        if (!startupRetry || attempt >= 3) throw error;
+        await new Promise(resolve => setTimeout(resolve, 1000 * 2 ** attempt));
+      }
+    }
+  };
+  vault.reading = true;
   let phase = 'vault_probe_unavailable';
   try {
-    const available = await invoke('secrets_available');
+    const available = await read('secrets_available');
     if (available !== true) throw new Error(UNAVAILABLE);
     phase = 'vault_identity_mapping_invalid';
     if (!Array.isArray(characters) || !(plaintextIds instanceof Set)) throw invalidData();
@@ -247,7 +264,7 @@ export async function hydrateSecrets(
       }
     }
     phase = 'vault_read_failed';
-    const response = await invoke('secrets_get_many', { keys: [...keys] });
+    const response = await read('secrets_get_many', { keys: [...keys] });
     phase = 'vault_records_invalid';
     const records = readRecords(response, keys);
     const parsed = new Map();
@@ -312,6 +329,8 @@ export async function hydrateSecrets(
       ...(vault.blocked ? { blocked: true } : {}),
       ...(error instanceof VaultConflictError ? { conflict: true } : {})
     };
+  } finally {
+    vault.reading = false;
   }
 }
 
@@ -322,7 +341,7 @@ export async function hydrateSecrets(
  * контексте запрещён. Проверка не является межпроцессным CAS или fsync.
  */
 export async function prepareForDisk(snapshot) {
-  if (vault.blocked) throw vaultWriteGuardError();
+  if (vault.blocked || vault.reading) throw vaultWriteGuardError();
   if (!vault.ready || !useVault()) return snapshot;
   if (
     !snapshot ||

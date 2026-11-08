@@ -19,7 +19,11 @@ vi.mock('../js/modules/launcher/launch.js', () => ({
   closeAllClients: mocks.closeAll
 }));
 vi.mock('../js/core/storage.js', () => ({ isTauri: () => true, persist: vi.fn(async () => {}) }));
-vi.mock('../js/core/ui.js', () => ({ toast: mocks.toast, confirmModal: mocks.confirm }));
+vi.mock('../js/core/ui.js', async importOriginal => ({
+  ...(await importOriginal()),
+  toast: mocks.toast,
+  confirmModal: mocks.confirm
+}));
 vi.mock('../js/modules/launcher/partyLaunch.js', () => ({ showCloseReport: vi.fn() }));
 
 let state, openWindowPicker;
@@ -279,4 +283,17 @@ it('can override a recognized window and remove only its manual binding', async 
   expect(
     document.querySelector('[data-attach="100"]').closest('.winp-row').querySelector('.winp-source').textContent
   ).toContain('заголовка');
+});
+
+it('uses the themed attachment menu, disables characters occupied by other windows and closes with the dialog', () => {
+  const button = document.querySelector('[data-attach-open="100"]');
+  expect(document.querySelector('select[data-attach="100"]').hidden).toBe(true);
+  button.click();
+  const menu = document.querySelector('.winp-attach-menu');
+  expect(menu.getAttribute('role')).toBe('menu');
+  expect(menu.querySelector('[data-id="b"]').disabled).toBe(true);
+  expect(menu.querySelector('[data-id="a"]').disabled).toBe(false);
+  expect(menu.closest('.tf-overlay')).toBeTruthy();
+  document.querySelector('.tf-close').click();
+  expect(document.querySelector('.winp-attach-menu')).toBeNull();
 });

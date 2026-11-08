@@ -103,3 +103,14 @@ it('calibrates an existing point as an uncommitted draft without changing its ID
   expect(await pending).toMatchObject({ id: 'kept', name: 'Черновик', x: 100, y: 200 });
   expect(runtime.config().points[0]).toEqual(original);
 });
+
+it('honors native emergency stop while ordinary hotkeys are suspended and disabled', async () => {
+  state.settings.gameMacros.commands = [{ id: 'slow', action: 'sequence', target: 'all', sequence: 'wait 500\nF7' }];
+  await runtime.initGameMacros();
+  const running = runtime.run('slow');
+  await vi.waitFor(() => expect(runtime.snapshot().busy).toBe(true));
+  mocks.handlers.get('game-macro-hotkey')({ payload: 'stop' });
+  await running;
+  expect(runtime.snapshot().executionState).toBe('stopped');
+  expect(mocks.invoke.mock.calls.some(([, a]) => a?.action === 'key')).toBe(false);
+});

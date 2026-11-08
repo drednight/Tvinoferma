@@ -409,3 +409,9 @@ it('shows current character, elapsed stage time and terminal launch counts', asy
   expect(document.getElementById('launch-result').hidden).toBe(false);
   expect(document.getElementById('launch-result').textContent).toContain('Запущено: 1 · Уже работало: 2 · Ошибка: 1');
 });
+
+it('requests input reconnect without toggling keyboard or mouse modes', async () => {
+  document.querySelector('#reconnect-input').click();
+  await vi.waitFor(() => expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-reconnect'));
+  expect(mocks.emitTo.mock.calls.some(([, name]) => /keyboard-toggle|mouse-toggle/.test(name))).toBe(false);
+});

@@ -94,12 +94,25 @@ fn halt(control: &Control, reason: u8) {
     control.reason.store(reason, Ordering::SeqCst);
     control.stop.store(true, Ordering::SeqCst);
 }
-unsafe fn modifiers() -> (bool, bool, bool) {
-    (
-        GetAsyncKeyState(0x11) < 0,
-        GetAsyncKeyState(0x10) < 0,
-        GetAsyncKeyState(0x12) < 0,
-    )
+fn modifier_after_event(vk: u32, up: bool, left: u32, right: u32, held: (bool, bool)) -> bool {
+    let left_down = if vk == left { !up } else { held.0 };
+    let right_down = if vk == right { !up } else { held.1 };
+    left_down || right_down
+}
+unsafe fn keyboard_modifiers(vk: u32, up: bool) -> (bool, bool, bool) {
+    let state = |left: u32, right: u32| {
+        modifier_after_event(
+            vk,
+            up,
+            left,
+            right,
+            (
+                GetAsyncKeyState(left as i32) < 0,
+                GetAsyncKeyState(right as i32) < 0,
+            ),
+        )
+    };
+    (state(0xa2, 0xa3), state(0xa0, 0xa1), state(0xa4, 0xa5))
 }
 fn reserved(vk: u32, ctrl: bool, alt: bool, win: bool) -> bool {
     win || matches!(vk,0x5b..=0x5f|0xa6..=0xb7)
@@ -126,7 +139,8 @@ unsafe extern "system" fn hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
                 if ctx.control.stop.load(Ordering::SeqCst) {
                     return;
                 }
-                let (ctrl, shift, alt) = modifiers();
+                let (ctrl, shift, alt) =
+                    keyboard_modifiers(event.vkCode, matches!(wp.0 as u32, WM_KEYUP | WM_SYSKEYUP));
                 // Emergency stop works even outside the game. Never suppress the user's input.
                 if event.vkCode == 0x13 && ctrl && alt {
                     halt(&ctx.control, 0);
@@ -776,6 +790,19 @@ mod tests {
         assert!(source_allowed(None, 20));
         assert!(source_allowed(Some(10), 10));
         assert!(!source_allowed(Some(10), 20));
+    }
+    #[test]
+    fn physical_modifier_transition_overrides_stale_async_state_without_releasing_other_side() {
+        assert!(modifier_after_event(
+            0xa0,
+            false,
+            0xa0,
+            0xa1,
+            (false, false)
+        ));
+        assert!(!modifier_after_event(0xa0, true, 0xa0, 0xa1, (true, false)));
+        assert!(modifier_after_event(0xa0, true, 0xa0, 0xa1, (true, true)));
+        assert!(modifier_after_event(0x41, false, 0xa2, 0xa3, (false, true)));
     }
     fn key(vk: u32, flags: u32) -> Key {
         Key {

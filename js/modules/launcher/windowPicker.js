@@ -7,7 +7,7 @@
 
 import { state } from '../../core/state.js';
 import { isTauri } from '../../core/storage.js';
-import { toast, confirmModal } from '../../core/ui.js';
+import { toast, confirmModal, openActionMenu } from '../../core/ui.js';
 import { escapeHtml } from '../../core/utils.js';
 import { openOverlay } from '../marathons/overlay.js';
 import { getClassIconSrc, CLASSES } from '../../core/constants.js';
@@ -34,7 +34,15 @@ export async function openWindowPicker(opts = {}) {
     return null;
   }
 
-  const ov = openOverlay({ title: '🎮 Запущенные окна игры', wide: true, onClose: () => opts.onClosed?.(null) });
+  let closeAttachMenu = () => {};
+  const ov = openOverlay({
+    title: '🎮 Запущенные окна игры',
+    wide: true,
+    onClose: () => {
+      closeAttachMenu();
+      opts.onClosed?.(null);
+    }
+  });
   /** @type {Set<number>} */
   const selected = new Set();
   /** @type {Array<any>} */
@@ -43,6 +51,7 @@ export async function openWindowPicker(opts = {}) {
   let decoration = '';
 
   const draw = () => {
+    closeAttachMenu();
     const known = rows.filter(r => r.known).length;
     ov.sub.innerHTML = `<span class="muted">Окон запущено: <b>${rows.length}</b>${known ? ` · из них с ником: ${known}` : ''}</span>
       <button type="button" class="btn ghost small" data-act="refresh">🔄 Обновить список</button>
@@ -114,7 +123,7 @@ export async function openWindowPicker(opts = {}) {
         <span class="winp-meta muted" title="Идентификатор процесса">PID ${row.pid}</span>
         <span class="winp-meta muted" title="Сколько работает окно">${uptime}</span>
         ${row.elevated ? '<span class="winp-flag" title="Игра запущена от имени администратора">админ</span>' : ''}
-        ${`<label class="winp-attach">${row.known ? 'Сменить персонажа' : 'Прикрепить к персонажу'}<select data-attach="${row.pid}"><option value="">${row.known ? 'Выбрать другого…' : 'Выберите персонажа…'}</option>${state.characters.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.nick)}${c.class ? ` — ${escapeHtml(c.class)}` : ''}</option>`).join('')}</select></label>`}
+        ${`<label class="winp-attach">${row.known ? 'Сменить персонажа' : 'Прикрепить к персонажу'}<button type="button" class="btn ghost small" data-attach-open="${row.pid}" aria-haspopup="menu">Выбрать персонажа ▾</button><select data-attach="${row.pid}" hidden aria-hidden="true" tabindex="-1"><option value="">${row.known ? 'Выбрать другого…' : 'Выберите персонажа…'}</option>${state.characters.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.nick)}${c.class ? ` — ${escapeHtml(c.class)}` : ''}</option>`).join('')}</select></label>`}
         <button type="button" class="btn ghost small winp-style" data-style="${row.pid}"
                 title="Задать своё название окна и поставить значок класса">✏️ Вид…</button>
       </div>`;
@@ -220,6 +229,27 @@ export async function openWindowPicker(opts = {}) {
         busy = false;
         await reload();
       }
+      return;
+    }
+    const attachButton = e.target.closest('[data-attach-open]');
+    if (attachButton) {
+      if (busy) return;
+      const pid = Number(attachButton.dataset.attachOpen);
+      const select = ov.body.querySelector(`select[data-attach="${pid}"]`);
+      closeAttachMenu();
+      closeAttachMenu = openActionMenu(
+        attachButton,
+        state.characters.map(char => ({
+          id: char.id,
+          label: `${char.nick}${char.class ? ` — ${char.class}` : ''}`,
+          disabled: rows.some(row => row.charId === char.id && row.pid !== pid),
+          onSelect: () => {
+            select.value = char.id;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        })),
+        { portal: ov.el, className: 'winp-attach-menu' }
+      );
       return;
     }
     // Кнопка «Вид…»: своё название окна и значок класса для конкретного окна

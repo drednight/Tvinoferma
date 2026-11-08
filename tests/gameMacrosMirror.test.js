@@ -45,7 +45,8 @@ it('toggle selects all known clients without requiring a party; unknown clients 
     { pid: 10, startedAt: 100 },
     { pid: 20, startedAt: 200 }
   ]);
-  expect(args.shortcuts).toContain('CTRL+ALT+F12');
+  expect(args.shortcuts).not.toContain('CTRL+ALT+F12');
+  expect(args.shortcuts).toContain('CTRL+ALT+PAUSE');
   expect(m.listeners.has('game-macro-mirror-state')).toBe(true);
   await runtime.run('mirror');
   expect(runtime.snapshot().mirroring).toBe(false);
@@ -170,6 +171,7 @@ it('keeps keyboard and mouse enabled through an ordinary command and unchanged h
   );
 });
 it('reconfigures shortcuts without resetting selected repeat modes', async () => {
+  state.settings.gameMacros.enabled = true;
   await runtime.toggleKeyboardMirror();
   await runtime.toggleKeyboardMirror('mouse');
   const modes = [];
@@ -257,4 +259,26 @@ it('duplicate explicit mouse-off requests cannot toggle the mode back on', async
   await runtime.setMirrorEnabled('mouse', false);
   await runtime.setMirrorEnabled('mouse', false);
   expect(runtime.snapshot()).toMatchObject({ mirrorMouse: false, mirroring: false });
+});
+
+it('reconnects only enabled mirror modes and explicit Stop wins over a pending reconnect', async () => {
+  await runtime.toggleKeyboardMirror();
+  const original = m.invoke.getMockImplementation();
+  let finish;
+  m.invoke.mockImplementation((c, a) =>
+    c === 'game_macro_input_idle'
+      ? true
+      : c === 'game_macro_bindings' && a.bindings.length === 0
+        ? new Promise(resolve => {
+            finish = resolve;
+          })
+        : original(c, a)
+  );
+  const reconnect = runtime.reconnectInput();
+  await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+  runtime.stop();
+  m.invoke.mockImplementation(original);
+  finish(null);
+  await reconnect;
+  expect(runtime.snapshot()).toMatchObject({ mirrorKeys: false, mirrorMouse: false, mirroring: false });
 });

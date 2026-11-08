@@ -260,6 +260,7 @@ export async function boot() {
         tauri: isTauri(),
         aliases: idAliases,
         requiresVault: raw?.secretsInVault === true,
+        startupRetry: true,
         plaintextIds
       });
       if (secrets.blocked) {

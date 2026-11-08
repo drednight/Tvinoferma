@@ -23,6 +23,7 @@ let initialized = false,
   busy = false,
   cancelled = false,
   registered = false;
+let hotkeyFailures = [];
 let cycleId = '';
 let mirroring = false,
   mirrorPending = false,
@@ -64,6 +65,7 @@ export function snapshot() {
     mirrorPending,
     paused,
     registered,
+    hotkeyFailures,
     opacity: c.opacity,
     appearance: c.appearance,
     topmost: c.topmost,
@@ -121,8 +123,13 @@ const wait = async (ms, aborted = () => false) => {
   }
 };
 let configureQueue = Promise.resolve();
-export function configure() {
-  configureQueue = configureQueue.catch(() => {}).then(applyConfig);
+export function configure({ idleOnly = false } = {}) {
+  configureQueue = configureQueue
+    .catch(() => {})
+    .then(() => {
+      if (idleOnly && (busy || mirrorPending)) throw new Error('Дождитесь окончания команды или обновления повтора.');
+      return applyConfig();
+    });
   return configureQueue;
 }
 async function applyConfig() {
@@ -131,6 +138,7 @@ async function applyConfig() {
     await toggleKeyboardMirror('keyboard', '', { keys: mirrorKeys, mouse: mirrorMouse });
   const c = config();
   registered = false;
+  hotkeyFailures = [];
   if (!window.__TAURI_INTERNALS__) {
     void broadcast();
     return;
@@ -145,12 +153,33 @@ async function applyConfig() {
     await native('game_macro_bindings', { bindings: [] });
     if (new Set(bindings.map(b => b.chord)).size !== bindings.length)
       throw new Error('Горячие клавиши повторяются; Ctrl+Alt+Pause зарезервирована для остановки.');
-    await native('game_macro_bindings', { bindings });
-    registered = c.enabled;
-  } catch {
-    log('Горячие клавиши не включены: сочетание занято или Windows недоступна. Кнопки остаются доступны.');
+    const failures = await native('game_macro_bindings', { bindings });
+    const failed = new Set(Array.isArray(failures) ? failures : []);
+    hotkeyFailures = bindings.filter(b => failed.has(b.id)).map(b => b.chord);
+    registered = c.enabled && bindings.some(b => !failed.has(b.id));
+    if (hotkeyFailures.length)
+      log(
+        `Не зарегистрированы: ${hotkeyFailures.join(', ')}. Остальные сочетания работают. Устраните конфликт и нажмите «Переподключить ввод». Кнопки команд доступны.`
+      );
+  } catch (error) {
+    hotkeyFailures = bindings.map(b => b.chord);
+    log(
+      `Горячие клавиши не включены: ${macroErrorText(error)} Кнопки остаются доступны. Нажмите «Переподключить ввод».`
+    );
   }
   void broadcast();
+}
+export async function reconnectInput() {
+  if (busy || mirrorPending) throw new Error('Дождитесь окончания команды или обновления повтора.');
+  if (!(await native('game_macro_input_idle', { chord: null })))
+    throw new Error('Отпустите клавиши и кнопки мыши, затем повторите подключение.');
+  await configure({ idleOnly: true });
+  if (!busy && !mirrorPending && (mirrorKeys || mirrorMouse)) {
+    await toggleKeyboardMirror('keyboard', '', { keys: mirrorKeys, mouse: mirrorMouse });
+  }
+  log(
+    `Повторная настройка ввода завершена. ${config().enabled ? (hotkeyFailures.length ? 'Есть конфликты сочетаний — см. журнал.' : 'Сочетания зарегистрированы Windows.') : 'Сочетания выключены пользователем.'} Обработка ввода игрой не подтверждена.`
+  );
 }
 export async function openOverlay() {
   await initGameMacros();
@@ -392,7 +421,9 @@ export async function run(id, hotkey = false) {
     }
     await checkpoint();
     suspended = true;
-    await native('game_macro_bindings', { bindings: [{ id: 'stop', chord: 'CTRL+ALT+PAUSE' }] });
+    const failedStop = await native('game_macro_bindings', { bindings: [{ id: 'stop', chord: 'CTRL+ALT+PAUSE' }] });
+    if (Array.isArray(failedStop) && failedStop.includes('stop'))
+      throw new Error('Ctrl+Alt+Pause занята: аварийная остановка не зарегистрирована. Ввод не отправлен.');
     registered = false;
     rootTiming = {
       switchMs: command.switchMs ?? 30,
@@ -665,14 +696,21 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
         if (cancelled) throw new Error('cancel');
         await act(row, 'preview', { point: p });
       }
+    const followSteps = command.followSequence.trim() ? steps(command.followSequence) : [];
     for (const row of rows) {
       if (cancelled) throw new Error('cancel');
       await act(row, 'focus');
-      await act(row, 'key', { key: 'SHIFT+1' });
+      for (const step of followSteps) {
+        if (step.wait) await wait(step.wait);
+        else {
+          await act(row, 'key', { key: step.key });
+          await wait(30);
+        }
+      }
       await wait(80);
-      await act(row, 'right-click', { point });
+      await act(row, command.followButton === 'left' ? 'click' : 'right-click', { point });
       await wait(120);
-      await act(row, 'click', { point: menu });
+      await act(row, command.followMenuButton === 'right' ? 'right-click' : 'click', { point: menu });
       log(`Следование: ввод отправлен для ${row.nick}; результат в игре не проверялся.`);
     }
   } else if (command.action === 'click') {
@@ -835,7 +873,9 @@ export async function initGameMacros() {
   initialized = true;
   await ensureMirror();
   await listen('game-macro-hotkey', event => {
-    if (config().enabled && registered) void run(String(event.payload), true);
+    const id = String(event.payload);
+    if (id === 'stop') stop();
+    else if (config().enabled && registered) void run(id, true);
   });
   await listen('game-overlay-preferences', async event => {
     const p = event.payload;
@@ -855,6 +895,9 @@ export async function initGameMacros() {
     }
     await applyOverlayPreferences();
     await broadcast();
+  });
+  await listen('game-overlay-reconnect', () => {
+    void reconnectInput().catch(error => log(macroErrorText(error)));
   });
   await listen('game-overlay-ready', () => {
     void broadcast();
@@ -905,7 +948,10 @@ export function commandReady(c, command) {
   if (['click', 'follow'].includes(command.action)) {
     try {
       commandPoint(c, command);
-      if (command.action === 'follow') commandPoint(c, { ...command, pointId: command.menuPointId });
+      if (command.action === 'follow') {
+        commandPoint(c, { ...command, pointId: command.menuPointId });
+        if (command.followSequence.trim()) steps(command.followSequence);
+      }
     } catch {
       return false;
     }
@@ -1135,6 +1181,7 @@ let mirrorConfigKey = '',
 function mirrorFingerprint() {
   const c = config();
   return JSON.stringify({
+    enabled: c.enabled,
     source: c.mirrorSource,
     leader: c.mirrorSource === 'leader' ? c.leaders[c.partyId] : null,
     shortcuts: c.commands
@@ -1226,9 +1273,12 @@ export async function toggleKeyboardMirror(kind = 'keyboard', commandName = '', 
         targets: rows.map(r => ({ pid: r.pid, startedAt: r.startedAt })),
         shortcuts: [
           'CTRL+ALT+PAUSE',
-          ...config()
-            .commands.map(c => c.hotkey)
-            .filter(k => k && !k.includes('WHEEL'))
+          ...(c.enabled
+            ? c.commands
+                .filter(command => commandReady(c, command))
+                .map(command => command.hotkey)
+                .filter(k => k && !k.includes('WHEEL'))
+            : [])
         ]
       })
     );

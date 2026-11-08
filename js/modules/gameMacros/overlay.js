@@ -45,6 +45,17 @@ async function init() {
       mouseToggle.disabled = mouseDisabled();
     }
   };
+  const reconnectButton = document.getElementById('reconnect-input');
+  reconnectButton.onclick = async () => {
+    reconnectButton.disabled = true;
+    try {
+      await emitTo('main', 'game-overlay-reconnect');
+    } catch {
+      document.getElementById('status').textContent = 'Не удалось отправить запрос подключения ввода.';
+    } finally {
+      reconnectButton.disabled = !!repeatState.busy || !!repeatState.mirrorPending;
+    }
+  };
   const copyButton = document.getElementById('copy-logs'),
     journal = document.getElementById('journal-screen'),
     copyStatus = document.getElementById('copy-logs-status');
@@ -60,6 +71,7 @@ async function init() {
     if (event.payload == null) return;
     const data = event.payload;
     repeatState = data;
+    reconnectButton.disabled = !!data.busy || !!data.mirrorPending;
     const keyboardOn = !!data.mirrorKeys,
       keyboardPaused = keyboardOn && !data.mirroring && !data.mirrorPending;
     keyboardToggle.textContent = data.mirrorPending
@@ -157,9 +169,11 @@ async function init() {
           ? 'Макросы на паузе'
           : data.busy
             ? `Выполняется: ${data.runningName || 'команда'}`
-            : data.registered
-              ? 'Хоткеи включены'
-              : 'Хоткеи выключены / недоступны');
+            : data.hotkeyFailures?.length
+              ? `Конфликт сочетаний: ${data.hotkeyFailures.join(', ')} · переподключите ввод`
+              : data.registered
+                ? 'Хоткеи включены'
+                : 'Хоткеи выключены / недоступны');
     document.getElementById('commands').replaceChildren(
       ...(data.commands || []).map(row => {
         const li = document.createElement('li'),

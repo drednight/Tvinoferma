@@ -184,3 +184,12 @@ it('checks Stop inside repeated sequences, never sending the remaining iteration
   ).rejects.toThrow('stop');
   expect(calls).toBe(2);
 });
+
+it('validates and budgets configurable follow preludes before executing any block', () => {
+  const follow = { id: 'follow', action: 'follow', followSequence: 'wrong key' };
+  const root = make([block([{ type: 'command', commandId: 'follow' }])], { resourceAllowed: true });
+  expect(() => compileComposition(root, config([follow]))).toThrow();
+  follow.followSequence = Array(20).fill('F7').join('\n');
+  root.blocks[0].repeat = 12;
+  expect(() => compileComposition(root, config([follow]))).toThrow(/предел|256/);
+});

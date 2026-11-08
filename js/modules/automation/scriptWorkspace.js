@@ -7,10 +7,17 @@ import { partiesOf } from '../parties/membership.js';
 import { openCharacterPicker, classIconHtml, stripeCls } from './characterPicker.js';
 
 const contexts = new WeakMap();
-export function layoutScriptWorkspace(dlg, selection, { running = false, initialMode = 'manual' } = {}) {
+export function layoutScriptWorkspace(dlg, selection, { running = false, initialMode = 'logged' } = {}) {
   let ctx = contexts.get(dlg);
   if (!ctx) {
-    ctx = { id: crypto.randomUUID(), mode: initialMode, party: '', ids: new Set(), picker: null };
+    ctx = {
+      id: crypto.randomUUID(),
+      mode: initialMode,
+      party: '',
+      ids: new Set(),
+      picker: null,
+      initialApply: initialMode === 'logged'
+    };
     contexts.set(dlg, ctx);
     const close = dlg.close;
     dlg.close = () => {
@@ -36,7 +43,7 @@ export function layoutScriptWorkspace(dlg, selection, { running = false, initial
     target.className = 'script-target sp-field';
     target.setAttribute('aria-label', 'Кого запускать');
     const choices = [
-      ['logged', '🟢 Только с входом', `${state.characters.filter(c => c.isLoggedIn === true).length} персонажей`],
+      ['logged', '🟢 Все онлайн', `${state.characters.filter(c => c.isLoggedIn === true).length} персонажей`],
       [
         'all',
         '👥 Все',
@@ -197,6 +204,13 @@ export function layoutScriptWorkspace(dlg, selection, { running = false, initial
   dlg.body.replaceChildren(body);
   refreshScriptPlan(dlg);
   renderDock();
+  if (selection && ctx.initialApply) {
+    ctx.initialApply = false;
+    const ids = state.characters
+      .filter(c => c.isLoggedIn === true && (!selection.eligible || selection.eligible(c)))
+      .map(c => c.id);
+    if (ids.length !== ctx.ids.size || ids.some(id => !ctx.ids.has(id))) selection.apply(ids, 'logged');
+  }
 }
 
 export function refreshScriptPlan(dlg) {
