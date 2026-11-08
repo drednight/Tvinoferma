@@ -211,3 +211,11 @@ it('preserves the order of other parties too when a command visits all recognize
     orderManagedTargets(s, { partyId: 'p' }, [{ charId: 'b' }, { charId: 'a' }, { charId: 'c' }]).map(r => r.charId)
   ).toEqual(['a', 'c', 'b']);
 });
+
+it('normalizes the opt-in twins-only click modifier without enabling it for old or unsupported settings', () => {
+  expect(normalizeGameMacros({}).mirrorTwinsModifier).toBe('');
+  for (const value of ['CTRL', 'ALT', 'SHIFT', 'CTRL+ALT', 'CTRL+SHIFT', 'ALT+SHIFT', 'CTRL+ALT+SHIFT'])
+    expect(normalizeGameMacros({ mirrorTwinsModifier: value }).mirrorTwinsModifier).toBe(value);
+  for (const value of ['WIN', 'B', 'CTRL+B', true, null])
+    expect(normalizeGameMacros({ mirrorTwinsModifier: value }).mirrorTwinsModifier).toBe('');
+});

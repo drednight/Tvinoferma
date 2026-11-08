@@ -317,3 +317,51 @@ it('explicit composition mode steps persist keyboard/mouse modes after completio
   await runtime.run('off');
   expect(runtime.snapshot()).toMatchObject({ mirrorKeys: false, mirrorMouse: true, mirroring: true });
 });
+
+it('configures a chosen twins-only modifier and an exact PL identity without narrowing ordinary repeat sources', async () => {
+  state.characters.forEach(c => (c.partyIds = ['p']));
+  Object.assign(state.settings.gameMacros, {
+    partyId: 'p',
+    leaders: { p: 'a' },
+    mirrorTwinsModifier: 'CTRL+SHIFT',
+    mirrorSource: 'any'
+  });
+  await runtime.toggleKeyboardMirror('mouse');
+  const args = m.invoke.mock.calls.find(([c, a]) => c === 'game_macro_mirror' && a.operation === 'start')[1];
+  expect(args.twinsModifier).toBe('CTRL+SHIFT');
+  expect(args.twinsSource).toEqual({ pid: 10, startedAt: 100, hwnd: 1000 });
+  expect(args.source).toBeNull();
+  expect(args.targets).toHaveLength(2);
+  expect(runtime.snapshot()).toMatchObject({ mirrorMouse: true, mirroring: true });
+});
+it('does not arm suppression for keyboard-only repeat or when the gesture is disabled', async () => {
+  state.settings.gameMacros.mirrorTwinsModifier = 'ALT';
+  await runtime.toggleKeyboardMirror('keyboard');
+  let args = m.invoke.mock.calls.find(([c, a]) => c === 'game_macro_mirror' && a.operation === 'start')[1];
+  expect(args.twinsModifier).toBeNull();
+  expect(args.twinsSource).toBeNull();
+  await runtime.disableKeyboardMirror();
+  m.invoke.mockClear();
+  state.settings.gameMacros.mirrorTwinsModifier = '';
+  await runtime.toggleKeyboardMirror('mouse');
+  args = m.invoke.mock.calls.find(([c, a]) => c === 'game_macro_mirror' && a.operation === 'start')[1];
+  expect(args.twinsModifier).toBeNull();
+  expect(args.twinsSource).toBeNull();
+});
+it('refuses to arm a twins-only gesture without a PL who belongs to the selected party', async () => {
+  Object.assign(state.settings.gameMacros, { partyId: 'p', leaders: { p: 'a' }, mirrorTwinsModifier: 'ALT' });
+  await runtime.toggleKeyboardMirror('mouse');
+  expect(m.invoke.mock.calls.some(([c, a]) => c === 'game_macro_mirror' && a.operation === 'start')).toBe(false);
+  expect(runtime.snapshot().notice).toContain('назначьте ПЛ');
+});
+it('reconnects an enabled mouse repeat when its configurable modifier changes', async () => {
+  state.characters.forEach(c => (c.partyIds = ['p']));
+  Object.assign(state.settings.gameMacros, { partyId: 'p', leaders: { p: 'a' }, mirrorTwinsModifier: 'ALT' });
+  await runtime.toggleKeyboardMirror('mouse');
+  m.invoke.mockClear();
+  state.settings.gameMacros.mirrorTwinsModifier = 'CTRL';
+  await runtime.configure();
+  const args = m.invoke.mock.calls.find(([c, a]) => c === 'game_macro_mirror' && a.operation === 'start')[1];
+  expect(args.twinsModifier).toBe('CTRL');
+  expect(args.mouse).toBe(true);
+});

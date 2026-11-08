@@ -1227,6 +1227,10 @@ function mirrorFingerprint() {
   return JSON.stringify({
     enabled: c.enabled,
     source: c.mirrorSource,
+    twinsModifier: c.mirrorTwinsModifier,
+    twinsLeader: c.mirrorTwinsModifier ? c.leaders[c.partyId] : null,
+    twinsLeaderValid:
+      !c.mirrorTwinsModifier || partyMembers(state, c.partyId).some(character => character.id === c.leaders[c.partyId]),
     leader: c.mirrorSource === 'leader' ? c.leaders[c.partyId] : null,
     shortcuts: c.commands
       .map(row => row.hotkey)
@@ -1307,10 +1311,22 @@ export async function toggleKeyboardMirror(kind = 'keyboard', commandName = '', 
       throw new Error('Для повтора только из ПЛ выберите пати, назначьте ПЛ и запустите его распознанное окно.');
     const settingsKey = mirrorFingerprint();
     const id = crypto.randomUUID();
+    const twinsLeader =
+      desiredMouse && c.mirrorTwinsModifier ? rows.find(row => row.charId === c.leaders[c.partyId]) : null;
+    if (
+      desiredMouse &&
+      c.mirrorTwinsModifier &&
+      (!twinsLeader || !partyMembers(state, c.partyId).some(character => character.id === twinsLeader.charId))
+    )
+      throw new Error('Для ЛКМ только твинам назначьте ПЛ выбранной пати и проверьте его окно.');
     mirrorSession = id;
     const active = await native(
       'game_macro_mirror',
       mirrorArgs('start', id, {
+        twinsModifier: twinsLeader ? c.mirrorTwinsModifier : null,
+        twinsSource: twinsLeader
+          ? { pid: twinsLeader.pid, startedAt: twinsLeader.startedAt, hwnd: twinsLeader.hwnd }
+          : null,
         mouse: desiredMouse,
         keyboard: desiredKeys,
         source: sourceRow ? { pid: sourceRow.pid, startedAt: sourceRow.startedAt, hwnd: sourceRow.hwnd } : null,
@@ -1354,6 +1370,10 @@ export async function toggleKeyboardMirror(kind = 'keyboard', commandName = '', 
         if (epoch === mirrorEpoch) await disableKeyboardMirror();
       }
     }, 1000);
+    if (twinsLeader)
+      log(
+        `ЛКМ только твинам: ${c.mirrorTwinsModifier} + ЛКМ в окне ПЛ. Исходный ЛКМ блокируется; получателям отправляется без модификаторов. Работа в игре не подтверждена.`
+      );
     log(
       `Повтор ВКЛЮЧЁН (клавиатура: ${mirrorKeys ? 'да' : 'нет'}, мышь: ${mirrorMouse ? 'да' : 'нет'}): ${rows.length} проверенных окон, источник: ${sourceRow ? 'ПЛ выбранной пати' : 'любая распознанная игра'}. ${mirrorMouse ? 'Кнопки мыши: абсолютные экранные точки.' : 'Мышь не передаётся.'} Ctrl+Alt+Pause — выключить. Обработка сообщений игрой не подтверждена.`,
       commandName

@@ -127,6 +127,11 @@ export function normalizeGameMacros(input = {}) {
         : null,
     enabled: input.enabled === true,
     mirrorMouse: input.mirrorMouse === true,
+    mirrorTwinsModifier: ['', 'CTRL', 'ALT', 'SHIFT', 'CTRL+ALT', 'CTRL+SHIFT', 'ALT+SHIFT', 'CTRL+ALT+SHIFT'].includes(
+      input.mirrorTwinsModifier
+    )
+      ? input.mirrorTwinsModifier
+      : '',
     mirrorSource: input.mirrorSource === 'leader' ? 'leader' : 'any',
     mirrorPresetVersion: [1, 2].includes(input.mirrorPresetVersion) ? input.mirrorPresetVersion : 0,
     ahkPresetsVersion: input.ahkPresetsVersion === 1 ? 1 : 0,

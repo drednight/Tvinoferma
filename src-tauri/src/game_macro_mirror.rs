@@ -63,6 +63,10 @@ struct Context {
     keyboard: bool,
     source: Option<usize>,
     last_mouse: Option<(usize, u8, i32, i32, u64)>,
+    twins_modifier: u8,
+    twins_source: Option<usize>,
+    exclusive_left: bool,
+    last_exclusive: bool,
 }
 // Use Windows' time AND movement tolerance; a double click is scoped to one source window.
 fn double_click_matches(
@@ -122,6 +126,67 @@ fn reserved(vk: u32, ctrl: bool, alt: bool, win: bool) -> bool {
 fn source_allowed(selected: Option<usize>, actual: usize) -> bool {
     selected.is_none_or(|source| source == actual)
 }
+// Only explicit Ctrl/Alt/Shift combinations; no arbitrary keys or OS-reserved Win gesture.
+fn twins_modifier_mask(value: &str) -> Result<u8, String> {
+    match value {
+        "CTRL" => Ok(1),
+        "SHIFT" => Ok(2),
+        "ALT" => Ok(4),
+        "CTRL+SHIFT" => Ok(3),
+        "CTRL+ALT" => Ok(5),
+        "ALT+SHIFT" => Ok(6),
+        "CTRL+ALT+SHIFT" => Ok(7),
+        _ => Err("Invalid twins mouse modifier".into()),
+    }
+}
+fn twins_modifier_key(mask: u8, vk: u32) -> bool {
+    (mask & 1 != 0 && matches!(vk, 0x11 | 0xa2 | 0xa3))
+        || (mask & 2 != 0 && matches!(vk, 0x10 | 0xa0 | 0xa1))
+        || (mask & 4 != 0 && matches!(vk, 0x12 | 0xa4 | 0xa5))
+}
+fn twins_gesture(mask: u8, held: u8, win: bool) -> bool {
+    mask != 0 && mask == held && !win
+}
+fn twins_left_route(up: bool, captured: bool, armed: bool) -> bool {
+    if up {
+        captured
+    } else {
+        armed
+    }
+}
+fn mouse_flags(exclusive: bool, held: u8) -> u32 {
+    if exclusive {
+        0
+    } else {
+        (u32::from(held & 1) * 8) | (u32::from((held >> 1) & 1) * 4)
+    }
+}
+unsafe fn held_mouse_modifiers() -> u8 {
+    u8::from(GetAsyncKeyState(0x11) < 0)
+        | (u8::from(GetAsyncKeyState(0x10) < 0) << 1)
+        | (u8::from(GetAsyncKeyState(0x12) < 0) << 2)
+}
+// Bounded Win32 checks only in the hook; exact process/start-time checks remain in the worker.
+unsafe fn mouse_destination_ready(
+    client: &Client,
+    point: windows::Win32::Foundation::POINT,
+) -> bool {
+    let hwnd = HWND(client.hwnd as *mut _);
+    let mut pid = 0;
+    GetWindowThreadProcessId(hwnd, Some(&mut pid));
+    let mut p = point;
+    let mut rect = windows::Win32::Foundation::RECT::default();
+    pid == client.target.pid
+        && IsWindow(Some(hwnd)).as_bool()
+        && IsWindowVisible(hwnd).as_bool()
+        && !IsIconic(hwnd).as_bool()
+        && GetClientRect(hwnd, &mut rect).is_ok()
+        && windows::Win32::Graphics::Gdi::ScreenToClient(hwnd, &mut p).as_bool()
+        && p.x >= 0
+        && p.y >= 0
+        && p.x < rect.right
+        && p.y < rect.bottom
+}
 unsafe extern "system" fn hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
     if code >= 0
         && matches!(
@@ -162,6 +227,14 @@ unsafe extern "system" fn hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
                 {
                     return;
                 }
+                // The chosen gesture modifiers are local controls, not copied keyboard input.
+                // Still pass all physical keyboard events to the PL and preserve emergency stop.
+                if ctx.mouse
+                    && ctx.twins_source == Some(source)
+                    && twins_modifier_key(ctx.twins_modifier, event.vkCode)
+                {
+                    return;
+                }
                 let system = reserved(
                     event.vkCode,
                     ctrl,
@@ -194,6 +267,7 @@ unsafe extern "system" fn hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
     CallNextHookEx(None, code, wp, lp)
 }
 unsafe extern "system" fn mouse_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+    let mut suppress = false;
     if code >= 0
         && matches!(
             wp.0 as u32,
@@ -214,6 +288,10 @@ unsafe extern "system" fn mouse_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESU
                 let Some(ctx) = ctx.as_mut() else {
                     return;
                 };
+                // Pair the release with the captured down, even after modifier/focus changes.
+                let captured_up =
+                    wp.0 as u32 == WM_LBUTTONUP && std::mem::take(&mut ctx.exclusive_left);
+                suppress = captured_up;
                 if !ctx.mouse || ctx.control.stop.load(Ordering::SeqCst) {
                     return;
                 }
@@ -292,6 +370,37 @@ unsafe extern "system" fn mouse_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESU
                     msg,
                     WM_LBUTTONUP | WM_RBUTTONUP | WM_MBUTTONUP | WM_XBUTTONUP
                 );
+                let exclusive = button == 0
+                    && twins_left_route(
+                        up,
+                        captured_up,
+                        msg == WM_LBUTTONDOWN
+                            && ctx.twins_source == Some(source)
+                            && twins_gesture(
+                                ctx.twins_modifier,
+                                held_mouse_modifiers(),
+                                GetAsyncKeyState(0x5b) < 0 || GetAsyncKeyState(0x5c) < 0,
+                            ),
+                    );
+                if exclusive && !up {
+                    // Fail closed: never turn a twins-only gesture into an accidental PL click.
+                    suppress = true;
+                    ctx.exclusive_left = true;
+                    if !ctx
+                        .clients
+                        .iter()
+                        .all(|client| mouse_destination_ready(client, event.pt))
+                    {
+                        halt(&ctx.control, 3);
+                        return;
+                    }
+                }
+                if !up && ctx.last_exclusive != exclusive {
+                    ctx.last_mouse = None;
+                }
+                if !up {
+                    ctx.last_exclusive = exclusive;
+                }
                 let at = now();
                 let double = !up
                     && double_click_matches(
@@ -308,8 +417,7 @@ unsafe extern "system" fn mouse_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESU
                         Some((source, button, event.pt.x, event.pt.y, at))
                     };
                 }
-                let flags = if GetAsyncKeyState(0x10) < 0 { 4 } else { 0 }
-                    | if GetAsyncKeyState(0x11) < 0 { 8 } else { 0 };
+                let flags = mouse_flags(exclusive, held_mouse_modifiers());
                 let key = Key {
                     source,
                     at,
@@ -332,7 +440,11 @@ unsafe extern "system" fn mouse_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESU
             });
         }
     }
-    CallNextHookEx(None, code, wp, lp)
+    if suppress {
+        LRESULT(1)
+    } else {
+        CallNextHookEx(None, code, wp, lp)
+    }
 }
 fn verify(client: &Client) -> bool {
     crate::launcher::macro_client_at(
@@ -589,15 +701,27 @@ pub fn heartbeat(id: &str) -> Result<bool, String> {
     }
     Ok(false)
 }
+pub struct Options {
+    pub mouse: bool,
+    pub keyboard: bool,
+    pub source: Option<Target>,
+    pub twins_modifier: Option<String>,
+    pub twins_source: Option<Target>,
+}
 pub fn start(
     app: tauri::AppHandle,
     id: String,
     targets: Vec<Target>,
     shortcuts: Vec<String>,
-    mouse: bool,
-    keyboard: bool,
-    source: Option<Target>,
+    options: Options,
 ) -> Result<bool, String> {
+    let Options {
+        mouse,
+        keyboard,
+        source,
+        twins_modifier,
+        twins_source,
+    } = options;
     if id.is_empty()
         || id.len() > 80
         || !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-')
@@ -641,6 +765,26 @@ pub fn start(
     } else {
         None
     };
+    let twins_modifier = twins_modifier
+        .as_deref()
+        .map(twins_modifier_mask)
+        .transpose()?
+        .unwrap_or(0);
+    let twins_source_hwnd = match (twins_modifier, twins_source) {
+        (0, None) => None,
+        (mask, Some(target)) if mask != 0 && mouse => Some(
+            clients
+                .iter()
+                .find(|c| {
+                    c.target.pid == target.pid
+                        && c.target.started_at == target.started_at
+                        && target.hwnd == Some(c.hwnd as u64)
+                })
+                .ok_or("Twins source is not a verified snapshot client")?
+                .hwnd,
+        ),
+        _ => return Err("Twins mouse gesture requires mouse mode and an explicit source".into()),
+    };
     stop("")?;
     let control = Arc::new(Control {
         stop: AtomicBool::new(false),
@@ -664,6 +808,10 @@ pub fn start(
                 keyboard,
                 source: source_hwnd,
                 last_mouse: None,
+                twins_modifier,
+                twins_source: twins_source_hwnd,
+                exclusive_left: false,
+                last_exclusive: false,
             })
         });
         let module = GetModuleHandleW(None).ok().map(|h| HINSTANCE(h.0));
@@ -739,6 +887,51 @@ pub fn start(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn configurable_gesture_accepts_only_explicit_supported_modifiers() {
+        for (text, mask) in [
+            ("CTRL", 1),
+            ("SHIFT", 2),
+            ("ALT", 4),
+            ("CTRL+SHIFT", 3),
+            ("CTRL+ALT", 5),
+            ("ALT+SHIFT", 6),
+            ("CTRL+ALT+SHIFT", 7),
+        ] {
+            assert_eq!(twins_modifier_mask(text).unwrap(), mask);
+            assert!(twins_gesture(mask, mask, false));
+            assert!(!twins_gesture(mask, mask, true));
+            assert!(!twins_gesture(mask, 0, false));
+        }
+        for value in ["", "WIN", "B", "CTRL+B", "CTRL+CTRL", "CTRL+ALT+PAUSE"] {
+            assert!(twins_modifier_mask(value).is_err());
+        }
+        assert!(!twins_gesture(1, 3, false));
+        assert!(!twins_gesture(0, 0, false));
+    }
+    #[test]
+    fn captured_left_release_does_not_depend_on_modifier_or_focus_and_unmatched_up_is_not_captured()
+    {
+        assert!(twins_left_route(false, false, true));
+        assert!(twins_left_route(true, true, false));
+        assert!(!twins_left_route(true, false, true));
+        assert!(!twins_left_route(false, false, false));
+    }
+    #[test]
+    fn exclusive_click_strips_message_modifiers_and_ordinary_click_keeps_them() {
+        for held in 0..=7 {
+            assert_eq!(mouse_flags(true, held), 0);
+        }
+        assert_eq!(mouse_flags(false, 1), 8);
+        assert_eq!(mouse_flags(false, 2), 4);
+        assert_eq!(mouse_flags(false, 3), 12);
+        assert_eq!(mouse_flags(false, 4), 0);
+        assert!(twins_modifier_key(1, 0xa2));
+        assert!(twins_modifier_key(1, 0xa3));
+        assert!(!twins_modifier_key(1, 0xa0));
+        assert!(!twins_modifier_key(7, 0x42));
+    }
+
     #[test]
     fn doubles_allow_system_jitter_but_not_other_sources_buttons_or_late_clicks() {
         let previous = Some((10, 0, 100, 100, 1000));

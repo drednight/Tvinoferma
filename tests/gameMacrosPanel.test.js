@@ -260,3 +260,24 @@ it('hides size/profile settings and commands without deleting saved data', () =>
   for (const action of ['resize', 'layout'])
     expect(document.querySelector(`[name="action"][value="${action}"]`).closest('label').hidden).toBe(true);
 });
+
+it('lets the user choose or disable a twins-only click modifier without automatically enabling mouse repeat', async () => {
+  const field = document.querySelector('[data-gm-twins-modifier]');
+  expect(field.value).toBe('');
+  expect([...field.options].map(o => o.value)).toEqual([
+    '',
+    'CTRL',
+    'ALT',
+    'SHIFT',
+    'CTRL+ALT',
+    'CTRL+SHIFT',
+    'ALT+SHIFT',
+    'CTRL+ALT+SHIFT'
+  ]);
+  field.value = 'ALT+SHIFT';
+  field.dispatchEvent(new Event('change', { bubbles: true }));
+  await vi.waitFor(() => expect(state.settings.gameMacros.mirrorTwinsModifier).toBe('ALT+SHIFT'));
+  const runtime = await import('../js/modules/gameMacros/runtime.js');
+  expect(runtime.toggleKeyboardMirror).not.toHaveBeenCalled();
+  expect(state.settings.gameMacros.mirrorSource).toBe('any');
+});

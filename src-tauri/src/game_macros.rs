@@ -1859,6 +1859,8 @@ pub async fn game_macro_mirror(
     mouse: Option<bool>,
     keyboard: Option<bool>,
     source: Option<Target>,
+    twins_modifier: Option<String>,
+    twins_source: Option<Target>,
 ) -> Result<bool, String> {
     main_only(&window)?;
     #[cfg(windows)]
@@ -1873,9 +1875,13 @@ pub async fn game_macro_mirror(
                     session_id,
                     targets,
                     shortcuts,
-                    mouse.unwrap_or(false),
-                    keyboard.unwrap_or(true),
-                    source,
+                    mirror::Options {
+                        mouse: mouse.unwrap_or(false),
+                        keyboard: keyboard.unwrap_or(true),
+                        source,
+                        twins_modifier,
+                        twins_source,
+                    },
                 ),
                 "stop" => mirror::stop(&session_id),
                 "heartbeat" => mirror::heartbeat(&session_id),
@@ -1888,7 +1894,16 @@ pub async fn game_macro_mirror(
     #[cfg(not(windows))]
     {
         let _ = (
-            app, operation, session_id, targets, shortcuts, mouse, keyboard, source,
+            app,
+            operation,
+            session_id,
+            targets,
+            shortcuts,
+            mouse,
+            keyboard,
+            source,
+            twins_modifier,
+            twins_source,
         );
         Err("Game control is Windows-only".into())
     }
