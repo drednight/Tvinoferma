@@ -21,9 +21,7 @@ it('creates three separate opt-in commands without triggers, changing neither so
   };
   let id = 0;
   const rows = backgroundVariants(original, [original], () => `test-${++id}`);
-  expect(rows.map(c => c.backgroundMethod)).toEqual(
-    Object.keys(BACKGROUND_METHODS).filter(method => method !== 'activity')
-  );
+  expect(rows.map(c => c.backgroundMethod)).toEqual(['post', 'send-timeout', 'notify']);
   expect(new Set(rows.map(c => c.id)).size).toBe(3);
   for (const row of rows)
     expect(row).toMatchObject({
@@ -100,4 +98,42 @@ it('activity keyboard sequences accept the same extended vocabulary without enab
     expect(() =>
       validateActivityCommand({ action, delivery: 'background', backgroundMethod: 'activity', sequence })
     ).toThrow();
+});
+
+it('prepares five independent single-recipient experiments with no hotkeys, no focus restoration and no fallback', async () => {
+  const { backgroundExperiments, EXPERIMENT_METHODS } = await import('../js/modules/gameMacros/background.js');
+  let id = 0;
+  const rows = backgroundExperiments({ key: 'SHIFT+1', charId: 'b', partyId: 'p' }, [], () => `lab-${++id}`);
+  expect(rows.map(r => r.backgroundMethod)).toEqual(EXPERIMENT_METHODS);
+  expect(new Set(rows.map(r => r.id)).size).toBe(5);
+  for (const row of rows) {
+    expect(row).toMatchObject({
+      strictTargets: true,
+      target: 'subset',
+      charIds: ['b'],
+      partyId: 'p',
+      sequence: 'SHIFT+1',
+      hotkey: '',
+      returnTo: 'last'
+    });
+    expect(normalizeGameMacros({ commands: [row] }).commands[0].strictTargets).toBe(true);
+  }
+  expect(() => backgroundExperiments({ key: 'B\nF2', charId: 'b', partyId: 'p' }, [])).toThrow();
+  expect(() => backgroundExperiments({ key: 'B', charId: '', partyId: 'p' }, [])).toThrow();
+  expect(() => backgroundExperiments({ key: 'B', charId: 'b', partyId: 'p' }, Array(60).fill({}))).toThrow();
+});
+it('keeps every activity variant isolated from composition, mouse and repeat', async () => {
+  const { isActivityMethod } = await import('../js/modules/gameMacros/background.js');
+  for (const backgroundMethod of ['activity', 'activity-window', 'activity-notify']) {
+    expect(isActivityMethod(backgroundMethod)).toBe(true);
+    expect(() =>
+      validateActivityCommand({ action: 'sequence', sequence: 'B', delivery: 'background', backgroundMethod })
+    ).not.toThrow();
+    expect(() =>
+      validateActivityCommand({ action: 'click', sequence: 'B', delivery: 'background', backgroundMethod })
+    ).toThrow();
+    expect(() =>
+      validateActivityCommand({ action: 'sequence', sequence: 'B', delivery: 'background', backgroundMethod }, true)
+    ).toThrow();
+  }
 });

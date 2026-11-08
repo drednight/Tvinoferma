@@ -55,6 +55,7 @@ export function normalizeGameMacros(input = {}) {
         row.id === 'ahk-buff' && row.name === 'Баф — отдельная пати' ? 'Баф — выбранная пати' : row.name || 'Команда'
       ).slice(0, 80),
       action: row.action,
+      strictTargets: row.strictTargets === true,
       blocks,
       planError,
       partyId: String(row.partyId || '').slice(0, 200),

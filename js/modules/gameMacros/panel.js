@@ -1,3 +1,4 @@
+import { openBackgroundLab } from './backgroundLab.js';
 import { updateRepeatButton } from './repeatButton.js';
 import { copyJournal } from './journal.js';
 import { state } from '../../core/state.js';
@@ -75,11 +76,15 @@ export function mountGameMacros(host) {
             : '.' + node.classList[0]
   }));
   const c = config();
+  const searchQuery = host.querySelector('[data-gm-search]')?.value || '';
+  const pointsOpen = host.querySelector('.gm-points-section')?.open === true;
+  const labOpen = host.querySelector('.gm-background-section')?.open === true;
   const visibleCommands = c.commands.filter(commandVisible);
   const selected = visibleCommands.find(row => row.id === selectedId) || visibleCommands[0];
   selectedId = selected?.id || '';
   const point = c.points.find(p => p.id === selected?.pointId);
   host.innerHTML = `<section id="game-macros-block" class="tools-block gm-workspace"><header class="gm-page-heading"><div><span class="gm-eyebrow">Управление игровыми окнами</span><h3>Управление пати и макросами</h3><p>Выберите пати, настройте команды и запускайте их кнопкой или сочетанием клавиш.</p></div><label class="gm-hotkey-master gm-slider-switch" title="Выкл — ручной запуск; аварийная остановка при выполнении остаётся доступной"><span>Сочетания клавиш</span><input type="checkbox" role="switch" aria-label="Управление сочетаниями клавиш" data-gm-enabled ${c.enabled ? 'checked' : ''}><i aria-hidden="true"></i></label></header>
+  <div class="gm-start-guide" aria-label="Как начать"><article><span>01</span><div><b>Выберите пати</b><p>Настройте состав и ПЛ. Выбор ниже определяет получателей команд.</p></div></article><article><span>02</span><div><b>Проверьте окна</b><p>Убедитесь, что каждый клиент сопоставлен своему персонажу.</p><button type="button" class="btn ghost small" data-gm-check-windows>Проверить окна</button></div></article><article><span>03</span><div><b>Создайте и проверьте команду</b><p>Начните с одной безопасной клавиши. ▶ запускает команду один раз.</p></div></article></div>
   <div class="gm-control-buttons gm-mirror-buttons" role="group" aria-label="Управление выполнением и повтором"><button class="btn gm-repeat-toggle" data-gm-mirror aria-label="Включить повтор клавиатуры" title="Включить повтор клавиатуры" data-state="off" aria-pressed="false">⌨ ВЫКЛ</button><button class="btn gm-repeat-toggle" data-gm-mirror-mouse aria-label="Включить повтор мыши" title="Включить повтор мыши" data-state="off" aria-pressed="false">🖱 ВЫКЛ</button><button class="btn" data-gm-pause>Ⅱ Пауза</button><button class="btn danger" data-gm-stop>■ Остановить</button></div>
   <div class="gm-control-bar gm-party-bar"><label class="gm-field">Пати для всех команд<select data-gm-party><option value="">Выберите пати</option>${state.parties.map(p => option(p.id, p.name, c.partyId)).join('')}</select></label></div>
   <p class="gm-key-note">Если переключатель выключен, работает ручной запуск кнопкой ▶. При включении Windows закрепляет сочетания за приложением; игровые команды срабатывают только из окон выбранной пати. Остановка — <kbd>Ctrl+Alt+Pause</kbd>.</p>
@@ -101,6 +106,7 @@ export function mountGameMacros(host) {
       ''
     )}</select><small>Работает при включённом повторе мыши в активном окне ПЛ выбранной пати. Зажмите ровно выбранные модификаторы и нажмите ЛКМ: исходный клик блокируется, остальным проверенным клиентам отправляется ЛКМ без модификаторов. Без модификатора — обычный повтор. Выбранные служебные модификаторы с ПЛ не повторяются клавиатурой. При ошибке клик не передаётся ПЛ вместо твинов; повтор останавливается. Работа в PW требует проверки.</small></label></div><small>Клавиатура и мышь включаются независимо. Мышь: абсолютные экранные координаты, без масштабирования. Возможен расход ресурсов.</small></fieldset>
   <div class="gm-section-top"><h4>Мои команды <span>${visibleCommands.length}</span></h4><button class="btn primary" data-gm-create>＋ Создать команду</button></div>
+  <label class="gm-command-search">Поиск команды<input type="search" class="input" data-gm-search placeholder="Название или сочетание клавиш" aria-label="Найти команду"></label>
   <div class="gm-command-workbench"><nav class="gm-command-menu" aria-label="Команды">${visibleCommands.map(row => `<button class="gm-command-choice ${row.id === selectedId ? 'is-selected' : ''}" data-gm-select="${esc(row.id)}" aria-pressed="${row.id === selectedId}"><b>${esc(row.name)}</b><kbd>${esc(row.hotkey || 'Без сочетания')}</kbd></button>`).join('') || '<p class="muted">Пока нет команд. Создайте первую.</p>'}</nav>
   <article class="gm-command-detail">${
     selected
@@ -141,15 +147,39 @@ export function mountGameMacros(host) {
     )
     .join('')}</div><button class="btn primary" data-gm-save-sizes>Сохранить размеры</button></section>
   <section class="gm-settings-section" hidden data-gm-hidden-profiles><div class="gm-section-top"><div><h4>Профили размещения игровых окон</h4><p>Запомните текущие размеры и позиции окон пати. Выбранный профиль использует команда «Применить профиль окон».</p></div></div><div class="gm-profile-controls"><label class="gm-field">Используемый профиль<select data-gm-profile><option value="">Не выбран</option>${c.profiles.map(p => option(p.id, p.name, c.profileId)).join('')}</select></label><button class="btn ghost" data-gm-delete-profile>Удалить выбранный</button></div><div class="gm-profile-controls"><label class="gm-field">Название нового профиля<input data-gm-profile-name maxlength="80" placeholder="Например: основная пати, два монитора"></label><button class="btn" data-gm-save-profile>＋ Запомнить текущее расположение</button></div></section>
-  <section class="gm-settings-section"><div class="gm-section-top"><div><h4>Координатные точки</h4><p>Назовите точку, выберите окно и совместите экранный крестик с нужным местом. Сохранение не кликает в игру.</p></div></div><form data-gm-capture class="gm-point-form"><label class="gm-field">Название точки<input name="name" required maxlength="80" placeholder="Свиток воскрешения, портрет персонажа…"></label><label class="gm-field">В каком окне задать точку<select name="charId" required><option value="">Выберите участника</option>${partyMembers(
+  <details class="gm-settings-section gm-points-section"><summary>Координаты для кликов · ${c.points.length} сохранено</summary><div class="gm-section-top"><div><h4>Координатные точки</h4><p>Назовите точку, выберите окно и совместите экранный крестик с нужным местом. Сохранение не кликает в игру.</p></div></div><form data-gm-capture class="gm-point-form"><label class="gm-field">Название точки<input name="name" required maxlength="80" placeholder="Свиток воскрешения, портрет персонажа…"></label><label class="gm-field">В каком окне задать точку<select name="charId" required><option value="">Выберите участника</option>${partyMembers(
     state,
     c.partyId
   )
     .map(char => option(char.id, `${char.class || ''} — ${char.nick}`, c.leaders[c.partyId]))
     .join(
       ''
-    )}</select></label><button class="btn primary">⊕ Задать координаты</button></form><p class="muted">Размер окна и DPI определяются автоматически. Для другого размера окна создайте вариант точки; после перемещения элементов интерфейса задайте точку заново.</p><div class="gm-points-workbench"><nav class="gm-point-list" aria-label="Сохранённые координатные точки">${c.points.map(p => `<button class="gm-point-choice" data-gm-point="${esc(p.id)}"><b>${esc(p.name)}</b><small>${p.width} × ${p.height}</small></button>`).join('') || '<p>Нет сохранённых точек.</p>'}</nav><article class="gm-point-detail" data-gm-point-detail></article></div></section>
+    )}</select></label><button class="btn primary">⊕ Задать координаты</button></form><p class="muted">Размер окна и DPI определяются автоматически. Для другого размера окна создайте вариант точки; после перемещения элементов интерфейса задайте точку заново.</p><div class="gm-points-workbench"><nav class="gm-point-list" aria-label="Сохранённые координатные точки">${c.points.map(p => `<button class="gm-point-choice" data-gm-point="${esc(p.id)}"><b>${esc(p.name)}</b><small>${p.width} × ${p.height}</small></button>`).join('') || '<p>Нет сохранённых точек.</p>'}</nav><article class="gm-point-detail" data-gm-point-detail></article></div></details>
+  <details class="gm-background-section"><summary>Лаборатория фонового ввода · эксперимент</summary><p>Подготовьте отдельные тесты для одного твина. Программа ничего не запускает автоматически. Фоновая клавиатура в PW пока не подтверждена.</p><button type="button" class="btn ghost" data-gm-background-lab>Подготовить 5 вариантов для сравнения</button></details>
   <footer class="gm-bottom-actions"><button class="btn" data-gm-logs>≡ Журнал сеанса</button><button class="btn" data-gm-overlay>▣ Открыть оверлей</button><button class="btn ghost" data-gm-overlay-settings>⚙ Настройки оверлея</button></footer></section>`;
+  host.querySelector('.gm-points-section').open = pointsOpen;
+  host.querySelector('.gm-background-section').open = labOpen;
+  host.querySelector('[data-gm-background-lab]').onclick = () => openBackgroundLab(config(), save);
+  host.querySelector('[data-gm-check-windows]').onclick = () => host.querySelector('[data-gm-diagnostics]').click();
+  const search = host.querySelector('[data-gm-search]');
+  search.value = searchQuery;
+  const filterCommands = () => {
+    const query = search.value.trim().toLocaleLowerCase();
+    host.querySelectorAll('[data-gm-select]').forEach(button => {
+      button.hidden = !button.textContent.toLocaleLowerCase().includes(query);
+    });
+    let empty = host.querySelector('[data-gm-no-matches]');
+    if (!empty) {
+      empty = document.createElement('p');
+      empty.dataset.gmNoMatches = '';
+      empty.className = 'muted';
+      empty.textContent = 'Ничего не найдено. Измените запрос.';
+      host.querySelector('.gm-command-menu').append(empty);
+    }
+    empty.hidden = !query || !!host.querySelector('[data-gm-select]:not([hidden])');
+  };
+  search.oninput = filterCommands;
+  filterCommands();
   host.querySelectorAll('[data-gm-resolution]').forEach(
     select =>
       (select.onchange = () => {

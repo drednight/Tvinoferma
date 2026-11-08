@@ -1190,3 +1190,126 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   gap: 16px;
 }
+/* A short path for first-time users; advanced controls remain available on demand. */
+.gm-start-guide {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 12px;
+  margin: 20px 0;
+}
+.gm-start-guide article {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2, var(--surface-1));
+}
+.gm-start-guide article > span {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+.gm-start-guide p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 7px 0;
+}
+.gm-command-search {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 14px;
+  max-width: 440px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.gm-command-choice[hidden] {
+  display: none;
+}
+.gm-points-section > summary,
+.gm-background-section > summary,
+.gm-editor-advanced > summary,
+.gm-block-advanced > summary {
+  cursor: pointer;
+  font-weight: 650;
+  padding: 12px 0;
+}
+.gm-background-section {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0 16px 12px;
+  margin: 20px 0;
+}
+.gm-background-section p {
+  color: var(--muted);
+  line-height: 1.6;
+}
+.gm-editor-intro {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.gm-editor-intro span {
+  padding: 7px 10px;
+  background: var(--surface-2, var(--surface-1));
+  color: var(--muted);
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.gm-editor-advanced,
+.gm-block-advanced {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0 12px 10px;
+  margin: 12px 0;
+}
+.gm-editor-advanced > p,
+.gm-empty-plan p {
+  color: var(--muted);
+  line-height: 1.6;
+  font-size: 12px;
+}
+.gm-empty-plan {
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  text-align: center;
+  display: grid;
+  place-content: center;
+  min-height: 190px;
+}
+.gm-background-lab {
+  display: grid;
+  gap: 12px;
+}
+.gm-background-lab label {
+  display: grid;
+  gap: 6px;
+}
+.gm-background-lab p,
+.gm-background-lab li {
+  line-height: 1.6;
+}
+.gm-lab-warning {
+  padding: 12px;
+  border: 1px solid #bc9655;
+  border-radius: 8px;
+  color: #e4c891;
+}
+.gm-editor-basics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 18px;
+  align-items: start;
+  margin: 10px 0 16px;
+}
+.gm-dialog .gm-editor-basics > label {
+  display: grid;
+  gap: 7px;
+}
+.gm-action-library .gm-extra-actions {
+  font-size: 13px;
+}

@@ -1,5 +1,5 @@
 import { backgroundReport } from './diagnostics.js';
-import { BACKGROUND_METHODS, backgroundMethod, validateActivityCommand } from './background.js';
+import { BACKGROUND_METHODS, backgroundMethod, validateActivityCommand, isActivityMethod } from './background.js';
 import { inputLabel, formatMirrorInput } from './inputTrace.js';
 import { compileComposition, executeComposition, compositionActions } from './composition.js';
 import { listen, emitTo } from '@tauri-apps/api/event';
@@ -277,7 +277,7 @@ const act = async (row, action, extra = {}) => {
   if (action === 'key-background' && result?.schema === 1) {
     log(`Диагностика ввода → ${row.nick || row.pid}:`, '', false);
     for (const line of backgroundReport(result)) log(line, '', false);
-    if (inputTiming.backgroundMethod === 'activity' && typeof result.originalForeground === 'string')
+    if (isActivityMethod(inputTiming.backgroundMethod) && typeof result.originalForeground === 'string')
       inputTiming.activityForeground ??= result.originalForeground;
     if (result.ok === false) {
       if (result.foregroundChanged) throw new Error('Focus changed during background test');
@@ -566,7 +566,14 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
   try {
     rows = await windowTargets(command, c, snapshotRows);
   } catch (error) {
-    if (exactTarget || composing || command.action !== 'sequence' || command.scope === 'managed') throw error;
+    if (
+      command.strictTargets ||
+      exactTarget ||
+      composing ||
+      command.action !== 'sequence' ||
+      command.scope === 'managed'
+    )
+      throw error;
     // Resolution-only fallback, before input. Never retry/broaden after a delivery failure.
     if (
       !snapshotRows.length ||

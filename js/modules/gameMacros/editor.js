@@ -20,7 +20,7 @@ export const commandLabels = {
   launch: 'Штатный запуск пати',
   mirror: 'Повтор клавиатуры — вкл / выкл',
   'mouse-mirror': 'Повтор мыши — вкл / выкл',
-  composite: 'Составная команда: блоки и запись',
+  composite: 'Команда из шагов',
   resize: 'Размер игровой области',
   pause: 'Пауза / продолжить'
 };
@@ -117,13 +117,13 @@ export function openCommandEditor(c, save, row = null) {
       )
       .join(
         ''
-      )}</fieldset><aside data-gm-action-help aria-live="polite"></aside></div><label>Сочетание для запуска <input class="input" name="hotkey" placeholder="CTRL+ALT+F8"></label><label>Доставка клавиш<select name="delivery"><option value="foreground">Обычная — с переключением окна (ускорена)</option><option value="background">Без переключения — оконные сообщения (эксперимент)</option></select><small>Фон: клавиши и сочетания в последовательности либо F6→F1; Shift/Ctrl/Alt также экспериментальны. Игра может игнорировать сообщения. Нет автоперехода к переключению окон, результат в игре не подтверждается. Не используйте для расходных действий без проверки.</small></label><fieldset data-gm-background-method><legend>Проверка фоновой доставки клавиш</legend><label>Способ<select name="backgroundMethod">${Object.entries(
+      )}</fieldset><aside data-gm-action-help aria-live="polite"></aside></div><label>Сочетание для запуска (необязательно) <input class="input" name="hotkey" placeholder="CTRL+ALT+F8"></label><label>Доставка клавиш<select name="delivery"><option value="foreground">Обычная — с переключением окна (ускорена)</option><option value="background">Без переключения — оконные сообщения (эксперимент)</option></select><small>Фон: клавиши и сочетания в последовательности либо F6→F1; Shift/Ctrl/Alt также экспериментальны. Игра может игнорировать сообщения. Нет автоперехода к переключению окон, результат в игре не подтверждается. Не используйте для расходных действий без проверки.</small></label><fieldset data-gm-background-method><legend>Проверка фоновой доставки клавиш</legend><label>Способ<select name="backgroundMethod">${Object.entries(
       BACKGROUND_METHODS
     )
       .map(([v, l]) => `<option value="${v}">${esc(l)}</option>`)
       .join(
         ''
-      )}</select></label><small>Уведомления активности + клавиша: отдельная последовательность, например SHIFT+1 и F2 с новой строки, при необходимости wait 200. Модификаторы передаются оконными сообщениями; обработка Shift/Ctrl/Alt игрой пока не подтверждена. Проверено вручную на B в двух клиентах официального PW; другие клавиши требуют проверки. Не для мыши, повтора, F6→F1 и составных команд. Если получатели управляющей пати не определились до ввода, отдельная последовательность отправляется всем проверенным игровым окнам; расширение области видно в журнале. После ошибки ввода резерв не запускается. Окна должны быть не свёрнуты, удерживаемые клавиши и мышь отпущены. Нет SetFocus/SetForegroundWindow и автоперехода к активации; сам клиент может сменить фокус. При ошибке дальнейшая отправка прекращается. Кнопка ниже создаёт только три прежних варианта, без уведомлений активности.</small><button type="button" class="btn ghost" data-gm-background-variants>Создать 3 варианта для проверки</button></fieldset><fieldset data-gm-timing><legend>Переключение и завершение</legend><label data-gm-return>После команды<select name="returnTo"><option value="leader">Вернуться к ПЛ выбранной пати</option><option value="last">Остаться на последнем окне</option></select></label><label>Задержка после активации, мс<input name="switchMs" type="number" min="0" max="500" value="30"></label><label>Удержание клавиши, мс<input name="holdMs" type="number" min="10" max="200" value="30"></label><small>Уменьшайте только после проверки в игре. Фокус проверяется независимо от задержки. В составной команде возврат выполняется один раз в самом конце к ПЛ явно выбранной пати, а не к ПЛ последнего блока. По умолчанию составная команда остаётся на последнем окне.</small></fieldset><label data-gm-scope-field>Область команды <select name="scope"><option value="party">Управляющая пати</option><option value="managed">Все распознанные запущенные окна</option></select><small>«Управляющая пати» — участники пати, выбранной в основном разделе. «Все распознанные окна» — все проверенные клиенты, даже из других пати; это нужно, например, для общего реса. В явно выбранной общей области неизвестное окно блокирует запуск. Для отдельной последовательности с управляющей пати при ошибке определения получателей включается резерв на все проверенные игровые PID, даже без распознанного ника; причина и получатели видны в журнале до ввода.</small></label><fieldset class="gm-choice-grid" data-gm-targets><legend>Кому отправлять</legend>${[
+      )}</select></label><small>Уведомления активности + клавиша: отдельная последовательность, например SHIFT+1 и F2 с новой строки, при необходимости wait 200. Модификаторы передаются оконными сообщениями; обработка Shift/Ctrl/Alt игрой пока не подтверждена. Ручной B-тест не открыл инвентарь в двух клиентах PW. Новые способы тоже требуют ручной проверки. Не для мыши, повтора, F6→F1 и составных команд. Если получатели управляющей пати не определились до ввода, отдельная последовательность отправляется всем проверенным игровым окнам; расширение области видно в журнале. После ошибки ввода резерв не запускается. Окна должны быть не свёрнуты, удерживаемые клавиши и мышь отпущены. Нет SetFocus/SetForegroundWindow и автоперехода к активации; сам клиент может сменить фокус. При ошибке дальнейшая отправка прекращается. Кнопка ниже создаёт только три прежних варианта, без уведомлений активности.</small><button type="button" class="btn ghost" data-gm-background-variants>Создать 3 варианта для проверки</button></fieldset><fieldset data-gm-timing><legend>Переключение и завершение</legend><label data-gm-return>После команды<select name="returnTo"><option value="leader">Вернуться к ПЛ выбранной пати</option><option value="last">Остаться на последнем окне</option></select></label><label>Задержка после активации, мс<input name="switchMs" type="number" min="0" max="500" value="30"></label><label>Удержание клавиши, мс<input name="holdMs" type="number" min="10" max="200" value="30"></label><small>Уменьшайте только после проверки в игре. Фокус проверяется независимо от задержки. В составной команде возврат выполняется один раз в самом конце к ПЛ явно выбранной пати, а не к ПЛ последнего блока. По умолчанию составная команда остаётся на последнем окне.</small></fieldset><label data-gm-scope-field>Область команды <select name="scope"><option value="party">Управляющая пати</option><option value="managed">Все распознанные запущенные окна</option></select><small>«Управляющая пати» — участники пати, выбранной в основном разделе. «Все распознанные окна» — все проверенные клиенты, даже из других пати; это нужно, например, для общего реса. В явно выбранной общей области неизвестное окно блокирует запуск. Для отдельной последовательности с управляющей пати при ошибке определения получателей включается резерв на все проверенные игровые PID, даже без распознанного ника; причина и получатели видны в журнале до ввода.</small></label><fieldset class="gm-choice-grid" data-gm-targets><legend>Кому отправлять</legend>${[
       ['all', 'Вся пати'],
       ['leader', 'Только ПЛ'],
       ['others', 'Кроме ПЛ'],
@@ -154,6 +154,7 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
     onSubmit: async data => {
       try {
         const value = Object.fromEntries(data);
+        value.strictTargets = row?.strictTargets === true;
         if (value.action === 'follow' && String(value.followSequence || '').trim()) steps(value.followSequence);
         if (!String(value.name || '').trim()) throw new Error('Введите название команды.');
         if (
@@ -403,6 +404,35 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
     form.querySelector('[data-gm-subset]').hidden = fixed || target !== 'subset';
   };
   sync();
+  if (unified) {
+    const intro = document.createElement('div');
+    intro.className = 'gm-editor-intro';
+    intro.innerHTML =
+      '<span>1 · Назовите команду</span><span>2 · Добавьте действия</span><span>3 · Сохраните и проверьте</span>';
+    form.prepend(intro);
+    const basics = document.createElement('div');
+    basics.className = 'gm-editor-basics';
+    intro.after(basics);
+    for (const name of ['name', 'hotkey']) basics.append(form.elements.namedItem(name).closest('label'));
+
+    const advanced = document.createElement('details');
+    advanced.className = 'gm-editor-advanced';
+    advanced.innerHTML =
+      '<summary>Дополнительно: задержки, возврат и пати команды</summary><p>Обычно эти настройки менять не нужно. Шаги и получатели настраиваются выше.</p>';
+    for (const selector of ['[data-gm-timing]', '[data-gm-launch-field]']) {
+      const field = form.querySelector(selector);
+      if (field) advanced.append(field);
+    }
+    form.append(advanced);
+    const refreshConsent = () => {
+      form.querySelector('[name="compositeConsent"]').closest('label').hidden =
+        !row?.resourceAllowed &&
+        !form.querySelector('[data-step-type="point"],[data-step-type="screen"],[data-step-type="command"]');
+    };
+    form.addEventListener('click', refreshConsent);
+    form.addEventListener('change', refreshConsent);
+    refreshConsent();
+  }
   form.addEventListener('change', event => {
     if (event.target.name === 'action' && !row)
       form.elements.namedItem('returnTo').value = ['sequence', 'follow', 'click', 'f6f1', 'optimize'].includes(

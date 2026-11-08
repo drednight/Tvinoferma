@@ -1112,3 +1112,22 @@ it('retains explicit all-managed-window F6/F1 routing, validates the PL, and ref
   expect(invoke.mock.calls.some(([, a]) => a?.action === 'key')).toBe(false);
   expect(runtime.snapshot().executionState).toBe('failed');
 });
+
+it('fails closed for strict laboratory recipients instead of widening to every running game', async () => {
+  state.settings.gameMacros.commands = [
+    {
+      id: 'strict',
+      name: 'Лаборатория',
+      action: 'sequence',
+      sequence: 'B',
+      delivery: 'background',
+      backgroundMethod: 'activity-window',
+      target: 'subset',
+      charIds: ['missing'],
+      strictTargets: true
+    }
+  ];
+  await runtime.run('strict');
+  expect(invoke.mock.calls.some(([, args]) => args?.action === 'key-background' || args?.action === 'key')).toBe(false);
+  expect(runtime.snapshot().executionState).toBe('failed');
+});

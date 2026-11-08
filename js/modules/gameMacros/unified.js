@@ -1,3 +1,4 @@
+import { isActivityMethod } from './background.js';
 import { steps } from './keySyntax.js';
 
 const keySteps = value =>
@@ -87,7 +88,7 @@ export function unifiedCommand(command, config) {
 /** Preserve isolated activity and compatible legacy keyboard routing behind the unified editor. */
 export function materializeUnifiedCommand(entry) {
   if (entry.action !== 'composite') return entry;
-  const activity = entry.blocks.some(b => b.delivery === 'background' && b.backgroundMethod === 'activity');
+  const activity = entry.blocks.some(b => b.delivery === 'background' && isActivityMethod(b.backgroundMethod));
   const [block] = entry.blocks;
   const simple =
     entry.blocks.length === 1 &&

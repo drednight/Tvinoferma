@@ -99,3 +99,13 @@ it('keeps the service pause/resume command editable without treating it as a fin
   await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1));
   expect(save.mock.calls[0][0].commands[0]).toMatchObject({ id: 'pause', action: 'pause' });
 });
+
+it('starts with a simple empty plan and keeps advanced command settings optional', () => {
+  openCommandEditor(config, save);
+  expect(document.querySelector('.gm-editor-intro')).not.toBeNull();
+  expect(document.querySelector('.gm-empty-plan').textContent).toContain('С чего начнём');
+  // The empty state suggests actions, not a preselected key or an automatic input run.
+  expect(document.querySelectorAll('[data-step]')).toHaveLength(0);
+  expect(document.querySelector('.gm-editor-advanced').open).toBe(false);
+  expect(document.querySelector('.gm-block-advanced').open).toBe(false);
+});

@@ -25,6 +25,40 @@ pub enum BackgroundMethod {
     SendTimeout,
     Notify,
     Activity,
+    PostTargetLayout,
+    ActivityWindow,
+    ActivityNotify,
+}
+impl BackgroundMethod {
+    fn is_activity(self) -> bool {
+        matches!(
+            self,
+            Self::Activity | Self::ActivityWindow | Self::ActivityNotify
+        )
+    }
+    fn app_notifications(self) -> bool {
+        matches!(self, Self::Activity | Self::ActivityNotify)
+    }
+    fn notification_transport(self, phase: &str) -> Self {
+        if matches!(self, Self::ActivityNotify)
+            && (phase.starts_with("activate") || phase.starts_with("restore"))
+        {
+            Self::Notify
+        } else {
+            Self::SendTimeout
+        }
+    }
+    fn label(self) -> &'static str {
+        match self {
+            Self::Post => "post",
+            Self::SendTimeout => "send-timeout",
+            Self::Notify => "notify",
+            Self::Activity => "activity",
+            Self::PostTargetLayout => "post-target-layout",
+            Self::ActivityWindow => "activity-window",
+            Self::ActivityNotify => "activity-notify",
+        }
+    }
 }
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -622,8 +656,12 @@ mod win {
     ) -> Result<(), u32> {
         SetLastError(WIN32_ERROR(0));
         let accepted = match method {
-            BackgroundMethod::Activity => return Err(87), // Must go through guarded activity_key.
-            BackgroundMethod::Post => PostMessageW(Some(hwnd), msg, wp, lp).is_ok(),
+            BackgroundMethod::Activity
+            | BackgroundMethod::ActivityWindow
+            | BackgroundMethod::ActivityNotify => return Err(87), // Must go through guarded activity_key.
+            BackgroundMethod::Post | BackgroundMethod::PostTargetLayout => {
+                PostMessageW(Some(hwnd), msg, wp, lp).is_ok()
+            }
             BackgroundMethod::Notify => background_notify(hwnd.0, msg, wp.0, lp.0) != 0,
             BackgroundMethod::SendTimeout => {
                 let mut result = 0;
@@ -729,7 +767,7 @@ mod win {
         key: &str,
         timing: InputTiming,
     ) -> Result<serde_json::Value, String> {
-        if matches!(timing.background_method, BackgroundMethod::Activity) {
+        if timing.background_method.is_activity() {
             return activity_key(
                 raw,
                 pid,
@@ -737,6 +775,7 @@ mod win {
                 timing.hold_ms,
                 false,
                 timing.activity_foreground.as_deref(),
+                timing.background_method,
             );
         }
         let hwnd = verified_window(raw, pid)?;
@@ -747,7 +786,14 @@ mod win {
         let mut messages = Vec::new();
         let mut failure = None;
         let mut send = |key: u16, up: bool| {
-            let scan = unsafe { MapVirtualKeyW(key as u32, MAPVK_VK_TO_VSC) };
+            let scan = unsafe {
+                if matches!(timing.background_method, BackgroundMethod::PostTargetLayout) {
+                    let thread = GetWindowThreadProcessId(hwnd, None);
+                    MapVirtualKeyExW(key as u32, MAPVK_VK_TO_VSC, Some(GetKeyboardLayout(thread)))
+                } else {
+                    MapVirtualKeyW(key as u32, MAPVK_VK_TO_VSC)
+                }
+            };
             let (msg, flags) = background_key_message(key, scan, up, alt_down);
             if key == 0x12 {
                 alt_down = !up;
@@ -788,12 +834,7 @@ mod win {
         let foreground_changed = unsafe { GetForegroundWindow() != original };
         report["inputSent"] = serde_json::json!(true);
         report["messages"] = serde_json::json!(messages);
-        report["method"] = serde_json::json!(match timing.background_method {
-            BackgroundMethod::Post => "post",
-            BackgroundMethod::SendTimeout => "send-timeout",
-            BackgroundMethod::Notify => "notify",
-            BackgroundMethod::Activity => "activity",
-        });
+        report["method"] = serde_json::json!(timing.background_method.label());
         report["holdMs"] = serde_json::json!(timing.hold_ms.clamp(10, 200));
         report["foregroundChanged"] = serde_json::json!(foreground_changed);
         report["error"] = serde_json::json!(failure);
@@ -802,7 +843,7 @@ mod win {
     }
     // Shared guarded protocol: explicit diagnostic or opt-in single-key command, never repeat.
     pub fn activity_probe(raw: u64, pid: u32) -> Result<serde_json::Value, String> {
-        activity_key(raw, pid, "B", 30, true, None)
+        activity_key(raw, pid, "B", 30, true, None, BackgroundMethod::Activity)
     }
     fn activity_key(
         raw: u64,
@@ -811,6 +852,7 @@ mod win {
         hold_ms: u64,
         diagnostic: bool,
         expected: Option<&str>,
+        method: BackgroundMethod,
     ) -> Result<serde_json::Value, String> {
         let (mods, vk) = chord(key)?;
         static TEST: Mutex<()> = Mutex::new(());
@@ -820,6 +862,7 @@ mod win {
         let hwnd = verified_window(raw, pid)?;
         let mut report = background_probe(raw, pid, key, false)?;
         report["activityTest"] = serde_json::json!(true);
+        report["activityVariant"] = serde_json::json!(method.label());
         report["holdMs"] = serde_json::json!(hold_ms.clamp(10, 200));
         report["inputSent"] = serde_json::json!(false);
         let original = unsafe { GetForegroundWindow() };
@@ -858,26 +901,21 @@ mod win {
                 steps.push(serde_json::json!({"phase":phase,"skipped":true}));
                 return false;
             }
-            let result = unsafe {
-                send_background(
-                    hwnd,
-                    msg,
-                    WPARAM(wp),
-                    LPARAM(lp),
-                    BackgroundMethod::SendTimeout,
-                )
-            };
+            let transport = method.notification_transport(phase);
+            let asynchronous = matches!(transport, BackgroundMethod::Notify);
+            let result = unsafe { send_background(hwnd, msg, WPARAM(wp), LPARAM(lp), transport) };
             failure.set(failure.get().or(result.err()));
             let after = unsafe { GetForegroundWindow() };
             changed.set(changed.get() || after != original);
-            steps.push(serde_json::json!({"phase":phase,"wparam":wp,"message":format!("0x{msg:04X}"),"ok":result.is_ok(),"error":result.err().unwrap_or(0),"before":format!("0x{:X}",before.0 as usize),"after":format!("0x{:X}",after.0 as usize)}));
+            steps.push(serde_json::json!({"phase":phase,"asynchronous":asynchronous,"wparam":wp,"message":format!("0x{msg:04X}"),"ok":result.is_ok(),"error":result.err().unwrap_or(0),"before":format!("0x{:X}",before.0 as usize),"after":format!("0x{:X}",after.0 as usize)}));
             result.is_ok() && (cleanup || !changed.get())
         };
         // No early return below: always attempt reverse notifications, including timeout paths.
         let notifications = original_pid != pid;
         report["notificationsSent"] = serde_json::json!(notifications);
-        let app_ok =
-            !notifications || send("activate-app", WM_ACTIVATEAPP, 1, source_thread as isize);
+        let app_ok = !notifications
+            || !method.app_notifications()
+            || send("activate-app", WM_ACTIVATEAPP, 1, source_thread as isize);
         let window_ok = app_ok
             && (!notifications || send("activate-window", WM_ACTIVATE, 1, original.0 as isize));
         if window_ok {
@@ -935,20 +973,22 @@ mod win {
                     current.0 as isize
                 },
             );
-            let current = unsafe { GetForegroundWindow() };
-            let mut current_pid = 0;
-            let current_thread =
-                unsafe { GetWindowThreadProcessId(current, Some(&mut current_pid)) };
-            send(
-                "restore-app",
-                WM_ACTIVATEAPP,
-                usize::from(current_pid == pid),
-                if current_pid == pid {
-                    source_thread as isize
-                } else {
-                    current_thread as isize
-                },
-            );
+            if method.app_notifications() {
+                let current = unsafe { GetForegroundWindow() };
+                let mut current_pid = 0;
+                let current_thread =
+                    unsafe { GetWindowThreadProcessId(current, Some(&mut current_pid)) };
+                send(
+                    "restore-app",
+                    WM_ACTIVATEAPP,
+                    usize::from(current_pid == pid),
+                    if current_pid == pid {
+                        source_thread as isize
+                    } else {
+                        current_thread as isize
+                    },
+                );
+            }
         }
         changed.set(changed.get() || unsafe { GetForegroundWindow() } != original);
         report["error"] = serde_json::json!(failure.get());
@@ -1030,6 +1070,50 @@ mod win {
     }
     #[cfg(test)]
     mod background_key_tests {
+        #[test]
+        fn experiments_have_explicit_notification_plans_and_bounded_key_transport() {
+            use super::BackgroundMethod as Method;
+            assert!(!Method::PostTargetLayout.is_activity());
+            assert!(!Method::ActivityWindow.app_notifications());
+            assert!(Method::Activity.app_notifications());
+            assert!(Method::ActivityNotify.app_notifications());
+            for variant in [
+                Method::Activity,
+                Method::ActivityWindow,
+                Method::ActivityNotify,
+            ] {
+                assert!(variant.is_activity());
+                assert!(matches!(
+                    variant.notification_transport("key-down"),
+                    Method::SendTimeout
+                ));
+                assert!(matches!(
+                    variant.notification_transport("key-up"),
+                    Method::SendTimeout
+                ));
+                assert!(matches!(
+                    variant.notification_transport("modifier-up"),
+                    Method::SendTimeout
+                ));
+            }
+            assert!(matches!(
+                Method::ActivityNotify.notification_transport("activate-app"),
+                Method::Notify
+            ));
+            assert!(matches!(
+                Method::ActivityNotify.notification_transport("restore-window"),
+                Method::Notify
+            ));
+            assert!(matches!(
+                Method::ActivityWindow.notification_transport("activate-window"),
+                Method::SendTimeout
+            ));
+            for name in ["post-target-layout", "activity-window", "activity-notify"] {
+                let parsed: Method = serde_json::from_str(&format!("\"{name}\"")).unwrap();
+                assert_eq!(parsed.label(), name);
+            }
+        }
+
         #[test]
         fn activity_mode_is_explicit_and_parses_modifier_order() {
             let timing: super::InputTiming = serde_json::from_str(

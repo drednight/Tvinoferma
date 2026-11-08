@@ -148,7 +148,7 @@ it('keeps the master switch in the standalone page header', () => {
   expect(toggle.checked).toBe(false);
   const click = new MouseEvent('click', { bubbles: true, cancelable: true });
   toggle.closest('label').dispatchEvent(click);
-  expect(details.querySelector('summary')).toBeNull();
+  expect(details.querySelector(':scope > summary')).toBeNull();
   expect(toggle.checked).toBe(true);
   expect(document.querySelector('[data-gm-mirror-source]').value).toBe('any');
 });
@@ -295,4 +295,26 @@ it('groups execution controls together and separates repeat configuration in a n
   expect(group.querySelector('legend').textContent).toContain('Повтор клавиатуры и мыши');
   expect(group.contains(document.querySelector('[data-gm-mirror-source]'))).toBe(true);
   expect(group.contains(document.querySelector('[data-gm-twins-modifier]'))).toBe(true);
+});
+
+it('filters commands without executing them and prepares background test commands without sending input', async () => {
+  const search = document.querySelector('[data-gm-search]');
+  search.value = 'нет такой';
+  search.dispatchEvent(new Event('input', { bubbles: true }));
+  expect(document.querySelector('[data-gm-select]').hidden).toBe(true);
+  expect(document.querySelector('[data-gm-no-matches]').hidden).toBe(false);
+  search.value = '';
+  search.dispatchEvent(new Event('input', { bubbles: true }));
+  state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['p'] });
+  state.settings.gameMacros.leaders = { p: 'a' };
+  document.querySelector('[data-gm-background-lab]').click();
+  const form = document.querySelector('.gm-background-lab');
+  form.elements.charId.value = 'b';
+  form.elements.key.value = 'B';
+  document.querySelector('.modal-footer .primary').click();
+  await vi.waitFor(() => expect(state.settings.gameMacros.commands).toHaveLength(6));
+  expect(
+    state.settings.gameMacros.commands.slice(1).every(c => c.strictTargets && c.charIds[0] === 'b' && !c.hotkey)
+  ).toBe(true);
+  expect(mocks.run).not.toHaveBeenCalled();
 });

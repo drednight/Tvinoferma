@@ -28,7 +28,7 @@ export function backgroundReport(report) {
     );
     const key = [...modifiers, baseKey].join('+');
     lines.push(
-      `Эксперимент: WM_ACTIVATEAPP + WM_ACTIVATE, сочетание ${key} через SendMessageTimeout (25 мс); без SetFocus/SetForegroundWindow.`
+      `Эксперимент: ${report.activityVariant === 'activity-window' ? 'только WM_ACTIVATE' : report.activityVariant === 'activity-notify' ? 'WM_ACTIVATEAPP + WM_ACTIVATE через SendNotifyMessage (асинхронно)' : 'WM_ACTIVATEAPP + WM_ACTIVATE'}, сочетание ${key} через SendMessageTimeout (25 мс); без SetFocus/SetForegroundWindow.`
     );
     if (report.notificationsSent === false)
       lines.push('Цель уже активна: клавиша отправляется без дополнительных уведомлений активности.');
@@ -51,7 +51,7 @@ export function backgroundReport(report) {
         ? step.phase
         : '?';
       lines.push(
-        `${phase}${phase.includes('modifier') ? ` VK=${hex(step.wparam)}` : ''}: ${step.skipped ? 'пропущено' : `Windows подтвердила — ${flag(step.ok)}, код ${number(step.error)}; foreground ${token(step.before)} → ${token(step.after)}`}.`
+        `${phase}${phase.includes('modifier') ? ` VK=${hex(step.wparam)}` : ''}: ${step.skipped ? 'пропущено' : `${step.asynchronous ? 'API принял асинхронный запрос (не подтверждение обработки)' : 'Windows подтвердила'} — ${flag(step.ok)}, код ${number(step.error)}; foreground ${token(step.before)} → ${token(step.after)}`}.`
       );
     }
     lines.push(
@@ -85,7 +85,9 @@ export function backgroundReport(report) {
       'Ответ получен только с увеличенным лимитом: 25 мс может быть недостаточно. Лимит клавиатурной команды не менялся.'
     );
   if (report.inputSent) {
-    const method = ['post', 'send-timeout', 'notify'].includes(report.method) ? report.method : '?';
+    const method = ['post', 'send-timeout', 'notify', 'post-target-layout'].includes(report.method)
+      ? report.method
+      : '?';
     lines.push(
       `Выбранный способ ${method}, удержание ${number(report.holdMs)} мс. Изменение фокуса во время отправки — ${flag(report.foregroundChanged)}.`
     );
