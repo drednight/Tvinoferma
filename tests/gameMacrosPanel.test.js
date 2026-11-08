@@ -184,6 +184,10 @@ it('groups keyboard and mouse repeat controls together', () => {
   const group = document.querySelector('.gm-mirror-buttons');
   expect(group.querySelector('[data-gm-mirror]')).not.toBeNull();
   expect(group.querySelector('[data-gm-mirror-mouse]')).not.toBeNull();
+  expect(group.querySelector('[data-gm-mirror]').textContent).toBe('⌨ ВЫКЛ');
+  expect(group.querySelector('[data-gm-mirror-mouse]').textContent).toBe('🖱 ВЫКЛ');
+  expect(group.querySelector('[data-gm-mirror]').getAttribute('aria-label')).toContain('клавиатуры');
+  expect(group.querySelector('[data-gm-mirror-mouse]').getAttribute('aria-label')).toContain('мыши');
 });
 
 it('opens a non-input diagnostic modal and explicitly probes one selected client', async () => {

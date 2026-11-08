@@ -256,14 +256,20 @@
         padding-top: 8px;
       }
       .repeat-controls {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 8px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
         margin: 8px 4px;
       }
       .repeat-controls .repeat-toggle {
         margin: 0;
         min-width: 0;
+        min-height: 30px;
+        width: auto;
+        flex: 0 0 auto;
+        padding: 4px 8px;
+        font-size: 12px;
+        white-space: nowrap;
       }
       .repeat-toggle {
         font-weight: 600;
@@ -273,6 +279,11 @@
         border-color: #66d9ad;
         color: #c5ffe6;
       }
+      .repeat-toggle[data-state='off'] {
+        border-color: #82535f;
+        color: #edb2bd;
+      }
+      .repeat-toggle[data-state='pending'],
       .repeat-toggle[data-state='paused'] {
         border-color: #e6b86a;
         color: #f5cc76;
@@ -324,21 +335,25 @@
             type="button"
             class="repeat-toggle"
             id="mouse-repeat-toggle"
+            aria-label="Включить повтор мыши"
+            title="Включить повтор мыши"
             aria-pressed="false"
             data-state="off"
             disabled
           >
-            🖱 Повтор мыши: ВЫКЛ
+            🖱 ВЫКЛ
           </button>
           <button
             type="button"
             class="repeat-toggle"
             id="keyboard-repeat-toggle"
+            aria-label="Включить повтор клавиатуры"
+            title="Включить повтор клавиатуры"
             aria-pressed="false"
             data-state="off"
             disabled
           >
-            ⌨ Повтор клавиатуры: ВЫКЛ
+            ⌨ ВЫКЛ
           </button>
         </div>
         <section id="shortcuts-screen">

@@ -1120,3 +1120,27 @@
   width: 76px;
   flex: 0 0 76px;
 }
+
+/* Repeat buttons keep device/action descriptions in accessible labels, not long captions. */
+.gm-mirror-buttons .gm-repeat-toggle {
+  min-height: 30px;
+  min-width: 0;
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.gm-repeat-toggle[data-state='on'] {
+  background: #214c40;
+  border-color: #66d9ad;
+  color: #c5ffe6;
+}
+.gm-repeat-toggle[data-state='off'] {
+  border-color: #82535f;
+  color: #edb2bd;
+}
+.gm-repeat-toggle[data-state='paused'],
+.gm-repeat-toggle[data-state='pending'] {
+  border-color: #e6b86a;
+  color: #f5cc76;
+}

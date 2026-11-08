@@ -1,3 +1,4 @@
+import { updateRepeatButton } from './repeatButton.js';
 import { copyJournal } from './journal.js';
 import { normalizeAppearance, TEXT_PRESETS, KEY_PRESETS, COMMAND_PRESETS } from './appearance.js';
 import { listen, emitTo } from '@tauri-apps/api/event';
@@ -79,28 +80,10 @@ async function init() {
     pauseButton.textContent = data.paused ? '▶ Продолжить' : 'Ⅱ Пауза';
     pauseButton.setAttribute('aria-pressed', String(!!data.paused));
     reconnectButton.disabled = !!data.busy || !!data.mirrorPending;
-    const keyboardOn = !!data.mirrorKeys,
-      keyboardPaused = keyboardOn && !data.mirroring && !data.mirrorPending;
-    keyboardToggle.textContent = data.mirrorPending
-      ? '⌨ Повтор клавиатуры: обновление…'
-      : keyboardPaused
-        ? '⌨ Повтор клавиатуры: ПРИОСТАНОВЛЕН'
-        : `⌨ Повтор клавиатуры: ${keyboardOn ? 'ВКЛ' : 'ВЫКЛ'}`;
-    keyboardToggle.dataset.state = keyboardPaused ? 'paused' : keyboardOn ? 'on' : 'off';
-    keyboardToggle.setAttribute('aria-pressed', String(keyboardOn));
-    keyboardToggle.title = keyboardOn ? 'Выключить повтор клавиатуры' : 'Включить повтор клавиатуры';
+    updateRepeatButton(keyboardToggle, 'keyboard', data);
     keyboardToggle.disabled = keyboardDisabled();
     document.getElementById('party-close-all').disabled = !!data.busy;
-    const mouseOn = !!data.mirrorMouse,
-      mousePaused = mouseOn && !data.mirroring && !data.mirrorPending;
-    mouseToggle.textContent = data.mirrorPending
-      ? '🖱 Повтор мыши: обновление…'
-      : mousePaused
-        ? '🖱 Повтор мыши: ПРИОСТАНОВЛЕН'
-        : `🖱 Повтор мыши: ${mouseOn ? 'ВКЛ' : 'ВЫКЛ'}`;
-    mouseToggle.dataset.state = mousePaused ? 'paused' : mouseOn ? 'on' : 'off';
-    mouseToggle.setAttribute('aria-pressed', String(mouseOn));
-    mouseToggle.title = mouseOn ? 'Выключить повтор мыши' : 'Включить повтор мыши';
+    updateRepeatButton(mouseToggle, 'mouse', data);
     mouseToggle.disabled = mouseDisabled();
     journalLines = Array.isArray(data.logs)
       ? data.logs.slice()

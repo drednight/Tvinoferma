@@ -313,7 +313,9 @@ it('shows a dedicated mouse toggle outside the hideable service panel with hones
   expect(button.closest('#overlay-controls')).toBeNull();
   expect(button.hidden).toBe(false);
   update({ payload: { mirrorMouse: true, mirroring: false } });
-  expect(button.textContent).toContain('ПРИОСТАНОВЛЕН');
+  expect(button.textContent).toContain('ВКЛ Ⅱ');
+  expect(button.dataset.state).toBe('paused');
+  expect(button.getAttribute('aria-label')).toContain('приостановлен');
   update({ payload: { mirrorMouse: true, mirroring: true, busy: true } });
   expect(button.disabled).toBe(false);
   update({ payload: { mirrorMouse: false, busy: true } });
@@ -332,7 +334,9 @@ it('keyboard repeat is independent, visible with service panel hidden, and refle
     expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-keyboard-toggle', { enabled: false })
   );
   mocks.handlers.get('game-macro-snapshot')({ payload: { mirrorKeys: true, mirroring: false } });
-  expect(button.textContent).toContain('ПРИОСТАНОВЛЕН');
+  expect(button.textContent).toContain('ВКЛ Ⅱ');
+  expect(button.dataset.state).toBe('paused');
+  expect(button.getAttribute('aria-label')).toContain('приостановлен');
 });
 it('requires explicit confirmation before closing all clients from overlay', async () => {
   document.getElementById('party-close-all').click();
