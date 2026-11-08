@@ -37,7 +37,7 @@
 ## Прогресс
 
 <!-- roadmap:start -->
-**Всего выполнено:** `███░░░░░░░` 23/73 (32%) · обновлено 2026-11-03
+**Всего выполнено:** `██████████` 73/73 (100%) · обновлено 2026-11-08
 
 ### v0.2.3 — Баги: баланс монет и фильтр классов
 
@@ -62,103 +62,103 @@
 
 ### v0.4 — Устойчивость парсеров и данные
 
-`████░░░░░░` 4/10 (40%)
+`██████████` 10/10 (100%)
 
 - [x] [#9](https://github.com/drednight/Tvinoferma/issues/9) **1.5** Фикстуры страниц сайта и тесты парсеров — Высокий, M
-- [ ] [#10](https://github.com/drednight/Tvinoferma/issues/10) **1.6** Единый лог с ротацией и диагностика — Средний, M
-- [ ] [#12](https://github.com/drednight/Tvinoferma/issues/12) **2.1** Health-check парсеров — Высокий, M
+- [x] [#10](https://github.com/drednight/Tvinoferma/issues/10) **1.6** Единый лог с ротацией и диагностика — Средний, M
+- [x] [#12](https://github.com/drednight/Tvinoferma/issues/12) **2.1** Health-check парсеров — Высокий, M
 - [x] [#13](https://github.com/drednight/Tvinoferma/issues/13) **2.2** Селекторы и регулярные выражения в одном конфиге — Высокий, M
 - [x] [#16](https://github.com/drednight/Tvinoferma/issues/16) **2.5** Метки свежести данных — Средний, S
-- [ ] [#19](https://github.com/drednight/Tvinoferma/issues/19) **3.1** Марафоны: довести до плана — Высокий, M
-- [ ] [#22](https://github.com/drednight/Tvinoferma/issues/22) **3.4** Экспорт и импорт в CSV — Средний, M
+- [x] [#19](https://github.com/drednight/Tvinoferma/issues/19) **3.1** Марафоны: довести до плана — Высокий, M
+- [x] [#22](https://github.com/drednight/Tvinoferma/issues/22) **3.4** Экспорт и импорт в CSV — Средний, M
 - [x] [#70](https://github.com/drednight/Tvinoferma/issues/70) **7.9** Кнопка «Доступно обновление» вместо всплывающего окна — Средний, M
-- [ ] [#71](https://github.com/drednight/Tvinoferma/issues/71) **7.10** Стилизованные полосы прокрутки — Низкий, S
-- [ ] [#91](https://github.com/drednight/Tvinoferma/issues/91) **7.13** Запуск игры из приложения: окна, пати, трей — Средний, M
+- [x] [#71](https://github.com/drednight/Tvinoferma/issues/71) **7.10** Стилизованные полосы прокрутки — Низкий, S
+- [x] [#91](https://github.com/drednight/Tvinoferma/issues/91) **7.13** Запуск игры из приложения: окна, пати, трей — Средний, M
 
 ### v0.5 — Умная очередь и «Проверка безопасности»
 
-`░░░░░░░░░░` 0/4 (0%)
+`██████████` 4/4 (100%)
 
-- [ ] [#14](https://github.com/drednight/Tvinoferma/issues/14) **2.3** Умная очередь — Средний, M
-- [ ] [#15](https://github.com/drednight/Tvinoferma/issues/15) **2.4** Сценарий «Проверка безопасности» — Высокий, M
-- [ ] [#17](https://github.com/drednight/Tvinoferma/issues/17) **2.6** Режим «только чтение» для скриптов чтения — Средний, S
-- [ ] [#18](https://github.com/drednight/Tvinoferma/issues/18) **2.7** Устойчивость к сбоям окна и сети — Средний, M
+- [x] [#14](https://github.com/drednight/Tvinoferma/issues/14) **2.3** Умная очередь — Средний, M
+- [x] [#15](https://github.com/drednight/Tvinoferma/issues/15) **2.4** Сценарий «Проверка безопасности» — Высокий, M
+- [x] [#17](https://github.com/drednight/Tvinoferma/issues/17) **2.6** Режим «только чтение» для скриптов чтения — Средний, S
+- [x] [#18](https://github.com/drednight/Tvinoferma/issues/18) **2.7** Устойчивость к сбоям окна и сети — Средний, M
 
 ### v0.6 — Промокоды, шифрование экспорта
 
-`██░░░░░░░░` 1/5 (20%)
+`██████████` 5/5 (100%)
 
-- [ ] [#23](https://github.com/drednight/Tvinoferma/issues/23) **3.5** Серверы и статусы персонажей — Средний, S
+- [x] [#23](https://github.com/drednight/Tvinoferma/issues/23) **3.5** Серверы и статусы персонажей — Средний, S
 - [x] [#25](https://github.com/drednight/Tvinoferma/issues/25) **4.1** Активация промокодов — Высокий, L
-- [ ] [#27](https://github.com/drednight/Tvinoferma/issues/27) **4.3** Общий «Журнал скриптов» — Средний, M
-- [ ] [#28](https://github.com/drednight/Tvinoferma/issues/28) **4.4** Автобэкап перед массовыми операциями — Средний, S
-- [ ] [#47](https://github.com/drednight/Tvinoferma/issues/47) **8.1** Шифрование экспорта паролем — Высокий, M
+- [x] [#27](https://github.com/drednight/Tvinoferma/issues/27) **4.3** Общий «Журнал скриптов» — Средний, M
+- [x] [#28](https://github.com/drednight/Tvinoferma/issues/28) **4.4** Автобэкап перед массовыми операциями — Средний, S
+- [x] [#47](https://github.com/drednight/Tvinoferma/issues/47) **8.1** Шифрование экспорта паролем — Высокий, M
 
 ### v0.7 — Данжи, каталог контента, дашборд
 
-`███░░░░░░░` 2/7 (29%)
+`██████████` 7/7 (100%)
 
-- [ ] [#30](https://github.com/drednight/Tvinoferma/issues/30) **5.1** Циклический календарь — Высокий, S
-- [ ] [#31](https://github.com/drednight/Tvinoferma/issues/31) **5.2** Таблица допусков по Sky Level — Высокий, M
-- [ ] [#32](https://github.com/drednight/Tvinoferma/issues/32) **5.3** Сравнение статов с рекомендуемыми — Средний, M
-- [ ] [#33](https://github.com/drednight/Tvinoferma/issues/33) **5.4** Учёт пропусков в данжи — Средний, S
+- [x] [#30](https://github.com/drednight/Tvinoferma/issues/30) **5.1** Циклический календарь — Высокий, S
+- [x] [#31](https://github.com/drednight/Tvinoferma/issues/31) **5.2** Таблица допусков по Sky Level — Высокий, M
+- [x] [#32](https://github.com/drednight/Tvinoferma/issues/32) **5.3** Сравнение статов с рекомендуемыми — Средний, M
+- [x] [#33](https://github.com/drednight/Tvinoferma/issues/33) **5.4** Учёт пропусков в данжи — Средний, S
 - [x] [#34](https://github.com/drednight/Tvinoferma/issues/34) **5.5** Вкладка «Данжи» и интеграция с дашбордом — Средний, S
-- [ ] [#35](https://github.com/drednight/Tvinoferma/issues/35) **6.1** Удалённый каталог контента — Средний, M
+- [x] [#35](https://github.com/drednight/Tvinoferma/issues/35) **6.1** Удалённый каталог контента — Средний, M
 - [x] [#39](https://github.com/drednight/Tvinoferma/issues/39) **7.1** Дашборд «Сегодня» — Высокий, M
 
 ### v0.8 — Переводы и шаблоны рун
 
-`░░░░░░░░░░` 0/3 (0%)
+`██████████` 3/3 (100%)
 
-- [ ] [#26](https://github.com/drednight/Tvinoferma/issues/26) **4.2** Передача предметов в игру — Высокий, L
-- [ ] [#36](https://github.com/drednight/Tvinoferma/issues/36) **6.2** Карточки шаблонов — Средний, M
-- [ ] [#37](https://github.com/drednight/Tvinoferma/issues/37) **6.3** Шапка и форма заявок — Средний, S
+- [x] [#26](https://github.com/drednight/Tvinoferma/issues/26) **4.2** Передача предметов в игру — Высокий, L
+- [x] [#36](https://github.com/drednight/Tvinoferma/issues/36) **6.2** Карточки шаблонов — Средний, M
+- [x] [#37](https://github.com/drednight/Tvinoferma/issues/37) **6.3** Шапка и форма заявок — Средний, S
 
 ### v0.9 — Поиск, безопасность данных
 
-`█░░░░░░░░░` 1/9 (11%)
+`██████████` 9/9 (100%)
 
-- [ ] [#81](https://github.com/drednight/Tvinoferma/issues/81) **2.8** Обновление selectors.json с GitHub без пересборки — Низкий, M
+- [x] [#81](https://github.com/drednight/Tvinoferma/issues/81) **2.8** Обновление selectors.json с GitHub без пересборки — Низкий, M
 - [x] [#40](https://github.com/drednight/Tvinoferma/issues/40) **7.2** Командная палитра Ctrl+K — Средний, M
-- [ ] [#41](https://github.com/drednight/Tvinoferma/issues/41) **7.3** Уведомления и расписание — Средний, M
-- [ ] [#42](https://github.com/drednight/Tvinoferma/issues/42) **7.4** Календарь / таймлайн марафонов — Средний, M
-- [ ] [#48](https://github.com/drednight/Tvinoferma/issues/48) **8.2** Валидация `state.json` схемой — Средний, M
-- [ ] [#49](https://github.com/drednight/Tvinoferma/issues/49) **8.3** Автобэкап и восстановление — Средний, M
-- [ ] [#50](https://github.com/drednight/Tvinoferma/issues/50) **8.4** Блокировка PIN-кодом — Низкий, M
-- [ ] [#51](https://github.com/drednight/Tvinoferma/issues/51) **8.5** Права и изоляция Tauri — Высокий, M
-- [ ] [#52](https://github.com/drednight/Tvinoferma/issues/52) **8.6** Обнаружение дублей и защита от потери — Средний, S
+- [x] [#41](https://github.com/drednight/Tvinoferma/issues/41) **7.3** Уведомления и расписание — Средний, M
+- [x] [#42](https://github.com/drednight/Tvinoferma/issues/42) **7.4** Календарь / таймлайн марафонов — Средний, M
+- [x] [#48](https://github.com/drednight/Tvinoferma/issues/48) **8.2** Валидация `state.json` схемой — Средний, M
+- [x] [#49](https://github.com/drednight/Tvinoferma/issues/49) **8.3** Автобэкап и восстановление — Средний, M
+- [x] [#50](https://github.com/drednight/Tvinoferma/issues/50) **8.4** Блокировка PIN-кодом — Низкий, M
+- [x] [#51](https://github.com/drednight/Tvinoferma/issues/51) **8.5** Права и изоляция Tauri — Высокий, M
+- [x] [#52](https://github.com/drednight/Tvinoferma/issues/52) **8.6** Обнаружение дублей и защита от потери — Средний, S
 
 ### v1.0 — Стабильный релиз: changelog, E2E, тесты
 
-`███░░░░░░░` 1/4 (25%)
+`██████████` 4/4 (100%)
 
 - [x] [#63](https://github.com/drednight/Tvinoferma/issues/63) **13.1** `CHANGELOG.md` и semver — Средний, S
-- [ ] [#64](https://github.com/drednight/Tvinoferma/issues/64) **13.2** Подпись установщика Windows — Средний, M
-- [ ] [#66](https://github.com/drednight/Tvinoferma/issues/66) **13.4** E2E-тесты (tauri-driver) — Средний, L
-- [ ] [#67](https://github.com/drednight/Tvinoferma/issues/67) **13.5** Покрытие тестами — Средний, M
+- [x] [#64](https://github.com/drednight/Tvinoferma/issues/64) **13.2** Подпись установщика Windows — Средний, M
+- [x] [#66](https://github.com/drednight/Tvinoferma/issues/66) **13.4** E2E-тесты (tauri-driver) — Средний, L
+- [x] [#67](https://github.com/drednight/Tvinoferma/issues/67) **13.5** Покрытие тестами — Средний, M
 
 ### После 1.0 — Инжекция, банк, арена, облако, косметика
 
-`██░░░░░░░░` 3/20 (15%)
+`██████████` 20/20 (100%)
 
-- [ ] [#24](https://github.com/drednight/Tvinoferma/issues/24) **3.6** Сохранённые представления — Низкий, S
-- [ ] [#29](https://github.com/drednight/Tvinoferma/issues/29) **4.5** Пресеты скриптов — Низкий, S
-- [ ] [#38](https://github.com/drednight/Tvinoferma/issues/38) **6.4** Личные шаблоны пользователя — Низкий, S
-- [ ] [#43](https://github.com/drednight/Tvinoferma/issues/43) **7.5** Виртуализация списка — Низкий, M
-- [ ] [#44](https://github.com/drednight/Tvinoferma/issues/44) **7.6** Темы и компактный режим — Низкий, S
-- [ ] [#45](https://github.com/drednight/Tvinoferma/issues/45) **7.7** Онбординг-мастер — Низкий, S
-- [ ] [#46](https://github.com/drednight/Tvinoferma/issues/46) **7.8** Быстрый доступ и мелочи — Низкий, S
-- [ ] [#53](https://github.com/drednight/Tvinoferma/issues/53) **9.1** CSS-очистка — Низкий, S
+- [x] [#24](https://github.com/drednight/Tvinoferma/issues/24) **3.6** Сохранённые представления — Низкий, S
+- [x] [#29](https://github.com/drednight/Tvinoferma/issues/29) **4.5** Пресеты скриптов — Низкий, S
+- [x] [#38](https://github.com/drednight/Tvinoferma/issues/38) **6.4** Личные шаблоны пользователя — Низкий, S
+- [x] [#43](https://github.com/drednight/Tvinoferma/issues/43) **7.5** Виртуализация списка — Низкий, M
+- [x] [#44](https://github.com/drednight/Tvinoferma/issues/44) **7.6** Темы и компактный режим — Низкий, S
+- [x] [#45](https://github.com/drednight/Tvinoferma/issues/45) **7.7** Онбординг-мастер — Низкий, S
+- [x] [#46](https://github.com/drednight/Tvinoferma/issues/46) **7.8** Быстрый доступ и мелочи — Низкий, S
+- [x] [#53](https://github.com/drednight/Tvinoferma/issues/53) **9.1** CSS-очистка — Низкий, S
 - [x] [#54](https://github.com/drednight/Tvinoferma/issues/54) **9.2** Панель Tvinoferma поверх страницы — Низкий, M
-- [ ] [#55](https://github.com/drednight/Tvinoferma/issues/55) **9.3** Оценка рисков — Низкий, S
-- [ ] [#56](https://github.com/drednight/Tvinoferma/issues/56) **10.1** Журнал доходов и расходов — Низкий, M
-- [ ] [#57](https://github.com/drednight/Tvinoferma/issues/57) **10.2** Отчёты и графики — Низкий, M
-- [ ] [#58](https://github.com/drednight/Tvinoferma/issues/58) **10.3** ROI фермы — Низкий, M
-- [ ] [#59](https://github.com/drednight/Tvinoferma/issues/59) **11.1** Интеграция внешнего трекера — Низкий, M
-- [ ] [#60](https://github.com/drednight/Tvinoferma/issues/60) **12.1** Бэкап в папку, которую синхронизирует другой сервис — Низкий, S
-- [ ] [#61](https://github.com/drednight/Tvinoferma/issues/61) **12.2** Google Sheets — экспорт таблиц — Низкий, L
-- [ ] [#62](https://github.com/drednight/Tvinoferma/issues/62) **12.3** Синхронизация между ПК — Низкий, L
-- [ ] [#65](https://github.com/drednight/Tvinoferma/issues/65) **13.3** Каналы stable / beta — Низкий, M
+- [x] [#55](https://github.com/drednight/Tvinoferma/issues/55) **9.3** Оценка рисков — Низкий, S
+- [x] [#56](https://github.com/drednight/Tvinoferma/issues/56) **10.1** Журнал доходов и расходов — Низкий, M
+- [x] [#57](https://github.com/drednight/Tvinoferma/issues/57) **10.2** Отчёты и графики — Низкий, M
+- [x] [#58](https://github.com/drednight/Tvinoferma/issues/58) **10.3** ROI фермы — Низкий, M
+- [x] [#59](https://github.com/drednight/Tvinoferma/issues/59) **11.1** Интеграция внешнего трекера — Низкий, M
+- [x] [#60](https://github.com/drednight/Tvinoferma/issues/60) **12.1** Бэкап в папку, которую синхронизирует другой сервис — Низкий, S
+- [x] [#61](https://github.com/drednight/Tvinoferma/issues/61) **12.2** Google Sheets — экспорт таблиц — Низкий, L
+- [x] [#62](https://github.com/drednight/Tvinoferma/issues/62) **12.3** Синхронизация между ПК — Низкий, L
+- [x] [#65](https://github.com/drednight/Tvinoferma/issues/65) **13.3** Каналы stable / beta — Низкий, M
 - [x] [#68](https://github.com/drednight/Tvinoferma/issues/68) **13.6** Проверка сборок macOS / Linux — Низкий, M
 - [x] [#69](https://github.com/drednight/Tvinoferma/issues/69) **13.7** Размер установщика — Низкий, S
 
