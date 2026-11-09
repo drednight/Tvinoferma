@@ -21,7 +21,11 @@ export function exportTrialBundle(trials, selected, { includeNotes = false, incl
       charId: includeIdentifiers ? row.charId : recipients.get(row.charId),
       partyId: includeIdentifiers ? row.partyId : undefined,
       notes: includeNotes ? row.notes : undefined,
-      technical: { ...row.technical, runId: includeIdentifiers ? row.technical.runId : `run-${index + 1}`, trace }
+      technical: {
+        ...row.technical,
+        runId: includeIdentifiers ? row.technical.runId : row.technical.runId ? `run-${index + 1}` : '',
+        trace
+      }
     };
   });
   return JSON.stringify(

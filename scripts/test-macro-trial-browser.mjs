@@ -21,10 +21,11 @@ try {
       contentType: 'text/html',
       body: `<!doctype html><html lang="ru"><head><meta name="viewport" content="width=device-width,initial-scale=1">${css}</head><body><div id="modal-root"></div><script type="module">
  import {normalizeGameMacros} from '/js/modules/gameMacros/model.js';
+ import {openMirrorObservation} from '/js/modules/gameMacros/mirrorObservation.js';
  import {openReceiverTools} from '/js/modules/gameMacros/receiverTools.js';
  import {openTrialWizard,openTrialComparison} from '/js/modules/gameMacros/trialWizard.js';
  const state={parties:[{id:'p'}],characters:[{id:'a',nick:'Leader',partyIds:['p']},{id:'b',nick:'Twin',partyIds:['p']}]};let c=normalizeGameMacros({partyId:'p',leaders:{p:'a'}});window.sendCount=0;
- openTrialWizard({getConfig:()=>c,state,diagnose:async()=> 'Simulated Windows report — no input',runTrial:async()=>{window.sendCount++;return {runId:'simulated',state:'finished',stage:'execution-complete',events:[]}},save:async patch=>{c=normalizeGameMacros({...c,...patch});window.records=c.backgroundTrials},stop:()=>{}});window.compare=()=>openTrialComparison(c,state);window.openReceiver=()=>openReceiverTools(async(operation)=>{if(operation==='send')window.receiverSends=(window.receiverSends||0)+1;return {open:true,total:1,events:[{message:256,vk:66,foreground:false}]}});window.ready=true;
+ openTrialWizard({getConfig:()=>c,state,diagnose:async()=> 'Simulated Windows report — no input',runTrial:async()=>{window.sendCount++;return {runId:'simulated',state:'finished',stage:'execution-complete',events:[]}},save:async patch=>{c=normalizeGameMacros({...c,...patch});window.records=c.backgroundTrials},stop:()=>{}});window.compare=()=>openTrialComparison(c,state);window.openReceiver=()=>openReceiverTools(async(operation)=>{if(operation==='send')window.receiverSends=(window.receiverSends||0)+1;return {open:true,total:1,events:[{message:256,vk:66,foreground:false}]}});window.openObservation=()=>openMirrorObservation({getConfig:()=>c,state,save:async patch=>{c=normalizeGameMacros({...c,...patch});window.records=c.backgroundTrials}});window.ready=true;
  </script></body></html>`
     })
   );
@@ -33,6 +34,8 @@ try {
   assert.equal(await page.evaluate(() => window.sendCount), 0);
   await page.locator('[data-trial-char]').selectOption('b');
   await page.locator('[data-trial-key]').fill('B');
+  await page.locator('[data-condition="purpose"]').selectOption('game');
+  await page.locator('[data-condition="chat"]').selectOption('closed');
   await page.locator('[data-trial-check]').click();
   await page.locator('[data-trial-consent]').check();
   assert.equal(await page.evaluate(() => window.sendCount), 0);
@@ -56,6 +59,7 @@ try {
   await page.locator('[data-bundle-preview]').click();
   const bundle = JSON.parse(await page.locator('textarea[aria-label="Пакет выбранных тестов"]').inputValue());
   assert.equal(bundle.records.length, 1);
+  assert.equal(bundle.records[0].conditions.chat, 'closed');
   assert.equal(bundle.records[0].notes, undefined);
   await page.keyboard.press('Escape');
   await page.evaluate(() => window.compare());
@@ -73,6 +77,17 @@ try {
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
     'Receiver UI mobile width'
   );
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => window.openObservation());
+  await page.locator('[name="charId"]').selectOption('b');
+  await page.locator('[name="key"]').fill('B');
+  await page.locator('[data-condition="purpose"]').selectOption('chat');
+  await page.locator('[data-condition="chat"]').selectOption('open');
+  await page.locator('[name="verdict"]').selectOption('worked');
+  await page.locator('[name="observed"]').check();
+  await page.locator('.modal-footer .primary').click();
+  await page.waitForFunction(() => window.records?.some(row => row.method === 'mirror-post'));
+  assert.equal(await page.evaluate(() => window.sendCount), 1, 'Recording observation must not send a second input');
   assert.deepEqual(errors, []);
   console.log(
     'PASS trial wizard Chromium: explicit probe/consent, one send, manual verdict, stored comparison and diagnostics, 390px. Windows callbacks simulated.'

@@ -150,3 +150,22 @@ it('offers retry of persistence without retrying input and escapes comparison no
   expect(document.body.textContent).toContain('<Twin>');
   expect(document.querySelector('[data-trial-details]')).not.toBeNull();
 });
+it('captures conditions before sending and invalidates agreement after a context edit', async () => {
+  open();
+  choose();
+  const chat = document.querySelector('[data-condition="chat"]');
+  chat.value = 'closed';
+  q('check').click();
+  await vi.waitFor(() => expect(q('consent').disabled).toBe(false));
+  chat.value = 'open';
+  chat.dispatchEvent(new Event('change', { bubbles: true }));
+  expect(q('consent').disabled).toBe(true);
+  q('check').click();
+  await vi.waitFor(() => expect(q('consent').disabled).toBe(false));
+  q('consent').checked = true;
+  q('consent').dispatchEvent(new Event('change'));
+  q('run').click();
+  await vi.waitFor(() => expect(c.backgroundTrials).toHaveLength(1));
+  expect(c.backgroundTrials[0].conditions.chat).toBe('open');
+  expect(runTrial).toHaveBeenCalledTimes(1);
+});

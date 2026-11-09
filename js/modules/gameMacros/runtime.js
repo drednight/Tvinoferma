@@ -1,3 +1,4 @@
+import { nativeResultStatus } from './nativeStatus.js';
 import { buildTrial } from './trialEvidence.js';
 import {
   startExecutionTrace,
@@ -62,7 +63,10 @@ const native = async (command, args) => {
   if (!window.__TAURI_INTERNALS__) throw new Error('Нужна настольная версия Windows.');
   invoke ||= (await import('@tauri-apps/api/core')).invoke;
   const traceId = currentExecutionId();
-  const traced = hasActiveExecution() && /^(game_macro_|launcher_running_details)/.test(command);
+  const traced =
+    hasActiveExecution() &&
+    command !== 'game_macro_input_idle' &&
+    /^(game_macro_|launcher_running_details)/.test(command);
   const details = {
     action: args?.action || args?.operation,
     key: args?.key,
@@ -76,7 +80,7 @@ const native = async (command, args) => {
   try {
     const result = await invoke(command, args);
     if (traced && currentExecutionId() === traceId)
-      traceLog(`native:${command}`, result?.ok === false || result === false ? 'blocked' : 'ok', {
+      traceLog(`native:${command}`, nativeResultStatus(command, result), {
         ...details,
         elapsedMs: Math.round((performance.now() - started) * 1000) / 1000,
         count: Array.isArray(result) ? result.length : undefined,
@@ -603,7 +607,13 @@ async function executeCommand(id, hotkey = false, trial = null) {
   log(`Запуск: ${command.name}. Проверка окон и отпускания клавиш…`);
   try {
     const idleArgs = { chord: hotkey ? command.hotkey : null };
+    const idleStarted = performance.now();
     let idle = await native('game_macro_input_idle', idleArgs);
+    let idleAttempts = 0;
+    if (idle === false)
+      traceLog('physical-input-wait', 'waiting', {
+        blockedBy: 'Ожидаем отпускания клавиш/кнопок запуска; это не отказ Windows.'
+      });
     const preparedRows = !['composite', 'launch'].includes(command.action) ? listMacroWindows() : null;
     if (preparedRows) void preparedRows.catch(() => {});
     for (let attempt = 0; idle === false; attempt++) {
@@ -612,10 +622,14 @@ async function executeCommand(id, hotkey = false, trial = null) {
           'Отпустите клавиши запуска, модификаторы и кнопки мыши, затем повторите команду. Ввод не отправлен.'
         );
       await wait(10);
+      idleAttempts++;
       idle = await native('game_macro_input_idle', idleArgs);
     }
     await checkpoint();
-    traceLog('physical-input-released');
+    traceLog('physical-input-released', 'ok', {
+      attempt: idleAttempts,
+      elapsedMs: Math.round(performance.now() - idleStarted)
+    });
     suspended = true;
     const failedStop = await native('game_macro_bindings', { bindings: [{ id: 'stop', chord: 'CTRL+ALT+PAUSE' }] });
     if (Array.isArray(failedStop) && failedStop.includes('stop'))
@@ -1612,6 +1626,10 @@ async function applyMirrorToggle(kind = 'keyboard', commandName = '', refreshMod
     if (twinsLeader)
       log(
         `ЛКМ только твинам: ${c.mirrorTwinsModifier} + ЛКМ в окне ПЛ. Исходный ЛКМ блокируется; получателям отправляется без модификаторов. Работа в игре не подтверждена.`
+      );
+    if (desiredKeys)
+      log(
+        'Клавиатурный повтор: PostMessage с scan-code источника; это не activity-notify. Текст в чате и игровые горячие клавиши могут обрабатываться по-разному. Состояние чата программа не определяет.'
       );
     log(
       `Повтор ВКЛЮЧЁН (клавиатура: ${mirrorKeys ? 'да' : 'нет'}, мышь: ${mirrorMouse ? 'да' : 'нет'}): ${rows.length} проверенных окон, источник: ${sourceRow ? 'ПЛ выбранной пати' : 'любая распознанная игра'}. ${mirrorMouse ? 'Кнопки мыши: абсолютные экранные точки.' : 'Мышь не передаётся.'} Ctrl+Alt+Pause — выключить. Обработка сообщений игрой не подтверждена.`,

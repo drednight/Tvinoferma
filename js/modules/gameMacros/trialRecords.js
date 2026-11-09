@@ -1,5 +1,10 @@
+import { normalizeConditions } from './testConditions.js';
 import { safeDiagnostic } from './trace.js';
 import { BACKGROUND_METHODS } from './background.js';
+export const EVIDENCE_METHODS = {
+  ...BACKGROUND_METHODS,
+  'mirror-post': 'Повтор клавиатуры · PostMessage (ручное наблюдение)'
+};
 export function trialTrace(run) {
   if (!run || !Array.isArray(run.events)) return null;
   const events = run.events.length > 60 ? [...run.events.slice(0, 20), ...run.events.slice(-40)] : run.events;
@@ -51,7 +56,7 @@ export function normalizeTrials(value) {
         typeof row.id === 'string' &&
         typeof row.charId === 'string' &&
         typeof row.key === 'string' &&
-        Object.hasOwn(BACKGROUND_METHODS, row.method)
+        Object.hasOwn(EVIDENCE_METHODS, row.method)
     )
     .map(row => ({
       id: row.id.slice(0, 80),
@@ -59,6 +64,7 @@ export function normalizeTrials(value) {
       partyId: String(row.partyId || '').slice(0, 200),
       key: row.key.slice(0, 60),
       method: row.method,
+      conditions: normalizeConditions(row.conditions),
       verdict: ['unverified', 'worked', 'failed', 'partial'].includes(row.verdict) ? row.verdict : 'unverified',
       notes: String(row.notes || '').slice(0, 600),
       at: String(row.at || '').slice(0, 40),

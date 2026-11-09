@@ -1190,3 +1190,16 @@ it('passes an independent active-window mouse modifier without requiring a twins
   expect(runtime.snapshot().mirrorMouse).toBe(true);
   await runtime.toggleKeyboardMirror('mouse');
 });
+it('summarizes physical-release polling without hundreds of false error events', async () => {
+  let checks = 0;
+  state.settings.gameMacros.commands[0].sequence = 'B';
+  invoke.mockImplementation(async name =>
+    name === 'launcher_running_details' ? [client] : name === 'game_macro_input_idle' ? ++checks > 4 : null
+  );
+  await runtime.run('test');
+  const trace = runtime.getExecutionHistory().at(-1);
+  expect(trace.events.filter(event => event.stage === 'physical-input-wait')).toHaveLength(1);
+  expect(trace.events.find(event => event.stage === 'physical-input-released').details.attempt).toBe(4);
+  expect(trace.events.some(event => event.stage === 'native:game_macro_input_idle')).toBe(false);
+  expect(runtime.snapshot().executionState).toBe('finished');
+});

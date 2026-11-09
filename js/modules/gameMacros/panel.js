@@ -1,3 +1,4 @@
+import { openMirrorObservation } from './mirrorObservation.js';
 import { openReceiverTools } from './receiverTools.js';
 import { openTrialWizard, openTrialComparison, outcomeHtml } from './trialWizard.js';
 import { summarizeExecution } from './trialEvidence.js';
@@ -134,7 +135,7 @@ export function mountGameMacros(host) {
     )
     .join(
       ''
-    )}</select><small>При включённом повторе мыши удерживайте ровно выбранные модификаторы: ЛКМ, ПКМ, средняя и боковые кнопки остаются только в активном игровом окне, без копирования остальным клиентам. Сам повтор остаётся включённым. Клавиатурный повтор не меняется. При совпадении с «ЛКМ только твинам» приоритет у активного окна. Модификаторы не удаляются из локального клика: игра получает обычный Ctrl/Shift/Alt + клик.</small></label></div><small>Клавиатура и мышь включаются независимо. Мышь: абсолютные экранные координаты, без масштабирования. Возможен расход ресурсов.</small></fieldset>
+    )}</select><small>При включённом повторе мыши удерживайте ровно выбранные модификаторы: ЛКМ, ПКМ, средняя и боковые кнопки остаются только в активном игровом окне, без копирования остальным клиентам. Сам повтор остаётся включённым. Клавиатурный повтор не меняется. При совпадении с «ЛКМ только твинам» приоритет у активного окна. Модификаторы не удаляются из локального клика: игра получает обычный Ctrl/Shift/Alt + клик.</small></label></div><small>Клавиатура и мышь включаются независимо. Клавиатура: PostMessage со scan-code источника, не activity-notify; работа текста в чате не подтверждает игровые действия. Мышь: абсолютные экранные координаты, без масштабирования. Возможен расход ресурсов.</small></fieldset>
   <div class="gm-section-top"><h4>Мои команды <span>${visibleCommands.length}</span></h4><div class="gm-journal-actions"><button class="btn ghost" data-gm-transfer>Импорт / экспорт</button>${c.deletedCommands.length ? `<button class="btn ghost" data-gm-undo-delete>Вернуть удалённую команду</button>` : ''}<button class="btn primary" data-gm-create>＋ Создать команду</button></div></div>
   <label class="gm-command-search">Поиск команды<input type="search" class="input" data-gm-search placeholder="Название или сочетание клавиш" aria-label="Найти команду"></label>
   <div class="gm-command-workbench"><nav class="gm-command-menu" aria-label="Команды">${visibleCommands.map(row => `<button class="gm-command-choice ${row.id === selectedId ? 'is-selected' : ''}" data-gm-select="${esc(row.id)}" aria-pressed="${row.id === selectedId}"><b>${esc(row.name)}</b><kbd>${esc(row.hotkey || 'Без сочетания')}</kbd></button>`).join('') || '<p class="muted">Пока нет команд. Создайте первую.</p>'}</nav>
@@ -199,7 +200,7 @@ export function mountGameMacros(host) {
     .join(
       ''
     )}</select></label><button class="btn primary">⊕ Задать координаты</button></form><p class="muted">Размер окна и DPI определяются автоматически. Для другого размера окна создайте вариант точки; после перемещения элементов интерфейса задайте точку заново.</p><div class="gm-points-workbench"><nav class="gm-point-list" aria-label="Сохранённые координатные точки">${c.points.map(p => `<button class="gm-point-choice" data-gm-point="${esc(p.id)}"><b>${esc(p.name)}</b><small>${p.width} × ${p.height}</small></button>`).join('') || '<p>Нет сохранённых точек.</p>'}</nav><article class="gm-point-detail" data-gm-point-detail></article></div></details>
-  <details class="gm-background-section"><summary>Лаборатория фонового ввода · эксперимент</summary><div class="gm-journal-actions"><button class="btn primary" data-gm-trial-wizard>Одиночная проверка — мастер</button><button class="btn" data-gm-receiver>Окно-приёмник Windows</button><button class="btn" data-gm-trial-table>Таблица результатов</button></div><p>Подготовьте отдельные тесты для одного твина. Программа ничего не запускает автоматически. Фоновая клавиатура в PW пока не подтверждена.</p><button type="button" class="btn ghost" data-gm-background-lab>Подготовить 5 вариантов для сравнения</button></details>
+  <details class="gm-background-section"><summary>Лаборатория фонового ввода · эксперимент</summary><div class="gm-journal-actions"><button class="btn primary" data-gm-trial-wizard>Одиночная проверка — мастер</button><button class="btn" data-gm-receiver>Окно-приёмник Windows</button><button class="btn" data-gm-mirror-observation>Записать наблюдение клавиатурного повтора</button><button class="btn" data-gm-trial-table>Таблица результатов</button></div><p>Подготовьте отдельные тесты для одного твина. Программа ничего не запускает автоматически. Фоновая клавиатура в PW пока не подтверждена.</p><button type="button" class="btn ghost" data-gm-background-lab>Подготовить 5 вариантов для сравнения</button></details>
   <div data-gm-outcome></div><footer class="gm-bottom-actions"><button class="btn ghost" data-gm-traces>Диагностика по запускам</button><button class="btn" data-gm-logs>≡ Журнал сеанса</button><button class="btn" data-gm-overlay>▣ Открыть оверлей</button><button class="btn ghost" data-gm-overlay-settings>⚙ Настройки оверлея</button></footer></section>`;
   host.querySelector('[data-gm-trial-wizard]').onclick = () =>
     openTrialWizard({
@@ -210,6 +211,8 @@ export function mountGameMacros(host) {
       save,
       stop
     });
+  host.querySelector('[data-gm-mirror-observation]').onclick = () =>
+    openMirrorObservation({ getConfig: config, state, save });
   host.querySelector('[data-gm-receiver]').onclick = () => openReceiverTools(controlReceiver);
   host.querySelector('[data-gm-trial-table]').onclick = () => openTrialComparison(config(), state);
   host.querySelector('[data-gm-transfer]').onclick = () => openCommandTransfer(config, save);
