@@ -15,7 +15,10 @@ struct AttemptGuard(String);
 impl Drop for AttemptGuard {
     fn drop(&mut self) {
         if let Ok(mut slot) = ATTEMPT.lock() {
-            if slot.as_ref().is_some_and(|attempt| attempt.id == self.0) {
+            if let Some(attempt) = slot.as_ref().filter(|attempt| attempt.id == self.0) {
+                let _ = attempt
+                    .phase
+                    .compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst);
                 *slot = None;
             }
         }
@@ -232,6 +235,9 @@ fn observe(phase: &AtomicU8, ready: impl FnOnce(), uid: &str) -> Result<Sensitiv
                 denied = true;
                 continue;
             };
+            if super::win::process_start_ms(pid) != Some(start) {
+                continue;
+            }
             seen.insert((pid, start));
             let candidates: Vec<_> = args
                 .iter()
