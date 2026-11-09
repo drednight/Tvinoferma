@@ -28,7 +28,7 @@ import {
   orderManagedTargets,
   partyMembers
 } from './model.js';
-let invoke;
+let invokePromise;
 let nativeStopPending = Promise.resolve(true);
 let rootTiming = { switchMs: 30, holdMs: 30, backgroundMethod: 'post' },
   inputTiming = rootTiming;
@@ -62,7 +62,7 @@ const reviewedPoints = new Set();
 export const config = () => normalizeGameMacros(state.settings.gameMacros);
 const native = async (command, args) => {
   if (!window.__TAURI_INTERNALS__) throw new Error('Нужна настольная версия Windows.');
-  invoke ||= (await import('@tauri-apps/api/core')).invoke;
+  const invoke = await (invokePromise ||= import('@tauri-apps/api/core').then(module => module.invoke));
   if (
     ['game_macro_action', 'game_macro_pointer', 'game_macro_background_probe'].includes(command) ||
     (command === 'game_macro_mirror' && args?.operation === 'start')
