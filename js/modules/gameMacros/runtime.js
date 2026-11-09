@@ -29,6 +29,7 @@ import {
   partyMembers
 } from './model.js';
 let invoke;
+let nativeStopPending = Promise.resolve(true);
 let rootTiming = { switchMs: 30, holdMs: 30, backgroundMethod: 'post' },
   inputTiming = rootTiming;
 let mirrorKeys = false,
@@ -62,6 +63,12 @@ export const config = () => normalizeGameMacros(state.settings.gameMacros);
 const native = async (command, args) => {
   if (!window.__TAURI_INTERNALS__) throw new Error('Нужна настольная версия Windows.');
   invoke ||= (await import('@tauri-apps/api/core')).invoke;
+  if (
+    ['game_macro_action', 'game_macro_pointer', 'game_macro_background_probe'].includes(command) ||
+    (command === 'game_macro_mirror' && args?.operation === 'start')
+  ) {
+    if (!(await nativeStopPending)) throw new Error('Native input stop unconfirmed; restart application before input');
+  }
   const traceId = currentExecutionId();
   const traced =
     hasActiveExecution() &&
@@ -177,7 +184,11 @@ function traceLog(stage, status = 'ok', details = {}) {
 }
 export function stop(stopMirror = true) {
   traceLog('stop-request');
-  if (window.__TAURI_INTERNALS__) void native('game_macro_input_stop').catch(() => {});
+  if (window.__TAURI_INTERNALS__)
+    nativeStopPending = native('game_macro_input_stop').then(
+      () => true,
+      () => false
+    );
   if (stopMirror && (mirroring || mirrorPending || mirrorKeys || mirrorMouse)) void disableKeyboardMirror();
   cancelled = true;
   executionState = busy ? 'stopping' : 'stopped';
@@ -487,6 +498,11 @@ export function macroErrorText(error) {
     return `${reason} Сделаны попытки отпускания тем же способом; автоповтора и переключения фокуса нет.`;
   }
   const messages = {
+    'Native input busy; retry explicitly after cleanup':
+      'Нативный ввод занят другой операцией или очисткой. Дождитесь её завершения и запустите действие явно.',
+    'Input operation cancelled': 'Нативная операция отменена. Ввод автоматически не повторяется.',
+    'Native input stop unconfirmed; restart application before input':
+      'Остановка нативного ввода не подтверждена. Перед новым вводом перезапустите приложение.',
     'Point is outside client area':
       'Абсолютная точка не попадает в клиентскую область получателя. Передача остановлена без клика по другому приложению.',
     'no party': 'Выберите пати в верхней части раздела.',
