@@ -1440,7 +1440,11 @@ function ensureMirror() {
         1: 'Очередь ввода не успевает: повтор остановлен.',
         2: 'Потеря связи с интерфейсом: повтор остановлен.',
         3: 'Игровое окно изменилось: повтор остановлен.',
-        4: 'Windows отказала в доставке: повтор остановлен.',
+        4: 'PostMessage не принят: повтор остановлен.',
+        7: 'Не принято уведомление активности: повтор остановлен.',
+        8: 'Отправка клавиши через SendMessageTimeout не завершилась за 25 мс или вернула ошибку: повтор остановлен.',
+        9: 'Не принято восстановление уведомлений активности: повтор остановлен.',
+        10: 'Активное окно изменилось при отправке: повтор остановлен.',
         5: 'Клавиша удерживалась более 60 секунд без повтора: режим выключен защитой.',
         6: 'Точка мыши вне игровой области или недоступна: повтор остановлен.'
       };
@@ -1465,6 +1469,7 @@ function mirrorFingerprint() {
     enabled: c.enabled,
     source: c.mirrorSource,
     keyboardMethod: c.mirrorKeyboardMethod,
+    holdOnly: c.mirrorHoldOnly,
     activeModifier: c.mirrorActiveModifier,
     twinsModifier: c.mirrorTwinsModifier,
     twinsLeader: c.mirrorTwinsModifier ? c.leaders[c.partyId] : null,
@@ -1580,6 +1585,8 @@ async function applyMirrorToggle(kind = 'keyboard', commandName = '', refreshMod
         mouse: desiredMouse,
         keyboard: desiredKeys,
         combined: desiredKeys && c.mirrorKeyboardMethod === 'combined',
+        keyboardMethod: c.mirrorKeyboardMethod,
+        holdOnly: desiredKeys && c.mirrorHoldOnly,
         source: sourceRow ? { pid: sourceRow.pid, startedAt: sourceRow.startedAt, hwnd: sourceRow.hwnd } : null,
         targets: rows.map(r => ({ pid: r.pid, startedAt: r.startedAt })),
         shortcuts: [
@@ -1629,11 +1636,15 @@ async function applyMirrorToggle(kind = 'keyboard', commandName = '', refreshMod
       log(
         `ЛКМ только твинам: ${c.mirrorTwinsModifier} + ЛКМ в окне ПЛ. Исходный ЛКМ блокируется; получателям отправляется без модификаторов. Работа в игре не подтверждена.`
       );
+    if (desiredKeys && c.mirrorHoldOnly)
+      log('Удержание без автоповтора: один DOWN и один UP; сочетания передаются по событиям.');
     if (desiredKeys)
       log(
-        c.mirrorKeyboardMethod === 'combined'
-          ? 'Клавиатурный повтор: эксперимент PostMessage + activity-notify. Двойные действия возможны; чат не определяется. Команды не изменены.'
-          : 'Клавиатурный повтор: PostMessage с scan-code источника; это не activity-notify. Текст в чате и игровые горячие клавиши могут обрабатываться по-разному. Состояние чата программа не определяет.'
+        c.mirrorKeyboardMethod === 'activity-notify'
+          ? 'Клавиатурный повтор: только activity-notify, без PostMessage. Состояние чата не определяется. Команды не изменены.'
+          : c.mirrorKeyboardMethod === 'combined'
+            ? 'Клавиатурный повтор: эксперимент PostMessage + activity-notify. Двойные действия возможны; чат не определяется. Команды не изменены.'
+            : 'Клавиатурный повтор: PostMessage с scan-code источника; это не activity-notify. Текст в чате и игровые горячие клавиши могут обрабатываться по-разному. Состояние чата программа не определяет.'
       );
     log(
       `Повтор ВКЛЮЧЁН (клавиатура: ${mirrorKeys ? 'да' : 'нет'}, мышь: ${mirrorMouse ? 'да' : 'нет'}): ${rows.length} проверенных окон, источник: ${sourceRow ? 'ПЛ выбранной пати' : 'любая распознанная игра'}. ${mirrorMouse ? 'Кнопки мыши: абсолютные экранные точки.' : 'Мышь не передаётся.'} Ctrl+Alt+Pause — выключить. Обработка сообщений игрой не подтверждена.`,

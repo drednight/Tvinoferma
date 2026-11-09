@@ -21,3 +21,11 @@ it('combined repeat is opt-in and rejects unknown methods', () => {
   expect(normalizeGameMacros({ mirrorKeyboardMethod: 'combined' }).mirrorKeyboardMethod).toBe('combined');
   expect(normalizeGameMacros({ mirrorKeyboardMethod: 'activity' }).mirrorKeyboardMethod).toBe('post');
 });
+
+it('supports activity-only repeat and opt-in hold-only independently', () => {
+  expect(normalizeGameMacros({ mirrorKeyboardMethod: 'activity-notify', mirrorHoldOnly: true })).toMatchObject({
+    mirrorKeyboardMethod: 'activity-notify',
+    mirrorHoldOnly: true
+  });
+  expect(normalizeGameMacros({}).mirrorHoldOnly).toBe(false);
+});

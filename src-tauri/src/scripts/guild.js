@@ -90,7 +90,7 @@
     const members = [];
     for (const link of col.querySelectorAll('a.table-username')) {
       const rawNick = clean(link.textContent);
-      const leader = /\(\s*ПЛ\s*\)\s*$/iu.test(rawNick) || /\(\s*ПЛ\s*\)\s*$/iu.test(clean(link.closest('td')?.textContent));
+      const leader = /\(\s*ПЛ\s*\)\s*$/iu.test(rawNick) || /\(\s*ПЛ\s*\)/iu.test(clean(link.closest('td')?.textContent));
       const nick = rawNick.replace(/\s*\([^)]*\)\s*$/, '');
       if (!nick) continue;
       const img = link.querySelector('img');

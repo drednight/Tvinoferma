@@ -107,6 +107,11 @@ export function normalizeGuildData(raw) {
         members: (Array.isArray(p?.members) ? p.members : []).map(normalizeMember).filter(Boolean)
       }))
       .filter(p => p.name),
+    leaderOverrides: (Array.isArray(src.leaderOverrides) ? src.leaderOverrides : [])
+      .filter(row => row && typeof row.party === 'string' && typeof row.nick === 'string')
+      .slice(-100)
+      .map(row => ({ party: clean(row.party), nick: clean(row.nick) }))
+      .filter(row => row.party && row.nick),
     selfNick: clean(src.selfNick),
     poll: normalizeGuildPoll(src.poll),
     syncedAt: Number.isFinite(Number(src.syncedAt)) && Number(src.syncedAt) > 0 ? Number(src.syncedAt) : null
@@ -149,7 +154,7 @@ function partyMembers(col) {
   const members = [];
   for (const link of col.querySelectorAll('a.table-username')) {
     const rawNick = clean(link.textContent);
-    const leader = LEADER_SUFFIX.test(rawNick) || LEADER_SUFFIX.test(clean(link.closest('td')?.textContent));
+    const leader = LEADER_SUFFIX.test(rawNick) || /\(\s*ПЛ\s*\)/iu.test(clean(link.closest('td')?.textContent));
     const nick = rawNick.replace(NICK_SUFFIX, '');
     if (!nick) continue;
     const img = link.querySelector('img');

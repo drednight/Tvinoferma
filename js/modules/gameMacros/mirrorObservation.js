@@ -14,7 +14,12 @@ export function mirrorObservation({ charId, key, verdict, notes, conditions }, c
     partyId: c.partyId,
     charId,
     key: parsed[0].key,
-    method: c.mirrorKeyboardMethod === 'combined' ? 'mirror-combined' : 'mirror-post',
+    method:
+      c.mirrorKeyboardMethod === 'activity-notify'
+        ? 'mirror-activity-notify'
+        : c.mirrorKeyboardMethod === 'combined'
+          ? 'mirror-combined'
+          : 'mirror-post',
     verdict,
     notes: String(notes || '').slice(0, 600),
     conditions,
@@ -41,7 +46,7 @@ export function openMirrorObservation({ getConfig, state, save }) {
     submitText: 'Сохранить наблюдение',
     cancelText: 'Закрыть',
     beforeClose: () => !pending,
-    content: `<form class="gm-dialog"><p>Выбранный способ повтора: ${c.mirrorKeyboardMethod === 'combined' ? 'PostMessage + activity-notify' : 'PostMessage'}. Эта форма ничего не запускает и не нажимает. После отдельного ручного теста запишите результат для одной безопасной клавиши и одного получателя. Для сравнения чата и игрового действия создайте две записи при одинаковых прочих условиях. Ничего не отправляйте в чат: достаточно увидеть букву в поле, не нажимая Enter.</p><label>Получатель<select name="charId"><option value="">Выберите</option>${partyMembers(
+    content: `<form class="gm-dialog"><p>Выбранный способ повтора: ${c.mirrorKeyboardMethod === 'activity-notify' ? 'только activity-notify' : c.mirrorKeyboardMethod === 'combined' ? 'PostMessage + activity-notify' : 'PostMessage'}${c.mirrorHoldOnly ? ' · удержание без автоповтора' : ''}. Эта форма ничего не запускает и не нажимает. После отдельного ручного теста запишите результат для одной безопасной клавиши и одного получателя. Для сравнения чата и игрового действия создайте две записи при одинаковых прочих условиях. Ничего не отправляйте в чат: достаточно увидеть букву в поле, не нажимая Enter.</p><label>Получатель<select name="charId"><option value="">Выберите</option>${partyMembers(
       state,
       c.partyId
     )

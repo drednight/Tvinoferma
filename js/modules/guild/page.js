@@ -16,6 +16,7 @@ import { isTauri, assertStateWriteAvailable } from '../../core/storage.js';
 import { getClassIconSrcByStem, getClassIconSrc, CLASSES } from '../../core/constants.js';
 import { createResponseQueue } from './responseQueue.js';
 import {
+  setGuildLeaderOverride,
   readPendingResponses,
   writePendingResponses,
   guildEnabled,
@@ -71,6 +72,20 @@ export function bindGuild() {
   document.body.dataset.guildBound = 'true';
   document.addEventListener('click', onClick);
   document.addEventListener('submit', onPollSubmit);
+  document.addEventListener('change', onLeaderChange);
+}
+
+async function onLeaderChange(e) {
+  const select = e.target.closest?.('[data-guild-leader]');
+  if (!select || !writesAvailable()) return;
+  select.disabled = true;
+  try {
+    await setGuildLeaderOverride(select.dataset.guildLeader, select.value);
+    renderTodayNow();
+  } catch {
+    toast('Не удалось сохранить ПЛ для подсветки', 'error');
+    renderTodayNow();
+  }
 }
 
 async function onClick(e) {
@@ -375,10 +390,14 @@ function memberHtml(member, selfNick) {
   const icon = (className && getClassIconSrc(className)) || getClassIconSrcByStem(member.cls);
   const ico = icon ? `<img class="guild-member-ico" src="${esc(icon)}" alt="" loading="lazy">` : '';
   const self = isSelfNick(member.nick, selfNick) ? ' is-self' : '';
-  return `<span class="guild-member${self}${member.leader ? ' is-leader' : ''}" title="${esc((member.title || member.nick) + (member.leader ? ' · ПЛ пати' : ''))}">${ico}<span>${esc(member.nick)}</span>${member.leader ? '<span class="guild-leader-label" aria-label="ПЛ пати">ПЛ</span>' : ''}</span>`;
+  return `<span class="guild-member${self}${member.leader ? ' is-leader' : ''}" title="${esc((member.title || member.nick) + (member.leader ? (member.localLeader ? ' · ПЛ для подсветки: выбран вручную' : ' · ПЛ пати: отметка сайта') : ''))}">${ico}<span>${esc(member.nick)}</span>${member.leader ? '<span class="guild-leader-label" aria-label="ПЛ пати">ПЛ</span>' : ''}</span>`;
 }
 
-function partyHtml(party, selfNick) {
+function partyHtml(party, selfNick, overrides = [], unique = true) {
+  const override = unique
+    ? overrides.find(row => row.party === party.name && party.members.some(member => member.nick === row.nick))?.nick
+    : '';
+  const hasSiteLeader = party.members.some(member => member.leader);
   const nicks = partyNicks(party, selfNick);
   return `
     <div class="guild-party">
@@ -388,7 +407,8 @@ function partyHtml(party, selfNick) {
         <button class="btn ghost small" type="button" data-guild="copy-nicks" data-party="${esc(party.name)}"
                 title="Скопировать ники пати"${nicks.length ? '' : ' disabled'}>📋</button>
       </div>
-      <div class="guild-members">${party.members.map(m => memberHtml(m, selfNick)).join('')}</div>
+      <div class="guild-members">${party.members.map(m => memberHtml(override ? { ...m, leader: m.nick === override, localLeader: m.nick === override } : m, selfNick)).join('')}</div>
+      ${unique ? `<details class="guild-leader-settings"><summary>${override ? 'ПЛ для подсветки выбран вручную' : hasSiteLeader ? 'ПЛ получен с сайта' : 'Сайт не передал отметку ПЛ — указать вручную'}</summary><label>ПЛ для подсветки<select data-guild-leader="${esc(party.name)}"><option value="">По отметке сайта</option>${party.members.map(member => `<option value="${esc(member.nick)}" ${member.nick === override ? 'selected' : ''}>${esc(member.nick)}</option>`).join('')}</select></label><small>Только отображение в приложении. Не меняет сайт, игровые команды или ПЛ в настройках повтора.</small></details>` : ''}
     </div>`;
 }
 
@@ -400,7 +420,7 @@ function partiesHtml(data) {
       <b>Пати</b>
       <span class="muted">${data.parties.length} пати</span>
     </div>
-    <div class="guild-parties">${data.parties.map(p => partyHtml(p, data.selfNick)).join('')}</div>`;
+    <div class="guild-parties">${data.parties.map(p => partyHtml(p, data.selfNick, data.leaderOverrides, data.parties.filter(other => other.name === p.name).length === 1)).join('')}</div>`;
 }
 
 /** Блок под «Сегодня»: сводка и две колонки — события слева, пати справа. */

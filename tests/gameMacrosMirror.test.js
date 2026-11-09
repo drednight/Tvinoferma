@@ -380,3 +380,28 @@ it('does not enable combined transport for mouse-only repeat', async () => {
   const start = m.invoke.mock.calls.find(([name, args]) => name === 'game_macro_mirror' && args.operation === 'start');
   expect(start[1].combined).toBe(false);
 });
+
+it('passes activity-only transport and hold-only explicitly to native repeat', async () => {
+  state.settings.gameMacros.mirrorKeyboardMethod = 'activity-notify';
+  state.settings.gameMacros.mirrorHoldOnly = true;
+  await runtime.toggleKeyboardMirror();
+  const start = m.invoke.mock.calls.find(([name, args]) => name === 'game_macro_mirror' && args.operation === 'start');
+  expect(start[1]).toMatchObject({
+    keyboardMethod: 'activity-notify',
+    combined: false,
+    holdOnly: true,
+    keyboard: true
+  });
+});
+
+it('distinguishes bounded key timeout from PostMessage rejection', async () => {
+  await runtime.toggleKeyboardMirror();
+  const [, args] = m.invoke.mock.calls.find(
+    ([name, args]) => name === 'game_macro_mirror' && args.operation === 'start'
+  );
+  m.listeners.get('game-macro-mirror-state')({
+    payload: { sessionId: args.sessionId, active: false, reason: 8, failedInput: { vk: 66, up: true, ageMs: 29 } }
+  });
+  expect(runtime.snapshot().notice).toContain('SendMessageTimeout');
+  expect(runtime.snapshot().notice).not.toContain('Windows отказала');
+});

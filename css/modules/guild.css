@@ -286,3 +286,20 @@
   font-size: 0.68rem;
   font-weight: 800;
 }
+
+.guild-leader-settings {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.guild-leader-settings summary {
+  cursor: pointer;
+}
+.guild-leader-settings label {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0;
+}
+.guild-leader-settings select {
+  max-width: 100%;
+}

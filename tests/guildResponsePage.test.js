@@ -96,3 +96,18 @@ it('выделяет ПЛ золотой рамкой и показывает к
   for (const member of members)
     expect(member.querySelector('img').getAttribute('src')).toBe('assets/icons/classes/gan.webp');
 });
+
+it('offers per-party display leader fallback without guessing self or first member', () => {
+  state.settings.guild.parties = [{ name: 'Party', members: [{ nick: 'Alpha' }, { nick: 'Beta' }] }];
+  state.settings.guild.selfNick = 'Alpha';
+  page.renderGuildToday();
+  expect(document.querySelector('.is-leader')).toBeNull();
+  expect(document.querySelector('[data-guild-leader]').options.length).toBe(3);
+  state.settings.guild.leaderOverrides = [{ party: 'Party', nick: 'Beta' }];
+  page.renderGuildToday();
+  expect(document.querySelector('.is-leader').textContent).toContain('Beta');
+  expect(document.querySelector('.is-leader').title).toContain('вручную');
+  state.settings.guild.parties[0].members.pop();
+  page.renderGuildToday();
+  expect(document.querySelector('.is-leader')).toBeNull();
+});

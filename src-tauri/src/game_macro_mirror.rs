@@ -537,6 +537,39 @@ unsafe extern "system" {
         result: *mut usize,
     ) -> isize;
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeyboardMethod {
+    Post,
+    ActivityNotify,
+    Combined,
+}
+impl KeyboardMethod {
+    pub fn parse(value: Option<&str>, legacy_combined: bool) -> Result<Self, String> {
+        match value {
+            Some("post") => Ok(Self::Post),
+            Some("activity-notify") => Ok(Self::ActivityNotify),
+            Some("combined") => Ok(Self::Combined),
+            None => Ok(if legacy_combined {
+                Self::Combined
+            } else {
+                Self::Post
+            }),
+            _ => Err("Unknown keyboard repeat method".into()),
+        }
+    }
+    fn posts(self) -> bool {
+        self != Self::ActivityNotify
+    }
+    fn activity(self) -> bool {
+        self != Self::Post
+    }
+}
+fn modifier_release_order(vk: u32) -> bool {
+    matches!(vk, 0x10..=0x12 | 0xa0..=0xa5)
+}
+fn suppress_repeat(hold_only: bool, repeated_down: bool, mouse: bool) -> bool {
+    hold_only && repeated_down && !mouse
+}
 unsafe fn combined_key(
     hwnd: usize,
     source: usize,
@@ -548,7 +581,7 @@ unsafe fn combined_key(
     let original = GetForegroundWindow();
     let release = matches!(msg, WM_KEYUP | WM_SYSKEYUP);
     if !release && original.0 as usize != source {
-        return Err(4);
+        return Err(10);
     }
     let thread = GetWindowThreadProcessId(original, None);
     let app = mirror_notify(raw, WM_ACTIVATEAPP, 1, thread as isize) != 0;
@@ -582,14 +615,25 @@ unsafe fn combined_key(
         usize::from(current_pid == target_pid),
         current_thread as isize,
     ) != 0;
-    if app && window && sent && restored_window && restored_app && GetForegroundWindow() == original
-    {
-        Ok(())
+    if GetForegroundWindow() != original {
+        Err(10)
+    } else if !app || !window {
+        Err(7)
+    } else if !sent {
+        Err(8)
+    } else if !restored_window || !restored_app {
+        Err(9)
     } else {
-        Err(4)
+        Ok(())
     }
 }
-unsafe fn post(hwnd: usize, key: Key, up: bool, repeat: bool, combined: bool) -> Result<(), u8> {
+unsafe fn post(
+    hwnd: usize,
+    key: Key,
+    up: bool,
+    repeat: bool,
+    method: KeyboardMethod,
+) -> Result<(), u8> {
     if let Some(m) = key.mouse {
         return super::win::mouse_message(
             hwnd as u64,
@@ -609,15 +653,19 @@ unsafe fn post(hwnd: usize, key: Key, up: bool, repeat: bool, combined: bool) ->
         });
     }
     let (msg, vk, flags) = message(key, up, repeat);
-    let posted = PostMessageW(
-        Some(HWND(hwnd as *mut _)),
-        msg,
-        WPARAM(vk as usize),
-        LPARAM(flags as isize),
-    )
-    .map_err(|_| 4);
+    let posted = if method.posts() {
+        PostMessageW(
+            Some(HWND(hwnd as *mut _)),
+            msg,
+            WPARAM(vk as usize),
+            LPARAM(flags as isize),
+        )
+        .map_err(|_| 4)
+    } else {
+        Ok(())
+    };
     // Never skip either release transport when the other fails. No retry/fallback.
-    let activity = if combined {
+    let activity = if method.activity() {
         combined_key(hwnd, key.source, msg, vk, flags)
     } else {
         Ok(())
@@ -628,13 +676,16 @@ unsafe fn post(hwnd: usize, key: Key, up: bool, repeat: bool, combined: bool) ->
 fn release(
     clients: &[Client],
     held: &mut HashMap<usize, HashMap<u32, (Key, Instant)>>,
-    combined: bool,
+    method: KeyboardMethod,
 ) {
     for (hwnd, keys) in held.drain() {
         if clients.iter().any(|c| c.hwnd == hwnd && verify(c)) {
-            for (_, (key, _)) in keys {
+            let mut releases: Vec<_> = keys.into_values().collect();
+            // Release ordinary keys before their modifiers, including emergency cleanup.
+            releases.sort_by_key(|(key, _)| modifier_release_order(key.vk));
+            for (key, _) in releases {
                 unsafe {
-                    let _ = post(hwnd, key, true, false, combined);
+                    let _ = post(hwnd, key, true, false, method);
                 }
             }
         }
@@ -703,7 +754,8 @@ fn forward(
     control: Arc<Control>,
     app: tauri::AppHandle,
     id: String,
-    combined: bool,
+    method: KeyboardMethod,
+    hold_only: bool,
 ) {
     let mut trace = TraceLog {
         app,
@@ -729,7 +781,7 @@ fn forward(
         }
         let foreground = unsafe { GetForegroundWindow().0 as usize };
         if foreground != previous {
-            release(&clients, &mut held, combined);
+            release(&clients, &mut held, method);
             previous = foreground;
         }
         let Ok(key) = rx.recv_timeout(Duration::from_millis(10)) else {
@@ -742,11 +794,11 @@ fn forward(
             break;
         }
         if key.vk == 0 {
-            release(&clients, &mut held, combined);
+            release(&clients, &mut held, method);
             continue;
         }
         if key.source != unsafe { GetForegroundWindow().0 as usize } {
-            release(&clients, &mut held, combined);
+            release(&clients, &mut held, method);
             continue;
         }
         if !clients.iter().any(|c| c.hwnd == key.source && verify(c)) {
@@ -765,7 +817,7 @@ fn forward(
             if control.stop.load(Ordering::SeqCst)
                 || key.source != unsafe { GetForegroundWindow().0 as usize }
             {
-                release(&clients, &mut held, combined);
+                release(&clients, &mut held, method);
                 break;
             }
             if now().saturating_sub(key.at) > 250 {
@@ -779,10 +831,17 @@ fn forward(
                 continue;
             }
             let repeat = !key.up && keys.contains_key(&key.vk);
+            if suppress_repeat(hold_only, repeat, key.mouse.is_some()) {
+                // Refresh the physical-event lease without another DOWN. Preserve first press.
+                if let Some((_, at)) = keys.get_mut(&key.vk) {
+                    *at = Instant::now();
+                }
+                continue;
+            }
             if !key.up {
                 keys.insert(key.vk, (key, Instant::now()));
             }
-            if let Err(reason) = unsafe { post(client.hwnd, key, key.up, repeat, combined) } {
+            if let Err(reason) = unsafe { post(client.hwnd, key, key.up, repeat, method) } {
                 failed_input(&control, key);
                 halt(&control, reason);
                 break;
@@ -795,7 +854,7 @@ fn forward(
         trace.record(key, delivered);
     }
     trace.flush(true);
-    release(&clients, &mut held, combined);
+    release(&clients, &mut held, method);
 }
 pub fn stop(id: &str) -> Result<bool, String> {
     let mut guard = SESSION.lock().map_err(|_| "Mirror lock failed")?;
@@ -821,7 +880,8 @@ pub fn heartbeat(id: &str) -> Result<bool, String> {
 pub struct Options {
     pub mouse: bool,
     pub keyboard: bool,
-    pub combined: bool,
+    pub method: KeyboardMethod,
+    pub hold_only: bool,
     pub source: Option<Target>,
     pub twins_modifier: Option<String>,
     pub active_modifier: Option<String>,
@@ -837,7 +897,8 @@ pub fn start(
     let Options {
         mouse,
         keyboard,
-        combined,
+        method,
+        hold_only,
         source,
         twins_modifier,
         active_modifier,
@@ -963,7 +1024,15 @@ pub fn start(
                 let worker_app = app.clone();
                 let worker_id = thread_id.clone();
                 let worker = std::thread::spawn(move || {
-                    forward(rx, clients, worker_control, worker_app, worker_id, combined)
+                    forward(
+                        rx,
+                        clients,
+                        worker_control,
+                        worker_app,
+                        worker_id,
+                        method,
+                        hold_only,
+                    )
                 });
                 let _ = ready_tx.send(true);
                 while !thread_control.stop.load(Ordering::SeqCst) {
@@ -1015,6 +1084,47 @@ pub fn start(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cleanup_releases_chord_key_before_modifiers() {
+        let mut keys = vec![0xa0, 0x31, 0xa2, 0x42];
+        keys.sort_by_key(|vk| modifier_release_order(*vk));
+        assert_eq!(&keys[..2], &[0x31, 0x42]);
+        assert!(keys[2..].iter().all(|vk| modifier_release_order(*vk)));
+    }
+    #[test]
+    fn keyboard_methods_are_explicit_and_activity_only_never_posts() {
+        assert_eq!(
+            KeyboardMethod::parse(None, false).unwrap(),
+            KeyboardMethod::Post
+        );
+        assert_eq!(
+            KeyboardMethod::parse(None, true).unwrap(),
+            KeyboardMethod::Combined
+        );
+        assert_eq!(
+            KeyboardMethod::parse(Some("post"), true).unwrap(),
+            KeyboardMethod::Post
+        );
+        let activity = KeyboardMethod::parse(Some("activity-notify"), false).unwrap();
+        assert!(!activity.posts());
+        assert!(activity.activity());
+        assert!(KeyboardMethod::Combined.posts());
+        assert!(KeyboardMethod::Combined.activity());
+        assert!(!KeyboardMethod::Post.activity());
+        assert!(KeyboardMethod::parse(Some("unknown"), false).is_err());
+    }
+    #[test]
+    fn hold_only_suppresses_only_repeated_keyboard_downs() {
+        assert!(suppress_repeat(true, true, false));
+        assert!(!suppress_repeat(true, false, false)); // initial DOWN or UP
+        assert!(!suppress_repeat(false, true, false)); // legacy typematic
+        assert!(!suppress_repeat(true, true, true)); // mouse unchanged
+                                                     // Modifiers and ordinary keys follow the same independent pressed-key tracking.
+        for _vk in [0xa0, 0xa2, 0xa4, 0x31, 0x42] {
+            assert!(!suppress_repeat(true, false, false));
+            assert!(suppress_repeat(true, true, false));
+        }
+    }
     #[test]
     fn local_mouse_buttons_pair_releases_even_when_modifiers_or_focus_change() {
         for button in 0..5 {
