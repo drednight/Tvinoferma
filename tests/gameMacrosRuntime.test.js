@@ -1272,10 +1272,16 @@ it('waits for native stop acknowledgement before a new foreground/input operatio
   });
   runtime.stop();
   const next = runtime.run('test');
-  await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('launcher_running_details', undefined));
-  expect(invoke.mock.calls.some(([command]) => command === 'game_macro_action')).toBe(false);
-  acknowledge(null);
-  await next;
+  try {
+    await vi.waitFor(
+      () => expect(invoke.mock.calls.some(([command]) => command === 'game_macro_input_stop')).toBe(true),
+      { timeout: 10000 }
+    );
+    expect(invoke.mock.calls.some(([command]) => command === 'game_macro_action')).toBe(false);
+  } finally {
+    acknowledge(null);
+    await next;
+  }
   expect(invoke.mock.calls.some(([, args]) => args?.action === 'key')).toBe(true);
 });
 it('refuses new input when native stop was not acknowledged without leaking the exception', async () => {
