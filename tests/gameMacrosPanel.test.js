@@ -321,3 +321,12 @@ it('filters commands without executing them and prepares background test command
   ).toBe(true);
   expect(mocks.run).not.toHaveBeenCalled();
 });
+it('offers independent active-window-only mouse modifier, disabled by default and persisted', async () => {
+  const input = document.querySelector('[data-gm-active-modifier]');
+  expect(input).not.toBeNull();
+  expect(input.value).toBe('');
+  input.value = 'SHIFT';
+  input.dispatchEvent(new Event('change'));
+  await vi.waitFor(() => expect(state.settings.gameMacros.mirrorActiveModifier).toBe('SHIFT'));
+  expect(state.settings.gameMacros.mirrorTwinsModifier).toBe('');
+});

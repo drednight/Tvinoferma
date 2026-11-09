@@ -1450,6 +1450,7 @@ function mirrorFingerprint() {
   return JSON.stringify({
     enabled: c.enabled,
     source: c.mirrorSource,
+    activeModifier: c.mirrorActiveModifier,
     twinsModifier: c.mirrorTwinsModifier,
     twinsLeader: c.mirrorTwinsModifier ? c.leaders[c.partyId] : null,
     twinsLeaderValid:
@@ -1556,6 +1557,7 @@ async function applyMirrorToggle(kind = 'keyboard', commandName = '', refreshMod
     const active = await native(
       'game_macro_mirror',
       mirrorArgs('start', id, {
+        activeModifier: desiredMouse && c.mirrorActiveModifier ? c.mirrorActiveModifier : null,
         twinsModifier: twinsLeader ? c.mirrorTwinsModifier : null,
         twinsSource: twinsLeader
           ? { pid: twinsLeader.pid, startedAt: twinsLeader.startedAt, hwnd: twinsLeader.hwnd }
@@ -1603,6 +1605,10 @@ async function applyMirrorToggle(kind = 'keyboard', commandName = '', refreshMod
         if (epoch === mirrorEpoch) await disableKeyboardMirror();
       }
     }, 1000);
+    if (desiredMouse && c.mirrorActiveModifier)
+      log(
+        `Мышь только в активном окне: ${c.mirrorActiveModifier}. Кнопки не копируются при этом жесте; режим повтора остаётся включённым, локальный клик не блокируется.`
+      );
     if (twinsLeader)
       log(
         `ЛКМ только твинам: ${c.mirrorTwinsModifier} + ЛКМ в окне ПЛ. Исходный ЛКМ блокируется; получателям отправляется без модификаторов. Работа в игре не подтверждена.`

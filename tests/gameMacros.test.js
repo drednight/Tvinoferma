@@ -219,3 +219,11 @@ it('normalizes the opt-in twins-only click modifier without enabling it for old 
   for (const value of ['WIN', 'B', 'CTRL+B', true, null])
     expect(normalizeGameMacros({ mirrorTwinsModifier: value }).mirrorTwinsModifier).toBe('');
 });
+it('normalizes active-window mouse modifier without changing existing twins-only setting', () => {
+  expect(normalizeGameMacros({ mirrorActiveModifier: 'SHIFT', mirrorTwinsModifier: 'CTRL' })).toMatchObject({
+    mirrorActiveModifier: 'SHIFT',
+    mirrorTwinsModifier: 'CTRL'
+  });
+  expect(normalizeGameMacros({ mirrorActiveModifier: 'WIN' }).mirrorActiveModifier).toBe('');
+  expect(normalizeGameMacros({}).mirrorActiveModifier).toBe('');
+});

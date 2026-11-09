@@ -137,6 +137,18 @@ export function normalizeGameMacros(input = {}) {
         : null,
     enabled: input.enabled === true,
     mirrorMouse: input.mirrorMouse === true,
+    mirrorActiveModifier: [
+      '',
+      'CTRL',
+      'ALT',
+      'SHIFT',
+      'CTRL+ALT',
+      'CTRL+SHIFT',
+      'ALT+SHIFT',
+      'CTRL+ALT+SHIFT'
+    ].includes(input.mirrorActiveModifier)
+      ? input.mirrorActiveModifier
+      : '',
     mirrorTwinsModifier: ['', 'CTRL', 'ALT', 'SHIFT', 'CTRL+ALT', 'CTRL+SHIFT', 'ALT+SHIFT', 'CTRL+ALT+SHIFT'].includes(
       input.mirrorTwinsModifier
     )

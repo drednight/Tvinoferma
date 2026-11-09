@@ -2026,6 +2026,7 @@ pub async fn game_macro_mirror(
     keyboard: Option<bool>,
     source: Option<Target>,
     twins_modifier: Option<String>,
+    active_modifier: Option<String>,
     twins_source: Option<Target>,
 ) -> Result<bool, String> {
     main_only(&window)?;
@@ -2046,6 +2047,7 @@ pub async fn game_macro_mirror(
                         keyboard: keyboard.unwrap_or(true),
                         source,
                         twins_modifier,
+                        active_modifier,
                         twins_source,
                     },
                 ),
@@ -2069,6 +2071,7 @@ pub async fn game_macro_mirror(
             keyboard,
             source,
             twins_modifier,
+            active_modifier,
             twins_source,
         );
         Err("Game control is Windows-only".into())

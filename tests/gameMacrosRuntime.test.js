@@ -1174,3 +1174,19 @@ it('records only one final command completion after restoring bindings', async (
   expect(runtime.snapshot().logs.filter(line => line.includes('Завершена: test.'))).toHaveLength(1);
   expect(runtime.snapshot().logEntries.at(-1).terminal).toBe(true);
 });
+it('passes an independent active-window mouse modifier without requiring a twins-only leader', async () => {
+  state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['p'] });
+  state.settings.gameMacros.mirrorActiveModifier = 'SHIFT';
+  invoke.mockImplementation(async (name, args) =>
+    name === 'launcher_running_details'
+      ? [client, { ...client, pid: 20, title: 'Beta — Воин' }]
+      : name === 'game_macro_mirror'
+        ? args.operation === 'start'
+        : null
+  );
+  await runtime.toggleKeyboardMirror('mouse');
+  const start = invoke.mock.calls.find(([name, args]) => name === 'game_macro_mirror' && args.operation === 'start');
+  expect(start[1]).toMatchObject({ activeModifier: 'SHIFT', mouse: true, keyboard: false, twinsModifier: null });
+  expect(runtime.snapshot().mirrorMouse).toBe(true);
+  await runtime.toggleKeyboardMirror('mouse');
+});

@@ -64,6 +64,8 @@ struct Context {
     source: Option<usize>,
     last_mouse: Option<(usize, u8, i32, i32, u64)>,
     twins_modifier: u8,
+    active_modifier: u8,
+    local_buttons: u8,
     twins_source: Option<usize>,
     exclusive_left: bool,
     last_exclusive: bool,
@@ -146,6 +148,22 @@ fn twins_modifier_key(mask: u8, vk: u32) -> bool {
 }
 fn twins_gesture(mask: u8, held: u8, win: bool) -> bool {
     mask != 0 && mask == held && !win
+}
+// Decide local-only per press, never per release: pressing a modifier mid-drag must
+// still forward an already mirrored release; releasing the modifier must not leak a local up.
+fn local_mouse_route(button: u8, up: bool, armed: bool, local_buttons: &mut u8) -> bool {
+    let bit = 1u8 << button;
+    if up {
+        let local = *local_buttons & bit != 0;
+        *local_buttons &= !bit;
+        local
+    } else if armed {
+        *local_buttons |= bit;
+        true
+    } else {
+        *local_buttons &= !bit;
+        false
+    }
 }
 fn twins_left_route(up: bool, captured: bool, armed: bool) -> bool {
     if up {
@@ -288,6 +306,27 @@ unsafe extern "system" fn mouse_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESU
                 let Some(ctx) = ctx.as_mut() else {
                     return;
                 };
+                let msg = wp.0 as u32;
+                let button = match msg {
+                    WM_LBUTTONDOWN | WM_LBUTTONUP => 0,
+                    WM_RBUTTONDOWN | WM_RBUTTONUP => 1,
+                    WM_MBUTTONDOWN | WM_MBUTTONUP => 2,
+                    _ => {
+                        if event.mouseData >> 16 == 1 {
+                            3
+                        } else {
+                            4
+                        }
+                    }
+                };
+                let up = matches!(
+                    msg,
+                    WM_LBUTTONUP | WM_RBUTTONUP | WM_MBUTTONUP | WM_XBUTTONUP
+                );
+                if up && local_mouse_route(button, true, false, &mut ctx.local_buttons) {
+                    ctx.last_mouse = None;
+                    return;
+                }
                 // Pair the release with the captured down, even after modifier/focus changes.
                 let captured_up =
                     wp.0 as u32 == WM_LBUTTONUP && std::mem::take(&mut ctx.exclusive_left);
@@ -353,23 +392,21 @@ unsafe extern "system" fn mouse_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESU
                     }
                     return;
                 }
-                let msg = wp.0 as u32;
-                let button = match msg {
-                    WM_LBUTTONDOWN | WM_LBUTTONUP => 0,
-                    WM_RBUTTONDOWN | WM_RBUTTONUP => 1,
-                    WM_MBUTTONDOWN | WM_MBUTTONUP => 2,
-                    _ => {
-                        if event.mouseData >> 16 == 1 {
-                            3
-                        } else {
-                            4
-                        }
-                    }
-                };
-                let up = matches!(
-                    msg,
-                    WM_LBUTTONUP | WM_RBUTTONUP | WM_MBUTTONUP | WM_XBUTTONUP
-                );
+                if !up
+                    && local_mouse_route(
+                        button,
+                        false,
+                        twins_gesture(
+                            ctx.active_modifier,
+                            held_mouse_modifiers(),
+                            GetAsyncKeyState(0x5b) < 0 || GetAsyncKeyState(0x5c) < 0,
+                        ),
+                        &mut ctx.local_buttons,
+                    )
+                {
+                    ctx.last_mouse = None;
+                    return;
+                }
                 let exclusive = button == 0
                     && twins_left_route(
                         up,
@@ -706,6 +743,7 @@ pub struct Options {
     pub keyboard: bool,
     pub source: Option<Target>,
     pub twins_modifier: Option<String>,
+    pub active_modifier: Option<String>,
     pub twins_source: Option<Target>,
 }
 pub fn start(
@@ -720,6 +758,7 @@ pub fn start(
         keyboard,
         source,
         twins_modifier,
+        active_modifier,
         twins_source,
     } = options;
     if id.is_empty()
@@ -765,6 +804,11 @@ pub fn start(
     } else {
         None
     };
+    let active_modifier = active_modifier
+        .as_deref()
+        .map(twins_modifier_mask)
+        .transpose()?
+        .unwrap_or(0);
     let twins_modifier = twins_modifier
         .as_deref()
         .map(twins_modifier_mask)
@@ -809,6 +853,8 @@ pub fn start(
                 source: source_hwnd,
                 last_mouse: None,
                 twins_modifier,
+                active_modifier,
+                local_buttons: 0,
                 twins_source: twins_source_hwnd,
                 exclusive_left: false,
                 last_exclusive: false,
@@ -887,6 +933,25 @@ pub fn start(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn local_mouse_buttons_pair_releases_even_when_modifiers_or_focus_change() {
+        for button in 0..5 {
+            let mut local = 0;
+            assert!(super::local_mouse_route(button, false, true, &mut local));
+            assert!(super::local_mouse_route(button, true, false, &mut local));
+            assert_eq!(local, 0);
+            assert!(!super::local_mouse_route(button, false, false, &mut local));
+            // Modifier pressed after a mirrored down must not steal its release.
+            assert!(!super::local_mouse_route(button, true, true, &mut local));
+        }
+        let mut local = 0;
+        assert!(super::local_mouse_route(0, false, true, &mut local));
+        assert!(super::local_mouse_route(1, false, true, &mut local));
+        assert!(super::local_mouse_route(0, true, false, &mut local));
+        assert_eq!(local, 2);
+        assert!(super::local_mouse_route(1, true, false, &mut local));
+        assert_eq!(local, 0);
+    }
     #[test]
     fn configurable_gesture_accepts_only_explicit_supported_modifiers() {
         for (text, mask) in [
