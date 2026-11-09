@@ -67,7 +67,8 @@ export function getClassIconSrcByStem(stem) {
   const raw = String(stem || '')
     .trim()
     .toLowerCase();
-  const key = raw === 'priest' ? 'prist' : raw;
+  const aliases = { priest: 'prist', gun: 'gan', gunner: 'gan' };
+  const key = Object.hasOwn(aliases, raw) ? aliases[raw] : raw;
   return /^[a-z0-9_-]+$/i.test(key) ? `${ICON_BASE_PATH}${key}.webp` : null;
 }
 

@@ -50,7 +50,7 @@ const MONTHS = [
 const YEAR_SLACK_DAYS = 7;
 
 /**
- * @typedef {{ nick: string, cls: string, title: string }} GuildMember
+ * @typedef {{ nick: string, cls: string, title: string, leader?: boolean }} GuildMember
  * @typedef {{ name: string, members: GuildMember[] }} GuildParty
  * @typedef {{ id: string, title: string, when: string, comment: string, response: string }} GuildEvent
  * @typedef {{ events: GuildEvent[], parties: GuildParty[], selfNick: string, poll: any, syncedAt: number | null }} GuildData
@@ -60,6 +60,7 @@ const PARTIES_TITLE = 'Пати в которых вы состоите';
 /** Свой ник: поле «Ник» в блоке «Информация о персонаже». */
 const SELF_NICK = '#updateUserInfoForm input[name="username"]';
 /** Хвост вида «(ПЛ)» после ника в таблице пати — метка сайта, а не часть ника. */
+const LEADER_SUFFIX = /\(\s*ПЛ\s*\)\s*$/iu;
 const NICK_SUFFIX = /\s*\([^)]*\)\s*$/;
 /** Имя файла иконки класса: `assets/img/classes/luk.png` → `luk`. */
 const ICON_STEM = /\/classes\/([a-z0-9_-]+)\.[a-z0-9]+$/i;
@@ -79,10 +80,12 @@ function iconStem(src) {
 
 /** Приводит участника к известной форме; мусор из state.json не должен ломать экран. */
 function normalizeMember(m) {
-  const nick = clean(m?.nick);
+  const rawNick = clean(m?.nick);
+  const leader = m?.leader === true || LEADER_SUFFIX.test(rawNick);
+  const nick = clean(rawNick.replace(LEADER_SUFFIX, ''));
   if (!nick) return null;
   const cls = /^[a-z0-9_-]+$/i.test(String(m?.cls || '').trim()) ? String(m.cls).trim() : '';
-  return { nick, cls, title: clean(m?.title) };
+  return { nick, cls, title: clean(m?.title), ...(leader ? { leader: true } : {}) };
 }
 
 /**
@@ -145,10 +148,17 @@ function partyName(col) {
 function partyMembers(col) {
   const members = [];
   for (const link of col.querySelectorAll('a.table-username')) {
-    const nick = clean(link.textContent).replace(NICK_SUFFIX, '');
+    const rawNick = clean(link.textContent);
+    const leader = LEADER_SUFFIX.test(rawNick);
+    const nick = rawNick.replace(NICK_SUFFIX, '');
     if (!nick) continue;
     const img = link.querySelector('img');
-    members.push({ nick, cls: iconStem(img?.getAttribute('src')), title: clean(img?.getAttribute('alt')) });
+    members.push({
+      nick,
+      cls: iconStem(img?.getAttribute('src')),
+      title: clean(img?.getAttribute('alt')),
+      ...(leader ? { leader: true } : {})
+    });
   }
   if (members.length) return members;
   const raw = clean(col.getAttribute?.('data-users'));

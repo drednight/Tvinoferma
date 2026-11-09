@@ -247,3 +247,7 @@ describe('локальное намерение не подменяет свод
     expect(getClassIconSrcByStem('../prist')).toBeNull();
   });
 });
+it('сопоставляет внешние имена иконки стрелка с локальным gan.webp', () => {
+  for (const stem of ['gun', 'Gun', 'gunner', 'gan'])
+    expect(getClassIconSrcByStem(stem)).toBe('assets/icons/classes/gan.webp');
+});

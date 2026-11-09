@@ -76,3 +76,23 @@ it('защита восстановления блокирует и старую
   expect(mocks.read).not.toHaveBeenCalled();
   expect(mocks.persist).not.toHaveBeenCalled();
 });
+it('выделяет ПЛ золотой рамкой и показывает каноническую иконку стрелка по названию класса', () => {
+  state.settings.guild.parties = [
+    {
+      name: 'Test',
+      members: [
+        { nick: 'Alpha', cls: 'gun', title: 'Стрелок', leader: true },
+        { nick: 'Beta', cls: 'wrong-file', title: 'Стрелок' }
+      ]
+    }
+  ];
+  state.settings.guild.selfNick = 'Alpha';
+  page.renderGuildToday();
+  const members = document.querySelectorAll('.guild-member');
+  expect(members[0].classList.contains('is-leader')).toBe(true);
+  expect(members[0].classList.contains('is-self')).toBe(true);
+  expect(members[0].querySelector('.guild-leader-label').textContent).toBe('ПЛ');
+  expect(members[1].classList.contains('is-leader')).toBe(false);
+  for (const member of members)
+    expect(member.querySelector('img').getAttribute('src')).toBe('assets/icons/classes/gan.webp');
+});

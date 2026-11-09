@@ -89,14 +89,17 @@
   function parsePartyMembers(col) {
     const members = [];
     for (const link of col.querySelectorAll('a.table-username')) {
-      const nick = clean(link.textContent).replace(/\s*\([^)]*\)\s*$/, '');
+      const rawNick = clean(link.textContent);
+      const leader = /\(\s*ПЛ\s*\)\s*$/iu.test(rawNick);
+      const nick = rawNick.replace(/\s*\([^)]*\)\s*$/, '');
       if (!nick) continue;
       const img = link.querySelector('img');
       const src = clean(img?.getAttribute('src'));
       members.push({
         nick,
         cls: (src.match(/\/classes\/([a-z0-9_-]+)\.[a-z0-9]+$/i) || [])[1] || '',
-        title: clean(img?.getAttribute('alt'))
+        title: clean(img?.getAttribute('alt')),
+        ...(leader ? { leader: true } : {})
       });
     }
     if (members.length) return members;

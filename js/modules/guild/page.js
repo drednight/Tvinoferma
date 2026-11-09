@@ -13,7 +13,7 @@ import { openWebLink } from '../../core/linkBrowser.js';
 import { toast } from '../../core/ui.js';
 import { escapeHtml as esc, copyToClipboard } from '../../core/utils.js';
 import { isTauri, assertStateWriteAvailable } from '../../core/storage.js';
-import { getClassIconSrcByStem } from '../../core/constants.js';
+import { getClassIconSrcByStem, getClassIconSrc, CLASSES } from '../../core/constants.js';
 import { createResponseQueue } from './responseQueue.js';
 import {
   readPendingResponses,
@@ -365,10 +365,17 @@ function eventsHtml(data) {
 
 /** Один участник пати: иконка класса и ник. Свой ник помечен — в копирование он не идёт. */
 function memberHtml(member, selfNick) {
-  const icon = getClassIconSrcByStem(member.cls);
+  const className = CLASSES.find(
+    name =>
+      name.toLowerCase() ===
+      String(member.title || '')
+        .trim()
+        .toLowerCase()
+  );
+  const icon = (className && getClassIconSrc(className)) || getClassIconSrcByStem(member.cls);
   const ico = icon ? `<img class="guild-member-ico" src="${esc(icon)}" alt="" loading="lazy">` : '';
   const self = isSelfNick(member.nick, selfNick) ? ' is-self' : '';
-  return `<span class="guild-member${self}" title="${esc(member.title || member.nick)}">${ico}<span>${esc(member.nick)}</span></span>`;
+  return `<span class="guild-member${self}${member.leader ? ' is-leader' : ''}" title="${esc((member.title || member.nick) + (member.leader ? ' · ПЛ пати' : ''))}">${ico}<span>${esc(member.nick)}</span>${member.leader ? '<span class="guild-leader-label" aria-label="ПЛ пати">ПЛ</span>' : ''}</span>`;
 }
 
 function partyHtml(party, selfNick) {
