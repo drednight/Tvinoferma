@@ -580,3 +580,22 @@ textarea#char-notes {
   margin-top: 4px;
   color: var(--text-faint);
 }
+
+.pf-gamecenter-site {
+  margin-top: 8px;
+  margin-bottom: 14px;
+}
+.gc-site-login-wait {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.gc-site-login-wait label {
+  display: grid;
+  gap: 6px;
+}
+.gc-site-login-wait select {
+  max-width: 100%;
+}

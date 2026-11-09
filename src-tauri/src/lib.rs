@@ -285,6 +285,8 @@ pub fn run() {
             launcher::launcher_self_elevated,
             elevate::launcher_run_elevated,
             elevate::launcher_relaunch_elevated,
+            launcher::site_login::gc_site_login_wait,
+            launcher::site_login::gc_site_login_cancel,
             launcher::launcher_capture_account,
             launcher::launcher_forget_account,
             launcher::launcher_has_account,

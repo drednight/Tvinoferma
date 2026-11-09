@@ -33,6 +33,7 @@ use tauri::Emitter;
 
 /// Astrum Play: отдельный лаунчер с другим ini и окном вопроса (см. launcher/astrum.rs)
 mod astrum;
+pub mod site_login;
 
 const GAMECENTER_EXE: &str = "GameCenter.exe";
 /// Начало имени образа клиента игры: `elementclient_64.exe`, `elementclient.exe` и подобные

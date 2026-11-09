@@ -184,7 +184,7 @@ export function openCharacterProfile(char) {
                 <button type="button" class="btn ghost pf-contacts-all" id="pf-contacts-toggle-all" title="Показать или скрыть сразу все контакты">Показать все</button>
               </summary>
               <p class="muted">Способ входа на сайт: ${char.siteLogin?.mode === 'gamecenter' ? 'GameCenter (эксперимент)' : 'обычный'}</p>
-              ${char.siteLogin?.mode === 'gamecenter' ? '<button type="button" class="btn ghost small" id="pf-gamecenter-site">Проверить вход через GameCenter…</button>' : ''}
+              ${char.siteLogin?.mode === 'gamecenter' ? '<button type="button" class="btn ghost small pf-gamecenter-site" id="pf-gamecenter-site">Проверить вход через GameCenter…</button>' : ''}
               <div class="pf-contacts">
                 ${contactRowHtml('email', 'Email', contacts.email)}
                 ${contactRowHtml('password', 'Пароль', contacts.password)}
