@@ -1086,7 +1086,7 @@ mod tests {
     use super::*;
     #[test]
     fn cleanup_releases_chord_key_before_modifiers() {
-        let mut keys = vec![0xa0, 0x31, 0xa2, 0x42];
+        let mut keys = [0xa0, 0x31, 0xa2, 0x42];
         keys.sort_by_key(|vk| modifier_release_order(*vk));
         assert_eq!(&keys[..2], &[0x31, 0x42]);
         assert!(keys[2..].iter().all(|vk| modifier_release_order(*vk)));
