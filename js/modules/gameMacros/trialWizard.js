@@ -1,3 +1,4 @@
+import { openBundlePreview } from './evidenceBundle.js';
 import { trialTrace } from './trialRecords.js';
 import { openExecutionDiagnostics } from './commandTools.js';
 import { showModal } from '../../core/ui.js';
@@ -171,15 +172,29 @@ export function openTrialComparison(c, state) {
     wide: true,
     submitText: null,
     cancelText: 'Закрыть',
-    content: `<div class="gm-dialog"><p>Последние 40 тестов. Каждая строка — отдельное наблюдение, не доказательство поддержки PW. Сравнивайте одинаковые условия. История сохраняется на этом устройстве.</p><div class="gm-trial-table"><table><thead><tr><th>Время / получатель</th><th>Клавиша / способ</th><th>Технический итог</th><th>Наблюдение в игре</th></tr></thead><tbody>${
+    content: `<div class="gm-dialog"><p>Последние 40 тестов. Каждая строка — отдельное наблюдение, не доказательство поддержки PW. Сравнивайте одинаковые условия. История сохраняется на этом устройстве.</p><label><input type="checkbox" data-bundle-notes> Включить заметки</label><label><input type="checkbox" data-bundle-identifiers> Включить локальные ID и PID/HWND</label><button class="btn" data-bundle-preview>Предпросмотр выбранного пакета</button><p data-bundle-error role="status"></p><div class="gm-trial-table"><table><thead><tr><th>Выбор</th><th>Время / получатель</th><th>Клавиша / способ</th><th>Технический итог</th><th>Наблюдение в игре</th></tr></thead><tbody>${
       [...c.backgroundTrials]
         .reverse()
         .map(
           row =>
-            `<tr><td>${esc(row.at)}<br>${esc(state.characters.find(char => char.id === row.charId)?.nick || row.charId)}</td><td>${esc(row.key)}<br>${esc(BACKGROUND_METHODS[row.method])}</td><td>${esc(row.technical.state)} · ${esc(row.technical.stage)}<br>${esc(row.technical.known)}<br><small>runId: ${esc(row.technical.runId || 'нет')}</small>${row.technical.trace ? `<button class="btn ghost" data-trial-details="${esc(row.id)}">Диагностика теста</button>` : ''}</td><td>${esc(LAB_VERDICTS[row.verdict])}<br>${esc(row.notes)}</td></tr>`
+            `<tr><td><input type="checkbox" data-bundle-select="${esc(row.id)}" aria-label="Выбрать тест ${esc(row.key)} ${esc(row.at)}"></td><td>${esc(row.at)}<br>${esc(state.characters.find(char => char.id === row.charId)?.nick || row.charId)}</td><td>${esc(row.key)}<br>${esc(BACKGROUND_METHODS[row.method])}</td><td>${esc(row.technical.state)} · ${esc(row.technical.stage)}<br>${esc(row.technical.known)}<br><small>runId: ${esc(row.technical.runId || 'нет')}</small>${row.technical.trace ? `<button class="btn ghost" data-trial-details="${esc(row.id)}">Диагностика теста</button>` : ''}</td><td>${esc(LAB_VERDICTS[row.verdict])}<br>${esc(row.notes)}</td></tr>`
         )
-        .join('') || '<tr><td colspan="4">Тестов пока нет. Откройте мастер одиночной проверки.</td></tr>'
+        .join('') || '<tr><td colspan="5">Тестов пока нет. Откройте мастер одиночной проверки.</td></tr>'
     }</tbody></table></div></div>`
+  });
+  modal?.querySelector('[data-bundle-preview]').addEventListener('click', () => {
+    try {
+      openBundlePreview(
+        c.backgroundTrials,
+        [...modal.querySelectorAll('[data-bundle-select]:checked')].map(node => node.dataset.bundleSelect),
+        {
+          includeNotes: modal.querySelector('[data-bundle-notes]').checked,
+          includeIdentifiers: modal.querySelector('[data-bundle-identifiers]').checked
+        }
+      );
+    } catch (error) {
+      modal.querySelector('[data-bundle-error]').textContent = error.message;
+    }
   });
   modal?.querySelectorAll('[data-trial-details]').forEach(button => {
     button.onclick = () => {

@@ -54,6 +54,7 @@ mod elevate;
 mod game_macros;
 mod guild;
 mod injection;
+mod input_receiver;
 mod launcher;
 mod layout_sync;
 mod marathons;
@@ -298,6 +299,7 @@ pub fn run() {
             game_macros::game_macro_action,
             game_macros::game_macro_input_idle,
             game_macros::game_macro_background_probe,
+            input_receiver::game_macro_receiver,
             game_macros::game_macro_bindings,
             game_macros::game_macro_mirror,
             game_macros::game_macro_pointer,

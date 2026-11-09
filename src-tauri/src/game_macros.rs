@@ -615,6 +615,28 @@ pub async fn game_macro_bindings(
 }
 
 #[cfg(windows)]
+pub(crate) fn receiver_send(
+    raw: u64,
+    key: &str,
+    method: BackgroundMethod,
+) -> Result<serde_json::Value, String> {
+    if !crate::input_receiver::is_receiver(raw) {
+        return Err("Receiver unavailable".into());
+    }
+    if !win::input_idle(None)? {
+        return Err("Release physical input before receiver test".into());
+    }
+    win::background_key(
+        raw,
+        std::process::id(),
+        key,
+        InputTiming {
+            background_method: method,
+            ..Default::default()
+        },
+    )
+}
+#[cfg(windows)]
 mod win {
     use super::*;
     use std::sync::{
@@ -873,7 +895,9 @@ mod win {
         let refused = foreground_mismatch
             || !input_idle(None)?
             || original.0.is_null()
-            || (original_pid == pid && (diagnostic || original != hwnd))
+            || (original_pid == pid
+                && (diagnostic || original != hwnd)
+                && !crate::input_receiver::is_receiver(raw))
             || report["visible"] != true
             || report["minimized"] == true
             || report["hung"] == true

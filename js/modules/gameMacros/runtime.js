@@ -1830,3 +1830,19 @@ export async function diagnoseBackground(charId, key = 'B', activityTest = false
     void broadcast();
   }
 }
+
+// Receiver operations can never target arbitrary HWNDs. Native owns the handle.
+export async function controlReceiver(operation, key = 'B', method = 'post') {
+  const sending = operation === 'send';
+  if (sending && (busy || paused || mirroring || mirrorPending))
+    throw new Error('Завершите команду, снимите паузу и выключите повтор.');
+  if (sending) busy = true;
+  try {
+    return await native('game_macro_receiver', { operation, key, method });
+  } finally {
+    if (sending) {
+      busy = false;
+      void broadcast();
+    }
+  }
+}
