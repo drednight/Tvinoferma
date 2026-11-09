@@ -1260,3 +1260,32 @@ it('does not broaden an explicitly marked managed subset on failed target resolu
   ).rejects.toThrow();
   expect(invoke.mock.calls.some(([name]) => name === 'game_macro_action')).toBe(false);
 });
+
+it('waits for native stop acknowledgement before a new foreground/input operation', async () => {
+  let acknowledge;
+  const pending = new Promise(resolve => {
+    acknowledge = resolve;
+  });
+  invoke.mockImplementation(async command => {
+    if (command === 'game_macro_input_stop') return pending;
+    return command === 'launcher_running_details' ? [client] : null;
+  });
+  runtime.stop();
+  const next = runtime.run('test');
+  await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('launcher_running_details', undefined));
+  expect(invoke.mock.calls.some(([command]) => command === 'game_macro_action')).toBe(false);
+  acknowledge(null);
+  await next;
+  expect(invoke.mock.calls.some(([, args]) => args?.action === 'key')).toBe(true);
+});
+it('refuses new input when native stop was not acknowledged without leaking the exception', async () => {
+  invoke.mockImplementation(async command => {
+    if (command === 'game_macro_input_stop') throw new Error('private token');
+    return command === 'launcher_running_details' ? [client] : null;
+  });
+  runtime.stop();
+  await runtime.run('test');
+  expect(invoke.mock.calls.some(([command]) => command === 'game_macro_action')).toBe(false);
+  expect(runtime.snapshot().logs.join('\n')).not.toContain('private token');
+  expect(runtime.snapshot().logs.join('\n')).toContain('перезапустите приложение');
+});
