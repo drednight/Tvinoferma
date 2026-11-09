@@ -410,3 +410,25 @@ describe('явная метка ПЛ', () => {
     expect(data.parties[0].members[1].nick).toBe('Beta');
   });
 });
+
+it('reads explicit PL marker outside the nickname link in the same table cell', () => {
+  const page = doc();
+  const link = page.querySelector('a.table-username');
+  link.lastChild.textContent = '#Дреднайт';
+  link.after(document.createTextNode(' (ПЛ)'));
+  const member = parseProfileDocument(page).parties[0].members[0];
+  expect(member.nick).toBe('#Дреднайт');
+  expect(member.leader).toBe(true);
+});
+
+it('embedded site parser also preserves PL outside the nickname link', () => {
+  delete window.__tfGuildInstalled;
+  document.body.innerHTML = doc().body.innerHTML;
+  const link = document.querySelector('a.table-username');
+  link.lastChild.textContent = '#Дреднайт';
+  link.after(document.createTextNode(' (ПЛ)'));
+  window.history.replaceState(null, '', '/index.php');
+  new Function(readFileSync('src-tauri/src/scripts/guild.js', 'utf8'))();
+  const result = JSON.parse(decodeURIComponent(window.location.hash.replace('#TFETE1_', '')));
+  expect(result.data.parties[0].members[0]).toMatchObject({ nick: '#Дреднайт', leader: true });
+});

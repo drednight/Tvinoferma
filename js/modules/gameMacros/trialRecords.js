@@ -3,6 +3,7 @@ import { safeDiagnostic } from './trace.js';
 import { BACKGROUND_METHODS } from './background.js';
 export const EVIDENCE_METHODS = {
   ...BACKGROUND_METHODS,
+  'mirror-combined': 'Повтор клавиатуры · PostMessage + activity-notify (ручное наблюдение)',
   'mirror-post': 'Повтор клавиатуры · PostMessage (ручное наблюдение)'
 };
 export function trialTrace(run) {

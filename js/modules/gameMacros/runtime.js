@@ -1464,6 +1464,7 @@ function mirrorFingerprint() {
   return JSON.stringify({
     enabled: c.enabled,
     source: c.mirrorSource,
+    keyboardMethod: c.mirrorKeyboardMethod,
     activeModifier: c.mirrorActiveModifier,
     twinsModifier: c.mirrorTwinsModifier,
     twinsLeader: c.mirrorTwinsModifier ? c.leaders[c.partyId] : null,
@@ -1578,6 +1579,7 @@ async function applyMirrorToggle(kind = 'keyboard', commandName = '', refreshMod
           : null,
         mouse: desiredMouse,
         keyboard: desiredKeys,
+        combined: desiredKeys && c.mirrorKeyboardMethod === 'combined',
         source: sourceRow ? { pid: sourceRow.pid, startedAt: sourceRow.startedAt, hwnd: sourceRow.hwnd } : null,
         targets: rows.map(r => ({ pid: r.pid, startedAt: r.startedAt })),
         shortcuts: [
@@ -1629,7 +1631,9 @@ async function applyMirrorToggle(kind = 'keyboard', commandName = '', refreshMod
       );
     if (desiredKeys)
       log(
-        'Клавиатурный повтор: PostMessage с scan-code источника; это не activity-notify. Текст в чате и игровые горячие клавиши могут обрабатываться по-разному. Состояние чата программа не определяет.'
+        c.mirrorKeyboardMethod === 'combined'
+          ? 'Клавиатурный повтор: эксперимент PostMessage + activity-notify. Двойные действия возможны; чат не определяется. Команды не изменены.'
+          : 'Клавиатурный повтор: PostMessage с scan-code источника; это не activity-notify. Текст в чате и игровые горячие клавиши могут обрабатываться по-разному. Состояние чата программа не определяет.'
       );
     log(
       `Повтор ВКЛЮЧЁН (клавиатура: ${mirrorKeys ? 'да' : 'нет'}, мышь: ${mirrorMouse ? 'да' : 'нет'}): ${rows.length} проверенных окон, источник: ${sourceRow ? 'ПЛ выбранной пати' : 'любая распознанная игра'}. ${mirrorMouse ? 'Кнопки мыши: абсолютные экранные точки.' : 'Мышь не передаётся.'} Ctrl+Alt+Pause — выключить. Обработка сообщений игрой не подтверждена.`,

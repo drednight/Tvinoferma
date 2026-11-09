@@ -365,3 +365,18 @@ it('reconnects an enabled mouse repeat when its configurable modifier changes', 
   expect(args.twinsModifier).toBe('CTRL');
   expect(args.mouse).toBe(true);
 });
+
+it('enables combined transport only for opt-in keyboard repeat', async () => {
+  state.settings.gameMacros.mirrorKeyboardMethod = 'combined';
+  await runtime.toggleKeyboardMirror();
+  const start = m.invoke.mock.calls.find(([name, args]) => name === 'game_macro_mirror' && args.operation === 'start');
+  expect(start[1].combined).toBe(true);
+  expect(start[1].keyboard).toBe(true);
+});
+
+it('does not enable combined transport for mouse-only repeat', async () => {
+  state.settings.gameMacros.mirrorKeyboardMethod = 'combined';
+  await runtime.toggleKeyboardMirror('mouse');
+  const start = m.invoke.mock.calls.find(([name, args]) => name === 'game_macro_mirror' && args.operation === 'start');
+  expect(start[1].combined).toBe(false);
+});

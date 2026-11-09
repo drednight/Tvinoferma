@@ -521,7 +521,75 @@ fn message(key: Key, up: bool, repeat: bool) -> (u32, u32, u32) {
     };
     (msg, vk, flags)
 }
-unsafe fn post(hwnd: usize, key: Key, up: bool, repeat: bool) -> Result<(), u8> {
+// Keep all blocking calls off the input hook. Each key delivery is bounded at 25 ms.
+#[link(name = "user32")]
+unsafe extern "system" {
+    #[link_name = "SendNotifyMessageW"]
+    fn mirror_notify(hwnd: *mut std::ffi::c_void, msg: u32, wp: usize, lp: isize) -> i32;
+    #[link_name = "SendMessageTimeoutW"]
+    fn mirror_timeout(
+        hwnd: *mut std::ffi::c_void,
+        msg: u32,
+        wp: usize,
+        lp: isize,
+        flags: u32,
+        timeout: u32,
+        result: *mut usize,
+    ) -> isize;
+}
+unsafe fn combined_key(
+    hwnd: usize,
+    source: usize,
+    msg: u32,
+    vk: u32,
+    flags: u32,
+) -> Result<(), u8> {
+    let raw = hwnd as *mut std::ffi::c_void;
+    let original = GetForegroundWindow();
+    let release = matches!(msg, WM_KEYUP | WM_SYSKEYUP);
+    if !release && original.0 as usize != source {
+        return Err(4);
+    }
+    let thread = GetWindowThreadProcessId(original, None);
+    let app = mirror_notify(raw, WM_ACTIVATEAPP, 1, thread as isize) != 0;
+    let window = mirror_notify(raw, WM_ACTIVATE, 1, original.0 as isize) != 0;
+    let mut result = 0usize;
+    let sent = (release || (app && window && GetForegroundWindow() == original))
+        && mirror_timeout(
+            raw,
+            msg,
+            vk as usize,
+            flags as isize,
+            0x0002 | 0x0020,
+            25,
+            &mut result,
+        ) != 0;
+    // Restore notification state even on failure; never call SetFocus/SetForegroundWindow.
+    let current = GetForegroundWindow();
+    let mut current_pid = 0;
+    let current_thread = GetWindowThreadProcessId(current, Some(&mut current_pid));
+    let mut target_pid = 0;
+    GetWindowThreadProcessId(HWND(raw), Some(&mut target_pid));
+    let restored_window = mirror_notify(
+        raw,
+        WM_ACTIVATE,
+        usize::from(current.0 as usize == hwnd),
+        current.0 as isize,
+    ) != 0;
+    let restored_app = mirror_notify(
+        raw,
+        WM_ACTIVATEAPP,
+        usize::from(current_pid == target_pid),
+        current_thread as isize,
+    ) != 0;
+    if app && window && sent && restored_window && restored_app && GetForegroundWindow() == original
+    {
+        Ok(())
+    } else {
+        Err(4)
+    }
+}
+unsafe fn post(hwnd: usize, key: Key, up: bool, repeat: bool, combined: bool) -> Result<(), u8> {
     if let Some(m) = key.mouse {
         return super::win::mouse_message(
             hwnd as u64,
@@ -541,21 +609,32 @@ unsafe fn post(hwnd: usize, key: Key, up: bool, repeat: bool) -> Result<(), u8> 
         });
     }
     let (msg, vk, flags) = message(key, up, repeat);
-    PostMessageW(
+    let posted = PostMessageW(
         Some(HWND(hwnd as *mut _)),
         msg,
         WPARAM(vk as usize),
         LPARAM(flags as isize),
     )
-    .map_err(|_| 4)
+    .map_err(|_| 4);
+    // Never skip either release transport when the other fails. No retry/fallback.
+    let activity = if combined {
+        combined_key(hwnd, key.source, msg, vk, flags)
+    } else {
+        Ok(())
+    };
+    posted.and(activity)
 }
 
-fn release(clients: &[Client], held: &mut HashMap<usize, HashMap<u32, (Key, Instant)>>) {
+fn release(
+    clients: &[Client],
+    held: &mut HashMap<usize, HashMap<u32, (Key, Instant)>>,
+    combined: bool,
+) {
     for (hwnd, keys) in held.drain() {
         if clients.iter().any(|c| c.hwnd == hwnd && verify(c)) {
             for (_, (key, _)) in keys {
                 unsafe {
-                    let _ = post(hwnd, key, true, false);
+                    let _ = post(hwnd, key, true, false, combined);
                 }
             }
         }
@@ -624,6 +703,7 @@ fn forward(
     control: Arc<Control>,
     app: tauri::AppHandle,
     id: String,
+    combined: bool,
 ) {
     let mut trace = TraceLog {
         app,
@@ -649,7 +729,7 @@ fn forward(
         }
         let foreground = unsafe { GetForegroundWindow().0 as usize };
         if foreground != previous {
-            release(&clients, &mut held);
+            release(&clients, &mut held, combined);
             previous = foreground;
         }
         let Ok(key) = rx.recv_timeout(Duration::from_millis(10)) else {
@@ -662,11 +742,11 @@ fn forward(
             break;
         }
         if key.vk == 0 {
-            release(&clients, &mut held);
+            release(&clients, &mut held, combined);
             continue;
         }
         if key.source != unsafe { GetForegroundWindow().0 as usize } {
-            release(&clients, &mut held);
+            release(&clients, &mut held, combined);
             continue;
         }
         if !clients.iter().any(|c| c.hwnd == key.source && verify(c)) {
@@ -685,7 +765,7 @@ fn forward(
             if control.stop.load(Ordering::SeqCst)
                 || key.source != unsafe { GetForegroundWindow().0 as usize }
             {
-                release(&clients, &mut held);
+                release(&clients, &mut held, combined);
                 break;
             }
             if now().saturating_sub(key.at) > 250 {
@@ -702,7 +782,7 @@ fn forward(
             if !key.up {
                 keys.insert(key.vk, (key, Instant::now()));
             }
-            if let Err(reason) = unsafe { post(client.hwnd, key, key.up, repeat) } {
+            if let Err(reason) = unsafe { post(client.hwnd, key, key.up, repeat, combined) } {
                 failed_input(&control, key);
                 halt(&control, reason);
                 break;
@@ -715,7 +795,7 @@ fn forward(
         trace.record(key, delivered);
     }
     trace.flush(true);
-    release(&clients, &mut held);
+    release(&clients, &mut held, combined);
 }
 pub fn stop(id: &str) -> Result<bool, String> {
     let mut guard = SESSION.lock().map_err(|_| "Mirror lock failed")?;
@@ -741,6 +821,7 @@ pub fn heartbeat(id: &str) -> Result<bool, String> {
 pub struct Options {
     pub mouse: bool,
     pub keyboard: bool,
+    pub combined: bool,
     pub source: Option<Target>,
     pub twins_modifier: Option<String>,
     pub active_modifier: Option<String>,
@@ -756,6 +837,7 @@ pub fn start(
     let Options {
         mouse,
         keyboard,
+        combined,
         source,
         twins_modifier,
         active_modifier,
@@ -881,7 +963,7 @@ pub fn start(
                 let worker_app = app.clone();
                 let worker_id = thread_id.clone();
                 let worker = std::thread::spawn(move || {
-                    forward(rx, clients, worker_control, worker_app, worker_id)
+                    forward(rx, clients, worker_control, worker_app, worker_id, combined)
                 });
                 let _ = ready_tx.send(true);
                 while !thread_control.stop.load(Ordering::SeqCst) {

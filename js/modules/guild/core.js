@@ -149,7 +149,7 @@ function partyMembers(col) {
   const members = [];
   for (const link of col.querySelectorAll('a.table-username')) {
     const rawNick = clean(link.textContent);
-    const leader = LEADER_SUFFIX.test(rawNick);
+    const leader = LEADER_SUFFIX.test(rawNick) || LEADER_SUFFIX.test(clean(link.closest('td')?.textContent));
     const nick = rawNick.replace(NICK_SUFFIX, '');
     if (!nick) continue;
     const img = link.querySelector('img');

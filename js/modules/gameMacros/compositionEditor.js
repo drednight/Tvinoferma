@@ -1,3 +1,4 @@
+import { quickKeysHtml, applyQuickModifier } from './quickKeys.js';
 import { isActivityMethod } from './background.js';
 import { BACKGROUND_METHODS } from './background.js';
 import { escapeHtml as esc } from '../../core/utils.js';
@@ -67,7 +68,7 @@ export function mountCompositionEditor(host, c, row) {
   function fields(step) {
     switch (step.type) {
       case 'keys':
-        return `<label>Клавиша ${input('value', step.value)}</label><small>Например SHIFT+1, CTRL+F2 или F8. Сочетание задаётся здесь, без отдельного окна ввода.</small>`;
+        return `<label>Клавиша ${input('value', step.value)}${quickKeysHtml()}</label><small>Например SHIFT+1, CTRL+F2 или F8. Сочетание задаётся здесь, без отдельного окна ввода.</small>`;
       case 'wait':
         return `<label>Задержка, мс ${input('ms', step.ms, 'number')}</label>`;
       case 'command':
@@ -354,6 +355,10 @@ export function mountCompositionEditor(host, c, row) {
   host.onclick = async e => {
     const button = e.target.closest('button');
     if (!button) return;
+    if (button.dataset.quickModifier) {
+      applyQuickModifier(button.closest('label').querySelector('input'), button.dataset.quickModifier);
+      return;
+    }
     const el = button.closest('[data-block]'),
       b = Number(el?.dataset.block),
       step = button.closest('[data-step]'),

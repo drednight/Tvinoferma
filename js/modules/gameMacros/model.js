@@ -137,6 +137,7 @@ export function normalizeGameMacros(input = {}) {
         : null,
     enabled: input.enabled === true,
     mirrorMouse: input.mirrorMouse === true,
+    mirrorKeyboardMethod: input.mirrorKeyboardMethod === 'combined' ? 'combined' : 'post',
     mirrorActiveModifier: [
       '',
       'CTRL',

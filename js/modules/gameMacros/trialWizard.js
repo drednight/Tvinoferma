@@ -1,3 +1,4 @@
+import { quickKeysHtml, applyQuickModifier } from './quickKeys.js';
 import { conditionsFields, readConditions, conditionsHtml } from './testConditions.js';
 import { openBundlePreview } from './evidenceBundle.js';
 import { trialTrace, EVIDENCE_METHODS } from './trialRecords.js';
@@ -39,7 +40,7 @@ export function openTrialWizard({ getConfig, state, diagnose, runTrial, save, st
     submitText: null,
     cancelText: 'Закрыть',
     beforeClose: () => !pending,
-    content: `<div class="gm-trial-wizard gm-dialog"><p>1. Выберите одного твина и безопасную клавишу. 2. Проверьте окно без ввода. 3. Отдельно разрешите одно нажатие. 4. Отметьте реакцию в игре. Автоматического перебора нет.</p><fieldset data-trial-fields><label>Получатель<select data-trial-char><option value="">Выберите твина</option>${members.map(char => `<option value="${esc(char.id)}">${esc(char.nick)}</option>`).join('')}</select></label><label>Клавиша / сочетание<input data-trial-key maxlength="60" placeholder="Например B"></label><label>Способ<select data-trial-method>${EXPERIMENT_METHODS.map(method => `<option value="${method}">${esc(BACKGROUND_METHODS[method])}</option>`).join('')}</select></label>${conditionsFields()}</fieldset><p>Не используйте расходные действия. Получатель должен оставаться неактивным; сама игра может изменить фокус. Проверка не гарантирует готовность игры. Повтор должен быть выключен.</p><button class="btn" data-trial-check>Проверить окно — без нажатия</button><pre data-trial-probe></pre><label><input type="checkbox" data-trial-consent disabled> Разрешаю одно нажатие выбранным способом одному твину</label><button class="btn primary" data-trial-run disabled>Отправить один раз</button><button class="btn danger" data-trial-stop hidden>Стоп</button><p role="status" data-trial-status></p><div data-trial-outcome></div><section data-trial-observation hidden><label>Реакция в игре<select data-trial-verdict>${Object.entries(
+    content: `<div class="gm-trial-wizard gm-dialog"><p>1. Выберите одного твина и безопасную клавишу. 2. Проверьте окно без ввода. 3. Отдельно разрешите одно нажатие. 4. Отметьте реакцию в игре. Автоматического перебора нет.</p><fieldset data-trial-fields><label>Получатель<select data-trial-char><option value="">Выберите твина</option>${members.map(char => `<option value="${esc(char.id)}">${esc(char.nick)}</option>`).join('')}</select></label><label>Клавиша / сочетание<input data-trial-key maxlength="60" placeholder="Например B">${quickKeysHtml()}</label><label>Способ<select data-trial-method>${EXPERIMENT_METHODS.map(method => `<option value="${method}">${esc(BACKGROUND_METHODS[method])}</option>`).join('')}</select></label>${conditionsFields()}</fieldset><p>Не используйте расходные действия. Получатель должен оставаться неактивным; сама игра может изменить фокус. Проверка не гарантирует готовность игры. Повтор должен быть выключен.</p><button class="btn" data-trial-check>Проверить окно — без нажатия</button><pre data-trial-probe></pre><label><input type="checkbox" data-trial-consent disabled> Разрешаю одно нажатие выбранным способом одному твину</label><button class="btn primary" data-trial-run disabled>Отправить один раз</button><button class="btn danger" data-trial-stop hidden>Стоп</button><p role="status" data-trial-status></p><div data-trial-outcome></div><section data-trial-observation hidden><label>Реакция в игре<select data-trial-verdict>${Object.entries(
       LAB_VERDICTS
     )
       .map(([value, label]) => `<option value="${value}">${label}</option>`)
@@ -67,6 +68,9 @@ export function openTrialWizard({ getConfig, state, diagnose, runTrial, save, st
   };
   q('fields').onchange = invalidate;
   q('key').oninput = invalidate;
+  modal.querySelectorAll('[data-quick-modifier]').forEach(button => {
+    button.onclick = () => applyQuickModifier(q('key'), button.dataset.quickModifier);
+  });
   modal.querySelector('[data-test-conditions]').oninput = invalidate;
   q('consent').onchange = () => {
     q('run').disabled = !selection || !q('consent').checked;

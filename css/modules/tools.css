@@ -1394,3 +1394,9 @@
   max-height: 240px;
   overflow-y: auto;
 }
+.gm-quick-keys {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}

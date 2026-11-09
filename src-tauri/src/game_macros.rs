@@ -2024,6 +2024,7 @@ pub async fn game_macro_mirror(
     shortcuts: Vec<String>,
     mouse: Option<bool>,
     keyboard: Option<bool>,
+    combined: Option<bool>,
     source: Option<Target>,
     twins_modifier: Option<String>,
     active_modifier: Option<String>,
@@ -2045,6 +2046,7 @@ pub async fn game_macro_mirror(
                     mirror::Options {
                         mouse: mouse.unwrap_or(false),
                         keyboard: keyboard.unwrap_or(true),
+                        combined: combined.unwrap_or(false),
                         source,
                         twins_modifier,
                         active_modifier,
@@ -2069,6 +2071,7 @@ pub async fn game_macro_mirror(
             shortcuts,
             mouse,
             keyboard,
+            combined,
             source,
             twins_modifier,
             active_modifier,
