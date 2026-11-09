@@ -117,7 +117,31 @@ function renderArchivedCharacters() {
     grid.innerHTML = '<div class="empty-state">Архив персонажей пуст.</div>';
     return;
   }
-  grid.innerHTML = state.archivedCharacters.map(char => generateCardHTML(char, { archived: true })).join('');
+  const chars = state.archivedCharacters.map(char => ({
+    ...char,
+    partyIds: [
+      ...new Set([
+        ...(char.partyIds || []),
+        ...state.archivedParties.filter(p => p.memberLinks?.some(l => l.characterId === char.id)).map(p => p.id)
+      ])
+    ]
+  }));
+  const cls = fillClassFilter(document.getElementById('class-filter'), chars);
+  const party = fillPartyFilter(document.getElementById('party-filter'), [...state.parties, ...state.archivedParties]);
+  const tagSelect = document.getElementById('tag-filter');
+  if (tagSelect) fillTagFilter(tagSelect);
+  const filtered = filterCharacters(chars, {
+    search: document.getElementById('search-input')?.value || '',
+    cls,
+    party,
+    tag: tagSelect?.value || '',
+    auth: document.getElementById('auth-filter')?.value || ''
+  });
+  updateClearButton();
+  updateKPIs(filtered);
+  grid.innerHTML =
+    filtered.map(char => generateCardHTML(char, { archived: true })).join('') ||
+    '<div class="empty-state">В архиве ничего не найдено по заданным фильтрам.</div>';
   bindCharacterEvents(grid, { archived: true });
 }
 
@@ -475,7 +499,9 @@ export function allTags() {
 
 function fillTagFilter(select) {
   const current = select.value;
-  const tags = allTags();
+  const tags = showingCharacterArchive
+    ? [...new Set(state.archivedCharacters.flatMap(c => c.tags || []))].sort()
+    : allTags();
   select.innerHTML =
     '<option value="">Все теги</option><option value="__none__">Без тегов</option>' +
     tags.map(t => `<option value="${escapeHtml(t)}">#${escapeHtml(t)}</option>`).join('');
@@ -486,6 +512,10 @@ function fillTagFilter(select) {
  * Рендер сетки с учетом активных фильтров
  */
 function renderFilteredGrid() {
+  if (showingCharacterArchive) {
+    renderArchivedCharacters();
+    return;
+  }
   const gridEl = document.getElementById('character-grid');
   if (!gridEl) return;
 

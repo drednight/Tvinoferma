@@ -136,3 +136,19 @@ it('does not surface raw native errors containing an authorization URL', async (
   await vi.waitFor(() => expect(document.querySelector('[data-gc-site-status]').textContent).toContain('Не удалось'));
   expect(document.body.textContent).not.toContain('SECRET');
 });
+it('hides manual reserve entirely and places named character site above identity confirmation', async () => {
+  openGameCenterSitePilot(boundChar());
+  const manual = document.querySelector('[data-gc-site-url]').closest('details');
+  expect(manual.hidden).toBe(true);
+  expect(manual.hasAttribute('inert')).toBe(true);
+  const home = document.querySelector('[data-gc-site-home]');
+  expect(manual.contains(home)).toBe(false);
+  expect(home.textContent).toContain('A');
+  expect(
+    home.compareDocumentPosition(document.querySelector('[data-gc-site-identity]')) & Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy();
+  home.click();
+  await vi.waitFor(() =>
+    expect(mocks.open).toHaveBeenCalledWith('https://pwonline.ru/', expect.objectContaining({ id: 'a' }))
+  );
+});

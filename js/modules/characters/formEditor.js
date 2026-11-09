@@ -157,7 +157,6 @@ export function openCharacterForm(char = null) {
           <details class="pf-panel cf-fold" open>
             <summary class="pf-panel-title">Контактные данные <span class="muted cf-fold-note">для входа</span></summary>
             ${vaultStatus().ready ? '<p class="cf-vault-note">🔒 Хранятся в защищённом хранилище учётных данных ОС, а не в state.json</p>' : ''}
-            <label><input type="checkbox" name="site-gamecenter" ${currentChar.siteLogin?.mode === 'gamecenter' ? 'checked' : ''}> Вход на сайт через GameCenter → «Пополнить счёт» (эксперимент)</label>
             <p class="muted">В профиле появится ручная проверка способа входа. Автоматического перехвата ссылки пока нет; флажок не подтверждает авторизацию и не меняет контакты.</p>
             <div class="two-cols">
               <div class="field cf-field"><label>Email / Логин</label><input class="input" type="text" name="contact-email" value="${escapeHtml(contacts.email)}" /></div>
@@ -334,6 +333,10 @@ export function openCharacterForm(char = null) {
     submitText: isEdit ? 'Сохранить изменения' : 'Создать персонажа',
     cancelText: 'Отмена',
     async onSubmit(formData, { setError }) {
+      formData.set(
+        'site-gamecenter',
+        document.querySelector('#modal-root [name="site-gamecenter"]')?.checked ? 'on' : 'off'
+      );
       try {
         const getSafeStr = name => String(formData.get(name) || '').trim();
 
@@ -467,5 +470,13 @@ export function openCharacterForm(char = null) {
     'afterbegin',
     '<button type="button" class="btn secondary" id="btn-stats-ocr" title="Выбрать скриншот окна с характеристиками: значения подставятся в поля">📷 Заполнить со скриншота</button>'
   );
+  const loginMode = document.createElement('label');
+  loginMode.innerHTML = `<input type="checkbox" name="site-gamecenter" ${currentChar.siteLogin?.mode === 'gamecenter' ? 'checked' : ''}> Вход на сайт через GameCenter`;
+  const form = document.querySelector('#modal-root form');
+  if (form) {
+    if (!form.id) form.id = 'character-edit-form';
+    loginMode.querySelector('input').setAttribute('form', form.id);
+  }
+  footer?.prepend(loginMode);
   bindStatsOcr();
 }

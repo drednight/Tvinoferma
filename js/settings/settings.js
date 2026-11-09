@@ -928,6 +928,12 @@ export function bindSettings() {
 
   // Только одно подтверждение/удаление за раз в этом UI. Другие окна и прямые IPC
   // не участвуют в этой блокировке.
+  document.getElementById('review-duplicates-btn')?.addEventListener('click', () =>
+    runExclusiveDanger(async () => {
+      const { openDuplicateCharacters } = await import('./duplicateCharacters.js');
+      openDuplicateCharacters();
+    })
+  );
   let dangerBusy = false;
   const runExclusiveDanger = async operation => {
     if (dangerBusy) {
