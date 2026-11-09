@@ -21,9 +21,10 @@ try {
       contentType: 'text/html',
       body: `<!doctype html><html lang="ru"><head><meta name="viewport" content="width=device-width,initial-scale=1">${css}</head><body><div id="modal-root"></div><script type="module">
  import {normalizeGameMacros} from '/js/modules/gameMacros/model.js';
+ import {openReceiverTools} from '/js/modules/gameMacros/receiverTools.js';
  import {openTrialWizard,openTrialComparison} from '/js/modules/gameMacros/trialWizard.js';
  const state={parties:[{id:'p'}],characters:[{id:'a',nick:'Leader',partyIds:['p']},{id:'b',nick:'Twin',partyIds:['p']}]};let c=normalizeGameMacros({partyId:'p',leaders:{p:'a'}});window.sendCount=0;
- openTrialWizard({getConfig:()=>c,state,diagnose:async()=> 'Simulated Windows report — no input',runTrial:async()=>{window.sendCount++;return {runId:'simulated',state:'finished',stage:'execution-complete',events:[]}},save:async patch=>{c=normalizeGameMacros({...c,...patch});window.records=c.backgroundTrials},stop:()=>{}});window.compare=()=>openTrialComparison(c,state);window.ready=true;
+ openTrialWizard({getConfig:()=>c,state,diagnose:async()=> 'Simulated Windows report — no input',runTrial:async()=>{window.sendCount++;return {runId:'simulated',state:'finished',stage:'execution-complete',events:[]}},save:async patch=>{c=normalizeGameMacros({...c,...patch});window.records=c.backgroundTrials},stop:()=>{}});window.compare=()=>openTrialComparison(c,state);window.openReceiver=()=>openReceiverTools(async(operation)=>{if(operation==='send')window.receiverSends=(window.receiverSends||0)+1;return {open:true,total:1,events:[{message:256,vk:66,foreground:false}]}});window.ready=true;
  </script></body></html>`
     })
   );
@@ -51,8 +52,27 @@ try {
   await page.evaluate(() => window.compare());
   assert.match(await page.locator('tbody').innerText(), /Twin/);
   assert.match(await page.locator('tbody').innerText(), /Не сработало/);
+  await page.locator('[data-bundle-select]').check();
+  await page.locator('[data-bundle-preview]').click();
+  const bundle = JSON.parse(await page.locator('textarea[aria-label="Пакет выбранных тестов"]').inputValue());
+  assert.equal(bundle.records.length, 1);
+  assert.equal(bundle.records[0].notes, undefined);
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => window.compare());
   await page.locator('[data-trial-details]').click();
   await page.locator('textarea[aria-label="Структурированная диагностика"]').waitFor();
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => window.openReceiver());
+  await page.locator('[data-receiver-open]').click();
+  await page.locator('[data-receiver-consent]').check();
+  await page.locator('[data-receiver-send]').click();
+  await page.waitForFunction(() => window.receiverSends === 1);
+  await page.locator('[data-receiver-consent]:not(:checked)').waitFor();
+  assert.equal(await page.locator('[data-receiver-send]').isDisabled(), true);
+  assert.ok(
+    await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+    'Receiver UI mobile width'
+  );
   assert.deepEqual(errors, []);
   console.log(
     'PASS trial wizard Chromium: explicit probe/consent, one send, manual verdict, stored comparison and diagnostics, 390px. Windows callbacks simulated.'

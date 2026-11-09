@@ -252,4 +252,40 @@ mod win {
             serde_json::json!({"schema":1,"scope":"own-window-only","open":state.hwnd!=0,"events":state.events,"total":state.sequence,"delivery":delivery,"gameAccepted":"unknown"}),
         )
     }
+    #[cfg(test)]
+    mod tests {
+        #[test]
+        fn own_window_receives_posted_down_and_up_without_game_access() {
+            use crate::game_macros::BackgroundMethod;
+            super::control("open", None, None).expect("open own receiver");
+            super::control("clear", None, None).unwrap();
+            assert!(super::control("send", Some("ALT+F4"), Some(BackgroundMethod::Post)).is_err());
+            let sent = super::control("send", Some("B"), Some(BackgroundMethod::Post))
+                .expect("send only to own receiver");
+            assert_eq!(sent["delivery"]["inputSent"], true);
+            let mut received = false;
+            for _ in 0..100 {
+                let report = super::control("read", None, None).unwrap();
+                let events = report["events"].as_array().unwrap();
+                let down = events
+                    .iter()
+                    .position(|event| event["message"] == 256 && event["vk"] == 66);
+                let up = events
+                    .iter()
+                    .position(|event| event["message"] == 257 && event["vk"] == 66);
+                if let (Some(down), Some(up)) = (down, up) {
+                    assert!(down < up);
+                    assert!(events[down]["foreground"].is_boolean());
+                    received = true;
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            super::control("close", None, None).unwrap();
+            assert!(
+                received,
+                "own receiver must observe B down/up within one second"
+            );
+        }
+    }
 }
