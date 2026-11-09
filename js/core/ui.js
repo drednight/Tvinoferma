@@ -6,7 +6,7 @@ import { registerModal, closeModalRoot, isTopModal } from './modalLifecycle.js';
 /**
  * Универсальная функция показа модального окна
  * @param {{ title: string, content: string, submitText?: string, cancelText?: string,
- *           onSubmit?: (data: any) => any, onClose?: () => void, hideCloseButton?: boolean }} opts
+ *           onSubmit?: (data: any) => any, onClose?: () => void, beforeClose?: () => boolean, hideCloseButton?: boolean }} opts
  */
 export function showModal({
   title,
@@ -15,6 +15,7 @@ export function showModal({
   cancelText = 'Cancel',
   onSubmit,
   onClose,
+  beforeClose,
   wide = false,
   hideCloseButton = false // Игнорируется, крестик удален
 }) {
@@ -23,6 +24,7 @@ export function showModal({
 
   // ОЧИСТКА ПРЕДЫДУЩЕЙ МОДАЛКИ
   closeModal();
+  if (root.querySelector('[data-modal-close-blocked]')) return;
 
   // Создаем оверлей
   const overlay = document.createElement('div');
@@ -128,6 +130,11 @@ export function showModal({
   };
   const close = () => {
     if (closed) return;
+    if (typeof beforeClose === 'function' && beforeClose() === false) {
+      overlay.dataset.modalCloseBlocked = '';
+      return;
+    }
+    delete overlay.dataset.modalCloseBlocked;
     closed = true;
     unregister();
     document.removeEventListener('keydown', handleEsc);
@@ -136,6 +143,7 @@ export function showModal({
   };
   const unregister = registerModal(overlay, close);
   document.addEventListener('keydown', handleEsc);
+  return overlay;
 }
 
 export function closeModal() {

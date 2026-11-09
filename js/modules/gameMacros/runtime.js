@@ -1,3 +1,14 @@
+import {
+  startExecutionTrace,
+  executionStage,
+  finishExecutionTrace,
+  executionHistory,
+  clearExecutionHistory,
+  explainBackgroundResult,
+  hasActiveExecution,
+  currentExecutionId
+} from './trace.js';
+import { reviewCommand } from './review.js';
 import { backgroundReport } from './diagnostics.js';
 import { BACKGROUND_METHODS, backgroundMethod, validateActivityCommand, isActivityMethod } from './background.js';
 import { inputLabel, formatMirrorInput } from './inputTrace.js';
@@ -47,7 +58,43 @@ export const config = () => normalizeGameMacros(state.settings.gameMacros);
 const native = async (command, args) => {
   if (!window.__TAURI_INTERNALS__) throw new Error('Нужна настольная версия Windows.');
   invoke ||= (await import('@tauri-apps/api/core')).invoke;
-  return invoke(command, args);
+  const traceId = currentExecutionId();
+  const traced = hasActiveExecution() && /^(game_macro_|launcher_running_details)/.test(command);
+  const details = {
+    action: args?.action || args?.operation,
+    key: args?.key,
+    method: args?.timing?.backgroundMethod,
+    pid: args?.target?.pid,
+    startedAt: args?.target?.startedAt,
+    hwnd: args?.target?.hwnd
+  };
+  if (traced && currentExecutionId() === traceId) traceLog(`native:${command}`, 'start', details);
+  const started = performance.now();
+  try {
+    const result = await invoke(command, args);
+    if (traced && currentExecutionId() === traceId)
+      traceLog(`native:${command}`, result?.ok === false || result === false ? 'blocked' : 'ok', {
+        ...details,
+        elapsedMs: Math.round((performance.now() - started) * 1000) / 1000,
+        count: Array.isArray(result) ? result.length : undefined,
+        ok: result?.ok,
+        inputSent: result?.inputSent,
+        foregroundChanged: result?.foregroundChanged,
+        errorCode: typeof result?.error === 'number' ? result.error : undefined,
+        blockedBy: result?.blockedBy
+      });
+    if (traced && currentExecutionId() === traceId && command === 'game_macro_action')
+      log(
+        `Проверка Windows ${args?.action}: ${Math.round(performance.now() - started)} мс; это не время действия игры.`,
+        activeCommandName,
+        false
+      );
+    return result;
+  } catch (error) {
+    if (traced && currentExecutionId() === traceId)
+      traceLog(`native:${command}`, 'error', { ...details, blockedBy: macroErrorText(error) });
+    throw error;
+  }
 };
 export function snapshot() {
   const c = config();
@@ -68,6 +115,9 @@ export function snapshot() {
     registered,
     hotkeysEnabled: c.enabled,
     hotkeyFailures,
+    executions: executionHistory()
+      .slice(-5)
+      .map(({ events, ...run }) => ({ ...run, events: events.slice(-12) })),
     opacity: c.opacity,
     appearance: c.appearance,
     topmost: c.topmost,
@@ -86,6 +136,7 @@ export function snapshot() {
 export async function clearLogs() {
   logs.length = 0;
   logEntries.length = 0;
+  clearExecutionHistory();
   await broadcast();
 }
 export async function broadcast() {
@@ -106,7 +157,18 @@ function log(text, commandName = activeCommandName, notify = true, terminal = fa
   }
   if (notify) void broadcast();
 }
+export const getExecutionHistory = () => executionHistory();
+function traceLog(stage, status = 'ok', details = {}) {
+  const event = executionStage(stage, status, details);
+  if (event)
+    log(
+      `[${event.runId.slice(0, 8)} · ${event.n}] ${stage}: ${status}${Object.keys(event.details).length ? ' · ' + JSON.stringify(event.details) : ''}`,
+      activeCommandName,
+      false
+    );
+}
 export function stop(stopMirror = true) {
+  traceLog('stop-request');
   if (stopMirror && (mirroring || mirrorPending || mirrorKeys || mirrorMouse)) void disableKeyboardMirror();
   cancelled = true;
   executionState = busy ? 'stopping' : 'stopped';
@@ -275,6 +337,51 @@ const act = async (row, action, extra = {}) => {
     ...extra
   });
   if (action === 'key-background' && result?.schema === 1) {
+    traceLog('background-result', result.ok === true ? 'accepted-unconfirmed' : 'blocked', {
+      method: inputTiming.backgroundMethod,
+      pid: row.pid,
+      blockedBy: explainBackgroundResult(result),
+      errorCode: result.error,
+      inputSent: result.inputSent,
+      foregroundChanged: result.foregroundChanged
+    });
+    traceLog('background-preflight', result.refused ? 'blocked' : 'observed', {
+      pid: row.pid,
+      visible: result.visible,
+      minimized: result.minimized,
+      hung: result.hung,
+      identityChecked: result.identityChecked,
+      integrityAllowed: result.integrityAllowed,
+      appElevated: result.appElevated,
+      targetElevated: result.targetElevated,
+      selectedKeyHeld: result.selectedKeyHeld,
+      modifierHeld: result.modifierHeld
+    });
+    for (const phase of (Array.isArray(result.steps) ? result.steps : []).slice(0, 24)) {
+      if (
+        ![
+          'activate-app',
+          'activate-window',
+          'modifier-down',
+          'modifier-up',
+          'key-down',
+          'key-up',
+          'restore-window',
+          'restore-app'
+        ].includes(phase.phase)
+      )
+        continue;
+      traceLog('background-phase', phase.skipped ? 'skipped' : phase.ok ? 'accepted-unconfirmed' : 'blocked', {
+        phase: phase.phase,
+        ok: phase.ok,
+        errorCode: phase.error,
+        asynchronous: phase.asynchronous,
+        skipped: phase.skipped,
+        foregroundChanged:
+          typeof phase.before === 'string' && typeof phase.after === 'string' ? phase.before !== phase.after : undefined
+      });
+    }
+    log(explainBackgroundResult(result), '', false);
     log(`Диагностика ввода → ${row.nick || row.pid}:`, '', false);
     for (const line of backgroundReport(result)) log(line, '', false);
     if (isActivityMethod(inputTiming.backgroundMethod) && typeof result.originalForeground === 'string')
@@ -378,6 +485,7 @@ export function macroErrorText(error) {
   );
 }
 export function togglePause() {
+  traceLog('pause-request');
   paused = !paused;
   if (!composing) stop(false);
   log(paused ? 'Макросы на паузе.' : 'Макросы возобновлены.');
@@ -389,24 +497,44 @@ export async function run(id, hotkey = false) {
     return;
   }
   const requested = config().commands.find(row => row.id === id);
+  const rejected = reason => {
+    const own = !hasActiveExecution();
+    if (own) startExecutionTrace(requested || { id }, config());
+    traceLog('command-rejected', 'blocked', { blockedBy: reason });
+    if (own) finishExecutionTrace('blocked');
+  };
+  if (requested?.needsConfiguration) {
+    rejected('IMPORTED_COMMAND_REQUIRES_CONFIGURATION');
+    log('Импортированная команда заблокирована: откройте, проверьте и сохраните её в редакторе.', requested.name);
+    return;
+  }
   if (requested?.action === 'pause') {
+    const own = !hasActiveExecution();
+    if (own) startExecutionTrace(requested, config());
     togglePause();
+    if (own) finishExecutionTrace('finished');
     return;
   }
   if (paused) {
+    rejected('EXECUTOR_PAUSED');
     log('Макросы на паузе. Нажмите «Пауза / продолжить».');
     return;
   }
   if (busy) {
+    rejected('EXECUTOR_BUSY');
     log('Предыдущая команда ещё выполняется.');
     return;
   }
   const c = config(),
     command = c.commands.find(r => r.id === id);
-  if (!command) return;
+  if (!command) {
+    rejected('COMMAND_NOT_FOUND');
+    return;
+  }
   try {
     validateActivityCommand(command);
   } catch (error) {
+    rejected(macroErrorText(error));
     notice = macroErrorText(error);
     executionState = 'failed';
     log(notice, command.name);
@@ -426,6 +554,11 @@ export async function run(id, hotkey = false) {
   firstInputLogged = false;
   let suspended = false;
   cancelled = false;
+  startExecutionTrace(command, c);
+  traceLog('command-start', 'ok', { action: command.action, method: command.backgroundMethod });
+  const planReview = reviewCommand(command, c, state);
+  traceLog('configuration-review', 'ok', { issueCount: planReview.issues.length });
+  for (const issue of planReview.issues) log(`Проверка ${issue.field}: ${issue.message}`, command.name, false);
   log(`Запуск: ${command.name}. Проверка окон и отпускания клавиш…`);
   try {
     const idleArgs = { chord: hotkey ? command.hotkey : null };
@@ -441,6 +574,7 @@ export async function run(id, hotkey = false) {
       idle = await native('game_macro_input_idle', idleArgs);
     }
     await checkpoint();
+    traceLog('physical-input-released');
     suspended = true;
     const failedStop = await native('game_macro_bindings', { bindings: [{ id: 'stop', chord: 'CTRL+ALT+PAUSE' }] });
     if (Array.isArray(failedStop) && failedStop.includes('stop'))
@@ -472,12 +606,14 @@ export async function run(id, hotkey = false) {
         await act(leader, 'focus');
       }
     } else await executeLegacy(command, c, hotkey, true, preparedRows);
+    traceLog('execution-complete', cancelled ? 'stopped' : 'ok');
     executionState = cancelled ? 'stopped' : 'finished';
     notice = cancelled ? 'Остановлено пользователем.' : `Завершена: ${command.name}.`;
     if (command.delivery === 'background')
       notice += ' Фоновая доставка: игра может игнорировать сообщения; результат не подтверждён.';
     log(notice, activeCommandName, true, true);
   } catch (error) {
+    traceLog('command-failure', cancelled ? 'stopped' : 'error', { blockedBy: macroErrorText(error) });
     executionState = cancelled ? 'stopped' : 'failed';
     notice = cancelled ? 'Остановлено пользователем.' : `Остановлено: ${macroErrorText(error)}`;
     log(notice, activeCommandName, true, true);
@@ -503,6 +639,8 @@ export async function run(id, hotkey = false) {
       executionState = 'stopped';
       notice = 'Остановлено пользователем.';
     }
+    finishExecutionTrace(executionState);
+    log(notice, command.name, false, true);
     busy = false;
     void broadcast();
   }
@@ -1306,6 +1444,16 @@ export async function setMirrorEnabled(kind, enabled) {
   await toggleKeyboardMirror(kind);
 }
 export async function toggleKeyboardMirror(kind = 'keyboard', commandName = '', refreshModes = null) {
+  const own = !hasActiveExecution();
+  if (own) startExecutionTrace({ id: `repeat-${kind}` });
+  traceLog('repeat-mode-request', 'ok', { action: kind });
+  try {
+    return await applyMirrorToggle(kind, commandName, refreshModes);
+  } finally {
+    if (own) finishExecutionTrace(executionState === 'failed' ? 'failed' : 'finished');
+  }
+}
+async function applyMirrorToggle(kind = 'keyboard', commandName = '', refreshModes = null) {
   kind = kind === 'mouse' ? 'mouse' : 'keyboard';
   if (mirrorPending) return;
   const turningOff = kind === 'keyboard' ? mirrorKeys : mirrorMouse;

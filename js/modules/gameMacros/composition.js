@@ -122,6 +122,7 @@ export function compileComposition(command, config) {
     totalWait = 0;
   const refs = new Map(config.commands.map(c => [c.id, c]));
   const expand = (cmd, path = []) => {
+    if (cmd.needsConfiguration) throw new Error('Импортированная команда требует проверки и сохранения в редакторе.');
     if (path.includes(cmd.id) || path.length >= 4) throw new Error('Цикл команд или вложенность более 4.');
     if (cmd.action !== 'composite') {
       if (['mirror', 'mouse-mirror', 'pause'].includes(cmd.action))

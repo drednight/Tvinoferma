@@ -1,3 +1,6 @@
+import { readDraft, writeDraft, clearDraft } from './drafts.js';
+import { commandFingerprint } from './fingerprint.js';
+import { reviewCommand, reviewHtml } from './review.js';
 import { BACKGROUND_METHODS, backgroundVariants, validateActivityCommand } from './background.js';
 import { mountCompositionEditor } from './compositionEditor.js';
 import { compileComposition } from './composition.js';
@@ -102,9 +105,37 @@ export function insertKeyToken(input, token) {
 export function openCommandEditor(c, save, row = null) {
   const unified = !row || row.action !== 'pause';
   if (row && unified) row = unifiedCommand(row, c);
-  let builder;
-  showModal({
-    onClose: () => builder?.dispose(),
+  let builder,
+    captureDraft = () => true,
+    saved = false,
+    allowClose = false,
+    initialSnapshot = '',
+    editorForm,
+    captureNow = () => null;
+  const draftId = row?.id || 'new',
+    baseFingerprint = row ? commandFingerprint(row) : 'new';
+  const beforeUnload = event => {
+    if (editorForm?.isConnected && !saved && JSON.stringify(captureNow()) !== initialSnapshot) {
+      event.preventDefault();
+      event.returnValue = '';
+    }
+  };
+  const createdModal = showModal({
+    beforeClose: () => {
+      if (saved || allowClose || !editorForm?.isConnected || JSON.stringify(captureNow()) === initialSnapshot)
+        return true;
+      captureDraft();
+      const warning = editorForm.querySelector('[data-draft-close-warning]');
+      if (warning) {
+        warning.hidden = false;
+        warning.scrollIntoView?.({ block: 'nearest' });
+      }
+      return false;
+    },
+    onClose: () => {
+      builder?.dispose();
+      window.removeEventListener('beforeunload', beforeUnload);
+    },
     title: row ? 'Изменить команду' : 'Создать команду',
     wide: true,
     content: `<div class="gm-dialog"><form data-gm-form><input type="hidden" name="id"><label>Название <input class="input" name="name" maxlength="80" required></label><div class="gm-action-picker" ${unified ? 'hidden' : ''}><fieldset class="gm-action-choices"><legend>Что делает команда</legend>${Object.entries(
@@ -155,6 +186,7 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
       try {
         const value = Object.fromEntries(data);
         value.strictTargets = row?.strictTargets === true;
+        value.needsConfiguration = false;
         if (value.action === 'follow' && String(value.followSequence || '').trim()) steps(value.followSequence);
         if (!String(value.name || '').trim()) throw new Error('Введите название команды.');
         if (
@@ -219,6 +251,8 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
           throw new Error('Сочетание занято другой командой или остановкой.');
         if (entry.action === 'composite') compileComposition(entry, { ...c, commands });
         await save({ commands });
+        saved = true;
+        clearDraft(draftId);
       } catch (error) {
         const box = document.querySelector('[data-gm-form-error]');
         if (box) {
@@ -229,7 +263,8 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
       }
     }
   });
-  const form = document.querySelector('#modal-root [data-gm-form]');
+  if (!createdModal) return;
+  const form = createdModal.querySelector('[data-gm-form]');
   if (!form) return;
   const initial = row || {
     name: '',
@@ -442,6 +477,121 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
         : 'last';
     sync();
   });
+  editorForm = form;
+  const status = document.createElement('p');
+  status.className = 'gm-draft-status';
+  status.setAttribute('role', 'status');
+  form.prepend(status);
+  const restore = readDraft(draftId);
+  const capture = () => ({
+    fields: [...new FormData(form).entries()],
+    blocks: builder.snapshot()
+  });
+  captureNow = capture;
+  captureDraft = () => {
+    const value = capture();
+    if (!saved) {
+      const ok = writeDraft(draftId, value.fields, value.blocks, baseFingerprint);
+      status.textContent = ok
+        ? 'Черновик сохранён на этом устройстве.'
+        : 'Не удалось сохранить черновик; не закрывайте окно до сохранения команды.';
+    }
+    return value;
+  };
+  initialSnapshot = JSON.stringify(capture());
+  if (restore) {
+    const banner = document.createElement('div');
+    banner.className = 'gm-draft-banner';
+    banner.innerHTML = `<p>${restore.baseFingerprint === baseFingerprint ? 'Есть несохранённый черновик.' : 'Есть черновик другой версии команды; проверьте изменения перед сохранением.'}</p><button type="button" class="btn" data-draft-restore>Восстановить черновик</button><button type="button" class="btn ghost" data-draft-discard>Удалить черновик</button>`;
+    form.prepend(banner);
+    banner.querySelector('[data-draft-restore]').onclick = () => {
+      for (const input of form.querySelectorAll('input[type="checkbox"]')) input.checked = false;
+      for (const [name, value] of restore.fields) {
+        const inputs = [...form.querySelectorAll('[name]')].filter(input => input.name === name);
+        for (const input of inputs) {
+          if (input.type === 'radio' || input.type === 'checkbox')
+            input.checked = restore.fields.some(([field, selected]) => field === name && selected === input.value);
+          else input.value = value;
+        }
+      }
+      builder.restoreBlocks(restore.blocks);
+      banner.remove();
+      sync();
+      refreshChecks();
+      captureDraft();
+    };
+    banner.querySelector('[data-draft-discard]').onclick = () => {
+      clearDraft(draftId);
+      banner.remove();
+    };
+  }
+  const closeWarning = document.createElement('div');
+  closeWarning.className = 'gm-draft-warning';
+  closeWarning.dataset.draftCloseWarning = '';
+  closeWarning.hidden = true;
+  closeWarning.innerHTML =
+    '<p>Есть несохранённые изменения. Можно продолжить редактирование или закрыть окно. Черновик остаётся на этом устройстве, если сохранение выше успешно.</p><button type="button" class="btn" data-draft-continue>Продолжить редактирование</button><button type="button" class="btn ghost" data-draft-close>Закрыть без сохранения команды</button>';
+  form.prepend(closeWarning);
+  closeWarning.querySelector('[data-draft-continue]').onclick = () => {
+    closeWarning.hidden = true;
+  };
+  closeWarning.querySelector('[data-draft-close]').onclick = async () => {
+    allowClose = true;
+    (await import('../../core/ui.js')).closeModal();
+  };
+  const checks = document.createElement('details');
+  checks.className = 'gm-editor-checks';
+  checks.innerHTML = '<summary>Проверка и полный план — без запуска</summary><div data-editor-review></div>';
+  form.append(checks);
+  const refreshChecks = () => {
+    const values = Object.fromEntries(new FormData(form));
+    const draft = {
+      ...row,
+      ...values,
+      id: row?.id || 'editor-new',
+      action: values.action,
+      blocks: builder.snapshot(),
+      resourceAllowed: form.querySelector('[name="compositeConsent"]').checked,
+      delivery: values.action === 'composite' ? 'foreground' : values.delivery,
+      needsConfiguration: false
+    };
+    const report = reviewCommand(draft, c, state);
+    checks.querySelector('[data-editor-review]').innerHTML = reviewHtml(report);
+    for (const node of form.querySelectorAll('[data-field-check]')) node.remove();
+    for (const node of form.querySelectorAll('[aria-invalid]')) node.removeAttribute('aria-invalid');
+    for (const issue of report.issues.filter(item => item.severity === 'error')) {
+      let input = issue.field === 'name' || issue.field === 'hotkey' ? form.elements.namedItem(issue.field) : null;
+      const match = issue.field.match(/^block:(\d+):(target|partyId)$/);
+      if (match) input = form.querySelector(`[data-block="${match[1]}"] [data-field="${match[2]}"]`);
+      const step = issue.field.match(/^block:(\d+):step:(\d+)$/);
+      if (step) input = form.querySelector(`[data-block="${step[1]}"] [data-step="${step[2]}"]`);
+      if (input) {
+        const text = document.createElement('small');
+        text.dataset.fieldCheck = '';
+        text.className = 'gm-review-error';
+        text.textContent = issue.message;
+        input.setAttribute('aria-invalid', 'true');
+        input.after(text);
+      }
+    }
+  };
+  let pending = false;
+  const changed = () => {
+    if (pending) return;
+    pending = true;
+    queueMicrotask(() => {
+      pending = false;
+      if (form.isConnected && !saved) {
+        refreshChecks();
+        if (JSON.stringify(capture()) !== initialSnapshot) captureDraft();
+      }
+    });
+  };
+  form.addEventListener('input', changed);
+  form.addEventListener('change', changed);
+  form.addEventListener('click', changed);
+  window.addEventListener('beforeunload', beforeUnload);
+  refreshChecks();
   form.onsubmit = event => {
     event.preventDefault();
     document.querySelector('#modal-root .modal-footer .primary')?.click();

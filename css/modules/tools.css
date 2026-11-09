@@ -1313,3 +1313,48 @@
 .gm-action-library .gm-extra-actions {
   font-size: 13px;
 }
+/* Command review, recovery and manual game acceptance are distinct from API delivery. */
+.gm-review {
+  overflow-wrap: anywhere;
+}
+.gm-review ol {
+  padding-left: 1.5rem;
+}
+.gm-review li {
+  margin-block: 0.45rem;
+}
+.gm-review-error,
+.gm-draft-warning {
+  color: var(--danger, #ef6666);
+}
+.gm-review-warning,
+.gm-draft-banner {
+  color: var(--warning, #e8b866);
+}
+.gm-lab-result,
+.gm-editor-checks,
+.gm-draft-banner,
+.gm-draft-warning {
+  border: 1px solid var(--border, #5556);
+  border-radius: 10px;
+  padding: 12px;
+  margin-block: 12px;
+}
+.gm-lab-result label {
+  display: block;
+  margin-block: 8px;
+}
+.gm-lab-result textarea,
+.gm-command-transfer input[type='file'] {
+  max-width: 100%;
+}
+.gm-validation-summary,
+.gm-draft-status {
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+@media (max-width: 600px) {
+  .gm-workspace-title .gm-journal-actions {
+    flex-wrap: wrap;
+  }
+}

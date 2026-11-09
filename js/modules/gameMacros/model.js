@@ -1,3 +1,4 @@
+import { normalizeLabResults } from './labResults.js';
 import { backgroundMethod } from './background.js';
 import { chord, steps } from './keySyntax.js';
 export { chord, steps } from './keySyntax.js';
@@ -56,6 +57,7 @@ export function normalizeGameMacros(input = {}) {
       ).slice(0, 80),
       action: row.action,
       strictTargets: row.strictTargets === true,
+      needsConfiguration: row.needsConfiguration === true,
       blocks,
       planError,
       partyId: String(row.partyId || '').slice(0, 200),
@@ -118,6 +120,11 @@ export function normalizeGameMacros(input = {}) {
     input.otherWidth === 1920 &&
     input.otherHeight === 1200;
   return {
+    labResults: normalizeLabResults(input.labResults),
+    deletedCommands: (Array.isArray(input.deletedCommands) ? input.deletedCommands : []).slice(-5).flatMap(entry => {
+      const command = entry?.command && normalizeGameMacros({ commands: [entry.command] }).commands[0];
+      return command ? [{ command, deletedAt: String(entry.deletedAt || '').slice(0, 40) }] : [];
+    }),
     sizeDefaultsVersion: 1,
     overlayPosition:
       input.overlayPosition &&

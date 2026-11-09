@@ -490,6 +490,12 @@ export function mountCompositionEditor(host, c, row) {
         throw error;
       }
     },
+    snapshot: () => structuredClone(blocks),
+    restoreBlocks: next => {
+      if (!Array.isArray(next) || next.length > 8) throw new Error('Некорректный черновик.');
+      blocks = structuredClone(next);
+      draw();
+    },
     setBlocks: next => {
       blocks = normalizeComposition(next);
       draw();

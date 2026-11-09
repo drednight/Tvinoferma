@@ -1,3 +1,8 @@
+import { openCommandReview, openCommandTransfer, openExecutionDiagnostics } from './commandTools.js';
+import { deleteCommandPlan, restoreDeletedCommand } from './transfer.js';
+import { LAB_VERDICTS, labVerdict, recordLabVerdict } from './labResults.js';
+import { commandFingerprint } from './fingerprint.js';
+import { reviewCommand } from './review.js';
 import { openBackgroundLab } from './backgroundLab.js';
 import { updateRepeatButton } from './repeatButton.js';
 import { copyJournal } from './journal.js';
@@ -9,6 +14,7 @@ import { normalizeGameMacros, partyMembers, validPoint, commandVisible } from '.
 import { commandLabels, openCommandEditor } from './editor.js';
 import {
   config,
+  getExecutionHistory,
   clearLogs,
   diagnoseBackground,
   configure,
@@ -82,6 +88,9 @@ export function mountGameMacros(host) {
   const visibleCommands = c.commands.filter(commandVisible);
   const selected = visibleCommands.find(row => row.id === selectedId) || visibleCommands[0];
   selectedId = selected?.id || '';
+  const validation = selected ? reviewCommand(selected, c, state) : null;
+  const manualResult = selected ? labVerdict(c, selected) : null;
+  const isBackgroundTest = selected?.action === 'sequence' && selected.delivery === 'background';
   const point = c.points.find(p => p.id === selected?.pointId);
   host.innerHTML = `<section id="game-macros-block" class="tools-block gm-workspace"><header class="gm-page-heading"><div><span class="gm-eyebrow">Управление игровыми окнами</span><h3>Управление пати и макросами</h3><p>Выберите пати, настройте команды и запускайте их кнопкой или сочетанием клавиш.</p></div><label class="gm-hotkey-master gm-slider-switch" title="Выкл — ручной запуск; аварийная остановка при выполнении остаётся доступной"><span>Сочетания клавиш</span><input type="checkbox" role="switch" aria-label="Управление сочетаниями клавиш" data-gm-enabled ${c.enabled ? 'checked' : ''}><i aria-hidden="true"></i></label></header>
   <div class="gm-start-guide" aria-label="Как начать"><article><span>01</span><div><b>Выберите пати</b><p>Настройте состав и ПЛ. Выбор ниже определяет получателей команд.</p></div></article><article><span>02</span><div><b>Проверьте окна</b><p>Убедитесь, что каждый клиент сопоставлен своему персонажу.</p><button type="button" class="btn ghost small" data-gm-check-windows>Проверить окна</button></div></article><article><span>03</span><div><b>Создайте и проверьте команду</b><p>Начните с одной безопасной клавиши. ▶ запускает команду один раз.</p></div></article></div>
@@ -105,16 +114,30 @@ export function mountGameMacros(host) {
     .join(
       ''
     )}</select><small>Работает при включённом повторе мыши в активном окне ПЛ выбранной пати. Зажмите ровно выбранные модификаторы и нажмите ЛКМ: исходный клик блокируется, остальным проверенным клиентам отправляется ЛКМ без модификаторов. Без модификатора — обычный повтор. Выбранные служебные модификаторы с ПЛ не повторяются клавиатурой. При ошибке клик не передаётся ПЛ вместо твинов; повтор останавливается. Работа в PW требует проверки.</small></label></div><small>Клавиатура и мышь включаются независимо. Мышь: абсолютные экранные координаты, без масштабирования. Возможен расход ресурсов.</small></fieldset>
-  <div class="gm-section-top"><h4>Мои команды <span>${visibleCommands.length}</span></h4><button class="btn primary" data-gm-create>＋ Создать команду</button></div>
+  <div class="gm-section-top"><h4>Мои команды <span>${visibleCommands.length}</span></h4><div class="gm-journal-actions"><button class="btn ghost" data-gm-transfer>Импорт / экспорт</button>${c.deletedCommands.length ? `<button class="btn ghost" data-gm-undo-delete>Вернуть удалённую команду</button>` : ''}<button class="btn primary" data-gm-create>＋ Создать команду</button></div></div>
   <label class="gm-command-search">Поиск команды<input type="search" class="input" data-gm-search placeholder="Название или сочетание клавиш" aria-label="Найти команду"></label>
   <div class="gm-command-workbench"><nav class="gm-command-menu" aria-label="Команды">${visibleCommands.map(row => `<button class="gm-command-choice ${row.id === selectedId ? 'is-selected' : ''}" data-gm-select="${esc(row.id)}" aria-pressed="${row.id === selectedId}"><b>${esc(row.name)}</b><kbd>${esc(row.hotkey || 'Без сочетания')}</kbd></button>`).join('') || '<p class="muted">Пока нет команд. Создайте первую.</p>'}</nav>
   <article class="gm-command-detail">${
     selected
       ? `<div class="gm-detail-head"><div><span class="gm-eyebrow">Выбранная команда</span><h4>${esc(selected.name)}</h4></div><div class="gm-icon-actions"><button class="btn" data-gm-run="${esc(selected.id)}" ${selected.action === 'pause' ? 'data-gm-pause' : ''} title="Запустить один раз без сочетания клавиш" aria-label="Запустить один раз">▶</button><button class="btn ghost" data-gm-edit="${esc(selected.id)}" title="Изменить команду" aria-label="Изменить команду">✎</button><button class="btn ghost danger" data-gm-delete="${esc(selected.id)}" title="Удалить команду" aria-label="Удалить команду">🗑</button></div></div>
+  <button type="button" class="btn ghost" data-gm-plan>План и проверка — без запуска</button><p class="gm-validation-summary">${validation.issues.filter(issue => issue.severity === 'error').length ? `Требует настройки: ${validation.issues.filter(issue => issue.severity === 'error').length} проблем. Откройте план и проверку.` : 'В настройках ошибок не найдено. Окна и права проверяются перед вводом.'}</p>
   <dl class="gm-command-facts"><div><dt>Действие</dt><dd>${esc(commandLabels[selected.action])}</dd></div><div><dt>Получатели</dt><dd>${esc(targetLabel(selected))}</dd></div><div><dt>Сочетание</dt><dd><kbd>${esc(selected.hotkey || 'Не задано')}</kbd></dd></div>${['click', 'follow'].includes(selected.action) ? `<div><dt>Точка</dt><dd>${esc(point?.name || 'Нужно задать координаты')}</dd></div>` : ''}</dl>
   ${selected.action === 'sequence' ? `<pre class="gm-sequence">${esc(selected.sequence)}</pre>` : ''}
   <p class="muted">Доставка: ${selected.delivery === 'background' ? 'без активации, эксперимент; игра может игнорировать' : 'ускоренный ввод с активацией окна'}.</p><p class="muted">▶ — выполнить эту команду один раз мышью. Это удобно для проверки и работы без сочетания клавиш.</p>${['click', 'follow', 'composite'].includes(selected.action) ? `<button class="btn" data-gm-preview="${esc(selected.id)}">◎ Предпросмотр без клика</button><p class="muted">Перед первым кликом в этом сеансе проверьте точки предпросмотром.</p>` : ''}`
       : '<p class="muted">Создайте команду: выберите действие, получателей и удобные клавиши.</p>'
+  }${
+    isBackgroundTest
+      ? `<section class="gm-lab-result"><h4>Результат проверки в игре</h4><p>Техническая доставка не меняет эту отметку автоматически. Один и тот же результат нельзя переносить на другие клавиши, получателей или способы.</p><p data-lab-technical>Технический запуск ещё не зафиксирован в текущем сеансе.</p>${!manualResult && c.labResults.some(row => row.commandId === selected.id) ? '<p>Команда изменена: прежняя отметка больше не относится к этим настройкам.</p>' : ''}<label>Наблюдение<select data-lab-verdict>${Object.entries(
+          LAB_VERDICTS
+        )
+          .map(
+            ([value, label]) =>
+              `<option value="${value}" ${manualResult?.verdict === value ? 'selected' : ''}>${label}</option>`
+          )
+          .join(
+            ''
+          )}</select></label><label>Заметка (без паролей и токенов)<textarea class="input" data-lab-notes maxlength="600" rows="3">${esc(manualResult?.notes || '')}</textarea></label><label><input type="checkbox" data-lab-observed> Я проверил действие непосредственно в игре</label><button type="button" class="btn" data-lab-save>Сохранить наблюдение</button><p data-lab-save-status role="status"></p></section>`
+      : ''
   }</article></div>
   <section class="gm-settings-section" hidden data-gm-hidden-sizes><div class="gm-section-top"><div><h4>Размеры клиентов для F11</h4><p>Задайте размер игровой области. «Показать размер» рисует рамку на экране, не меняя окна игры.</p></div><button class="btn ghost" data-gm-size-reset>По умолчанию</button></div><div class="gm-size-grid">${[
     ['leader', '👑 ПЛ'],
@@ -156,7 +179,31 @@ export function mountGameMacros(host) {
       ''
     )}</select></label><button class="btn primary">⊕ Задать координаты</button></form><p class="muted">Размер окна и DPI определяются автоматически. Для другого размера окна создайте вариант точки; после перемещения элементов интерфейса задайте точку заново.</p><div class="gm-points-workbench"><nav class="gm-point-list" aria-label="Сохранённые координатные точки">${c.points.map(p => `<button class="gm-point-choice" data-gm-point="${esc(p.id)}"><b>${esc(p.name)}</b><small>${p.width} × ${p.height}</small></button>`).join('') || '<p>Нет сохранённых точек.</p>'}</nav><article class="gm-point-detail" data-gm-point-detail></article></div></details>
   <details class="gm-background-section"><summary>Лаборатория фонового ввода · эксперимент</summary><p>Подготовьте отдельные тесты для одного твина. Программа ничего не запускает автоматически. Фоновая клавиатура в PW пока не подтверждена.</p><button type="button" class="btn ghost" data-gm-background-lab>Подготовить 5 вариантов для сравнения</button></details>
-  <footer class="gm-bottom-actions"><button class="btn" data-gm-logs>≡ Журнал сеанса</button><button class="btn" data-gm-overlay>▣ Открыть оверлей</button><button class="btn ghost" data-gm-overlay-settings>⚙ Настройки оверлея</button></footer></section>`;
+  <footer class="gm-bottom-actions"><button class="btn ghost" data-gm-traces>Диагностика по запускам</button><button class="btn" data-gm-logs>≡ Журнал сеанса</button><button class="btn" data-gm-overlay>▣ Открыть оверлей</button><button class="btn ghost" data-gm-overlay-settings>⚙ Настройки оверлея</button></footer></section>`;
+  host.querySelector('[data-gm-transfer]').onclick = () => openCommandTransfer(config, save);
+  host.querySelector('[data-gm-undo-delete]')?.addEventListener(
+    'click',
+    safe(() => save(restoreDeletedCommand(config())))
+  );
+  host.querySelector('[data-gm-plan]')?.addEventListener('click', () => openCommandReview(selected, config()));
+  host.querySelector('[data-gm-traces]').onclick = () => openExecutionDiagnostics(getExecutionHistory());
+  host.querySelector('[data-lab-save]')?.addEventListener(
+    'click',
+    safe(async () => {
+      const verdict = host.querySelector('[data-lab-verdict]').value;
+      if (verdict !== 'unverified' && !host.querySelector('[data-lab-observed]').checked) {
+        host.querySelector('[data-lab-save-status]').textContent =
+          'Сначала подтвердите, что проверили действие в самой игре.';
+        return;
+      }
+      const current = config().commands.find(row => row.id === selected.id);
+      if (!current || commandFingerprint(current) !== commandFingerprint(selected))
+        throw new Error('Команда изменилась. Откройте её заново.');
+      await save({
+        labResults: recordLabVerdict(config(), current, verdict, host.querySelector('[data-lab-notes]').value)
+      });
+    })
+  );
   host.querySelector('.gm-points-section').open = pointsOpen;
   host.querySelector('.gm-background-section').open = labOpen;
   host.querySelector('[data-gm-background-lab]').onclick = () => openBackgroundLab(config(), save);
@@ -243,7 +290,7 @@ export function mountGameMacros(host) {
       content: `<p>Удалить «${esc(selected.name)}»? Сохранённые точки останутся.</p>`,
       submitText: 'Удалить',
       cancelText: 'Отмена',
-      onSubmit: () => save({ commands: config().commands.filter(row => row.id !== selectedId) })
+      onSubmit: () => save(deleteCommandPlan(config(), selectedId))
     })
   );
   host.querySelector('[data-gm-preview]')?.addEventListener(
@@ -463,6 +510,16 @@ export function mountGameMacros(host) {
   const update = () => {
     if (!host.isConnected) return;
     const data = snapshot();
+    const technical = host.querySelector('[data-lab-technical]');
+    if (technical) {
+      const latest = [...getExecutionHistory()]
+        .reverse()
+        .find(run => run.commandId === selected.id && run.fingerprint === commandFingerprint(selected, c));
+      technical.textContent = latest
+        ? `Технический запуск ${latest.runId.slice(0, 8)}: ${latest.state}; этап ${latest.stage}. Результат игры неизвестен до ручной отметки.`
+        : 'Для текущих настроек нет технического запуска в этом сеансе.';
+    }
+
     host.querySelector('[data-gm-enabled]').checked = config().enabled;
     const mirror = host.querySelector('[data-gm-mirror]');
     updateRepeatButton(mirror, 'keyboard', data);
