@@ -309,8 +309,9 @@ export async function windowTargets(
   selected = scopedConfig(selected, command);
   const rows = snapshotRows || (await listMacroWindows());
   if (command.scope === 'managed') {
+    const subset = command.allowManagedSubset && command.target === 'subset';
     const split = command.allowManagedLeaderSplit && ['others', 'leader'].includes(command.target);
-    if ((!split && command.target !== 'all') || command.action === 'leader')
+    if ((!split && !subset && command.target !== 'all') || command.action === 'leader')
       throw new Error('Глобальная область требует явного выбора всех распознанных окон.');
     if (
       !rows.length ||
@@ -324,6 +325,16 @@ export async function windowTargets(
       new Set(rows.map(row => row.charId)).size !== rows.length
     )
       throw new Error('Все окна должны быть однозначно распознаны.');
+    if (subset) {
+      if (
+        !command.charIds?.length ||
+        command.charIds.some(
+          id => !state.characters.some(char => char.id === id) || !rows.some(row => row.charId === id)
+        )
+      )
+        throw new Error('Выберите существующих персонажей с распознанными окнами.');
+      return orderManagedTargets(state, selected, rows).filter(row => command.charIds.includes(row.charId));
+    }
     if (split) {
       const leader = selected.leaders[selected.partyId];
       if (!partyMembers(state, selected.partyId).some(c => c.id === leader) || !rows.some(r => r.charId === leader))
@@ -655,7 +666,7 @@ async function executeCommand(id, hotkey = false, trial = null) {
           log('Последовательность на паузе. Нажмите «Пауза / продолжить».');
         }
       });
-      if (command.returnTo === 'leader') {
+      if (command.returnTo === 'leader' && compositionActions(plan).some(cmd => cmd.delivery !== 'background')) {
         const [leader] = await windowTargets({ action: 'leader', target: 'leader' }, scopedConfig(c, command));
         await checkpoint();
         await act(leader, 'focus');
@@ -1470,6 +1481,10 @@ function mirrorFingerprint() {
     source: c.mirrorSource,
     keyboardMethod: c.mirrorKeyboardMethod,
     holdOnly: c.mirrorHoldOnly,
+    keyboardSource: c.mirrorKeyboardSource,
+    keyboardTargets: c.mirrorKeyboardTargets,
+    keyboardParty: c.mirrorKeyboardTargets !== 'all' ? partyMembers(state, c.partyId).map(char => char.id) : [],
+    keyboardLeader: c.leaders[c.partyId],
     activeModifier: c.mirrorActiveModifier,
     twinsModifier: c.mirrorTwinsModifier,
     twinsLeader: c.mirrorTwinsModifier ? c.leaders[c.partyId] : null,
@@ -1561,8 +1576,41 @@ async function applyMirrorToggle(kind = 'keyboard', commandName = '', refreshMod
     if (epoch !== mirrorEpoch) return;
     const c = config();
     const sourceRow = c.mirrorSource === 'leader' ? rows.find(row => row.charId === c.leaders[c.partyId]) : null;
-    if (c.mirrorSource === 'leader' && !sourceRow)
+    if (c.mirrorSource === 'leader' && !sourceRow && (desiredMouse || c.mirrorKeyboardSource === 'shared'))
       throw new Error('Для повтора только из ПЛ выберите пати, назначьте ПЛ и запустите его распознанное окно.');
+    const keyboardSourceMode = c.mirrorKeyboardSource === 'shared' ? c.mirrorSource : c.mirrorKeyboardSource;
+    const keyboardSourceRow =
+      keyboardSourceMode === 'leader' ? rows.find(row => row.charId === c.leaders[c.partyId]) : null;
+    const keyboardMembers = partyMembers(state, c.partyId);
+    if (
+      desiredKeys &&
+      keyboardSourceMode === 'leader' &&
+      (!keyboardSourceRow || !keyboardMembers.some(char => char.id === keyboardSourceRow.charId))
+    )
+      throw new Error('Для источника клавиатуры ПЛ назначьте ПЛ выбранной пати и запустите его окно.');
+    if (desiredKeys && c.mirrorKeyboardTargets !== 'all' && !keyboardMembers.length)
+      throw new Error('Для получателей клавиатуры выберите непустую пати.');
+    if (
+      desiredKeys &&
+      ['leader', 'others'].includes(c.mirrorKeyboardTargets) &&
+      !keyboardMembers.some(char => char.id === c.leaders[c.partyId])
+    )
+      throw new Error('Назначьте ПЛ выбранной пати для получателей клавиатуры.');
+    const keyboardRows = rows.filter(
+      row =>
+        c.mirrorKeyboardTargets === 'all' ||
+        (keyboardMembers.some(char => char.id === row.charId) &&
+          (c.mirrorKeyboardTargets === 'party' ||
+            (c.mirrorKeyboardTargets === 'leader'
+              ? row.charId === c.leaders[c.partyId]
+              : row.charId !== c.leaders[c.partyId])))
+    );
+    if (
+      desiredKeys &&
+      (!keyboardRows.length ||
+        (keyboardSourceRow && keyboardRows.every(row => row.charId === keyboardSourceRow.charId)))
+    )
+      throw new Error('Нет получателей клавиатуры кроме источника. Измените источник или получателей.');
     const settingsKey = mirrorFingerprint();
     const id = crypto.randomUUID();
     const twinsLeader =
@@ -1587,6 +1635,12 @@ async function applyMirrorToggle(kind = 'keyboard', commandName = '', refreshMod
         combined: desiredKeys && c.mirrorKeyboardMethod === 'combined',
         keyboardMethod: c.mirrorKeyboardMethod,
         holdOnly: desiredKeys && c.mirrorHoldOnly,
+        keyboardSource: keyboardSourceRow
+          ? { pid: keyboardSourceRow.pid, startedAt: keyboardSourceRow.startedAt, hwnd: keyboardSourceRow.hwnd }
+          : null,
+        keyboardTargets: desiredKeys
+          ? keyboardRows.map(row => ({ pid: row.pid, startedAt: row.startedAt, hwnd: row.hwnd }))
+          : null,
         source: sourceRow ? { pid: sourceRow.pid, startedAt: sourceRow.startedAt, hwnd: sourceRow.hwnd } : null,
         targets: rows.map(r => ({ pid: r.pid, startedAt: r.startedAt })),
         shortcuts: [
@@ -1636,6 +1690,10 @@ async function applyMirrorToggle(kind = 'keyboard', commandName = '', refreshMod
       log(
         `ЛКМ только твинам: ${c.mirrorTwinsModifier} + ЛКМ в окне ПЛ. Исходный ЛКМ блокируется; получателям отправляется без модификаторов. Работа в игре не подтверждена.`
       );
+    if (desiredKeys)
+      log(
+        `Клавиатура: источник ${keyboardSourceRow ? 'ПЛ выбранной пати' : 'любое распознанное окно'}; получатели ${c.mirrorKeyboardTargets}: ${keyboardRows.map(row => state.characters.find(char => char.id === row.charId)?.nick || row.charId).join(', ')}. Исходное окно исключается.`
+      );
     if (desiredKeys && c.mirrorHoldOnly)
       log('Удержание без автоповтора: один DOWN и один UP; сочетания передаются по событиям.');
     if (desiredKeys)
@@ -1647,7 +1705,7 @@ async function applyMirrorToggle(kind = 'keyboard', commandName = '', refreshMod
             : 'Клавиатурный повтор: PostMessage с scan-code источника; это не activity-notify. Текст в чате и игровые горячие клавиши могут обрабатываться по-разному. Состояние чата программа не определяет.'
       );
     log(
-      `Повтор ВКЛЮЧЁН (клавиатура: ${mirrorKeys ? 'да' : 'нет'}, мышь: ${mirrorMouse ? 'да' : 'нет'}): ${rows.length} проверенных окон, источник: ${sourceRow ? 'ПЛ выбранной пати' : 'любая распознанная игра'}. ${mirrorMouse ? 'Кнопки мыши: абсолютные экранные точки.' : 'Мышь не передаётся.'} Ctrl+Alt+Pause — выключить. Обработка сообщений игрой не подтверждена.`,
+      `Повтор ВКЛЮЧЁН (клавиатура: ${mirrorKeys ? 'да' : 'нет'}, мышь: ${mirrorMouse ? 'да' : 'нет'}): ${rows.length} проверенных окон, общий источник/мышь: ${sourceRow ? 'ПЛ выбранной пати' : 'любая распознанная игра'}. ${mirrorMouse ? 'Кнопки мыши: абсолютные экранные точки.' : 'Мышь не передаётся.'} Ctrl+Alt+Pause — выключить. Обработка сообщений игрой не подтверждена.`,
       commandName
     );
   } catch (error) {

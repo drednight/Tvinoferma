@@ -1203,3 +1203,60 @@ it('summarizes physical-release polling without hundreds of false error events',
   expect(trace.events.some(event => event.stage === 'native:game_macro_input_idle')).toBe(false);
   expect(runtime.snapshot().executionState).toBe('finished');
 });
+
+it('executes multi-group activity-notify assist chains on exact recipients without focus restoration', async () => {
+  const beta = { pid: 20, startedAt: 2000, hwnd: 200, elevated: false, title: 'Beta — Воин' };
+  state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['p'] });
+  state.settings.gameMacros.commands = [
+    {
+      id: 'assist',
+      name: 'Ассист',
+      action: 'composite',
+      returnTo: 'leader',
+      blocks: [
+        {
+          target: 'subset',
+          charIds: ['b'],
+          scope: 'party',
+          delivery: 'background',
+          backgroundMethod: 'activity-notify',
+          steps: [
+            { type: 'keys', value: 'SHIFT+1' },
+            { type: 'wait', ms: 50 },
+            { type: 'keys', value: 'F2' }
+          ]
+        },
+        {
+          target: 'subset',
+          charIds: ['a'],
+          scope: 'party',
+          delivery: 'background',
+          backgroundMethod: 'activity-notify',
+          steps: [{ type: 'keys', value: 'F3' }]
+        }
+      ]
+    }
+  ];
+  invoke.mockImplementation(async name => (name === 'launcher_running_details' ? [client, beta] : null));
+  await runtime.run('assist');
+  expect(runtime.snapshot().executionState, runtime.snapshot().logs.join('\n')).toBe('finished');
+  const actions = invoke.mock.calls.filter(([name]) => name === 'game_macro_action').map(([, args]) => args);
+  const keys = actions.filter(args => args.action === 'key-background');
+  expect(keys.map(args => [args.target.pid, args.key, args.timing.backgroundMethod])).toEqual([
+    [20, 'SHIFT+1', 'activity-notify'],
+    [20, 'F2', 'activity-notify'],
+    [10, 'F3', 'activity-notify']
+  ]);
+  expect(actions.some(args => args.action === 'focus' || args.action === 'key')).toBe(false);
+});
+
+it('does not broaden an explicitly marked managed subset on failed target resolution', async () => {
+  const c = runtime.config();
+  await expect(
+    runtime.windowTargets(
+      { action: 'sequence', scope: 'managed', target: 'subset', allowManagedSubset: true, charIds: ['missing'] },
+      c
+    )
+  ).rejects.toThrow();
+  expect(invoke.mock.calls.some(([name]) => name === 'game_macro_action')).toBe(false);
+});

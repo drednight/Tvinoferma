@@ -61,6 +61,7 @@ struct Context {
     control: Arc<Control>,
     mouse: bool,
     keyboard: bool,
+    keyboard_source: Option<usize>,
     source: Option<usize>,
     last_mouse: Option<(usize, u8, i32, i32, u64)>,
     twins_modifier: u8,
@@ -233,7 +234,7 @@ unsafe extern "system" fn hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
                     return;
                 }
                 let source = GetForegroundWindow().0 as usize;
-                if !source_allowed(ctx.source, source) {
+                if !source_allowed(ctx.keyboard_source, source) {
                     return;
                 }
                 let mut pid = 0;
@@ -748,15 +749,27 @@ impl TraceLog {
         let _=self.app.emit_to("main","game-macro-mirror-input",serde_json::json!({"sessionId":self.id,"events":std::mem::take(&mut self.pending),"omitted":std::mem::take(&mut self.omitted)}));
     }
 }
+struct KeyboardRouting {
+    method: KeyboardMethod,
+    hold_only: bool,
+    targets: Option<Vec<usize>>,
+}
+fn keyboard_recipient(targets: Option<&[usize]>, hwnd: usize) -> bool {
+    targets.is_none_or(|rows| rows.contains(&hwnd))
+}
 fn forward(
     rx: Receiver<Key>,
     clients: Vec<Client>,
     control: Arc<Control>,
     app: tauri::AppHandle,
     id: String,
-    method: KeyboardMethod,
-    hold_only: bool,
+    routing: KeyboardRouting,
 ) {
+    let KeyboardRouting {
+        method,
+        hold_only,
+        targets: keyboard_targets,
+    } = routing;
     let mut trace = TraceLog {
         app,
         id,
@@ -825,6 +838,10 @@ fn forward(
                 halt(&control, 1);
                 break;
             }
+            if key.mouse.is_none() && !keyboard_recipient(keyboard_targets.as_deref(), client.hwnd)
+            {
+                continue;
+            }
             let keys = held.entry(client.hwnd).or_default();
             // Ignore unmatched releases (keys held before activation were never copied).
             if key.up && !keys.contains_key(&key.vk) {
@@ -882,6 +899,8 @@ pub struct Options {
     pub keyboard: bool,
     pub method: KeyboardMethod,
     pub hold_only: bool,
+    pub keyboard_source: Option<Target>,
+    pub keyboard_targets: Option<Vec<Target>>,
     pub source: Option<Target>,
     pub twins_modifier: Option<String>,
     pub active_modifier: Option<String>,
@@ -899,6 +918,8 @@ pub fn start(
         keyboard,
         method,
         hold_only,
+        keyboard_source,
+        keyboard_targets,
         source,
         twins_modifier,
         active_modifier,
@@ -972,6 +993,34 @@ pub fn start(
         ),
         _ => return Err("Twins mouse gesture requires mouse mode and an explicit source".into()),
     };
+    let resolve_keyboard = |target: &Target| -> Result<usize, String> {
+        clients
+            .iter()
+            .find(|client| {
+                client.target.pid == target.pid
+                    && client.target.started_at == target.started_at
+                    && target.hwnd == Some(client.hwnd as u64)
+            })
+            .map(|client| client.hwnd)
+            .ok_or_else(|| "Keyboard route is not a verified snapshot client".into())
+    };
+    let keyboard_source_hwnd = if keyboard_targets.is_some() {
+        keyboard_source.as_ref().map(resolve_keyboard).transpose()?
+    } else {
+        source_hwnd
+    };
+    let keyboard_target_hwnds = keyboard_targets
+        .as_ref()
+        .map(|targets| {
+            if targets.is_empty() || targets.len() > clients.len() {
+                return Err("Invalid keyboard recipients".into());
+            }
+            targets
+                .iter()
+                .map(resolve_keyboard)
+                .collect::<Result<Vec<_>, String>>()
+        })
+        .transpose()?;
     stop("")?;
     let control = Arc::new(Control {
         stop: AtomicBool::new(false),
@@ -993,6 +1042,7 @@ pub fn start(
                 control: thread_control.clone(),
                 mouse,
                 keyboard,
+                keyboard_source: keyboard_source_hwnd,
                 source: source_hwnd,
                 last_mouse: None,
                 twins_modifier,
@@ -1030,8 +1080,11 @@ pub fn start(
                         worker_control,
                         worker_app,
                         worker_id,
-                        method,
-                        hold_only,
+                        KeyboardRouting {
+                            method,
+                            hold_only,
+                            targets: keyboard_target_hwnds,
+                        },
                     )
                 });
                 let _ = ready_tx.send(true);
@@ -1084,6 +1137,13 @@ pub fn start(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn keyboard_recipient_filter_is_explicit_and_legacy_all_is_preserved() {
+        assert!(keyboard_recipient(None, 123));
+        assert!(keyboard_recipient(Some(&[123, 456]), 123));
+        assert!(!keyboard_recipient(Some(&[123]), 456));
+        assert!(!keyboard_recipient(Some(&[]), 123));
+    }
     #[test]
     fn cleanup_releases_chord_key_before_modifiers() {
         let mut keys = [0xa0, 0x31, 0xa2, 0x42];

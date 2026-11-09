@@ -193,3 +193,52 @@ it('validates and budgets configurable follow preludes before executing any bloc
   root.blocks[0].repeat = 12;
   expect(() => compileComposition(root, config([follow]))).toThrow(/предел|256/);
 });
+
+it('compiles each activity group into one ordered key/wait sequence without broadening recipients', () => {
+  const command = {
+    id: 'assist',
+    action: 'composite',
+    blocks: [
+      {
+        name: 'Жрец',
+        scope: 'party',
+        target: 'subset',
+        charIds: ['b'],
+        delivery: 'background',
+        backgroundMethod: 'activity-notify',
+        steps: [
+          { type: 'keys', value: 'SHIFT+1' },
+          { type: 'wait', ms: 200 },
+          { type: 'keys', value: 'F2' }
+        ]
+      },
+      {
+        name: 'Воин',
+        scope: 'party',
+        target: 'subset',
+        charIds: ['a'],
+        delivery: 'background',
+        backgroundMethod: 'activity-notify',
+        steps: [{ type: 'keys', value: 'F3' }]
+      }
+    ]
+  };
+  const tree = compileComposition(command, { commands: [], points: [], profiles: [] });
+  const actions = [];
+  const visit = node => {
+    if (node.kind === 'action') actions.push(node.command);
+    else (node.children || []).forEach(visit);
+  };
+  visit(tree);
+  expect(actions).toHaveLength(2);
+  expect(actions[0]).toMatchObject({
+    action: 'sequence',
+    activityBlock: true,
+    target: 'subset',
+    charIds: ['b'],
+    sequence: 'SHIFT+1\nwait 200\nF2'
+  });
+  expect(actions[1].charIds).toEqual(['a']);
+  command.blocks[1].parallel = true;
+  expect(() => compileComposition(command, { commands: [] })).toThrow(/параллельности/);
+});

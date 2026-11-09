@@ -44,7 +44,7 @@ export function reviewCommand(command, c, state, path = []) {
   }
   for (const [index, block] of blocks.entries()) {
     const partyId = block.partyId || command.partyId || c.partyId;
-    const members = partyMembers(state, partyId),
+    const members = block.scope === 'managed' ? state.characters : partyMembers(state, partyId),
       leader = c.leaders[partyId];
     const selected =
       block.target === 'leader'
@@ -70,7 +70,7 @@ export function reviewCommand(command, c, state, path = []) {
         add('error', `block:${index}:target`, 'Поднабор пуст или содержит отсутствующего участника пати.');
     }
     lines.push(
-      `Группа ${index + 1}: ${block.scope === 'managed' ? 'все распознанные окна (включая другие пати)' : selected.map(char => char.nick || char.id).join(' → ') || 'получатели ещё не определены'}. ${block.parallel ? 'Одновременно с предыдущей группой. ' : ''}Повторений: ${block.repeat ?? 1}. ${block.perWindow ? 'Все шаги в одном окне, затем следующее.' : 'Каждый шаг всем получателям, затем следующий шаг.'}`
+      `Группа ${index + 1}: ${block.scope === 'managed' && block.target === 'all' ? 'все распознанные окна (включая другие пати)' : selected.map(char => char.nick || char.id).join(' → ') || 'получатели ещё не определены'}. ${block.parallel ? 'Одновременно с предыдущей группой. ' : ''}Повторений: ${block.repeat ?? 1}. ${block.perWindow ? 'Все шаги в одном окне, затем следующее.' : 'Каждый шаг всем получателям, затем следующий шаг.'}`
     );
     lines.push(
       `Доставка: ${block.delivery === 'background' ? BACKGROUND_METHODS[block.backgroundMethod || 'post'] || 'неизвестный способ' : 'с активацией окна'}.`

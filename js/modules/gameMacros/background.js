@@ -27,7 +27,7 @@ export function backgroundVariants(command, commands, makeId = () => crypto.rand
 
 export function validateActivityCommand(command, composing = false) {
   if (command.delivery !== 'background' || !isActivityMethod(command.backgroundMethod)) return;
-  if (composing || command.action !== 'sequence')
+  if ((composing && command.activityBlock !== true) || command.action !== 'sequence')
     throw new Error(
       'Уведомления активности: только отдельная последовательность клавиш. Мышь, непрерывный повтор, F6→F1 и составные блоки не поддерживаются.'
     );

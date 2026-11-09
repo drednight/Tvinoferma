@@ -7,7 +7,9 @@ import { partyMembers, commandVisible } from './model.js';
 import { STEP_LABELS, normalizeComposition } from './composition.js';
 import { commandBlocks } from './unified.js';
 export function mountCompositionEditor(host, c, row) {
-  let blocks = row?.blocks?.length ? structuredClone(row.blocks) : [newBlock()];
+  let blocks = row?.blocks?.length
+    ? structuredClone(row.blocks).map(block => ({ charIds: [], ...block }))
+    : [newBlock()];
   const selected = new Map();
   const collapsed = new Set();
   const undo = [];
@@ -64,6 +66,8 @@ export function mountCompositionEditor(host, c, row) {
     `<select class="input" data-field="${field}">${values.map(([v, l]) => option(v, l, value, field === 'commandId' && c.commands.some(cmd => cmd.id === v && !commandVisible(cmd)))).join('')}</select>`;
   const input = (field, value, type = 'text') =>
     `<input class="input" data-field="${field}" type="${type}" value="${esc(value ?? '')}">`;
+  const recipients = block =>
+    block.scope === 'managed' ? state.characters : partyMembers(state, block.partyId || c.partyId);
   const parties = () => [['', 'Текущая управляющая пати'], ...state.parties.map(p => [p.id, p.name])];
   function fields(step) {
     switch (step.type) {
@@ -217,18 +221,30 @@ export function mountCompositionEditor(host, c, row) {
                   'backgroundMethod',
                   Object.entries(BACKGROUND_METHODS),
                   block.backgroundMethod || 'post'
-                )}</label><small>Уведомления активности — только один блок клавиш и пауз без циклов, вся последовательность выполняется в каждом окне; при сохранении это отдельная клавиатурная последовательность. Клики и непрерывный повтор используют PostMessage. Другие способы здесь проверяются только для клавиш; без перебора и переключения.</small>`
+                )}</label><small>Уведомления активности: в группе только клавиши и паузы, без циклов и параллельности. Вся цепочка выполняется в каждом выбранном окне. Для этой доставки паузы — 50–3000 мс. Клики и непрерывный повтор используют PostMessage. Другие способы здесь проверяются только для клавиш; без перебора и переключения.</small>`
               : ''
           }</div>${
             block.target === 'subset'
-              ? `<fieldset><legend>Участники</legend>${partyMembers(state, block.partyId || c.partyId)
+              ? `<fieldset><legend>Участники</legend><label>Быстро отметить класс<select data-recipient-class><option value="">Выберите класс</option>${[
+                  ...new Set(
+                    recipients(block)
+                      .map(char => char.class)
+                      .filter(Boolean)
+                  )
+                ]
+                  .map(cls => `<option value="${esc(cls)}">${esc(cls)}</option>`)
+                  .join(
+                    ''
+                  )}</select></label><small>Класс отмечает текущих персонажей, а не будущие окна. Для разных клавиш добавьте отдельную группу с другими получателями.</small>${recipients(
+                  block
+                )
                   .map(
                     char =>
                       `<label><input type="checkbox" data-character="${esc(char.id)}" ${block.charIds.includes(char.id) ? 'checked' : ''}>${esc(char.nick)}</label>`
                   )
                   .join('')}</fieldset>`
               : ''
-          }${block.scope === 'managed' ? `<label><input type="checkbox" data-field="leaderSplit" ${block.leaderSplit ? 'checked' : ''}> Разделять ПЛ выбранной пати и остальные распознанные окна</label>` : ''}<label><input type="checkbox" data-field="perWindow" ${block.perWindow ? 'checked' : ''} ${block.delivery === 'background' && isActivityMethod(block.backgroundMethod) ? 'disabled' : ''}> Выполнить все шаги в одном окне, затем перейти к следующему</label><label class="gm-loop-setting">Повторить блок ${input('repeat', block.repeat ?? 1, 'number')} раз <small>1–100; Стоп прерывает цикл. Все повторы проверяются до запуска.</small></label><div class="gm-compose-workbench"><aside class="gm-action-library" aria-label="Добавить действие"><strong>Мышь и управление</strong>${[
+          }${block.scope === 'managed' && ['leader', 'others'].includes(block.target) ? '<small>ПЛ берётся из настроек выбранной пати; остальные распознанные окна остаются вне ПЛ.</small>' : ''}<label><input type="checkbox" data-field="perWindow" ${block.perWindow ? 'checked' : ''} ${block.delivery === 'background' && isActivityMethod(block.backgroundMethod) ? 'disabled' : ''}> Выполнить все шаги в одном окне, затем перейти к следующему</label><label class="gm-loop-setting">Повторить блок ${input('repeat', block.repeat ?? 1, 'number')} раз <small>1–100; Стоп прерывает цикл. Все повторы проверяются до запуска.</small></label><div class="gm-compose-workbench"><aside class="gm-action-library" aria-label="Добавить действие"><strong>Мышь и управление</strong>${[
             ['keys', '⌨', 'Клавиша'],
             ['wait', '◷', 'Задержка'],
             ['screen', '↗', 'Клик']
@@ -300,6 +316,15 @@ export function mountCompositionEditor(host, c, row) {
     if (!el) return;
     const b = Number(el.dataset.block),
       stepEl = e.target.closest('[data-step]');
+    if (e.target.matches('[data-recipient-class]')) {
+      if (e.target.value) {
+        blocks[b].charIds = recipients(blocks[b])
+          .filter(char => char.class === e.target.value)
+          .map(char => char.id);
+        draw();
+      }
+      return;
+    }
     if (e.target.dataset.character) {
       const set = new Set(blocks[b].charIds);
       if (e.target.checked) set.add(e.target.dataset.character);
@@ -345,7 +370,8 @@ export function mountCompositionEditor(host, c, row) {
     if (!stepEl && ['partyId', 'target', 'scope', 'delivery', 'backgroundMethod', 'leaderSplit'].includes(field)) {
       if (object.delivery === 'background' && isActivityMethod(object.backgroundMethod)) object.perWindow = true;
       if (field === 'partyId') object.charIds = [];
-      if (object.scope === 'managed' && !object.leaderSplit) object.target = 'all';
+      if (object.scope === 'managed' && ['leader', 'others'].includes(object.target)) object.leaderSplit = true;
+      if (field === 'scope' || field === 'partyId') object.charIds = [];
       draw();
     }
   };

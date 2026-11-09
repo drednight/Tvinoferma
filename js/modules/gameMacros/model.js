@@ -77,6 +77,8 @@ export function normalizeGameMacros(input = {}) {
       backgroundMethod: backgroundMethod(row.backgroundMethod),
       delivery: row.delivery === 'background' ? 'background' : 'foreground',
       hotkey: chord(row.hotkey),
+      allowManagedLeaderSplit: row.allowManagedLeaderSplit === true,
+      allowManagedSubset: row.allowManagedSubset === true,
       target: ['all', 'others', 'leader', 'subset'].includes(row.target) ? row.target : 'others',
       sequence,
       charIds: [...new Set((Array.isArray(row.charIds) ? row.charIds : []).filter(id => typeof id === 'string'))].slice(
@@ -141,6 +143,12 @@ export function normalizeGameMacros(input = {}) {
       ? input.mirrorKeyboardMethod
       : 'post',
     mirrorHoldOnly: input.mirrorHoldOnly === true,
+    mirrorKeyboardSource: ['any', 'leader'].includes(input.mirrorKeyboardSource)
+      ? input.mirrorKeyboardSource
+      : 'shared',
+    mirrorKeyboardTargets: ['party', 'others', 'leader'].includes(input.mirrorKeyboardTargets)
+      ? input.mirrorKeyboardTargets
+      : 'all',
     mirrorActiveModifier: [
       '',
       'CTRL',

@@ -189,3 +189,33 @@ it('replaces the empty placeholder before applying the eight-block import limit'
   expect(host.querySelector('[data-compose-error]').textContent).toBe('');
   editor.dispose();
 });
+
+it('keeps edited managed recipients instead of silently resetting others to all', () => {
+  state.parties = [{ id: 'p', name: 'Party' }];
+  state.characters = [
+    { id: 'a', nick: 'A', class: 'Воин', partyIds: ['p'] },
+    { id: 'b', nick: 'B', class: 'Жрец', partyIds: ['p'] },
+    { id: 'c', nick: 'C', class: 'Воин', partyIds: ['q'] }
+  ];
+  document.body.innerHTML = '<div id="editor"></div>';
+  const host = document.getElementById('editor');
+  const editor = mountCompositionEditor(
+    host,
+    { partyId: 'p', commands: [], points: [], profiles: [] },
+    { blocks: [{ scope: 'managed', target: 'all', steps: [{ type: 'keys', value: 'F2' }] }] }
+  );
+  let target = host.querySelector('[data-field="target"]');
+  target.value = 'others';
+  target.dispatchEvent(new Event('change', { bubbles: true }));
+  expect(host.querySelector('[data-field="target"]').value).toBe('others');
+  expect(editor.read()[0]).toMatchObject({ target: 'others', leaderSplit: true });
+  target = host.querySelector('[data-field="target"]');
+  target.value = 'subset';
+  target.dispatchEvent(new Event('change', { bubbles: true }));
+  const cls = host.querySelector('[data-recipient-class]');
+  cls.value = 'Воин';
+  cls.dispatchEvent(new Event('change', { bubbles: true }));
+  expect(editor.read()[0].charIds).toEqual(['a', 'c']);
+  expect(editor.read()[0].steps[0].value).toBe('F2');
+  editor.dispose();
+});

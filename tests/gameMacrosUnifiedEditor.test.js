@@ -109,3 +109,36 @@ it('starts with a simple empty plan and keeps advanced command settings optional
   expect(document.querySelector('.gm-editor-advanced').open).toBe(false);
   expect(document.querySelector('.gm-block-advanced').open).toBe(false);
 });
+
+it('saves and reopens an existing managed key command changed from all to except PL', async () => {
+  const source = normalizeGameMacros({
+    commands: [
+      {
+        id: 'edited',
+        name: 'Клавиши',
+        action: 'sequence',
+        scope: 'managed',
+        target: 'all',
+        sequence: 'F2',
+        returnTo: 'last'
+      }
+    ]
+  }).commands[0];
+  openCommandEditor(config, save, source);
+  const target = document.querySelector('[data-field="target"]');
+  target.value = 'others';
+  target.dispatchEvent(new Event('change', { bubbles: true }));
+  submit();
+  await vi.waitFor(() => expect(save).toHaveBeenCalled());
+  const saved = normalizeGameMacros(save.mock.calls[0][0]).commands[0];
+  expect(saved).toMatchObject({
+    id: 'edited',
+    scope: 'managed',
+    target: 'others',
+    allowManagedLeaderSplit: true,
+    strictTargets: true,
+    sequence: 'F2'
+  });
+  openCommandEditor(config, save, saved);
+  expect(document.querySelector('[data-field="target"]').value).toBe('others');
+});

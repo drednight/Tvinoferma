@@ -103,7 +103,22 @@ export function mountGameMacros(host) {
   <div class="gm-control-buttons gm-mirror-buttons" role="group" aria-label="Управление выполнением и повтором"><button class="btn gm-repeat-toggle" data-gm-mirror aria-label="Включить повтор клавиатуры" title="Включить повтор клавиатуры" data-state="off" aria-pressed="false">⌨ ВЫКЛ</button><button class="btn gm-repeat-toggle" data-gm-mirror-mouse aria-label="Включить повтор мыши" title="Включить повтор мыши" data-state="off" aria-pressed="false">🖱 ВЫКЛ</button><button class="btn" data-gm-pause>Ⅱ Пауза</button><button class="btn danger" data-gm-stop>■ Остановить</button></div>
   <div class="gm-control-bar gm-party-bar"><label class="gm-field">Пати для всех команд<select data-gm-party><option value="">Выберите пати</option>${state.parties.map(p => option(p.id, p.name, c.partyId)).join('')}</select></label></div>
   <p class="gm-key-note">Если переключатель выключен, работает ручной запуск кнопкой ▶. При включении Windows закрепляет сочетания за приложением; игровые команды срабатывают только из окон выбранной пати. Остановка — <kbd>Ctrl+Alt+Pause</kbd>.</p>
-  <div class="gm-repeat-toolbar"><button class="btn ghost" data-gm-reconnect title="Заново зарегистрировать сочетания и подключить включённые режимы повтора; настройки и данные не сбрасываются">↻ Переподключить ввод</button><button class="btn ghost" data-gm-diagnostics>◎ Проверить окна</button><button class="btn ghost" data-gm-background-probe>◎ Диагностика фона (без клавиш)</button><button class="btn ghost" data-gm-recognize>Распознать пати / порядок</button></div><fieldset class="gm-repeat-settings"><legend>Повтор клавиатуры и мыши — настройки</legend><p>Общий источник для обоих режимов и модификаторы маршрутизации мыши. Кнопки включения находятся выше.</p><div class="gm-repeat-settings-grid"><label class="gm-field">Способ клавиатурного повтора<select data-gm-keyboard-method><option value="post" ${c.mirrorKeyboardMethod === 'post' ? 'selected' : ''}>PostMessage — обычный</option><option value="activity-notify" ${c.mirrorKeyboardMethod === 'activity-notify' ? 'selected' : ''}>Только activity-notify — эксперимент</option><option value="combined" ${c.mirrorKeyboardMethod === 'combined' ? 'selected' : ''}>PostMessage + activity-notify — эксперимент</option></select><small>Только повтор, не команды и не мышь. В совмещённом режиме две отправки могут вызвать двойное действие. Чат автоматически не определяется. Сначала проверяйте безопасные действия на одном твине.</small></label><label class="gm-field"><input type="checkbox" data-gm-hold-only ${c.mirrorHoldOnly ? 'checked' : ''}> Удержание без автоповтора клавиш<small>При удержании: один DOWN и один UP. Сочетания сохраняются; автоповторные DOWN не отправляются. Игра может не распознать удержание через оконные сообщения.</small></label><label class="gm-field">Источник повтора клавиатуры и мыши<select data-gm-mirror-source><option value="any" ${c.mirrorSource === 'any' ? 'selected' : ''}>Любое распознанное игровое окно</option><option value="leader" ${c.mirrorSource === 'leader' ? 'selected' : ''}>Только ПЛ выбранной пати</option></select><small>Получатели — все остальные проверенные клиенты. Изменение настроек обновляет повтор, не сбрасывая выбранные режимы.</small></label><label class="gm-field">ЛКМ только твинам — модификатор<select data-gm-twins-modifier>${[
+  <div class="gm-repeat-toolbar"><button class="btn ghost" data-gm-reconnect title="Заново зарегистрировать сочетания и подключить включённые режимы повтора; настройки и данные не сбрасываются">↻ Переподключить ввод</button><button class="btn ghost" data-gm-diagnostics>◎ Проверить окна</button><button class="btn ghost" data-gm-background-probe>◎ Диагностика фона (без клавиш)</button><button class="btn ghost" data-gm-recognize>Распознать пати / порядок</button></div><fieldset class="gm-repeat-settings"><legend>Повтор клавиатуры и мыши — настройки</legend><p>Общий источник для обоих режимов и модификаторы маршрутизации мыши. Кнопки включения находятся выше.</p><div class="gm-repeat-settings-grid"><label class="gm-field">Способ клавиатурного повтора<select data-gm-keyboard-method><option value="post" ${c.mirrorKeyboardMethod === 'post' ? 'selected' : ''}>PostMessage — обычный</option><option value="activity-notify" ${c.mirrorKeyboardMethod === 'activity-notify' ? 'selected' : ''}>Только activity-notify — эксперимент</option><option value="combined" ${c.mirrorKeyboardMethod === 'combined' ? 'selected' : ''}>PostMessage + activity-notify — эксперимент</option></select><small>Только повтор, не команды и не мышь. В совмещённом режиме две отправки могут вызвать двойное действие. Чат автоматически не определяется. Сначала проверяйте безопасные действия на одном твине.</small></label><label class="gm-field"><input type="checkbox" data-gm-hold-only ${c.mirrorHoldOnly ? 'checked' : ''}> Удержание без автоповтора клавиш<small>При удержании: один DOWN и один UP. Сочетания сохраняются; автоповторные DOWN не отправляются. Игра может не распознать удержание через оконные сообщения.</small></label><label class="gm-field">Источник только клавиатуры<select data-gm-keyboard-source>${[
+    ['shared', 'Как общий источник'],
+    ['any', 'Любое распознанное игровое окно'],
+    ['leader', 'Только ПЛ выбранной пати']
+  ]
+    .map(([value, label]) => option(value, label, c.mirrorKeyboardSource))
+    .join('')}</select></label><label class="gm-field">Получатели клавиатуры<select data-gm-keyboard-targets>${[
+    ['all', 'Все остальные распознанные окна'],
+    ['party', 'Выбранная пати'],
+    ['others', 'Пати, кроме ПЛ'],
+    ['leader', 'Только ПЛ выбранной пати']
+  ]
+    .map(([value, label]) => option(value, label, c.mirrorKeyboardTargets))
+    .join(
+      ''
+    )}</select><small>Источник никогда не получает свою копию. Для ввода только ПЛ из окна твина выберите источник «Любое окно» и получателя «Только ПЛ». Настройки мыши не меняются.</small></label><label class="gm-field">Общий источник (мышь и клавиатура без переопределения)<select data-gm-mirror-source><option value="any" ${c.mirrorSource === 'any' ? 'selected' : ''}>Любое распознанное игровое окно</option><option value="leader" ${c.mirrorSource === 'leader' ? 'selected' : ''}>Только ПЛ выбранной пати</option></select><small>Получатели — все остальные проверенные клиенты. Изменение настроек обновляет повтор, не сбрасывая выбранные режимы.</small></label><label class="gm-field">ЛКМ только твинам — модификатор<select data-gm-twins-modifier>${[
     ['', 'Выключено'],
     ['CTRL', 'Ctrl'],
     ['ALT', 'Alt'],
@@ -307,6 +322,12 @@ export function mountGameMacros(host) {
   );
   host.querySelector('[data-gm-twins-modifier]').onchange = safe(event =>
     save({ mirrorTwinsModifier: event.target.value })
+  );
+  host.querySelector('[data-gm-keyboard-source]').onchange = safe(event =>
+    save({ mirrorKeyboardSource: event.target.value })
+  );
+  host.querySelector('[data-gm-keyboard-targets]').onchange = safe(event =>
+    save({ mirrorKeyboardTargets: event.target.value })
   );
   host.querySelector('[data-gm-hold-only]').onchange = safe(event => save({ mirrorHoldOnly: event.target.checked }));
   host.querySelector('[data-gm-keyboard-method]').onchange = safe(event =>

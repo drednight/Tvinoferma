@@ -143,6 +143,9 @@ it('logs only the active session input diagnostics and identifies the delayed ke
   expect(runtime.snapshot().notice).toContain('265 мс');
 });
 it('pins the configured PL as source while keeping all recognized recipients in the snapshot', async () => {
+  state.characters.forEach(char => {
+    char.partyIds = ['p'];
+  });
   state.settings.gameMacros.mirrorSource = 'leader';
   state.settings.gameMacros.partyId = 'p';
   state.settings.gameMacros.leaders = { p: 'a' };
@@ -404,4 +407,23 @@ it('distinguishes bounded key timeout from PostMessage rejection', async () => {
   });
   expect(runtime.snapshot().notice).toContain('SendMessageTimeout');
   expect(runtime.snapshot().notice).not.toContain('Windows отказала');
+});
+
+it('routes keyboard to the selected party leader independently of shared mouse source', async () => {
+  state.characters.forEach(char => {
+    char.partyIds = ['p'];
+  });
+  state.settings.gameMacros.partyId = 'p';
+  state.settings.gameMacros.leaders = { p: 'a' };
+  state.settings.gameMacros.mirrorSource = 'leader';
+  state.settings.gameMacros.mirrorKeyboardSource = 'any';
+  state.settings.gameMacros.mirrorKeyboardTargets = 'leader';
+  await runtime.toggleKeyboardMirror();
+  const [, args] = m.invoke.mock.calls.find(
+    ([name, args]) => name === 'game_macro_mirror' && args.operation === 'start'
+  );
+  expect(args.source).toMatchObject({ pid: 10 });
+  expect(args.keyboardSource).toBeNull();
+  expect(args.keyboardTargets).toEqual([{ pid: 10, startedAt: 100, hwnd: 1000 }]);
+  expect(args.targets).toHaveLength(2);
 });

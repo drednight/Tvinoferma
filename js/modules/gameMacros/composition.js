@@ -1,4 +1,4 @@
-import { backgroundMethod } from './background.js';
+import { isActivityMethod, backgroundMethod } from './background.js';
 import { chord, steps } from './keySyntax.js';
 const text = (v, max = 200) => String(v || '').slice(0, max);
 const integer = (v, min, max, label) => {
@@ -153,6 +153,7 @@ export function compileComposition(command, config) {
         target: block.target,
         allowEmptyOthers: block.target === 'others',
         allowManagedLeaderSplit: block.leaderSplit,
+        allowManagedSubset: block.target === 'subset',
         scope: block.scope,
         charIds: block.charIds,
         partyId: block.partyId,
@@ -160,6 +161,31 @@ export function compileComposition(command, config) {
         backgroundMethod: block.backgroundMethod,
         resourceAllowed: cmd.resourceAllowed
       };
+      if (block.delivery === 'background' && isActivityMethod(block.backgroundMethod)) {
+        if (
+          block.repeat !== 1 ||
+          cmd.blocks.some(row => row.parallel) ||
+          !block.steps.every(step => ['keys', 'wait'].includes(step.type))
+        )
+          throw new Error('Уведомления активности: только группы клавиш и пауз, без циклов и параллельности.');
+        const sequence = block.steps.map(step => (step.type === 'keys' ? step.value : `wait ${step.ms}`)).join('\n');
+        const parsed = steps(sequence);
+        count += parsed.length;
+        totalWait += parsed.reduce((sum, step) => sum + (step.wait || 0), 0);
+        if (count > 256 || totalWait > 120000) throw new Error('Превышен предел действий/пауз.');
+        lanes.push({
+          kind: 'action',
+          command: {
+            ...selector,
+            action: 'sequence',
+            activityBlock: true,
+            sequence,
+            id: `${cmd.id}:activity:${count}`,
+            name: block.name
+          }
+        });
+        continue;
+      }
       const nodes = Array.from({ length: block.repeat }, () =>
         block.steps.map(step => {
           if (++count > 256) throw new Error('После вставки команд получилось более 256 действий.');
@@ -223,7 +249,12 @@ export function compileComposition(command, config) {
     if (lanes.length) groups.push({ kind: 'parallel', children: lanes });
     return { kind: 'serial', children: groups };
   };
-  return expand(command);
+  const plan = expand(command);
+  const hasParallel = node =>
+    (node.kind === 'parallel' && node.children.length > 1) || (node.children || []).some(hasParallel);
+  if (compositionActions(plan).some(cmd => cmd.activityBlock) && hasParallel(plan))
+    throw new Error('Уведомления активности нельзя запускать в параллельных ветвях, включая вставленные команды.');
+  return plan;
 }
 /** Only actions share the input lock. Waits in independent branches overlap. */
 export async function executeComposition(tree, { action, wait, checkpoint, pause, targets }) {

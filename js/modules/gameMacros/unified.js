@@ -15,7 +15,9 @@ export function commandBlocks(command, config) {
     delivery: command.delivery || 'foreground',
     backgroundMethod: command.backgroundMethod || 'post',
     repeat: 1,
-    leaderSplit: command.scope === 'managed' && ['f6f1', 'optimize'].includes(command.action),
+    leaderSplit:
+      command.allowManagedLeaderSplit === true ||
+      (command.scope === 'managed' && ['f6f1', 'optimize'].includes(command.action)),
     parallel: false
   };
   const block = (steps, patch = {}) => ({ ...base, steps, ...patch });
@@ -96,6 +98,18 @@ export function materializeUnifiedCommand(entry) {
     !block.parallel &&
     block.steps.every(s => ['keys', 'wait'].includes(s.type));
   if (!activity && (!simple || !block.perWindow)) return entry;
+  if (
+    activity &&
+    entry.blocks.some(
+      b =>
+        b.parallel ||
+        (b.delivery === 'background' &&
+          isActivityMethod(b.backgroundMethod) &&
+          ((b.repeat ?? 1) !== 1 || !b.steps.every(s => ['keys', 'wait'].includes(s.type))))
+    )
+  )
+    throw new Error('Уведомления активности: только группы клавиш и пауз без повторений и параллельности.');
+  if (activity && !simple) return entry; // compiler validates each isolated activity group before any input
   if (activity && !block.perWindow)
     throw new Error('Уведомления активности выполняют всю последовательность в каждом окне. Включите обход по окнам.');
   if (!simple)
@@ -107,5 +121,16 @@ export function materializeUnifiedCommand(entry) {
     if (activity) throw error;
     return entry;
   }
-  return { ...entry, ...block, id: entry.id, name: entry.name, action: 'sequence', sequence, blocks: [] };
+  return {
+    ...entry,
+    ...block,
+    allowManagedLeaderSplit: block.leaderSplit === true,
+    strictTargets: entry.strictTargets === true || block.target !== 'all' || block.scope === 'managed',
+    allowManagedSubset: block.scope === 'managed' && block.target === 'subset',
+    id: entry.id,
+    name: entry.name,
+    action: 'sequence',
+    sequence,
+    blocks: []
+  };
 }
