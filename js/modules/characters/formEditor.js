@@ -333,10 +333,9 @@ export function openCharacterForm(char = null) {
     submitText: isEdit ? 'Сохранить изменения' : 'Создать персонажа',
     cancelText: 'Отмена',
     async onSubmit(formData, { setError }) {
-      formData.set(
-        'site-gamecenter',
-        document.querySelector('#modal-root [name="site-gamecenter"]')?.checked ? 'on' : 'off'
-      );
+      const gameCenterLogin =
+        document.querySelector('#modal-root [name="site-gamecenter"]')?.checked ??
+        formData.get('site-gamecenter') === 'on';
       try {
         const getSafeStr = name => String(formData.get(name) || '').trim();
 
@@ -395,7 +394,7 @@ export function openCharacterForm(char = null) {
             name: getSafeStr('sky-name') || null,
             level: formData.get('sky-level') ? parseInt(formData.get('sky-level'), 10) : null
           },
-          siteLogin: { mode: formData.get('site-gamecenter') === 'on' ? 'gamecenter' : 'standard' },
+          siteLogin: { mode: gameCenterLogin ? 'gamecenter' : 'standard' },
           contacts: {
             email: getSafeStr('contact-email'),
             password: getSafeStr('contact-password'),

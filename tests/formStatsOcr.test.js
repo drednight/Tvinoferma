@@ -251,10 +251,12 @@ it.each([false, true])('сохраняет способ входа через Ga
   const ui = await import('../js/core/ui.js');
   ui.showModal.mockImplementation(options => {
     mocks.submit = options.onSubmit;
-    document.getElementById('modal-root').innerHTML = options.content;
+    document.getElementById('modal-root').innerHTML =
+      `<div class="modal-body">${options.content}</div><div class="modal-footer"></div>`;
   });
   openCharacterForm(editing ? char : null);
   expect(document.querySelector('[name="site-gamecenter"]').checked).toBe(editing);
+  document.querySelector('[name="site-gamecenter"]').checked = true;
   const values = new Map([
     ['nick', 'Герой'],
     ['class', CLASSES[0]],
