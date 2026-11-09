@@ -1,3 +1,4 @@
+import { buildTrial } from './trialEvidence.js';
 import {
   startExecutionTrace,
   executionStage,
@@ -381,6 +382,14 @@ const act = async (row, action, extra = {}) => {
           typeof phase.before === 'string' && typeof phase.after === 'string' ? phase.before !== phase.after : undefined
       });
     }
+    for (const message of (Array.isArray(result.messages) ? result.messages : []).slice(0, 8)) {
+      traceLog('background-phase', message.ok === true ? 'accepted-unconfirmed' : 'blocked', {
+        phase: message.phase === 'up' ? 'key-up' : 'key-down',
+        ok: message.ok,
+        errorCode: message.error,
+        elapsedMs: Number.isFinite(message.elapsedUs) ? message.elapsedUs / 1000 : undefined
+      });
+    }
     log(explainBackgroundResult(result), '', false);
     log(`Диагностика ввода → ${row.nick || row.pid}:`, '', false);
     for (const line of backgroundReport(result)) log(line, '', false);
@@ -492,11 +501,21 @@ export function togglePause() {
   void broadcast();
 }
 export async function run(id, hotkey = false) {
+  return executeCommand(id, hotkey);
+}
+export async function runBackgroundTrial(selection) {
+  if (busy || paused || mirroring || mirrorPending)
+    throw new Error('Завершите команду, снимите паузу и выключите повтор перед тестом.');
+  const command = buildTrial(selection, config(), state);
+  await executeCommand(command.id, false, command);
+  return executionHistory().findLast(row => row.commandId === command.id) || null;
+}
+async function executeCommand(id, hotkey = false, trial = null) {
   if (id === 'stop') {
     stop();
     return;
   }
-  const requested = config().commands.find(row => row.id === id);
+  const requested = trial || config().commands.find(row => row.id === id);
   const rejected = reason => {
     const own = !hasActiveExecution();
     if (own) startExecutionTrace(requested || { id }, config());
@@ -526,7 +545,7 @@ export async function run(id, hotkey = false) {
     return;
   }
   const c = config(),
-    command = c.commands.find(r => r.id === id);
+    command = trial || c.commands.find(r => r.id === id);
   if (!command) {
     rejected('COMMAND_NOT_FOUND');
     return;

@@ -21,6 +21,7 @@ vi.mock('../js/modules/gameMacros/runtime.js', async () => {
     configure: vi.fn(async () => {}),
     initGameMacros: vi.fn(async () => {}),
     getExecutionHistory: () => [],
+    runBackgroundTrial: vi.fn(),
     snapshot: () => ({ logs: ['Session log'], busy: false, registered: false }),
     openOverlay: mocks.openOverlay,
     run: mocks.run,

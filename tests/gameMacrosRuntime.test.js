@@ -1131,3 +1131,40 @@ it('fails closed for strict laboratory recipients instead of widening to every r
   expect(invoke.mock.calls.some(([, args]) => args?.action === 'key-background' || args?.action === 'key')).toBe(false);
   expect(runtime.snapshot().executionState).toBe('failed');
 });
+it('executes an ephemeral trial once for exactly one twin without saving or changing focus', async () => {
+  state.parties = [{ id: 'p', name: 'Party' }];
+  state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['p'] });
+  const twin = { ...client, pid: 20, hwnd: 200, title: 'Beta — Воин' };
+  invoke.mockImplementation(async (name, args) =>
+    name === 'launcher_running_details'
+      ? [client, twin]
+      : args?.action === 'key-background'
+        ? { schema: 1, ok: true, inputSent: true }
+        : null
+  );
+  const before = JSON.stringify(state.settings.gameMacros);
+  const result = await runtime.runBackgroundTrial({ partyId: 'p', charId: 'b', key: 'B', method: 'post' });
+  const actions = invoke.mock.calls.filter(([, args]) => args?.action === 'key-background');
+  expect(actions).toHaveLength(1);
+  expect(actions[0][1]).toMatchObject({ target: { pid: 20 }, key: 'B' });
+  expect(invoke.mock.calls.some(([, args]) => args?.action === 'focus' || args?.action === 'key')).toBe(false);
+  expect(result.state).toBe('finished');
+  expect(JSON.stringify(state.settings.gameMacros)).toBe(before);
+});
+it('refuses a trial for the leader before any IPC', async () => {
+  await expect(runtime.runBackgroundTrial({ partyId: 'p', charId: 'a', key: 'B', method: 'post' })).rejects.toThrow(
+    /твина/
+  );
+  expect(invoke).not.toHaveBeenCalled();
+});
+it('does not broaden an ephemeral trial to other windows when its recipient is missing', async () => {
+  state.parties = [{ id: 'p' }];
+  state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['p'] });
+  const result = await runtime.runBackgroundTrial({ partyId: 'p', charId: 'b', key: 'B', method: 'activity-window' });
+  expect(result.state).toBe('failed');
+  expect(
+    invoke.mock.calls.some(
+      ([, args]) => args?.action === 'key-background' || args?.action === 'key' || args?.action === 'focus'
+    )
+  ).toBe(false);
+});

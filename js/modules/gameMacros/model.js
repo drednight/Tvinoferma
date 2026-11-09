@@ -1,3 +1,4 @@
+import { normalizeTrials } from './trialRecords.js';
 import { normalizeLabResults } from './labResults.js';
 import { backgroundMethod } from './background.js';
 import { chord, steps } from './keySyntax.js';
@@ -120,6 +121,7 @@ export function normalizeGameMacros(input = {}) {
     input.otherWidth === 1920 &&
     input.otherHeight === 1200;
   return {
+    backgroundTrials: normalizeTrials(input.backgroundTrials),
     labResults: normalizeLabResults(input.labResults),
     deletedCommands: (Array.isArray(input.deletedCommands) ? input.deletedCommands : []).slice(-5).flatMap(entry => {
       const command = entry?.command && normalizeGameMacros({ commands: [entry.command] }).commands[0];

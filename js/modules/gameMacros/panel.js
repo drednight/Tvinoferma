@@ -1,3 +1,5 @@
+import { openTrialWizard, openTrialComparison, outcomeHtml } from './trialWizard.js';
+import { summarizeExecution } from './trialEvidence.js';
 import { openCommandReview, openCommandTransfer, openExecutionDiagnostics } from './commandTools.js';
 import { deleteCommandPlan, restoreDeletedCommand } from './transfer.js';
 import { LAB_VERDICTS, labVerdict, recordLabVerdict } from './labResults.js';
@@ -15,6 +17,7 @@ import { commandLabels, openCommandEditor } from './editor.js';
 import {
   config,
   getExecutionHistory,
+  runBackgroundTrial,
   clearLogs,
   diagnoseBackground,
   configure,
@@ -178,8 +181,18 @@ export function mountGameMacros(host) {
     .join(
       ''
     )}</select></label><button class="btn primary">⊕ Задать координаты</button></form><p class="muted">Размер окна и DPI определяются автоматически. Для другого размера окна создайте вариант точки; после перемещения элементов интерфейса задайте точку заново.</p><div class="gm-points-workbench"><nav class="gm-point-list" aria-label="Сохранённые координатные точки">${c.points.map(p => `<button class="gm-point-choice" data-gm-point="${esc(p.id)}"><b>${esc(p.name)}</b><small>${p.width} × ${p.height}</small></button>`).join('') || '<p>Нет сохранённых точек.</p>'}</nav><article class="gm-point-detail" data-gm-point-detail></article></div></details>
-  <details class="gm-background-section"><summary>Лаборатория фонового ввода · эксперимент</summary><p>Подготовьте отдельные тесты для одного твина. Программа ничего не запускает автоматически. Фоновая клавиатура в PW пока не подтверждена.</p><button type="button" class="btn ghost" data-gm-background-lab>Подготовить 5 вариантов для сравнения</button></details>
-  <footer class="gm-bottom-actions"><button class="btn ghost" data-gm-traces>Диагностика по запускам</button><button class="btn" data-gm-logs>≡ Журнал сеанса</button><button class="btn" data-gm-overlay>▣ Открыть оверлей</button><button class="btn ghost" data-gm-overlay-settings>⚙ Настройки оверлея</button></footer></section>`;
+  <details class="gm-background-section"><summary>Лаборатория фонового ввода · эксперимент</summary><div class="gm-journal-actions"><button class="btn primary" data-gm-trial-wizard>Одиночная проверка — мастер</button><button class="btn" data-gm-trial-table>Таблица результатов</button></div><p>Подготовьте отдельные тесты для одного твина. Программа ничего не запускает автоматически. Фоновая клавиатура в PW пока не подтверждена.</p><button type="button" class="btn ghost" data-gm-background-lab>Подготовить 5 вариантов для сравнения</button></details>
+  <div data-gm-outcome></div><footer class="gm-bottom-actions"><button class="btn ghost" data-gm-traces>Диагностика по запускам</button><button class="btn" data-gm-logs>≡ Журнал сеанса</button><button class="btn" data-gm-overlay>▣ Открыть оверлей</button><button class="btn ghost" data-gm-overlay-settings>⚙ Настройки оверлея</button></footer></section>`;
+  host.querySelector('[data-gm-trial-wizard]').onclick = () =>
+    openTrialWizard({
+      getConfig: config,
+      state,
+      diagnose: diagnoseBackground,
+      runTrial: runBackgroundTrial,
+      save,
+      stop
+    });
+  host.querySelector('[data-gm-trial-table]').onclick = () => openTrialComparison(config(), state);
   host.querySelector('[data-gm-transfer]').onclick = () => openCommandTransfer(config, save);
   host.querySelector('[data-gm-undo-delete]')?.addEventListener(
     'click',
@@ -510,6 +523,8 @@ export function mountGameMacros(host) {
   const update = () => {
     if (!host.isConnected) return;
     const data = snapshot();
+    const latestRun = getExecutionHistory().at(-1);
+    host.querySelector('[data-gm-outcome]').innerHTML = latestRun ? outcomeHtml(summarizeExecution(latestRun)) : '';
     const technical = host.querySelector('[data-lab-technical]');
     if (technical) {
       const latest = [...getExecutionHistory()]
