@@ -390,6 +390,9 @@ pub async fn game_macro_guide(
         };
         #[cfg(windows)]
         {
+            let lease = crate::input_arbiter::INPUT
+                .acquire("calibration", crate::input_arbiter::INPUT.epoch())?;
+            let _binding = lease.bind();
             let hwnd = client.hwnd.ok_or("No client window")?;
             win::action(
                 hwnd,
@@ -540,6 +543,13 @@ pub async fn game_macro_guide_result(
     }
 }
 #[tauri::command]
+pub fn game_macro_input_stop(window: tauri::WebviewWindow) -> Result<(), String> {
+    main_only(&window)?;
+    #[cfg(windows)]
+    crate::input_arbiter::INPUT.stop()?;
+    Ok(())
+}
+#[tauri::command]
 pub async fn game_macro_action(
     window: tauri::WebviewWindow,
     target: Target,
@@ -552,7 +562,10 @@ pub async fn game_macro_action(
     main_only(&window)?;
     #[cfg(windows)]
     {
+        let epoch = crate::input_arbiter::INPUT.epoch();
         tauri::async_runtime::spawn_blocking(move || {
+            let lease = crate::input_arbiter::INPUT.acquire("command", epoch)?;
+            let _binding = lease.bind();
             let client =
                 crate::launcher::macro_client_at(target.pid, target.started_at, target.hwnd)?;
             if !compatible_integrity(client.elevated, crate::launcher::self_elevated()) {
@@ -602,7 +615,10 @@ pub async fn game_macro_background_probe(
     main_only(&window)?;
     #[cfg(windows)]
     {
+        let epoch = crate::input_arbiter::INPUT.epoch();
         tauri::async_runtime::spawn_blocking(move || {
+            let lease = crate::input_arbiter::INPUT.acquire("diagnostic", epoch)?;
+            let _binding = lease.bind();
             let client =
                 crate::launcher::macro_client_at(target.pid, target.started_at, target.hwnd)?;
             if activity_test.unwrap_or(false)
@@ -678,6 +694,9 @@ pub(crate) fn receiver_send(
     key: &str,
     method: BackgroundMethod,
 ) -> Result<serde_json::Value, String> {
+    let lease =
+        crate::input_arbiter::INPUT.acquire("receiver", crate::input_arbiter::INPUT.epoch())?;
+    let _binding = lease.bind();
     if !crate::input_receiver::is_receiver(raw) {
         return Err("Receiver unavailable".into());
     }
@@ -728,6 +747,20 @@ mod win {
         ) -> isize;
     }
     unsafe fn send_background(
+        hwnd: HWND,
+        msg: u32,
+        wp: WPARAM,
+        lp: LPARAM,
+        method: BackgroundMethod,
+    ) -> Result<(), u32> {
+        let cleanup = matches!(msg, WM_KEYUP | WM_SYSKEYUP)
+            || (matches!(msg, WM_ACTIVATE | WM_ACTIVATEAPP) && wp.0 == 0);
+        crate::input_arbiter::dispatch(cleanup, || {
+            send_background_unchecked(hwnd, msg, wp, lp, method)
+        })
+        .unwrap_or(Err(995))
+    }
+    unsafe fn send_background_unchecked(
         hwnd: HWND,
         msg: u32,
         wp: WPARAM,
@@ -1334,7 +1367,21 @@ mod win {
             })
         }
     }
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn mouse_message(
+        raw: u64,
+        x: i32,
+        y: i32,
+        button: u8,
+        up: bool,
+        flags: u32,
+        double: bool,
+    ) -> Result<(), String> {
+        crate::input_arbiter::dispatch(up, || {
+            mouse_message_unchecked(raw, x, y, button, up, flags, double)
+        })?
+    }
+    fn mouse_message_unchecked(
         raw: u64,
         x: i32,
         y: i32,
@@ -1422,6 +1469,9 @@ mod win {
         input: super::PointerInput,
         calibration: Option<PointInput>,
     ) -> Result<Option<Geometry>, String> {
+        if crate::input_arbiter::cancelled() {
+            return Err("Input operation cancelled".into());
+        }
         let hwnd = HWND(raw as usize as *mut _);
         unsafe {
             let mut actual = 0;
@@ -1522,7 +1572,8 @@ mod win {
                 {
                     return Err("Focus changed or physical input is held".into());
                 }
-                SetCursorPos(screen.x, screen.y).map_err(|_| "Cannot position pointer")?;
+                crate::input_arbiter::dispatch(false, || SetCursorPos(screen.x, screen.y))?
+                    .map_err(|_| "Cannot position pointer")?;
                 let under = WindowFromPoint(screen);
                 if GetForegroundWindow() != hwnd
                     || (under != hwnd && !IsChild(hwnd, under).as_bool())
@@ -1576,16 +1627,30 @@ mod win {
                     events.extend([mouse(false), mouse(true)]);
                 }
                 events.extend(mods.iter().rev().map(|vk| key(*vk, true)));
-                let sent = SendInput(&events, std::mem::size_of::<INPUT>() as i32);
+                let sent = guarded_send_input(&events, std::mem::size_of::<INPUT>() as i32);
                 if sent != events.len() as u32 {
                     let mut release = vec![mouse(true)];
                     release.extend(mods.iter().rev().map(|vk| key(*vk, true)));
-                    let _ = SendInput(&release, std::mem::size_of::<INPUT>() as i32);
+                    let _ = guarded_send_input(&release, std::mem::size_of::<INPUT>() as i32);
                     return Err("Windows did not accept the click".into());
                 }
             }
             Ok(Some(geometry))
         }
+    }
+    unsafe fn guarded_send_input(events: &[INPUT], size: i32) -> u32 {
+        let cleanup = events.iter().all(|event| match event.r#type {
+            INPUT_KEYBOARD => event.Anonymous.ki.dwFlags.contains(KEYEVENTF_KEYUP),
+            INPUT_MOUSE => {
+                let flags = event.Anonymous.mi.dwFlags;
+                flags.contains(MOUSEEVENTF_LEFTUP)
+                    || flags.contains(MOUSEEVENTF_RIGHTUP)
+                    || flags.contains(MOUSEEVENTF_MIDDLEUP)
+                    || flags.contains(MOUSEEVENTF_XUP)
+            }
+            _ => false,
+        });
+        crate::input_arbiter::dispatch(cleanup, || SendInput(events, size)).unwrap_or(0)
     }
     pub(super) fn input_idle(raw: Option<&str>) -> Result<bool, String> {
         let mut keys = vec![
@@ -1627,7 +1692,8 @@ mod win {
                         let _ = ShowWindow(hwnd, SW_RESTORE);
                     }
                     if GetForegroundWindow() != hwnd {
-                        let _ = SetForegroundWindow(hwnd);
+                        let _ =
+                            crate::input_arbiter::dispatch(false, || SetForegroundWindow(hwnd))?;
                         for _ in 0..25 {
                             if GetForegroundWindow() == hwnd {
                                 break;
@@ -1675,14 +1741,14 @@ mod win {
                     down.push(make(key, false));
                     let mut up = vec![make(key, true)];
                     up.extend(mods.iter().rev().map(|v| make(*v, true)));
-                    let accepted = SendInput(&down, std::mem::size_of::<INPUT>() as i32);
+                    let accepted = guarded_send_input(&down, std::mem::size_of::<INPUT>() as i32);
                     if accepted == down.len() as u32 {
                         std::thread::sleep(Duration::from_millis(timing.hold_ms.clamp(10, 200)));
                     }
                     // Always release every potentially pressed key, even after a focus change/partial send.
-                    let released = SendInput(&up, std::mem::size_of::<INPUT>() as i32);
+                    let released = guarded_send_input(&up, std::mem::size_of::<INPUT>() as i32);
                     if released != up.len() as u32 {
-                        let _ = SendInput(&up, std::mem::size_of::<INPUT>() as i32);
+                        let _ = guarded_send_input(&up, std::mem::size_of::<INPUT>() as i32);
                     }
                     if accepted != down.len() as u32
                         || released != up.len() as u32
@@ -1735,7 +1801,8 @@ mod win {
                         if !ClientToScreen(hwnd, &mut screen).as_bool() {
                             return Err("Cannot convert calibration".into());
                         }
-                        SetCursorPos(screen.x, screen.y).map_err(|_| "Cannot position pointer")?;
+                        crate::input_arbiter::dispatch(false, || SetCursorPos(screen.x, screen.y))?
+                            .map_err(|_| "Cannot position pointer")?;
                         let under = WindowFromPoint(screen);
                         if GetForegroundWindow() != hwnd
                             || (under != hwnd && !IsChild(hwnd, under).as_bool())
@@ -1756,8 +1823,10 @@ mod win {
                                 },
                             },
                         };
-                        let accepted =
-                            SendInput(&[mouse(false)], std::mem::size_of::<INPUT>() as i32);
+                        let accepted = guarded_send_input(
+                            &[mouse(false)],
+                            std::mem::size_of::<INPUT>() as i32,
+                        );
                         if accepted == 1 {
                             std::thread::sleep(Duration::from_millis(
                                 timing.hold_ms.clamp(10, 200),
@@ -1765,9 +1834,12 @@ mod win {
                         }
                         // Separate down/up so polling games can observe the pressed button. Always release.
                         let released =
-                            SendInput(&[mouse(true)], std::mem::size_of::<INPUT>() as i32);
+                            guarded_send_input(&[mouse(true)], std::mem::size_of::<INPUT>() as i32);
                         if released != 1 {
-                            let _ = SendInput(&[mouse(true)], std::mem::size_of::<INPUT>() as i32);
+                            let _ = guarded_send_input(
+                                &[mouse(true)],
+                                std::mem::size_of::<INPUT>() as i32,
+                            );
                         }
                         if accepted != 1 || released != 1 {
                             return Err("Windows did not accept the click".into());
@@ -1882,6 +1954,9 @@ mod win {
                         let ctx = ctx.borrow();
                         if let Some((app, bindings)) = ctx.as_ref() {
                             if let Some((id, _, _)) = bindings.iter().find(|(_, _, k)| *k == key) {
+                                if id == "stop" {
+                                    let _ = crate::input_arbiter::INPUT.stop();
+                                }
                                 let _ = app.emit_to("main", "game-macro-hotkey", id);
                                 return true;
                             }
@@ -1963,6 +2038,9 @@ mod win {
                 while PeekMessageW(&mut message, None, 0, 0, PM_REMOVE).as_bool() {
                     if message.message == WM_HOTKEY {
                         if let Some((id, _, _)) = parsed.get(message.wParam.0.saturating_sub(1)) {
+                            if id == "stop" {
+                                let _ = crate::input_arbiter::INPUT.stop();
+                            }
                             let _ = app.emit_to("main", "game-macro-hotkey", id);
                         }
                     }
@@ -2141,7 +2219,10 @@ pub async fn game_macro_pointer(
     main_only(&window)?;
     #[cfg(windows)]
     {
+        let epoch = crate::input_arbiter::INPUT.epoch();
         tauri::async_runtime::spawn_blocking(move || {
+            let lease = crate::input_arbiter::INPUT.acquire("pointer", epoch)?;
+            let _binding = lease.bind();
             let c = crate::launcher::macro_client_at(target.pid, target.started_at, target.hwnd)?;
             if !compatible_integrity(c.elevated, crate::launcher::self_elevated()) {
                 return Err("Game client identity changed or access is unavailable".into());

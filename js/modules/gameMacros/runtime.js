@@ -177,6 +177,7 @@ function traceLog(stage, status = 'ok', details = {}) {
 }
 export function stop(stopMirror = true) {
   traceLog('stop-request');
+  if (window.__TAURI_INTERNALS__) void native('game_macro_input_stop').catch(() => {});
   if (stopMirror && (mirroring || mirrorPending || mirrorKeys || mirrorMouse)) void disableKeyboardMirror();
   cancelled = true;
   executionState = busy ? 'stopping' : 'stopped';

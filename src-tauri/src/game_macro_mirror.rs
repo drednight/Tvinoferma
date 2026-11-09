@@ -635,6 +635,19 @@ unsafe fn post(
     repeat: bool,
     method: KeyboardMethod,
 ) -> Result<(), u8> {
+    if key.mouse.is_some() {
+        return post_unchecked(hwnd, key, up, repeat, method);
+    }
+    crate::input_arbiter::dispatch(up, || post_unchecked(hwnd, key, up, repeat, method))
+        .unwrap_or(Err(10))
+}
+unsafe fn post_unchecked(
+    hwnd: usize,
+    key: Key,
+    up: bool,
+    repeat: bool,
+    method: KeyboardMethod,
+) -> Result<(), u8> {
     if let Some(m) = key.mouse {
         return super::win::mouse_message(
             hwnd as u64,
@@ -780,6 +793,10 @@ fn forward(
     let mut held: HashMap<usize, HashMap<u32, (Key, Instant)>> = HashMap::new();
     let mut previous = 0;
     while !control.stop.load(Ordering::SeqCst) {
+        if crate::input_arbiter::cancelled() {
+            halt(&control, 10);
+            break;
+        }
         trace.flush(false);
         if now().saturating_sub(control.lease.load(Ordering::SeqCst)) > 3000 {
             halt(&control, 2);
@@ -1022,6 +1039,8 @@ pub fn start(
         })
         .transpose()?;
     stop("")?;
+    let lease =
+        crate::input_arbiter::INPUT.acquire("mirror", crate::input_arbiter::INPUT.epoch())?;
     let control = Arc::new(Control {
         stop: AtomicBool::new(false),
         reason: AtomicU8::new(0),
@@ -1074,6 +1093,7 @@ pub fn start(
                 let worker_app = app.clone();
                 let worker_id = thread_id.clone();
                 let worker = std::thread::spawn(move || {
+                    let _binding = lease.bind();
                     forward(
                         rx,
                         clients,
