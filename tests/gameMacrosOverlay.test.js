@@ -114,3 +114,40 @@ it('honors native emergency stop while ordinary hotkeys are suspended and disabl
   expect(runtime.snapshot().executionState).toBe('stopped');
   expect(mocks.invoke.mock.calls.some(([, a]) => a?.action === 'key')).toBe(false);
 });
+it('logs native opening and correlates frontend acknowledgement, ignoring stale replies', async () => {
+  vi.useFakeTimers();
+  try {
+    await runtime.openOverlay();
+    const id = runtime.snapshot().overlayOpenRequest;
+    expect(id).toBeTruthy();
+    expect(mocks.invoke).toHaveBeenCalledWith('game_macro_overlay', expect.objectContaining({ existingOnly: false }));
+    const ack = mocks.handlers.get('game-overlay-opened');
+    ack({ payload: { requestId: 'stale' } });
+    expect(runtime.snapshot().overlayOpenRequest).toBe(id);
+    ack({ payload: { requestId: id } });
+    expect(runtime.snapshot().overlayOpenRequest).toBe('');
+    await vi.advanceTimersByTimeAsync(5001);
+    expect(runtime.snapshot().logs.join('\n')).toContain('подтвердил связь');
+    expect(runtime.snapshot().logs.join('\n')).not.toContain('нет подтверждения интерфейса');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+it('reports missing frontend acknowledgement separately from native show success', async () => {
+  vi.useFakeTimers();
+  try {
+    await runtime.openOverlay();
+    await vi.advanceTimersByTimeAsync(5001);
+    expect(runtime.snapshot().logs.join('\n')).toContain('нет подтверждения интерфейса');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+it('logs failed overlay creation without silently claiming it opened', async () => {
+  mocks.invoke.mockImplementation(async name => {
+    if (name === 'game_macro_overlay') throw new Error('Оверлей: создание окна не удалось');
+    return null;
+  });
+  await expect(runtime.openOverlay()).rejects.toThrow('создание окна');
+  expect(runtime.snapshot().logs.join('\n')).toContain('открытие не завершено');
+});

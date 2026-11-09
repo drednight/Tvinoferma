@@ -120,9 +120,9 @@ pub async fn game_macro_overlay(
     if let Some(overlay) = app.get_webview_window("game-overlay") {
         overlay
             .set_always_on_top(topmost)
-            .map_err(|_| "Cannot change overlay mode")?;
+            .map_err(|_| "Оверлей: не удалось применить режим поверх окон")?;
         if !existing_only {
-            overlay.show().map_err(|_| "Cannot show overlay")?;
+            reveal_overlay(&overlay)?;
         }
         return Ok(());
     }
@@ -146,7 +146,7 @@ pub async fn game_macro_overlay(
     .skip_taskbar(true)
     .transparent(true)
     .build()
-    .map_err(|_| "Cannot open overlay")?;
+    .map_err(|error| format!("Оверлей: создание окна не удалось ({error})"))?;
     if let Some(p) =
         position.filter(|p| (-100000..=100000).contains(&p.x) && (-100000..=100000).contains(&p.y))
     {
@@ -163,6 +163,7 @@ pub async fn game_macro_overlay(
             }
         }
     }
+    reveal_overlay(&overlay)?;
     let handle = app.clone();
     overlay.on_window_event(move |event| {
         if let tauri::WindowEvent::Moved(pos) = event {
@@ -174,6 +175,63 @@ pub async fn game_macro_overlay(
         }
     });
     Ok(())
+}
+// Explicit user opening recovers minimized/off-screen windows without changing saved preferences.
+fn overlay_intersects_screen(window: (i32, i32, u32, u32), screen: (i32, i32, u32, u32)) -> bool {
+    let (x, y, width, height) = window;
+    let (mx, my, mw, mh) = screen;
+    let left = i64::from(x).max(i64::from(mx));
+    let top = i64::from(y).max(i64::from(my));
+    let right = (i64::from(x) + i64::from(width)).min(i64::from(mx) + i64::from(mw));
+    let bottom = (i64::from(y) + i64::from(height)).min(i64::from(my) + i64::from(mh));
+    right - left >= 60 && bottom - top >= 40
+}
+fn reveal_overlay(overlay: &tauri::WebviewWindow) -> Result<(), String> {
+    overlay
+        .unminimize()
+        .map_err(|_| "Оверлей: не удалось развернуть окно")?;
+    let position = overlay
+        .outer_position()
+        .map_err(|_| "Оверлей: не удалось прочитать положение")?;
+    let size = overlay
+        .outer_size()
+        .map_err(|_| "Оверлей: не удалось прочитать размер")?;
+    let monitors = overlay
+        .available_monitors()
+        .map_err(|_| "Оверлей: не удалось проверить экраны")?;
+    if !monitors.is_empty()
+        && !monitors.iter().any(|monitor| {
+            let origin = monitor.position();
+            let screen = monitor.size();
+            overlay_intersects_screen(
+                (position.x, position.y, size.width, size.height),
+                (origin.x, origin.y, screen.width, screen.height),
+            )
+        })
+    {
+        overlay
+            .center()
+            .map_err(|_| "Оверлей: не удалось вернуть окно на экран")?;
+    }
+    overlay
+        .show()
+        .map_err(|_| "Оверлей: не удалось показать окно")?;
+    overlay
+        .set_focus()
+        .map_err(|_| "Оверлей: не удалось вывести окно вперёд")?;
+    Ok(())
+}
+#[cfg(test)]
+mod overlay_visibility_tests {
+    #[test]
+    fn checks_real_overlap_including_negative_monitor_coordinates() {
+        use super::overlay_intersects_screen as visible;
+        assert!(visible((-1800, 10, 430, 580), (-1920, 0, 1920, 1080)));
+        assert!(!visible((6000, 0, 430, 580), (0, 0, 1920, 1080)));
+        assert!(!visible((1900, 0, 430, 580), (0, 0, 1920, 1080)));
+        assert!(visible((1800, 0, 430, 580), (0, 0, 1920, 1080)));
+        assert!(!visible((i32::MAX, 0, 430, 580), (0, 0, 1920, 1080)));
+    }
 }
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct ScreenPosition {

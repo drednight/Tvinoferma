@@ -54,6 +54,8 @@ const logEntries = [];
 let activeCommandName = '',
   notice = '';
 let executionState = 'idle';
+let overlayOpenRequest = '',
+  overlayOpenTimer;
 const reviewedPoints = new Set();
 export const config = () => normalizeGameMacros(state.settings.gameMacros);
 const native = async (command, args) => {
@@ -100,6 +102,7 @@ const native = async (command, args) => {
 export function snapshot() {
   const c = config();
   return {
+    overlayOpenRequest,
     busy,
     parties: (state.parties || []).map(({ id, name }) => ({ id, name })),
     partyId: c.partyId,
@@ -247,14 +250,33 @@ export async function reconnectInput() {
   );
 }
 export async function openOverlay() {
-  await initGameMacros();
-  state.settings.gameMacros = { ...config(), appearance: { ...config().appearance, hideHeader: false } };
-  await native('game_macro_overlay', {
-    topmost: config().topmost,
-    position: config().overlayPosition,
-    existingOnly: false
-  });
-  await broadcast();
+  clearTimeout(overlayOpenTimer);
+  overlayOpenRequest = crypto.randomUUID();
+  const request = overlayOpenRequest;
+  log(`Оверлей [${request.slice(0, 8)}]: запрос открытия.`);
+  try {
+    await initGameMacros();
+    state.settings.gameMacros = { ...config(), appearance: { ...config().appearance, hideHeader: false } };
+    await native('game_macro_overlay', {
+      topmost: config().topmost,
+      position: config().overlayPosition,
+      existingOnly: false
+    });
+    log(
+      `Оверлей [${request.slice(0, 8)}]: Windows выполнила показ/разворачивание и вывод окна вперёд. Ожидаем подтверждение интерфейса.`
+    );
+    overlayOpenTimer = setTimeout(() => {
+      if (overlayOpenRequest === request)
+        log(
+          `Оверлей [${request.slice(0, 8)}]: нет подтверждения интерфейса за 5 секунд. Это не доказывает отсутствие окна. Сохраните журнал открытия.`
+        );
+    }, 5000);
+    await broadcast();
+  } catch (error) {
+    clearTimeout(overlayOpenTimer);
+    log(`Оверлей [${request.slice(0, 8)}]: открытие не завершено. ${macroErrorText(error)}`);
+    throw error;
+  }
 }
 export async function listMacroWindows() {
   const { windowRows } = await import('../launcher/windowList.js');
@@ -630,12 +652,10 @@ async function executeCommand(id, hotkey = false, trial = null) {
     notice = cancelled ? 'Остановлено пользователем.' : `Завершена: ${command.name}.`;
     if (command.delivery === 'background')
       notice += ' Фоновая доставка: игра может игнорировать сообщения; результат не подтверждён.';
-    log(notice, activeCommandName, true, true);
   } catch (error) {
     traceLog('command-failure', cancelled ? 'stopped' : 'error', { blockedBy: macroErrorText(error) });
     executionState = cancelled ? 'stopped' : 'failed';
     notice = cancelled ? 'Остановлено пользователем.' : `Остановлено: ${macroErrorText(error)}`;
-    log(notice, activeCommandName, true, true);
   } finally {
     log(
       `Время выполнения: ${Math.round(performance.now() - started)} мс. Это время доставки/проверок, не подтверждение действия в игре.`,
@@ -1139,6 +1159,12 @@ export async function initGameMacros() {
   await listen('game-overlay-pause', () => togglePause());
   await listen('game-overlay-reconnect', () => {
     void reconnectInput().catch(error => log(macroErrorText(error)));
+  });
+  await listen('game-overlay-opened', event => {
+    if (event.payload?.requestId !== overlayOpenRequest || !overlayOpenRequest) return;
+    clearTimeout(overlayOpenTimer);
+    log(`Оверлей [${overlayOpenRequest.slice(0, 8)}]: интерфейс получил состояние и подтвердил связь.`);
+    overlayOpenRequest = '';
   });
   await listen('game-overlay-ready', () => {
     void broadcast();

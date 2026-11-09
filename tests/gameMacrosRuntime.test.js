@@ -1168,3 +1168,9 @@ it('does not broaden an ephemeral trial to other windows when its recipient is m
     )
   ).toBe(false);
 });
+it('records only one final command completion after restoring bindings', async () => {
+  state.settings.gameMacros.commands[0].sequence = 'B';
+  await runtime.run('test');
+  expect(runtime.snapshot().logs.filter(line => line.includes('Завершена: test.'))).toHaveLength(1);
+  expect(runtime.snapshot().logEntries.at(-1).terminal).toBe(true);
+});

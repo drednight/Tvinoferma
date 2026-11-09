@@ -88,6 +88,7 @@ async function init() {
       copyButton.disabled = false;
     }
   };
+  let acknowledgedOpen = '';
   await listen('game-macro-snapshot', event => {
     if (event.payload == null) return;
     const data = event.payload;
@@ -248,6 +249,13 @@ async function init() {
         return line;
       })
     );
+    if (data.overlayOpenRequest && acknowledgedOpen !== data.overlayOpenRequest) {
+      acknowledgedOpen = data.overlayOpenRequest;
+      void emitTo('main', 'game-overlay-opened', { requestId: acknowledgedOpen }).catch(() => {
+        acknowledgedOpen = '';
+        document.getElementById('status').textContent = 'Не удалось подтвердить связь с главным окном.';
+      });
+    }
   });
   const showView = view => {
     for (const id of ['shortcuts', 'journal', 'party', 'appearance'])
