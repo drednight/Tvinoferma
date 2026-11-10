@@ -583,7 +583,9 @@ it('does not send the first key if stop was requested while native activation wa
 });
 it('refreshes the overlay window list without activating game windows or sending input', async () => {
   await runtime.overlayPartyAction({ action: 'party-refresh' });
-  expect(runtime.snapshot().windows).toEqual([{ name: 'Alpha', pid: 10, known: true, ownershipSource: 'title' }]);
+  expect(runtime.snapshot().windows).toEqual([
+    { name: 'Alpha', pid: 10, startedAt: 1000, hwnd: 100, known: true, ownershipSource: 'title' }
+  ]);
   expect(invoke.mock.calls.some(([c]) => c === 'game_macro_action')).toBe(false);
   expect(runtime.snapshot().busy).toBe(false);
 });

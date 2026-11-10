@@ -9,7 +9,7 @@ fn main_only(window: &tauri::WebviewWindow) -> Result<(), String> {
         Err("Only the main window may control game windows".into())
     }
 }
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Target {
     pid: u32,
@@ -310,6 +310,8 @@ pub fn game_macro_navigate(
     app: tauri::AppHandle,
     action: String,
     party_id: Option<String>,
+    close_mode: Option<String>,
+    close_targets: Option<Vec<Target>>,
 ) -> Result<(), String> {
     if !["main", "game-overlay"].contains(&window.label()) {
         return Err("Untrusted window".into());
@@ -319,7 +321,7 @@ pub fn game_macro_navigate(
             .emit_to(
                 "main",
                 "game-overlay-party",
-                serde_json::json!({"action":action,"partyId":party_id}),
+                serde_json::json!({"action":action,"partyId":party_id,"closeMode":close_mode,"closeTargets":close_targets}),
             )
             .map_err(|_| "Cannot request party action".into()),
         "stop" | "clear-logs" => app
@@ -540,6 +542,36 @@ pub async fn game_macro_guide_result(
     {
         let _ = (client, pos, size, scale, app, request_id);
         Err("Windows-only calibration".into())
+    }
+}
+#[tauri::command]
+pub async fn game_macro_close_targets(
+    window: tauri::WebviewWindow,
+    targets: Vec<Target>,
+) -> Result<crate::launcher::CloseReport, String> {
+    main_only(&window)?;
+    if targets.is_empty() || targets.len() > 128 {
+        return Err("Invalid close selection".into());
+    }
+    #[cfg(windows)]
+    {
+        let pids = tauri::async_runtime::spawn_blocking(move || {
+            targets
+                .into_iter()
+                .map(|target| {
+                    crate::launcher::macro_client_at(target.pid, target.started_at, target.hwnd)?;
+                    Ok(target.pid)
+                })
+                .collect::<Result<Vec<u32>, String>>()
+        })
+        .await
+        .map_err(|_| "Close validation failed")??;
+        crate::launcher::launcher_close_clients_pids(pids).await
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = targets;
+        Err("Game control is Windows-only".into())
     }
 }
 #[tauri::command]
@@ -1139,6 +1171,7 @@ mod win {
             "CAPSLOCK" => 0x14,
             "NUMLOCK" => 0x90,
             "SCROLLLOCK" => 0x91,
+            "PRINTSCREEN" => 0x2c,
             "MULTIPLY" => 0x6a,
             "ADD" => 0x6b,
             "SUBTRACT" => 0x6d,

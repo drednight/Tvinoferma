@@ -302,6 +302,7 @@ pub fn run() {
             game_macros::game_macro_guide_result,
             game_macros::game_macro_action,
             game_macros::game_macro_input_stop,
+            game_macros::game_macro_close_targets,
             game_macros::game_macro_input_idle,
             game_macros::game_macro_background_probe,
             input_receiver::game_macro_receiver,

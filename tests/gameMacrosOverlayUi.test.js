@@ -464,3 +464,39 @@ it('keeps hotkey controls honest on transport failure and disables them during c
   expect(button.textContent).toBe('Сочетания: ВЫКЛ');
   expect(button.disabled).toBe(false);
 });
+it('offers scoped close requests and preserves explicit checks on unrelated snapshots', async () => {
+  const data = {
+    parties: [{ id: 'p', name: 'Пати' }],
+    partyId: 'p',
+    windows: [
+      { name: 'ПЛ', pid: 1, startedAt: 10, hwnd: 100, known: true },
+      { name: 'Твин', pid: 2, startedAt: 20, hwnd: 200, known: true }
+    ]
+  };
+  const snapshot = mocks.handlers.get('game-macro-snapshot');
+  await snapshot({ payload: data });
+  const boxes = document.querySelectorAll('[data-close-window]');
+  boxes[1].checked = true;
+  await snapshot({ payload: { ...data, logs: ['changed'] } });
+  expect(document.querySelectorAll('[data-close-window]')[1].checked).toBe(true);
+  document.getElementById('party-close-all').click();
+  document.getElementById('close-mode').value = 'selected';
+  document.getElementById('close-confirm-yes').click();
+  await vi.waitFor(() =>
+    expect(mocks.invoke).toHaveBeenCalledWith('game_macro_navigate', {
+      action: 'party-close-all',
+      partyId: 'p',
+      closeMode: 'selected',
+      closeTargets: [{ pid: 2, startedAt: 20, hwnd: 200 }]
+    })
+  );
+});
+it('keeps party access and full keyboard icon available while service controls are hidden', async () => {
+  await mocks.handlers.get('game-macro-snapshot')({ payload: { mirrorKeys: false, mirrorMouse: false } });
+  document.getElementById('info-toggle').click();
+  expect(document.getElementById('overlay-controls').hidden).toBe(true);
+  expect(document.getElementById('keyboard-repeat-toggle').querySelector('svg')).not.toBeNull();
+  expect(document.getElementById('compact-party').closest('[hidden]')).toBeNull();
+  document.getElementById('compact-party').click();
+  expect(document.getElementById('party-screen').hidden).toBe(false);
+});

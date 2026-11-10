@@ -1,3 +1,4 @@
+import { keyboardButton } from './keyboardPicker.js';
 import { readDraft, writeDraft, clearDraft } from './drafts.js';
 import { commandFingerprint } from './fingerprint.js';
 import { reviewCommand, reviewHtml } from './review.js';
@@ -148,7 +149,7 @@ export function openCommandEditor(c, save, row = null) {
       )
       .join(
         ''
-      )}</fieldset><aside data-gm-action-help aria-live="polite"></aside></div><label>Сочетание для запуска (необязательно) <input class="input" name="hotkey" placeholder="CTRL+ALT+F8"></label><label>Доставка клавиш<select name="delivery"><option value="foreground">Обычная — с переключением окна (ускорена)</option><option value="background">Без переключения — оконные сообщения (эксперимент)</option></select><small>Фон: клавиши и сочетания в последовательности либо F6→F1; Shift/Ctrl/Alt также экспериментальны. Игра может игнорировать сообщения. Нет автоперехода к переключению окон, результат в игре не подтверждается. Не используйте для расходных действий без проверки.</small></label><fieldset data-gm-background-method><legend>Проверка фоновой доставки клавиш</legend><label>Способ<select name="backgroundMethod">${Object.entries(
+      )}</fieldset><aside data-gm-action-help aria-live="polite"></aside></div><label>Клавиша или сочетание для запуска (необязательно) <input class="input" name="hotkey" placeholder="F8 или CTRL+ALT+F8"><small>Можно одну клавишу. Назначение глобальное: обычные буквы могут мешать набору текста; предпочтительнее F-клавиши. Занятая Windows клавиша может не зарегистрироваться — смотрите журнал.</small></label><label>Доставка клавиш<select name="delivery"><option value="foreground">Обычная — с переключением окна (ускорена)</option><option value="background">Без переключения — оконные сообщения (эксперимент)</option></select><small>Фон: клавиши и сочетания в последовательности либо F6→F1; Shift/Ctrl/Alt также экспериментальны. Игра может игнорировать сообщения. Нет автоперехода к переключению окон, результат в игре не подтверждается. Не используйте для расходных действий без проверки.</small></label><fieldset data-gm-background-method><legend>Проверка фоновой доставки клавиш</legend><label>Способ<select name="backgroundMethod">${Object.entries(
       BACKGROUND_METHODS
     )
       .map(([v, l]) => `<option value="${v}">${esc(l)}</option>`)
@@ -372,6 +373,17 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
       button.onclick = () => insertKeyToken(input, token);
       bar.append(button);
     }
+    bar.append(
+      keyboardButton(input, token => {
+        if (name === 'hotkey') input.value = token;
+        else {
+          const start = input.value.lastIndexOf('\n', (input.selectionStart ?? input.value.length) - 1) + 1;
+          const next = input.value.indexOf('\n', input.selectionStart ?? input.value.length);
+          input.setRangeText(token, start, next < 0 ? input.value.length : next, 'end');
+        }
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      })
+    );
     input.after(bar);
   }
   form.querySelector('[data-gm-to-composition]').onclick = () => {

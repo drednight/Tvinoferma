@@ -1400,3 +1400,32 @@
   flex-wrap: wrap;
   margin-top: 6px;
 }
+
+.gm-keyboard {
+  display: grid;
+  gap: 6px;
+  overflow-x: auto;
+}
+.gm-keyboard-row {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.gm-keyboard-row .btn {
+  min-width: 36px;
+  padding: 8px;
+  font-size: 12px;
+}
+.gm-keyboard-row [aria-pressed='true'] {
+  background: var(--accent, #659fea);
+  color: #10151c;
+}
+.gm-keyboard-picker output {
+  display: block;
+  padding: 12px;
+  font-size: 18px;
+  font-weight: 700;
+}
+.gm-keyboard-picker [title='SPACE'] {
+  min-width: 180px;
+}

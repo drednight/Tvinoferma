@@ -89,6 +89,8 @@ async function init() {
     }
   };
   let acknowledgedOpen = '';
+  let windowSignature = '';
+
   await listen('game-macro-snapshot', event => {
     if (event.payload == null) return;
     const data = event.payload;
@@ -129,13 +131,24 @@ async function init() {
     document.getElementById('party-launch').disabled = !!data.busy || !partySelect.value;
     document.getElementById('party-refresh').disabled = !!data.busy;
     document.getElementById('window-notice').textContent = data.windowNotice || 'Нажмите «Обновить окна».';
-    document.getElementById('windows').replaceChildren(
-      ...(data.windows || []).map(row => {
-        const li = document.createElement('li');
-        li.textContent = `${row.name} · PID ${row.pid}${row.known ? ` · ${{ manual: 'ручная привязка', title: 'из заголовка', launcher: 'запуск Твинофермой' }[row.ownershipSource] || 'распознано'}` : ' · не распознано'}`;
-        return li;
-      })
-    );
+    const signature = JSON.stringify(data.windows || []);
+    if (windowSignature !== signature) {
+      windowSignature = signature;
+      document.getElementById('windows').replaceChildren(
+        ...(data.windows || []).map(row => {
+          const li = document.createElement('li');
+          li.textContent = `${row.name} · PID ${row.pid}${row.known ? ` · ${{ manual: 'ручная привязка', title: 'из заголовка', launcher: 'запуск Твинофермой' }[row.ownershipSource] || 'распознано'}` : ' · не распознано'}`;
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.dataset.closeWindow = '';
+          checkbox.value = JSON.stringify({ pid: row.pid, startedAt: row.startedAt, hwnd: row.hwnd });
+          checkbox.disabled = !row.startedAt || !row.hwnd;
+          checkbox.setAttribute('aria-label', `Выбрать окно ${row.name}, PID ${row.pid}`);
+          li.prepend(checkbox);
+          return li;
+        })
+      );
+    }
     const launch = data.launchProgress;
     latestLaunch = launch;
     renderElapsed();
@@ -267,6 +280,7 @@ async function init() {
     });
   };
   document.querySelectorAll('[data-view]').forEach(button => (button.onclick = () => showView(button.dataset.view)));
+  document.getElementById('compact-party').onclick = () => showView('party');
   const extraNames = {
     pink: 'Розовый',
     cyan: 'Бирюзовый',
@@ -305,14 +319,18 @@ async function init() {
       .forEach(input => (input.nextElementSibling.style.color = colors[input.value]));
   let partyBusy = false;
   document.getElementById('party-launch').disabled = true;
-  const partyRequest = async action => {
+  const partyRequest = async (action, options = {}) => {
     if (partyBusy) return;
     partyBusy = true;
     document.getElementById('party-launch').disabled = true;
     document.getElementById('party-refresh').disabled = true;
     document.getElementById('party-close-all').disabled = true;
     try {
-      await invoke('game_macro_navigate', { action, partyId: document.getElementById('party-select').value || null });
+      await invoke('game_macro_navigate', {
+        action,
+        partyId: document.getElementById('party-select').value || null,
+        ...options
+      });
     } catch {
       document.getElementById('window-notice').textContent =
         'Не удалось отправить запрос. Откройте главное приложение.';
@@ -334,7 +352,19 @@ async function init() {
   };
   document.getElementById('close-confirm-yes').onclick = () => {
     document.getElementById('close-confirm').hidden = true;
-    return partyRequest('party-close-all');
+    const closeMode = document.getElementById('close-mode').value;
+    if (closeMode === 'all') return partyRequest('party-close-all');
+    const closeTargets = [
+      ...document.querySelectorAll(
+        closeMode === 'selected' ? '[data-close-window]:checked' : '[data-close-window]:not(:disabled)'
+      )
+    ].map(input => JSON.parse(input.value));
+    if (!closeTargets.length) {
+      document.getElementById('window-notice').textContent =
+        'Отметьте актуальные окна в списке. Для режима «кроме ПЛ» сначала обновите окна.';
+      return;
+    }
+    return partyRequest('party-close-all', { closeMode, closeTargets });
   };
   document.getElementById('party-refresh').onclick = () => partyRequest('party-refresh');
   const togglePanel = () => {

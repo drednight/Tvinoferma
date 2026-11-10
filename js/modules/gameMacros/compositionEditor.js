@@ -1,3 +1,4 @@
+import { keyboardButton } from './keyboardPicker.js';
 import { quickKeysHtml, applyQuickModifier } from './quickKeys.js';
 import { isActivityMethod } from './background.js';
 import { BACKGROUND_METHODS } from './background.js';
@@ -309,6 +310,9 @@ export function mountCompositionEditor(host, c, row) {
       }
       workbench.after(advanced);
     });
+    host
+      .querySelectorAll('[data-step-type="keys"] [data-field="value"]')
+      .forEach(input => input.after(keyboardButton(input)));
   }
   host.onchange = e => {
     const field = e.target.dataset.field,

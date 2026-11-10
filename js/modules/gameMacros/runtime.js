@@ -569,6 +569,7 @@ async function executeCommand(id, hotkey = false, trial = null) {
     stop();
     return;
   }
+  if (hotkey && document.querySelector('.gm-keyboard-picker')) return;
   const requested = trial || config().commands.find(row => row.id === id);
   const rejected = reason => {
     const own = !hasActiveExecution();
@@ -1879,12 +1880,27 @@ export async function overlayPartyAction(request) {
     if (request.action === 'party-close-all') {
       const { closeAllClients } = await import('../launcher/launch.js');
       const { closeSelectedText } = await import('../launcher/windowList.js');
-      const report = await closeAllClients();
+      const mode = request.closeMode || 'all';
+      if (!['all', 'except-leader', 'selected'].includes(mode)) throw new Error('Недопустимый режим закрытия.');
+      let report;
+      if (mode === 'all') report = await closeAllClients();
+      else {
+        const current = await listMacroWindows();
+        const { selectCloseTargets } = await import('./closeTargets.js');
+        const targets = selectCloseTargets(current, request, config(), state);
+        if (!targets.length) throw new Error('Нет выбранных актуальных окон. Обновите список.');
+        if (cancelled) throw new Error('Остановлено пользователем.');
+        report = await native('game_macro_close_targets', {
+          targets: targets.map(({ pid, startedAt, hwnd }) => ({ pid, startedAt, hwnd }))
+        });
+      }
       overlayWindowNotice = closeSelectedText(report);
       const rows = await listMacroWindows();
       overlayWindows = rows.map(row => ({
         name: row.nick || 'Нераспознанное окно',
         pid: row.pid,
+        startedAt: row.startedAt,
+        hwnd: row.hwnd,
         known: !!row.known,
         ownershipSource: row.ownershipSource
       }));
@@ -1911,6 +1927,8 @@ export async function overlayPartyAction(request) {
     overlayWindows = rows.map(row => ({
       name: row.nick || 'Нераспознанное окно',
       pid: row.pid,
+      startedAt: row.startedAt,
+      hwnd: row.hwnd,
       known: !!row.known,
       ownershipSource: row.ownershipSource
     }));

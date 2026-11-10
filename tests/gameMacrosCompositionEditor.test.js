@@ -219,3 +219,29 @@ it('keeps edited managed recipients instead of silently resetting others to all'
   expect(editor.read()[0].steps[0].value).toBe('F2');
   editor.dispose();
 });
+it('opens the full keyboard for a composition key step and persists the selected key', () => {
+  state.parties = [];
+  state.characters = [];
+  document.body.innerHTML = '<div id="modal-root"></div><div id="editor"></div>';
+  const host = document.getElementById('editor');
+  const editor = mountCompositionEditor(
+    host,
+    { partyId: '', commands: [], points: [], profiles: [] },
+    {
+      blocks: [
+        {
+          name: 'План',
+          scope: 'managed',
+          target: 'all',
+          delivery: 'foreground',
+          steps: [{ type: 'keys', value: 'F1' }]
+        }
+      ]
+    }
+  );
+  [...host.querySelectorAll('button')].find(b => b.textContent.includes('Полная клавиатура')).click();
+  const picker = document.querySelector('.gm-keyboard-picker');
+  picker.querySelector('[title="NUMPAD7"]').click();
+  picker.querySelector('[data-apply]').click();
+  expect(editor.read()[0].steps[0].value).toBe('NUMPAD7');
+});
