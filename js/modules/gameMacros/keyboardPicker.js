@@ -255,7 +255,13 @@ export function keyboardButton(input, apply) {
   b.textContent = '⌨ Полная клавиатура…';
   b.onclick = () =>
     openKeyboardPicker({
-      value: input.value,
+      value:
+        input.tagName === 'TEXTAREA'
+          ? input.value
+              .slice(0, input.selectionStart ?? input.value.length)
+              .split('\n')
+              .at(-1) + input.value.slice(input.selectionStart ?? input.value.length).split('\n')[0]
+          : input.value,
       onChoose: token => {
         if (apply) apply(token);
         else {

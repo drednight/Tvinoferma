@@ -1495,3 +1495,9 @@
 .gm-keyboard button:disabled {
   opacity: 0.4;
 }
+.gm-keyboard-nav {
+  margin-top: 43px;
+}
+.gm-keyboard-num {
+  margin-top: 86px;
+}
