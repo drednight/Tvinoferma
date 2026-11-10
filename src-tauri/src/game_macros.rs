@@ -545,6 +545,45 @@ pub async fn game_macro_guide_result(
     }
 }
 #[tauri::command]
+pub async fn game_macro_compare_once(
+    window: tauri::WebviewWindow,
+    target: Target,
+    key: String,
+    method: String,
+) -> Result<serde_json::Value, String> {
+    main_only(&window)?;
+    #[cfg(windows)]
+    {
+        let epoch = crate::input_arbiter::INPUT.epoch();
+        tauri::async_runtime::spawn_blocking(move || {
+            let lease = crate::input_arbiter::INPUT.acquire("comparison", epoch)?;
+            let _binding = lease.bind();
+            let client =
+                crate::launcher::macro_client_at(target.pid, target.started_at, target.hwnd)?;
+            if !compatible_integrity(client.elevated, crate::launcher::self_elevated()) {
+                return Err("Game client identity changed or access is unavailable".into());
+            }
+            let mut report = win::compare_once(
+                client.hwnd.ok_or("No game window")?,
+                target.pid,
+                &key,
+                &method,
+            )?;
+            report["identityChecked"] = serde_json::json!(true);
+            report["appElevated"] = serde_json::json!(crate::launcher::self_elevated());
+            report["targetElevated"] = serde_json::json!(client.elevated);
+            Ok(report)
+        })
+        .await
+        .map_err(|_| "Comparison worker failed")?
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (target, key, method);
+        Err("Game control is Windows-only".into())
+    }
+}
+#[tauri::command]
 pub async fn game_macro_close_targets(
     window: tauri::WebviewWindow,
     targets: Vec<Target>,
@@ -832,6 +871,83 @@ mod win {
         }
         Ok(hwnd)
     }
+    pub fn compare_once(
+        raw: u64,
+        pid: u32,
+        key: &str,
+        method: &str,
+    ) -> Result<serde_json::Value, String> {
+        let active = match method {
+            "active-send" | "active-post" => true,
+            "inactive-post" | "inactive-activity-window" | "inactive-activity-notify" => false,
+            _ => return Err("Invalid comparison method".into()),
+        };
+        let (mods, vk) = chord(key)?;
+        if !mods.is_empty()
+            || !((0x30..=0x39).contains(&vk)
+                || (0x41..=0x5a).contains(&vk)
+                || (0x70..=0x87).contains(&vk))
+        {
+            return Err("Comparison requires one letter, digit or function key".into());
+        }
+        let hwnd = verified_window(raw, pid)?;
+        let mut report = background_probe(raw, pid, key, false)?;
+        report["method"] = serde_json::json!(method);
+        report["gameEffect"] = serde_json::json!("unknown");
+        report["targetActiveRequired"] = serde_json::json!(active);
+        if report["visible"] != true
+            || report["minimized"] == true
+            || report["hung"] == true
+            || !input_idle(Some(key))?
+            || (unsafe { GetForegroundWindow() } == hwnd) != active
+        {
+            report["refused"] = serde_json::json!(true);
+            report["ok"] = serde_json::json!(false);
+            report["inputSent"] = serde_json::json!(false);
+            report["blockedBy"]=serde_json::json!("Условие опыта не выполнено: проверьте активность, видимость окна и отпустите физические клавиши.");
+            return Ok(report);
+        }
+        if method == "active-send" {
+            let result = action(
+                raw,
+                pid,
+                "key",
+                Some(key),
+                None,
+                None,
+                InputTiming::default(),
+            );
+            report["ok"] = serde_json::json!(result.is_ok());
+            report["inputSent"] = serde_json::json!(result.is_ok());
+            report["deliveryUncertain"] = serde_json::json!(result.is_err());
+            if let Err(error) = result {
+                report["blockedBy"] = serde_json::json!(error);
+            }
+        } else {
+            let transport = match method {
+                "inactive-activity-window" => BackgroundMethod::ActivityWindow,
+                "inactive-activity-notify" => BackgroundMethod::ActivityNotify,
+                _ => BackgroundMethod::Post,
+            };
+            report = background_key(
+                raw,
+                pid,
+                key,
+                InputTiming {
+                    background_method: transport,
+                    ..Default::default()
+                },
+            )?;
+        }
+        report["method"] = serde_json::json!(method);
+        report["gameEffect"] = serde_json::json!("unknown");
+        report["targetActiveRequired"] = serde_json::json!(active);
+        if (unsafe { GetForegroundWindow() } == hwnd) != active {
+            report["foregroundChanged"] = serde_json::json!(true);
+            report["ok"] = serde_json::json!(false);
+        }
+        Ok(report)
+    }
     pub fn background_probe(
         raw: u64,
         pid: u32,
@@ -876,7 +992,10 @@ mod win {
                 "class":String::from_utf16_lossy(&class[..length.max(0) as usize]),
                 "visible":IsWindowVisible(hwnd).as_bool(),"minimized":IsIconic(hwnd).as_bool(),"hung":IsHungAppWindow(hwnd).as_bool(),
                 "targetForeground":initial_foreground==hwnd,"foregroundChangedDuringProbe":GetForegroundWindow()!=initial_foreground,"capsLock":GetKeyState(0x14)&1!=0,
-                "guiAvailable":gui_ok,"guiError":gui_error,"focusIsTarget":gui_ok&&gui.hwndFocus==hwnd,
+                "guiAvailable":gui_ok,"guiError":gui_error,
+                "guiFocusHwnd":if gui_ok {Some(format!("0x{:X}",gui.hwndFocus.0 as usize))}else{None},
+                "guiActiveHwnd":if gui_ok {Some(format!("0x{:X}",gui.hwndActive.0 as usize))}else{None},
+                "guiFocusIsChild":gui_ok&&IsChild(hwnd,gui.hwndFocus).as_bool(),"focusIsTarget":gui_ok&&gui.hwndFocus==hwnd,
                 "childFocus":gui_ok&&!gui.hwndFocus.0.is_null()&&gui.hwndFocus!=hwnd,
                 "captureIsTarget":gui_ok&&gui.hwndCapture==hwnd,
                 "senderLayout":format!("0x{:X}",sender_layout.0 as usize),"targetLayout":format!("0x{:X}",layout.0 as usize),

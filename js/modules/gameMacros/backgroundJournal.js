@@ -4,6 +4,15 @@ import { safeDiagnostic } from './trace.js';
 const KEY = 'tvinoferma.background-journal.v1';
 const fields = new Set([
   'schema',
+  'guiFocusHwnd',
+  'guiActiveHwnd',
+  'guiFocusIsChild',
+  'physical',
+  'windowMode',
+  'gameEffect',
+  'partial',
+  'deliveryUncertain',
+  'targetActiveRequired',
   'threadId',
   'class',
   'capsLock',

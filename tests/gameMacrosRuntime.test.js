@@ -1308,3 +1308,42 @@ it('keeps foreground execution out of the persistent background journal', async 
   expect(journal.backgroundJournalEntries().length).toBeGreaterThan(before);
   expect(journal.backgroundJournalEntries().some(row => row.stage === 'native-background-start')).toBe(true);
 });
+it('cancels the armed comparison before any native key operation', async () => {
+  vi.useFakeTimers();
+  try {
+    const pending = runtime.runInputComparison({ charId: 'a', key: 'B', method: 'active-post' }).catch(e => e);
+    await vi.advanceTimersByTimeAsync(1000);
+    runtime.stop();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(await pending).toBeInstanceOf(Error);
+    expect(invoke.mock.calls.some(([command]) => command === 'game_macro_compare_once')).toBe(false);
+    expect(runtime.snapshot().busy).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+it('comparison sends one snapshotted target without any focus/restore or automatic repetition', async () => {
+  vi.useFakeTimers();
+  try {
+    invoke.mockImplementation(async command =>
+      command === 'launcher_running_details'
+        ? [client]
+        : command === 'game_macro_compare_once'
+          ? { ok: true, gameEffect: 'unknown' }
+          : null
+    );
+    const pending = runtime.runInputComparison({ charId: 'a', key: 'B', method: 'active-post' });
+    await vi.advanceTimersByTimeAsync(6000);
+    const result = await pending;
+    expect(result.gameEffect).toBe('unknown');
+    expect(invoke.mock.calls.filter(([command]) => command === 'game_macro_compare_once')).toHaveLength(1);
+    expect(invoke).toHaveBeenCalledWith('game_macro_compare_once', {
+      target: { pid: 10, startedAt: 1000, hwnd: 100 },
+      key: 'B',
+      method: 'active-post'
+    });
+    expect(invoke.mock.calls.some(([command]) => command === 'game_macro_action')).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
+});

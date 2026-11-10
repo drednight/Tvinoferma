@@ -14,6 +14,10 @@ export function backgroundReport(report) {
     `Клавиша VK=${hex(report.vk)}; scan отправителя=${hex(report.scanSender)}, scan раскладки игры=${hex(report.scanTarget)}. Раскладки: ${token(report.senderLayout)} → ${token(report.targetLayout)}.`,
     `Состояние перед отправкой: тестовая клавиша физически зажата — ${flag(report.selectedKeyHeld)}, Ctrl/Shift/Alt/Win зажат — ${flag(report.modifierHeld)}. Модификаторов в команде: ${Array.isArray(report.modifiers) ? report.modifiers.length : '?'}.`
   ];
+  if (report.guiFocusHwnd || report.guiActiveHwnd)
+    lines.push(
+      `GUI HWND: active=${token(report.guiActiveHwnd)}, focus=${token(report.guiFocusHwnd)}, дочерний focus=${flag(report.guiFocusIsChild)}. Только диагностика — адресат ввода не подменяется.`
+    );
   if (report.activityTest) {
     const baseKey =
       report.vk == null
