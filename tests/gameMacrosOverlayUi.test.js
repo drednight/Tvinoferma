@@ -500,3 +500,14 @@ it('keeps party access and full keyboard icon available while service controls a
   document.getElementById('compact-party').click();
   expect(document.getElementById('party-screen').hidden).toBe(false);
 });
+it('moves real repeat/hotkey toggles into the visible folded strip and restores them', async () => {
+  const controls = document.querySelector('.repeat-controls');
+  const original = controls.parentElement;
+  document.getElementById('fold').click();
+  await vi.waitFor(() => expect(document.body.classList.contains('folded')).toBe(true));
+  expect(controls.closest('header')).not.toBeNull();
+  for (const id of ['keyboard-repeat-toggle', 'mouse-repeat-toggle', 'hotkeys-toggle'])
+    expect(document.getElementById(id).closest('#panel')).toBeNull();
+  document.getElementById('fold').click();
+  await vi.waitFor(() => expect(controls.parentElement).toBe(original));
+});

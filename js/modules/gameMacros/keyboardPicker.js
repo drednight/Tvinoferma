@@ -2,7 +2,8 @@ import { openOverlay } from '../marathons/overlay.js';
 import { chord } from './keySyntax.js';
 
 export const KEYBOARD_ROWS = [
-  ['ESC', ...Array.from({ length: 24 }, (_, i) => `F${i + 1}`)],
+  Array.from({ length: 12 }, (_, i) => `F${i + 13}`),
+  ['ESC', ...Array.from({ length: 12 }, (_, i) => `F${i + 1}`)],
   ['BACKQUOTE', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'MINUS', 'EQUALS', 'BACKSPACE'],
   ['TAB', 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', 'BRACKETLEFT', 'BRACKETRIGHT', 'BACKSLASH'],
   ['CAPSLOCK', 'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'SEMICOLON', 'QUOTE', 'ENTER'],
@@ -102,7 +103,10 @@ export function openKeyboardPicker({ value = '', onChoose }) {
   const ov = openOverlay({
     title: 'Клавиатура — выбор клавиши или сочетания',
     wide: true,
-    onClose: () => document.removeEventListener('keydown', capture, true)
+    onClose: () => {
+      document.removeEventListener('keydown', capture, true);
+      document.removeEventListener('mousedown', captureMouse, true);
+    }
   });
   ov.el.classList.add('gm-keyboard-picker');
   ov.body.innerHTML =
@@ -112,10 +116,22 @@ export function openKeyboardPicker({ value = '', onChoose }) {
   const refresh = () => {
     preview.textContent = selected || 'Выберите основную клавишу';
     grid
-      .querySelectorAll('[data-modifier]')
-      .forEach(b => b.setAttribute('aria-pressed', String(mods.has(b.dataset.modifier))));
+      .querySelectorAll('[data-key]')
+      .forEach(b =>
+        b.setAttribute(
+          'aria-pressed',
+          String(b.dataset.modifier ? mods.has(b.dataset.modifier) : b.dataset.key === selected.split('+').at(-1))
+        )
+      );
   };
-  for (const row of KEYBOARD_ROWS) {
+  const main = document.createElement('div'),
+    nav = document.createElement('div'),
+    num = document.createElement('div');
+  main.className = 'gm-keyboard-main';
+  nav.className = 'gm-keyboard-nav';
+  num.className = 'gm-keyboard-num';
+  grid.append(main, nav, num);
+  for (const [rowIndex, row] of KEYBOARD_ROWS.entries()) {
     const line = document.createElement('div');
     line.className = 'gm-keyboard-row';
     for (const key of row) {
@@ -124,6 +140,7 @@ export function openKeyboardPicker({ value = '', onChoose }) {
       b.className = 'btn ghost';
       b.textContent = labels[key] || key.replace('NUMPAD', 'Num ');
       b.title = key;
+      b.dataset.key = key;
       if (['WINLEFT', 'WINRIGHT', 'CONTEXTMENU'].includes(key)) {
         b.disabled = true;
         b.textContent = key === 'CONTEXTMENU' ? 'Menu' : 'Win';
@@ -142,7 +159,55 @@ export function openKeyboardPicker({ value = '', onChoose }) {
       };
       line.append(b);
     }
-    grid.append(line);
+    if (rowIndex < 7) main.append(line);
+    else {
+      const target = rowIndex === 7 ? nav : num;
+      for (const b of [...line.children]) {
+        target.append(b);
+        const key = b.dataset.key;
+        const navMap = {
+          PRINTSCREEN: [1, 1],
+          SCROLLLOCK: [1, 2],
+          PAUSE: [1, 3],
+          INSERT: [2, 1],
+          HOME: [2, 2],
+          PAGEUP: [2, 3],
+          DELETE: [3, 1],
+          END: [3, 2],
+          PAGEDOWN: [3, 3],
+          UP: [5, 2],
+          LEFT: [6, 1],
+          DOWN: [6, 2],
+          RIGHT: [6, 3]
+        };
+        const numMap = {
+          NUMLOCK: [1, 1],
+          DIVIDE: [1, 2],
+          MULTIPLY: [1, 3],
+          SUBTRACT: [1, 4],
+          NUMPAD7: [2, 1],
+          NUMPAD8: [2, 2],
+          NUMPAD9: [2, 3],
+          ADD: [2, 4],
+          NUMPAD4: [3, 1],
+          NUMPAD5: [3, 2],
+          NUMPAD6: [3, 3],
+          NUMPAD1: [4, 1],
+          NUMPAD2: [4, 2],
+          NUMPAD3: [4, 3],
+          ENTER: [4, 4],
+          NUMPAD0: [5, 1],
+          DECIMAL: [5, 3]
+        };
+        const pos = (rowIndex === 7 ? navMap : numMap)[key];
+        if (pos) {
+          b.style.gridRow = String(pos[0]);
+          b.style.gridColumn = String(pos[1]);
+        }
+        if (target === num && ['ADD', 'ENTER'].includes(key)) b.style.gridRow += ' / span 2';
+        if (target === num && key === 'NUMPAD0') b.style.gridColumn = '1 / span 2';
+      }
+    }
   }
   function capture(event) {
     if (!recording) return;
@@ -159,6 +224,14 @@ export function openKeyboardPicker({ value = '', onChoose }) {
       refresh();
     }
   }
+  function captureMouse(event) {
+    if (!recording || event.target.closest('button')) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    ov.body.querySelector('[data-capture-status]').textContent =
+      `Кнопка мыши ${event.button + 1} получена. Прямой запуск этой кнопкой пока не поддерживается. Если ПО мыши назначает ей F13–F24, нажмите её снова с таким назначением — будет сохранена клавиша. Выбор не изменён.`;
+  }
+  document.addEventListener('mousedown', captureMouse, true);
   document.addEventListener('keydown', capture, true);
   ov.body.querySelector('[data-record]').onclick = () => {
     recording = true;

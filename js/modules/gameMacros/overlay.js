@@ -88,6 +88,10 @@ async function init() {
       copyButton.disabled = false;
     }
   };
+  document.getElementById('background-journal-open').onclick = () =>
+    invoke('game_macro_navigate', { action: 'background-logs', partyId: null }).catch(() => {
+      document.getElementById('status').textContent = 'Откройте журнал фонового ввода в главном приложении.';
+    });
   let acknowledgedOpen = '';
   let windowSignature = '';
 
@@ -416,12 +420,17 @@ async function init() {
   };
   let collapsed = false;
   const fold = document.getElementById('fold');
+  const repeatControls = document.querySelector('.repeat-controls');
+  const repeatAnchor = document.createComment('repeat-controls');
+  repeatControls.before(repeatAnchor);
   fold.onclick = async () => {
     fold.disabled = true;
     try {
       await invoke('game_macro_overlay_fold', { collapsed: !collapsed });
       collapsed = !collapsed;
       document.body.classList.toggle('folded', collapsed);
+      if (collapsed) document.querySelector('header').append(repeatControls);
+      else repeatAnchor.after(repeatControls);
       fold.setAttribute('aria-expanded', String(!collapsed));
       fold.title = collapsed ? 'Развернуть оверлей' : 'Свернуть до верхней полосы';
       fold.setAttribute('aria-label', fold.title);

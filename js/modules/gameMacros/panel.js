@@ -1,3 +1,4 @@
+import { openBackgroundJournal } from './backgroundJournal.js';
 import { openMirrorObservation } from './mirrorObservation.js';
 import { openReceiverTools } from './receiverTools.js';
 import { openTrialWizard, openTrialComparison, outcomeHtml } from './trialWizard.js';
@@ -215,7 +216,7 @@ export function mountGameMacros(host) {
     .join(
       ''
     )}</select></label><button class="btn primary">⊕ Задать координаты</button></form><p class="muted">Размер окна и DPI определяются автоматически. Для другого размера окна создайте вариант точки; после перемещения элементов интерфейса задайте точку заново.</p><div class="gm-points-workbench"><nav class="gm-point-list" aria-label="Сохранённые координатные точки">${c.points.map(p => `<button class="gm-point-choice" data-gm-point="${esc(p.id)}"><b>${esc(p.name)}</b><small>${p.width} × ${p.height}</small></button>`).join('') || '<p>Нет сохранённых точек.</p>'}</nav><article class="gm-point-detail" data-gm-point-detail></article></div></details>
-  <details class="gm-background-section"><summary>Лаборатория фонового ввода · эксперимент</summary><div class="gm-journal-actions"><button class="btn primary" data-gm-trial-wizard>Одиночная проверка — мастер</button><button class="btn" data-gm-receiver>Окно-приёмник Windows</button><button class="btn" data-gm-mirror-observation>Записать наблюдение клавиатурного повтора</button><button class="btn" data-gm-trial-table>Таблица результатов</button></div><p>Подготовьте отдельные тесты для одного твина. Программа ничего не запускает автоматически. Фоновая клавиатура в PW пока не подтверждена.</p><button type="button" class="btn ghost" data-gm-background-lab>Подготовить 5 вариантов для сравнения</button></details>
+  <details class="gm-background-section"><summary>Лаборатория фонового ввода · эксперимент</summary><div class="gm-journal-actions"><button class="btn" data-gm-background-journal>Журнал только фонового ввода…</button><button class="btn primary" data-gm-trial-wizard>Одиночная проверка — мастер</button><button class="btn" data-gm-receiver>Окно-приёмник Windows</button><button class="btn" data-gm-mirror-observation>Записать наблюдение клавиатурного повтора</button><button class="btn" data-gm-trial-table>Таблица результатов</button></div><p>Подготовьте отдельные тесты для одного твина. Программа ничего не запускает автоматически. Фоновая клавиатура в PW пока не подтверждена.</p><button type="button" class="btn ghost" data-gm-background-lab>Подготовить 5 вариантов для сравнения</button></details>
   <div data-gm-outcome></div><footer class="gm-bottom-actions"><button class="btn ghost" data-gm-traces>Диагностика по запускам</button><button class="btn" data-gm-logs>≡ Журнал сеанса</button><button class="btn" data-gm-overlay>▣ Открыть оверлей</button><button class="btn ghost" data-gm-overlay-settings>⚙ Настройки оверлея</button></footer></section>`;
   host.querySelector('[data-gm-trial-wizard]').onclick = () =>
     openTrialWizard({
@@ -256,6 +257,7 @@ export function mountGameMacros(host) {
   );
   host.querySelector('.gm-points-section').open = pointsOpen;
   host.querySelector('.gm-background-section').open = labOpen;
+  host.querySelector('[data-gm-background-journal]').onclick = openBackgroundJournal;
   host.querySelector('[data-gm-background-lab]').onclick = () => openBackgroundLab(config(), save);
   host.querySelector('[data-gm-check-windows]').onclick = () => host.querySelector('[data-gm-diagnostics]').click();
   const search = host.querySelector('[data-gm-search]');

@@ -1429,3 +1429,69 @@
 .gm-keyboard-picker [title='SPACE'] {
   min-width: 180px;
 }
+
+/* Physical blocks stay in place; narrow screens scroll, rather than shuffle keys. */
+.gm-keyboard {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  grid-template-columns: minmax(680px, 1fr) 144px 184px;
+  gap: 16px;
+  background: #171b25;
+  border: 1px solid #505b72;
+  padding: 16px;
+  border-radius: 12px;
+  box-shadow: inset 0 -5px 0 #080c14;
+}
+.gm-keyboard-row {
+  flex-wrap: nowrap;
+  margin-bottom: 5px;
+}
+.gm-keyboard-row .btn {
+  flex: 1;
+  min-width: 0;
+}
+.gm-keyboard .btn {
+  border-radius: 5px;
+  background: linear-gradient(#434b60, #2a3040);
+  border: 1px solid #65718b;
+  border-bottom: 4px solid #151c29;
+  min-height: 38px;
+  color: #eef3ff;
+  font-size: 11px;
+  padding: 3px;
+  box-shadow: 0 1px 2px #0008;
+}
+.gm-keyboard [data-key='BACKSPACE'],
+.gm-keyboard [data-key='TAB'],
+.gm-keyboard [data-key='CAPSLOCK'],
+.gm-keyboard-main [data-key='ENTER'],
+.gm-keyboard [data-key='SHIFT'] {
+  flex: 1.7;
+}
+.gm-keyboard [data-key='SPACE'] {
+  flex: 6;
+  min-width: 0;
+}
+.gm-keyboard-nav,
+.gm-keyboard-num {
+  display: grid;
+  gap: 5px;
+  align-content: start;
+  grid-template-rows: repeat(6, 38px);
+}
+.gm-keyboard-nav {
+  grid-template-columns: repeat(3, 1fr);
+}
+.gm-keyboard-num {
+  grid-template-columns: repeat(4, 1fr);
+}
+.gm-keyboard [aria-pressed='true'] {
+  background: linear-gradient(#729bdb, #365d9e);
+  border-color: #acd0ff;
+  color: white;
+  box-shadow: 0 0 0 2px #6ba9ff77;
+}
+.gm-keyboard button:disabled {
+  opacity: 0.4;
+}

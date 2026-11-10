@@ -71,3 +71,13 @@ it('keeps exactly the verified PL and refuses ambiguity or an absent PL', () => 
     )
   ).toThrow();
 });
+it('highlights selected ordinary keys and retains physical keyboard blocks', () => {
+  const ov = openKeyboardPicker({ onChoose: () => {} });
+  ov.body.querySelector('[title="B"]').click();
+  expect(ov.body.querySelector('[title="B"]').getAttribute('aria-pressed')).toBe('true');
+  ov.body.querySelector('[title="F8"]').click();
+  expect(ov.body.querySelector('[title="B"]').getAttribute('aria-pressed')).toBe('false');
+  expect(ov.body.querySelector('.gm-keyboard-num [title="NUMPAD9"]')).not.toBeNull();
+  expect(ov.body.querySelector('.gm-keyboard-nav [title="UP"]')).not.toBeNull();
+  ov.close();
+});

@@ -270,7 +270,7 @@ pub fn game_macro_overlay_fold(
         window
             .set_size(tauri::PhysicalSize::new(
                 size.width,
-                (52.0 * window.scale_factor().unwrap_or(1.0)).round() as u32,
+                (120.0 * window.scale_factor().unwrap_or(1.0)).round() as u32,
             ))
             .map_err(|_| "Cannot collapse overlay")?;
     } else {
@@ -327,7 +327,7 @@ pub fn game_macro_navigate(
         "stop" | "clear-logs" => app
             .emit_to("main", "game-overlay-action", action)
             .map_err(|_| "Cannot send overlay action".into()),
-        "settings" | "logs" | "overlay-settings" => {
+        "settings" | "logs" | "overlay-settings" | "background-logs" => {
             let main = app
                 .get_webview_window("main")
                 .ok_or("Main window unavailable")?;

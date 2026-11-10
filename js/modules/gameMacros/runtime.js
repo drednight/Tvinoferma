@@ -1,3 +1,4 @@
+import { appendBackgroundJournal, openBackgroundJournal } from './backgroundJournal.js';
 import { nativeResultStatus } from './nativeStatus.js';
 import { buildTrial } from './trialEvidence.js';
 import {
@@ -28,6 +29,7 @@ import {
   orderManagedTargets,
   partyMembers
 } from './model.js';
+let backgroundRun = false;
 let invokePromise;
 let nativeStopPending = Promise.resolve(true);
 let rootTiming = { switchMs: 30, holdMs: 30, backgroundMethod: 'post' },
@@ -84,8 +86,18 @@ const native = async (command, args) => {
   };
   if (traced && currentExecutionId() === traceId) traceLog(`native:${command}`, 'start', details);
   const started = performance.now();
+  if (
+    (command === 'game_macro_action' && args?.action === 'key-background') ||
+    command === 'game_macro_background_probe'
+  )
+    appendBackgroundJournal('native-background-start', { ...details, runId: traceId });
   try {
     const result = await invoke(command, args);
+    if (
+      (command === 'game_macro_action' && args?.action === 'key-background') ||
+      command === 'game_macro_background_probe'
+    )
+      appendBackgroundJournal('native-background-result', { ...details, runId: traceId, details: result });
     if (traced && currentExecutionId() === traceId)
       traceLog(`native:${command}`, nativeResultStatus(command, result), {
         ...details,
@@ -105,6 +117,15 @@ const native = async (command, args) => {
       );
     return result;
   } catch (error) {
+    if (
+      (command === 'game_macro_action' && args?.action === 'key-background') ||
+      command === 'game_macro_background_probe'
+    )
+      appendBackgroundJournal('native-background-error', {
+        ...details,
+        runId: traceId,
+        blockedBy: macroErrorText(error)
+      });
     if (traced && currentExecutionId() === traceId)
       traceLog(`native:${command}`, 'error', { ...details, blockedBy: macroErrorText(error) });
     throw error;
@@ -175,6 +196,7 @@ function log(text, commandName = activeCommandName, notify = true, terminal = fa
 export const getExecutionHistory = () => executionHistory();
 function traceLog(stage, status = 'ok', details = {}) {
   const event = executionStage(stage, status, details);
+  if (event && backgroundRun) appendBackgroundJournal(stage, event);
   if (event)
     log(
       `[${event.runId.slice(0, 8)} · ${event.n}] ${stage}: ${status}${Object.keys(event.details).length ? ' · ' + JSON.stringify(event.details) : ''}`,
@@ -628,6 +650,7 @@ async function executeCommand(id, hotkey = false, trial = null) {
   firstInputLogged = false;
   let suspended = false;
   cancelled = false;
+  backgroundRun = command.delivery === 'background' || (command.blocks || []).some(b => b.delivery === 'background');
   startExecutionTrace(command, c);
   traceLog('command-start', 'ok', { action: command.action, method: command.backgroundMethod });
   const planReview = reviewCommand(command, c, state);
@@ -706,6 +729,7 @@ async function executeCommand(id, hotkey = false, trial = null) {
       true,
       true
     );
+    backgroundRun = false;
     activeCommandName = '';
     inputStarted = 0;
     if (composing) paused = false;
@@ -1235,6 +1259,10 @@ export async function initGameMacros() {
     else if (event.payload === 'clear-logs') void clearLogs();
   });
   await listen('game-macro-navigate', event => {
+    if (event.payload === 'background-logs') {
+      openBackgroundJournal();
+      return;
+    }
     openSettings();
     setTimeout(() => window.dispatchEvent(new CustomEvent('tf-game-macro-dialog', { detail: event.payload })), 60);
   });
@@ -1444,6 +1472,11 @@ function ensureMirror() {
     await listen('game-macro-mirror-input', event => {
       const data = event.payload;
       if (data?.sessionId !== mirrorSession) return;
+      appendBackgroundJournal('background-mirror-summary', {
+        sessionId: data.sessionId,
+        omitted: data.omitted,
+        count: Array.isArray(data.events) ? data.events.length : 0
+      });
       for (const entry of (Array.isArray(data.events) ? data.events : []).slice(0, 64)) {
         const text = formatMirrorInput(entry);
         if (text) log(text, '', false);

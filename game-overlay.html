@@ -288,6 +288,65 @@
         border-color: #e6b86a;
         color: #f5cc76;
       }
+      body.folded header {
+        display: flex;
+        flex-wrap: wrap;
+        height: 120px;
+        align-content: center;
+        gap: 4px;
+      }
+      body.folded header > span {
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      body.folded .repeat-controls {
+        width: 100%;
+        flex: 0 0 100%;
+        margin: 0;
+        flex-wrap: nowrap;
+        gap: 4px;
+      }
+      body.folded #compact-party {
+        display: none;
+      }
+      body.folded .repeat-controls button {
+        flex: 1;
+        padding: 5px 2px;
+        font-size: 11px;
+        white-space: nowrap;
+        margin: 0;
+      }
+      body.folded .repeat-controls svg {
+        width: 25px;
+      }
+      #overlay-nav {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+      }
+      #overlay-nav button {
+        margin: 0;
+        min-width: 0;
+        overflow-wrap: normal;
+      }
+      .repeat-controls {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .repeat-controls button {
+        margin: 0;
+        min-width: 0;
+      }
+      @media (min-width: 520px) {
+        #overlay-nav {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+        .repeat-controls {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+      }
     </style>
   </head>
   <body>
@@ -477,6 +536,7 @@
         </section>
         <section id="journal-screen" hidden>
           <h3 data-service-heading>Журнал текущего сеанса</h3>
+          <button type="button" id="background-journal-open">Журнал только фонового ввода…</button>
           <div class="gm-journal-actions" role="group" aria-label="Действия с журналом">
             <button type="button" id="copy-logs">Копировать весь лог</button>
             <button
