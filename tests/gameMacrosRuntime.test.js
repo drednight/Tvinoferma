@@ -1297,3 +1297,14 @@ it('refuses new input when native stop was not acknowledged without leaking the 
   expect(runtime.snapshot().logs.join('\n')).not.toContain('private token');
   expect(runtime.snapshot().logs.join('\n')).toContain('перезапустите приложение');
 });
+it('keeps foreground execution out of the persistent background journal', async () => {
+  const journal = await import('../js/modules/gameMacros/backgroundJournal.js');
+  const before = journal.backgroundJournalEntries().length;
+  state.settings.gameMacros.commands[0].sequence = 'F8';
+  await runtime.run('test');
+  expect(journal.backgroundJournalEntries()).toHaveLength(before);
+  state.settings.gameMacros.commands[0].delivery = 'background';
+  await runtime.run('test');
+  expect(journal.backgroundJournalEntries().length).toBeGreaterThan(before);
+  expect(journal.backgroundJournalEntries().some(row => row.stage === 'native-background-start')).toBe(true);
+});

@@ -1491,6 +1491,7 @@ function ensureMirror() {
     });
     await listen('game-macro-mirror-state', event => {
       if (event.payload?.sessionId !== mirrorSession || event.payload.active !== false) return;
+      appendBackgroundJournal('background-mirror-stopped', event.payload);
       ++mirrorEpoch;
       mirrorSession = '';
       mirrorPending = false;
