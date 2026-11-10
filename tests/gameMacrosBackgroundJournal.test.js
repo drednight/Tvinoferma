@@ -9,6 +9,10 @@ beforeEach(async () => {
 it('persists allowlisted phases across reload and never stores arbitrary secrets or payload fields', async () => {
   journal.appendBackgroundJournal('background-phase', {
     key: 'B',
+    scanTarget: 48,
+    guiError: 5,
+    senderLayout: '0x409',
+    health: [{ timeoutMs: 25, ok: false, error: 1460 }],
     errorCode: 1460,
     password: 'secret',
     url: 'https://secret.test',
@@ -17,6 +21,9 @@ it('persists allowlisted phases across reload and never stores arbitrary secrets
   const before = journal.backgroundJournalText();
   expect(before).toContain('1460');
   expect(before).toContain('0x1234');
+  expect(before).toContain('scanTarget');
+  expect(before).toContain('guiError');
+  expect(before).toContain('timeoutMs');
   expect(before).not.toContain('secret');
   vi.resetModules();
   const reloaded = await import('../js/modules/gameMacros/backgroundJournal.js');
