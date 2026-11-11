@@ -303,6 +303,7 @@ pub fn run() {
             game_macros::game_macro_action,
             game_macros::game_macro_input_stop,
             game_macros::game_macro_compare_once,
+            game_macros::game_macro_compare_many,
             game_macros::game_macro_close_targets,
             game_macros::game_macro_input_idle,
             game_macros::game_macro_background_probe,

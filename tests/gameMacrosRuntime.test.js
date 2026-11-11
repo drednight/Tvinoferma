@@ -1347,3 +1347,90 @@ it('comparison sends one snapshotted target without any focus/restore or automat
     vi.useRealTimers();
   }
 });
+
+describe('bounded concurrent multi-client comparison', () => {
+  const selection = { charIds: ['a', 'b'], steps: [{ key: 'B' }, { wait: 500 }, { key: 'CTRL+B' }] };
+  const second = { ...client, pid: 20, startedAt: 2000, hwnd: 200, title: 'Beta — Воин' };
+  const prepare = () => {
+    state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['p'] });
+    invoke.mockImplementation(async command =>
+      command === 'launcher_running_details'
+        ? [client, second]
+        : command === 'game_macro_compare_many'
+          ? {
+              ok: true,
+              recipients: [
+                { pid: 10, ok: true, steps: [] },
+                { pid: 20, ok: true, steps: [] }
+              ]
+            }
+          : null
+    );
+  };
+  it('uses one native batch with fixed target identities and no focus command', async () => {
+    await import('../js/modules/gameMacros/multiInputTrial.js');
+    vi.useFakeTimers();
+    try {
+      prepare();
+      const pending = runtime.runMultiInputTrial(selection);
+      await vi.advanceTimersByTimeAsync(6000);
+      expect((await pending).ok).toBe(true);
+      expect(invoke.mock.calls.filter(([c]) => c === 'game_macro_compare_many')).toHaveLength(1);
+      expect(invoke).toHaveBeenCalledWith('game_macro_compare_many', {
+        targets: [
+          { pid: 10, startedAt: 1000, hwnd: 100 },
+          { pid: 20, startedAt: 2000, hwnd: 200 }
+        ],
+        steps: selection.steps
+      });
+      expect(invoke.mock.calls.some(([c]) => c === 'game_macro_action')).toBe(false);
+      expect(runtime.snapshot().busy).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('Stop prevents the batch from being sent during countdown', async () => {
+    await import('../js/modules/gameMacros/multiInputTrial.js');
+    vi.useFakeTimers();
+    try {
+      prepare();
+      const pending = runtime.runMultiInputTrial(selection).catch(e => e);
+      await vi.advanceTimersByTimeAsync(1000);
+      runtime.stop();
+      await vi.advanceTimersByTimeAsync(6000);
+      expect(await pending).toBeInstanceOf(Error);
+      expect(invoke.mock.calls.some(([c]) => c === 'game_macro_compare_many')).toBe(false);
+      expect(runtime.snapshot().busy).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('refuses overlapping commands while a native batch is still running', async () => {
+    await import('../js/modules/gameMacros/multiInputTrial.js');
+    vi.useFakeTimers();
+    try {
+      prepare();
+      let release;
+      invoke.mockImplementation(async command =>
+        command === 'launcher_running_details'
+          ? [client, second]
+          : command === 'game_macro_compare_many'
+            ? await new Promise(r => (release = r))
+            : null
+      );
+      const pending = runtime.runMultiInputTrial(selection);
+      await vi.advanceTimersByTimeAsync(6000);
+      await expect(runtime.runMultiInputTrial(selection)).rejects.toThrow();
+      expect(runtime.snapshot().busy).toBe(true);
+      release({ ok: true, recipients: [] });
+      await pending;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('refuses missing windows before arming any input', async () => {
+    state.characters.push({ id: 'b', nick: 'Beta' });
+    await expect(runtime.runMultiInputTrial(selection)).rejects.toThrow();
+    expect(invoke.mock.calls.some(([c]) => c === 'game_macro_compare_many')).toBe(false);
+  });
+});

@@ -544,6 +544,158 @@ pub async fn game_macro_guide_result(
         Err("Windows-only calibration".into())
     }
 }
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ComparisonStep {
+    key: Option<String>,
+    wait: Option<u64>,
+}
+fn validate_comparison_steps(steps: &[ComparisonStep]) -> Result<(), String> {
+    if steps.is_empty() || steps.len() > 20 {
+        return Err("Expected 1..20 steps".into());
+    }
+    let mut duration = 0u64;
+    let mut keys = 0;
+    for step in steps {
+        match (&step.key, step.wait) {
+            (Some(key), None) => {
+                let mut parts: Vec<_> = key.split('+').collect();
+                let base = parts.pop().ok_or("Missing key")?;
+                let simple = base.len() == 1
+                    && base
+                        .bytes()
+                        .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit());
+                let function = base
+                    .strip_prefix('F')
+                    .and_then(|v| v.parse::<u8>().ok())
+                    .is_some_and(|n| (1..=24).contains(&n) && base == format!("F{n}"));
+                if (!simple && !function)
+                    || parts.len() > 2
+                    || parts.iter().any(|v| !matches!(*v, "CTRL" | "SHIFT"))
+                    || (parts.len() == 2 && parts[0] == parts[1])
+                {
+                    return Err("Only simple keys with Ctrl/Shift are allowed".into());
+                }
+                keys += 1;
+                duration += 30;
+            }
+            (None, Some(ms)) if (50..=1500).contains(&ms) => duration += ms,
+            _ => return Err("Invalid comparison step".into()),
+        }
+    }
+    if keys == 0 || keys > 10 || duration > 10000 {
+        return Err("Expected 1..10 key presses and at most 10 seconds".into());
+    }
+    Ok(())
+}
+#[tauri::command]
+pub async fn game_macro_compare_many(
+    window: tauri::WebviewWindow,
+    targets: Vec<Target>,
+    steps: Vec<ComparisonStep>,
+) -> Result<serde_json::Value, String> {
+    main_only(&window)?;
+    validate_comparison_steps(&steps)?;
+    if !(2..=4).contains(&targets.len())
+        || targets
+            .iter()
+            .enumerate()
+            .any(|(i, t)| targets[..i].iter().any(|p| p.pid == t.pid))
+    {
+        return Err("Expected 2..4 distinct game processes".into());
+    }
+    #[cfg(windows)]
+    {
+        let epoch = crate::input_arbiter::INPUT.epoch();
+        tauri::async_runtime::spawn_blocking(move || {
+            let lease = crate::input_arbiter::INPUT.acquire("multi-comparison", epoch)?;
+            let _binding = lease.bind();
+            let foreground = win::comparison_foreground()?;
+            // All recipients and all keys are checked before arming any worker.
+            for target in &targets {
+                let client = crate::launcher::macro_client_at(target.pid,target.started_at,target.hwnd)?;
+                if !compatible_integrity(client.elevated,crate::launcher::self_elevated()) {
+                    return Err("Game client identity changed or access is unavailable".into());
+                }
+                for step in &steps {
+                    if let Some(key) = &step.key {
+                        win::comparison_ready(client.hwnd.ok_or("No game window")?,target.pid,key,&foreground)?;
+                    }
+                }
+            }
+            let start = std::time::Instant::now() + std::time::Duration::from_millis(100);
+            let failed = std::sync::atomic::AtomicBool::new(false);
+            let recipients = std::thread::scope(|scope| {
+                let handles: Vec<_> = targets.iter().map(|target| {
+                    let lease = &lease;
+                    let failed = &failed;
+                    let steps = &steps;
+                    let foreground = &foreground;
+                    scope.spawn(move || {
+                        let _binding = lease.bind();
+                        let mut rows = Vec::new();
+                        let mut blocked: Option<String> = None;
+                        while std::time::Instant::now() < start {
+                            if crate::input_arbiter::cancelled() { break; }
+                            std::thread::sleep(std::time::Duration::from_millis(5));
+                        }
+                        for (index,step) in steps.iter().enumerate() {
+                            let result = (|| -> Result<(),String> {
+                                if crate::input_arbiter::cancelled() || failed.load(std::sync::atomic::Ordering::SeqCst) {
+                                    return Err("Comparison stopped; some input may already have been sent".into());
+                                }
+                                if let Some(ms) = step.wait {
+                                    let until = std::time::Instant::now() + std::time::Duration::from_millis(ms);
+                                    while std::time::Instant::now() < until {
+                                        if crate::input_arbiter::cancelled() || failed.load(std::sync::atomic::Ordering::SeqCst) || win::comparison_foreground()? != *foreground {
+                                            return Err("Comparison stopped or foreground changed".into());
+                                        }
+                                        std::thread::sleep(std::time::Duration::from_millis(10));
+                                    }
+                                    return Ok(());
+                                }
+                                let key = step.key.as_deref().ok_or("Missing key")?;
+                                let client = crate::launcher::macro_client_at(target.pid,target.started_at,target.hwnd)?;
+                                if !compatible_integrity(client.elevated,crate::launcher::self_elevated()) {
+                                    return Err("Game client access changed".into());
+                                }
+                                let raw = client.hwnd.ok_or("No game window")?;
+                                win::comparison_ready(raw,target.pid,key,foreground)?;
+                                let start_ms = start.elapsed().as_millis() as u64;
+                                let report = win::background_key(raw,target.pid,key,InputTiming {
+                                    background_method: BackgroundMethod::ActivityNotify,
+                                    activity_foreground: Some(foreground.to_string()),
+                                    ..Default::default()
+                                })?;
+                                let ok = report["ok"] == true;
+                                rows.push(serde_json::json!({"index":index,"key":key,"startMs":start_ms,"endMs":start.elapsed().as_millis() as u64,"details":report}));
+                                if !ok { return Err("Recipient refused input or delivery failed; inspect step report".into()); }
+                                Ok(())
+                            })();
+                            if let Err(error) = result {
+                                failed.store(true,std::sync::atomic::Ordering::SeqCst);
+                                blocked = Some(error);
+                                break;
+                            }
+                        }
+                        serde_json::json!({"pid":target.pid,"startedAt":target.started_at,"hwnd":target.hwnd,"ok":blocked.is_none(),"blockedBy":blocked,"steps":rows})
+                    })
+                }).collect();
+                handles.into_iter().map(|handle| handle.join().unwrap_or_else(|_| {
+                    failed.store(true,std::sync::atomic::Ordering::SeqCst);
+                    serde_json::json!({"ok":false,"blockedBy":"Comparison worker failed"})
+                })).collect::<Vec<_>>()
+            });
+            Ok(serde_json::json!({"ok":recipients.iter().all(|r| r["ok"] == true),"method":"inactive-activity-notify","gameEffect":"unknown","recipients":recipients}))
+        }).await.map_err(|_| "Comparison worker failed")?
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = targets;
+        Err("Game control is Windows-only".into())
+    }
+}
+
 #[tauri::command]
 pub async fn game_macro_compare_once(
     window: tauri::WebviewWindow,
@@ -871,6 +1023,31 @@ mod win {
         }
         Ok(hwnd)
     }
+    pub fn comparison_foreground() -> Result<String, String> {
+        let hwnd = unsafe { GetForegroundWindow() };
+        if hwnd.0.is_null() {
+            return Err("No foreground window".into());
+        }
+        Ok(format!("0x{:X}", hwnd.0 as usize))
+    }
+    pub fn comparison_ready(raw: u64, pid: u32, key: &str, expected: &str) -> Result<(), String> {
+        if crate::input_arbiter::cancelled() {
+            return Err("Comparison cancelled".into());
+        }
+        let hwnd = verified_window(raw, pid)?;
+        if comparison_foreground()? != expected || unsafe { GetForegroundWindow() } == hwnd {
+            return Err("Keep the same non-game foreground window throughout the test".into());
+        }
+        let report = background_probe(raw, pid, key, false)?;
+        if report["visible"] != true
+            || report["minimized"] == true
+            || report["hung"] == true
+            || !input_idle(Some(key))?
+        {
+            return Err("Window unavailable or physical keys held".into());
+        }
+        Ok(())
+    }
     pub fn compare_once(
         raw: u64,
         pid: u32,
@@ -1109,6 +1286,29 @@ mod win {
     pub fn activity_probe(raw: u64, pid: u32) -> Result<serde_json::Value, String> {
         activity_key(raw, pid, "B", 30, true, None, BackgroundMethod::Activity)
     }
+    // One activity protocol per target. A batch owns the arbiter and may address
+    // different game processes concurrently; the same HWND must never overlap.
+    static ACTIVITY_TARGETS: Mutex<Vec<u64>> = Mutex::new(Vec::new());
+    struct ActivityGuard(u64);
+    impl ActivityGuard {
+        fn acquire(raw: u64) -> Result<Self, String> {
+            let mut targets = ACTIVITY_TARGETS
+                .lock()
+                .map_err(|_| "Activity guard unavailable")?;
+            if targets.contains(&raw) {
+                return Err("Activity test already running for this window".into());
+            }
+            targets.push(raw);
+            Ok(Self(raw))
+        }
+    }
+    impl Drop for ActivityGuard {
+        fn drop(&mut self) {
+            if let Ok(mut targets) = ACTIVITY_TARGETS.lock() {
+                targets.retain(|raw| *raw != self.0);
+            }
+        }
+    }
     fn activity_key(
         raw: u64,
         pid: u32,
@@ -1119,10 +1319,7 @@ mod win {
         method: BackgroundMethod,
     ) -> Result<serde_json::Value, String> {
         let (mods, vk) = chord(key)?;
-        static TEST: Mutex<()> = Mutex::new(());
-        let _guard = TEST
-            .try_lock()
-            .map_err(|_| "Activity test already running")?;
+        let _guard = ActivityGuard::acquire(raw)?;
         let hwnd = verified_window(raw, pid)?;
         let mut report = background_probe(raw, pid, key, false)?;
         report["activityTest"] = serde_json::json!(true);
@@ -1337,6 +1534,16 @@ mod win {
     }
     #[cfg(test)]
     mod background_key_tests {
+        #[test]
+        fn activity_guards_exclude_same_window_but_allow_distinct_recipients() {
+            let a = super::ActivityGuard::acquire(u64::MAX - 1).unwrap();
+            let b = super::ActivityGuard::acquire(u64::MAX - 2).unwrap();
+            assert!(super::ActivityGuard::acquire(u64::MAX - 1).is_err());
+            drop(a);
+            assert!(super::ActivityGuard::acquire(u64::MAX - 1).is_ok());
+            drop(b);
+        }
+
         #[test]
         fn experiments_have_explicit_notification_plans_and_bounded_key_transport() {
             use super::BackgroundMethod as Method;
@@ -2388,5 +2595,55 @@ pub async fn game_macro_pointer(
     {
         let _ = (target, input, point);
         Err("Windows-only".into())
+    }
+}
+
+#[cfg(test)]
+mod multi_comparison_tests {
+    use super::*;
+    fn plan(value: serde_json::Value) -> Vec<ComparisonStep> {
+        serde_json::from_value(value).unwrap()
+    }
+    #[test]
+    fn allows_only_bounded_key_wait_plans() {
+        assert!(validate_comparison_steps(&plan(serde_json::json!([
+            {"key":"B"},{"wait":500},{"key":"SHIFT+1"},{"key":"CTRL+B"}
+        ])))
+        .is_ok());
+        for value in [
+            serde_json::json!([]),
+            serde_json::json!([{"wait":500}]),
+            serde_json::json!([{"key":"ALT+F4"}]),
+            serde_json::json!([{"key":"CTRL+CTRL+B"}]),
+            serde_json::json!([{"key":"B","wait":500}]),
+            serde_json::json!([{"key":"ENTER"}]),
+            serde_json::json!([{"key":"B"},{"wait":1501}]),
+        ] {
+            assert!(validate_comparison_steps(&plan(value)).is_err());
+        }
+        assert!(validate_comparison_steps(&vec![
+            ComparisonStep {
+                key: Some("B".into()),
+                wait: None
+            };
+            11
+        ])
+        .is_err());
+        let mut too_long = vec![
+            ComparisonStep {
+                key: None,
+                wait: Some(1500)
+            };
+            7
+        ];
+        too_long.push(ComparisonStep {
+            key: Some("B".into()),
+            wait: None,
+        });
+        assert!(validate_comparison_steps(&too_long).is_err());
+        assert!(serde_json::from_value::<ComparisonStep>(
+            serde_json::json!({"key":"B","hold":10000})
+        )
+        .is_err());
     }
 }

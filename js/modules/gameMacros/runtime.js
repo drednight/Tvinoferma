@@ -67,12 +67,18 @@ const native = async (command, args) => {
   if (!window.__TAURI_INTERNALS__) throw new Error('Нужна настольная версия Windows.');
   const invoke = await (invokePromise ||= import('@tauri-apps/api/core').then(module => module.invoke));
   if (
-    ['game_macro_action', 'game_macro_pointer', 'game_macro_background_probe', 'game_macro_compare_once'].includes(
-      command
-    ) ||
+    [
+      'game_macro_action',
+      'game_macro_pointer',
+      'game_macro_background_probe',
+      'game_macro_compare_once',
+      'game_macro_compare_many'
+    ].includes(command) ||
     (command === 'game_macro_mirror' && args?.operation === 'start')
   ) {
     if (!(await nativeStopPending)) throw new Error('Native input stop unconfirmed; restart application before input');
+    if (['game_macro_compare_once', 'game_macro_compare_many'].includes(command) && cancelled)
+      throw new Error('Остановлено пользователем.');
   }
   const traceId = currentExecutionId();
   const traced =
@@ -625,6 +631,68 @@ export async function runInputComparison(selection, countdown = () => {}) {
     const message = macroErrorText(error);
     appendBackgroundJournal('comparison-failed', { runId, method: selection.method, blockedBy: message });
     // Native exceptions may contain private data; do not retain them as an error cause.
+    // eslint-disable-next-line preserve-caught-error
+    throw new Error(message);
+  } finally {
+    busy = false;
+    void broadcast();
+  }
+}
+export async function runMultiInputTrial(selection, countdown = () => {}) {
+  const revision = stopRevision;
+  const unavailable = () => busy || paused || mirroring || mirrorPending || mirrorKeys || mirrorMouse;
+  if (unavailable()) throw new Error('Завершите команду, снимите паузу и выключите повтор.');
+  const { validateMultiTrial } = await import('./multiInputTrial.js');
+  // Revalidate the parsed plan as text; callers cannot bypass the bounded UI validator.
+  selection = validateMultiTrial(
+    { charIds: selection.charIds, sequence: selection.steps?.map(s => s.key || `wait ${s.wait}`).join('\n') },
+    state
+  );
+  if (revision !== stopRevision || unavailable())
+    throw new Error('Состояние ввода изменилось или запрошена остановка.');
+  busy = true;
+  cancelled = false;
+  const runId = crypto.randomUUID();
+  appendBackgroundJournal('multi-start', { runId, ...selection });
+  void broadcast();
+  try {
+    const rows = await listMacroWindows();
+    const targets = selection.charIds.map(charId => {
+      const found = rows.filter(row => row.known && row.charId === charId);
+      if (found.length !== 1 || !found[0].hwnd || !found[0].startedAt)
+        throw new Error('Окно каждого персонажа должно определяться однозначно.');
+      const { pid, startedAt, hwnd } = found[0];
+      return { pid, startedAt, hwnd };
+    });
+    if (new Set(targets.map(t => t.pid)).size !== targets.length)
+      throw new Error('Получатели должны быть разными игровыми процессами.');
+    appendBackgroundJournal('multi-targets', { runId, recipients: targets });
+    for (let left = 5; left > 0; left--) {
+      await checkpoint();
+      countdown(left);
+      await wait(1000);
+    }
+    await checkpoint();
+    countdown(0);
+    const result = await native('game_macro_compare_many', { targets, steps: selection.steps });
+    for (const [i, recipient] of (result.recipients || []).entries()) {
+      const charId = selection.charIds[i];
+      for (const row of recipient.steps || [])
+        appendBackgroundJournal('multi-step', { runId, charId, pid: recipient.pid, ...row });
+      appendBackgroundJournal('multi-recipient', {
+        runId,
+        charId,
+        pid: recipient.pid,
+        ok: recipient.ok,
+        blockedBy: recipient.blockedBy
+      });
+    }
+    appendBackgroundJournal('multi-result', { runId, ok: result.ok, method: selection.method });
+    return { runId, ...result };
+  } catch (error) {
+    const message = macroErrorText(error);
+    appendBackgroundJournal('multi-failed', { runId, blockedBy: message });
+    // Native errors are sanitized and must not be retained as a private raw cause.
     // eslint-disable-next-line preserve-caught-error
     throw new Error(message);
   } finally {
