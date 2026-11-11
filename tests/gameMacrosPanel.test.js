@@ -330,3 +330,13 @@ it('offers independent active-window-only mouse modifier, disabled by default an
   await vi.waitFor(() => expect(state.settings.gameMacros.mirrorActiveModifier).toBe('SHIFT'));
   expect(state.settings.gameMacros.mirrorTwinsModifier).toBe('');
 });
+
+it('keeps current comparison and journal outside collapsed legacy diagnostics', () => {
+  const legacy = document.querySelector('[data-gm-legacy-checks]');
+  expect(legacy.open).toBe(false);
+  expect(document.querySelector('[data-gm-input-comparison]').closest('[data-gm-legacy-checks]')).toBeNull();
+  expect(document.querySelector('[data-gm-background-journal]').closest('[data-gm-legacy-checks]')).toBeNull();
+  for (const selector of ['trial-wizard', 'receiver', 'mirror-observation', 'trial-table', 'background-lab']) {
+    expect(document.querySelector(`[data-gm-${selector}]`).closest('[data-gm-legacy-checks]')).toBe(legacy);
+  }
+});

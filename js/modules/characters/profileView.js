@@ -297,7 +297,7 @@ export function openCharacterProfile(char) {
                Играть
             </button>
             <button id="btn-open-sync-helper-footer" class="btn secondary" type="button" ${!isArchived && state.ui?.authCheck?.[char.id] === 'checking' ? 'disabled' : ''} title="${!isArchived && state.ui?.authCheck?.[char.id] === 'checking' ? 'Идёт проверка входа — дождитесь окончания' : 'Открыть браузер для входа'}">🌐 Сайт</button>
-              ${char.siteLogin?.mode === 'gamecenter' ? '<button type="button" class="btn secondary pf-gamecenter-site" id="pf-gamecenter-site">Проверить вход через GameCenter…</button>' : ''}
+              ${char.siteLogin?.mode === 'gamecenter' ? '<button type="button" class="btn secondary pf-gamecenter-site" id="pf-gamecenter-site" title="Проверить вход на сайт через GameCenter (эксперимент)">🔐 GameCenter</button>' : ''}
             <button id="btn-coin-history-footer" class="btn secondary" type="button" title="История изменений баланса Древних монет"><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> История</button>
             ${
               isArchived

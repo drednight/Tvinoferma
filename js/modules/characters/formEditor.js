@@ -470,7 +470,9 @@ export function openCharacterForm(char = null) {
     '<button type="button" class="btn secondary" id="btn-stats-ocr" title="Выбрать скриншот окна с характеристиками: значения подставятся в поля">📷 Заполнить со скриншота</button>'
   );
   const loginMode = document.createElement('label');
-  loginMode.innerHTML = `<input type="checkbox" name="site-gamecenter" ${currentChar.siteLogin?.mode === 'gamecenter' ? 'checked' : ''}> Вход на сайт через GameCenter`;
+  loginMode.className = 'character-login-switch';
+  loginMode.title = 'Вход на сайт через GameCenter (эксперимент). Выключено — обычный вход.';
+  loginMode.innerHTML = `<input type="checkbox" role="switch" name="site-gamecenter" ${currentChar.siteLogin?.mode === 'gamecenter' ? 'checked' : ''}><i aria-hidden="true"></i><span>Вход через GameCenter</span>`;
   const form = document.querySelector('#modal-root form');
   if (form) {
     if (!form.id) form.id = 'character-edit-form';

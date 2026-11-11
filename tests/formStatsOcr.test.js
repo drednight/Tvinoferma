@@ -256,6 +256,8 @@ it.each([false, true])('сохраняет способ входа через Ga
   });
   openCharacterForm(editing ? char : null);
   expect(document.querySelector('[name="site-gamecenter"]').checked).toBe(editing);
+  expect(document.querySelector('[name="site-gamecenter"]').getAttribute('role')).toBe('switch');
+  expect(document.querySelector('[name="site-gamecenter"]').closest('.character-login-switch')).not.toBeNull();
   document.querySelector('[name="site-gamecenter"]').checked = true;
   const values = new Map([
     ['nick', 'Герой'],
