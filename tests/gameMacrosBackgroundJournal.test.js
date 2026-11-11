@@ -48,3 +48,23 @@ it('keeps new records in memory and reports persistence failure instead of silen
     spy.mockRestore();
   }
 });
+it('retains timing choices and uncertain-release flags without dropping message diagnostics', () => {
+  journal.appendBackgroundJournal('multi-step', {
+    runId: 'trial',
+    timing: { timeoutMs: 100, modifierGapMs: 50 },
+    details: {
+      timedOut: true,
+      releaseUnconfirmed: true,
+      deliveryUncertain: true,
+      steps: [{ phase: 'modifier-up', timeoutMs: 100, elapsedUs: 101000, error: 1460, ok: false }]
+    }
+  });
+  const details = JSON.parse(journal.backgroundJournalText()).records[0].details;
+  expect(details.timing).toEqual({ timeoutMs: 100, modifierGapMs: 50 });
+  expect(details.details).toMatchObject({
+    timedOut: true,
+    releaseUnconfirmed: true,
+    deliveryUncertain: true,
+    steps: [{ phase: 'modifier-up', elapsedUs: 101000 }]
+  });
+});

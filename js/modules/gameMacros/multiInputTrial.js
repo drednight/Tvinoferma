@@ -4,8 +4,14 @@ import { appendBackgroundJournal, openBackgroundJournal } from './backgroundJour
 import { escapeHtml as esc } from '../../core/utils.js';
 export function validateMultiTrial(selection, state) {
   const charIds = [...new Set(selection.charIds || [])];
-  if (charIds.length < 2 || charIds.length > 4 || charIds.some(id => !state.characters.some(c => c.id === id)))
-    throw new Error('Выберите от 2 до 4 разных актуальных персонажей.');
+  if (charIds.length < 1 || charIds.length > 4 || charIds.some(id => !state.characters.some(c => c.id === id)))
+    throw new Error('Выберите от 1 до 4 разных актуальных персонажей.');
+  const timing = {
+    timeoutMs: Number(selection.timing?.timeoutMs ?? 25),
+    modifierGapMs: Number(selection.timing?.modifierGapMs ?? 0)
+  };
+  if (![25, 100, 250].includes(timing.timeoutMs) || ![0, 50, 100, 200].includes(timing.modifierGapMs))
+    throw new Error('Выберите ожидание 25/100/250 мс и паузу модификатора 0/50/100/200 мс.');
   const plan = steps(selection.sequence);
   let duration = 0,
     keys = 0;
@@ -17,25 +23,36 @@ export function validateMultiTrial(selection, state) {
       if (!/^(?:(?:CTRL|SHIFT)\+){0,2}(?:[A-Z0-9]|F(?:[1-9]|1[0-9]|2[0-4]))$/.test(chord(row.key)))
         throw new Error('Буквы, цифры, F1–F24; только Ctrl/Shift. Без Alt, Win и служебных клавиш.');
       keys++;
-      duration += 30;
+      duration += 30 + (row.key.includes('+') ? timing.modifierGapMs : 0);
     }
   }
   if (!keys || keys > 10 || duration > 10000) throw new Error('Нужно 1–10 нажатий, длительность до 10 секунд.');
-  return { charIds, steps: plan, method: 'inactive-activity-notify' };
+  return { charIds, steps: plan, timing, method: 'inactive-activity-notify' };
+}
+export function trialOutcome(result) {
+  const reports = (result.recipients || []).flatMap(r => [r, ...(r.steps || []).map(s => s.details || {})]);
+  const has = field => !!result[field] || reports.some(r => r[field]);
+  if (has('releaseUnconfirmed'))
+    return 'Отпускание клавиши/модификатора не подтверждено. Дальнейшие шаги остановлены; проверьте состояние игры. Автоповтора нет.';
+  if (has('timedOut') || has('deliveryUncertain'))
+    return 'Доставка неопределённа: тайм-аут или неполный отчёт. Действие могло выполниться. Автоповтора нет.';
+  return result.ok
+    ? 'Вызовы отправки завершены. Это не подтверждение реакции игры — сохраните наблюдение.'
+    : 'Опыт прерван/отклонён. Часть шагов могла выполниться; проверьте каждый клиент.';
 }
 export function openMultiInputTrial({ state, run, stop }) {
   let pending = false,
     closed = false,
     last = null;
   const ov = openOverlay({
-    title: 'Несколько окон · последовательность E',
+    title: 'Клавиши и сочетания E · 1–4 окна',
     wide: true,
     onClose: () => {
       closed = true;
       if (pending) stop();
     }
   });
-  ov.body.innerHTML = `<p>Одна попытка параллельно на 2–4 клиентах методом E (activity-notify). Общий старт, но без гарантии точной синхронности. Все игровые окна должны быть неактивны, видимы и не свёрнуты. Фокус вручную переведите в пустой Блокнот. Нет SendInput, переключения фокуса, циклов или повторного запуска.</p><fieldset data-fields><legend>Получатели</legend>${state.characters.map(c => `<label class="switch-row"><input type="checkbox" data-char value="${esc(c.id)}">${esc(c.nick)}</label>`).join('')}<label>Последовательность — одна клавиша/сочетание или wait N на строку<textarea class="input" data-sequence rows="7" placeholder="B&#10;wait 500&#10;C"></textarea></label><p class="muted">До 10 нажатий и 20 строк, паузы 50–1500 мс, всего до 10 с. Ctrl/Shift допускаются только после ручной проверки. Каждое сочетание нажимается и отпускается отдельно; удержания между строками нет.</p><label class="switch-row"><input type="checkbox" data-consent> Проверил все клавиши и сочетания вручную на каждом клиенте; чат закрыт, действия безопасны и не расходуют предметы.</label></fieldset><p><button class="btn primary" data-run>Запустить через 5 секунд</button><button class="btn danger" data-stop disabled>Остановить</button><button class="btn" data-log>Журнал</button></p><p role="status" data-status>Повторы должны быть выключены. Ошибка одного клиента останавливает дальнейшие шаги остальных; уже отправленный ввод отменить нельзя.</p><pre data-result></pre><fieldset data-observations disabled><legend>Наблюдения после попытки</legend><div data-verdicts></div><label class="switch-row"><input type="checkbox" data-focus>Заметил смену фокуса</label><label class="switch-row"><input type="checkbox" data-leak>Был ввод в Блокноте или другом приложении</label><button class="btn" data-save>Сохранить наблюдения</button></fieldset>`;
+  ov.body.innerHTML = `<p>Одна попытка на 1–4 клиентах (при нескольких — параллельно) методом E (activity-notify). Общий старт, но без гарантии точной синхронности. Все игровые окна должны быть неактивны, видимы и не свёрнуты. Фокус вручную переведите в пустой Блокнот. Нет SendInput, переключения фокуса, циклов или повторного запуска.</p><fieldset data-fields><legend>Получатели</legend>${state.characters.map(c => `<label class="switch-row"><input type="checkbox" data-char value="${esc(c.id)}">${esc(c.nick)}</label>`).join('')}<div class="gm-profile-controls"><label>Ожидание обработки сообщения<select data-timeout><option value="25">25 мс · исходное</option><option value="100">100 мс</option><option value="250">250 мс</option></select></label><label>Пауза после Ctrl/Shift перед основной клавишей<select data-gap><option value="0">0 мс · исходное</option><option value="50">50 мс</option><option value="100">100 мс</option><option value="200">200 мс</option></select></label></div><p class="muted">Меняйте один параметр за раз. Ожидание — предел одного синхронного вызова, а не гарантированная доставка. Пауза применяется один раз после всех модификаторов. Увеличение задержек не гарантирует распознавание сочетания.</p><label>Последовательность — одна клавиша/сочетание или wait N на строку<textarea class="input" data-sequence rows="7" placeholder="B&#10;wait 500&#10;C"></textarea></label><p class="muted">До 10 нажатий и 20 строк, паузы 50–1500 мс, всего до 10 с. Ctrl/Shift допускаются только после ручной проверки. Каждое сочетание нажимается и отпускается отдельно; удержания между строками нет.</p><label class="switch-row"><input type="checkbox" data-consent> Проверил все клавиши и сочетания вручную на каждом клиенте; чат закрыт, действия безопасны и не расходуют предметы.</label></fieldset><p><button class="btn primary" data-run>Запустить через 5 секунд</button><button class="btn danger" data-stop disabled>Остановить</button><button class="btn" data-log>Журнал</button></p><p role="status" data-status>Повторы должны быть выключены. Ошибка одного клиента останавливает дальнейшие шаги остальных; уже отправленный ввод отменить нельзя.</p><div data-summary aria-live="polite"></div><details><summary>Технический отчёт</summary><pre data-result></pre></details><fieldset data-observations disabled><legend>Наблюдения после попытки</legend><div data-verdicts></div><label class="switch-row"><input type="checkbox" data-focus>Заметил смену фокуса</label><label class="switch-row"><input type="checkbox" data-leak>Был ввод в Блокноте или другом приложении</label><button class="btn" data-save>Сохранить наблюдения</button></fieldset>`;
   const q = name => ov.body.querySelector(`[data-${name}]`);
   q('run').onclick = async () => {
     if (pending) return;
@@ -43,7 +60,8 @@ export function openMultiInputTrial({ state, run, stop }) {
       const selection = validateMultiTrial(
         {
           charIds: [...ov.body.querySelectorAll('[data-char]:checked')].map(n => n.value),
-          sequence: q('sequence').value
+          sequence: q('sequence').value,
+          timing: { timeoutMs: q('timeout').value, modifierGapMs: q('gap').value }
         },
         state
       );
@@ -55,6 +73,7 @@ export function openMultiInputTrial({ state, run, stop }) {
       q('stop').disabled = false;
       q('observations').disabled = true;
       q('result').textContent = '';
+      q('summary').textContent = '';
       const result = await run(selection, left => {
         if (!closed)
           q('status').textContent = left
@@ -62,15 +81,19 @@ export function openMultiInputTrial({ state, run, stop }) {
             : 'Выполняется последовательность. Не меняйте фокус; можно запросить остановку.';
       });
       if (closed) return;
-      last = { runId: result.runId, charIds: selection.charIds };
+      last = { runId: result.runId, charIds: selection.charIds, timing: selection.timing };
       q('result').textContent = JSON.stringify(result, null, 2);
-      q('status').textContent = result.ok
-        ? 'Отправка завершена. Проверьте каждый клиент: это не подтверждение реакции игры.'
-        : 'Опыт прерван/отклонён. Часть шагов могла выполниться; проверьте каждый клиент.';
+      q('status').textContent = trialOutcome(result);
+      q('summary').innerHTML = (result.recipients || [])
+        .map(
+          (r, i) =>
+            `<p><strong>${esc(state.characters.find(c => c.id === selection.charIds[i])?.nick || selection.charIds[i] || 'Получатель')}</strong>: ${esc(trialOutcome(r))}</p>`
+        )
+        .join('');
       q('verdicts').innerHTML = selection.charIds
         .map(
           id =>
-            `<label>${esc(state.characters.find(c => c.id === id)?.nick || id)}<select data-verdict="${esc(id)}"><option value="unknown">Не проверено</option><option value="worked">Все шаги сработали в нужном порядке</option><option value="failed">Не сработало / пропущены шаги</option><option value="unexpected">Побочное действие / неверный порядок</option></select></label>`
+            `<label>${esc(state.characters.find(c => c.id === id)?.nick || id)}<select data-verdict="${esc(id)}"><option value="unknown">Не проверено</option><option value="worked">Все шаги сработали в нужном порядке</option><option value="failed">Не сработало / пропущены шаги</option><option value="base-only">Сработала только основная клавиша, без Ctrl/Shift</option><option value="unexpected">Побочное действие / неверный порядок</option></select></label>`
         )
         .join('');
       q('focus').checked = false;
@@ -98,6 +121,7 @@ export function openMultiInputTrial({ state, run, stop }) {
       appendBackgroundJournal('multi-user-observation', {
         runId: last.runId,
         charId: node.dataset.verdict,
+        timing: last.timing,
         status: node.value,
         foregroundChanged: q('focus').checked,
         leak: q('leak').checked

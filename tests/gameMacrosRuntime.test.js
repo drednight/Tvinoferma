@@ -1381,7 +1381,8 @@ describe('bounded concurrent multi-client comparison', () => {
           { pid: 10, startedAt: 1000, hwnd: 100 },
           { pid: 20, startedAt: 2000, hwnd: 200 }
         ],
-        steps: selection.steps
+        steps: selection.steps,
+        timing: { timeoutMs: 25, modifierGapMs: 0 }
       });
       expect(invoke.mock.calls.some(([c]) => c === 'game_macro_action')).toBe(false);
       expect(runtime.snapshot().busy).toBe(false);
@@ -1433,4 +1434,32 @@ describe('bounded concurrent multi-client comparison', () => {
     await expect(runtime.runMultiInputTrial(selection)).rejects.toThrow();
     expect(invoke.mock.calls.some(([c]) => c === 'game_macro_compare_many')).toBe(false);
   });
+});
+
+it('passes explicit timing parameters through the validated one-client batch', async () => {
+  await import('../js/modules/gameMacros/multiInputTrial.js');
+  vi.useFakeTimers();
+  try {
+    invoke.mockImplementation(async c =>
+      c === 'launcher_running_details'
+        ? [client]
+        : c === 'game_macro_compare_many'
+          ? { ok: true, recipients: [] }
+          : null
+    );
+    const pending = runtime.runMultiInputTrial({
+      charIds: ['a'],
+      steps: [{ key: 'SHIFT+1' }],
+      timing: { timeoutMs: 100, modifierGapMs: 50 }
+    });
+    await vi.advanceTimersByTimeAsync(6000);
+    await pending;
+    expect(invoke).toHaveBeenCalledWith('game_macro_compare_many', {
+      targets: [{ pid: 10, startedAt: 1000, hwnd: 100 }],
+      steps: [{ key: 'SHIFT+1' }],
+      timing: { timeoutMs: 100, modifierGapMs: 50 }
+    });
+  } finally {
+    vi.useRealTimers();
+  }
 });

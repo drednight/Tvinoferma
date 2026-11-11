@@ -645,7 +645,11 @@ export async function runMultiInputTrial(selection, countdown = () => {}) {
   const { validateMultiTrial } = await import('./multiInputTrial.js');
   // Revalidate the parsed plan as text; callers cannot bypass the bounded UI validator.
   selection = validateMultiTrial(
-    { charIds: selection.charIds, sequence: selection.steps?.map(s => s.key || `wait ${s.wait}`).join('\n') },
+    {
+      charIds: selection.charIds,
+      sequence: selection.steps?.map(s => s.key || `wait ${s.wait}`).join('\n'),
+      timing: selection.timing
+    },
     state
   );
   if (revision !== stopRevision || unavailable())
@@ -674,7 +678,11 @@ export async function runMultiInputTrial(selection, countdown = () => {}) {
     }
     await checkpoint();
     countdown(0);
-    const result = await native('game_macro_compare_many', { targets, steps: selection.steps });
+    const result = await native('game_macro_compare_many', {
+      targets,
+      steps: selection.steps,
+      timing: selection.timing
+    });
     for (const [i, recipient] of (result.recipients || []).entries()) {
       const charId = selection.charIds[i];
       for (const row of recipient.steps || [])
@@ -684,10 +692,21 @@ export async function runMultiInputTrial(selection, countdown = () => {}) {
         charId,
         pid: recipient.pid,
         ok: recipient.ok,
-        blockedBy: recipient.blockedBy
+        blockedBy: recipient.blockedBy,
+        timedOut: recipient.timedOut,
+        releaseUnconfirmed: recipient.releaseUnconfirmed,
+        deliveryUncertain: recipient.deliveryUncertain
       });
     }
-    appendBackgroundJournal('multi-result', { runId, ok: result.ok, method: selection.method });
+    appendBackgroundJournal('multi-result', {
+      runId,
+      ok: result.ok,
+      method: selection.method,
+      timing: selection.timing,
+      timedOut: result.timedOut,
+      releaseUnconfirmed: result.releaseUnconfirmed,
+      deliveryUncertain: result.deliveryUncertain
+    });
     return { runId, ...result };
   } catch (error) {
     const message = macroErrorText(error);

@@ -588,21 +588,86 @@ fn validate_comparison_steps(steps: &[ComparisonStep]) -> Result<(), String> {
     }
     Ok(())
 }
+#[derive(Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
+pub struct ComparisonTiming {
+    timeout_ms: u32,
+    modifier_gap_ms: u64,
+}
+impl Default for ComparisonTiming {
+    fn default() -> Self {
+        Self {
+            timeout_ms: 25,
+            modifier_gap_ms: 0,
+        }
+    }
+}
+fn validate_comparison_timing(
+    steps: &[ComparisonStep],
+    timing: ComparisonTiming,
+) -> Result<(), String> {
+    if ![25, 100, 250].contains(&timing.timeout_ms)
+        || ![0, 50, 100, 200].contains(&timing.modifier_gap_ms)
+    {
+        return Err("Invalid comparison timing".into());
+    }
+    let nominal: u64 = steps
+        .iter()
+        .map(|step| {
+            step.wait.unwrap_or(
+                30 + if step.key.as_ref().is_some_and(|k| k.contains('+')) {
+                    timing.modifier_gap_ms
+                } else {
+                    0
+                },
+            )
+        })
+        .sum();
+    if nominal > 10000 {
+        return Err("Comparison exceeds 10 seconds including modifier gaps".into());
+    }
+    Ok(())
+}
+// No input dispatch lock is held during this wait. Every exit still returns to
+// the caller's reverse key-release loop, including cancellation and focus changes.
+fn wait_modifier_gap(ms: u64, mut allowed: impl FnMut() -> bool) -> bool {
+    let end = std::time::Instant::now() + std::time::Duration::from_millis(ms);
+    loop {
+        if !allowed() {
+            return false;
+        }
+        let remaining = end.saturating_duration_since(std::time::Instant::now());
+        if remaining.is_zero() {
+            return true;
+        }
+        std::thread::sleep(remaining.min(std::time::Duration::from_millis(5)));
+    }
+}
+fn activity_delivery_flags(steps: &[serde_json::Value]) -> (bool, bool) {
+    let timed_out = steps.iter().any(|s| s["error"] == 1460);
+    let release_unconfirmed = steps
+        .iter()
+        .any(|s| s["phase"].as_str().is_some_and(|p| p.ends_with("-up")) && s["ok"] != true);
+    (timed_out, release_unconfirmed)
+}
 #[tauri::command]
 pub async fn game_macro_compare_many(
     window: tauri::WebviewWindow,
     targets: Vec<Target>,
     steps: Vec<ComparisonStep>,
+    timing: Option<ComparisonTiming>,
 ) -> Result<serde_json::Value, String> {
     main_only(&window)?;
     validate_comparison_steps(&steps)?;
-    if !(2..=4).contains(&targets.len())
+    let timing = timing.unwrap_or_default();
+    validate_comparison_timing(&steps, timing)?;
+    if !(1..=4).contains(&targets.len())
         || targets
             .iter()
             .enumerate()
             .any(|(i, t)| targets[..i].iter().any(|p| p.pid == t.pid))
     {
-        return Err("Expected 2..4 distinct game processes".into());
+        return Err("Expected 1..4 distinct game processes".into());
     }
     #[cfg(windows)]
     {
@@ -662,11 +727,7 @@ pub async fn game_macro_compare_many(
                                 let raw = client.hwnd.ok_or("No game window")?;
                                 win::comparison_ready(raw,target.pid,key,foreground)?;
                                 let start_ms = start.elapsed().as_millis() as u64;
-                                let report = win::background_key(raw,target.pid,key,InputTiming {
-                                    background_method: BackgroundMethod::ActivityNotify,
-                                    activity_foreground: Some(foreground.to_string()),
-                                    ..Default::default()
-                                })?;
+                                let report = win::comparison_key(raw,target.pid,key,foreground,timing)?;
                                 let ok = report["ok"] == true;
                                 rows.push(serde_json::json!({"index":index,"key":key,"startMs":start_ms,"endMs":start.elapsed().as_millis() as u64,"details":report}));
                                 if !ok { return Err("Recipient refused input or delivery failed; inspect step report".into()); }
@@ -678,7 +739,9 @@ pub async fn game_macro_compare_many(
                                 break;
                             }
                         }
-                        serde_json::json!({"pid":target.pid,"startedAt":target.started_at,"hwnd":target.hwnd,"ok":blocked.is_none(),"blockedBy":blocked,"steps":rows})
+                        let timed_out = rows.iter().any(|r| r["details"]["timedOut"] == true);
+                        let release_unconfirmed = rows.iter().any(|r| r["details"]["releaseUnconfirmed"] == true);
+                        serde_json::json!({"pid":target.pid,"startedAt":target.started_at,"hwnd":target.hwnd,"ok":blocked.is_none(),"blockedBy":blocked,"timedOut":timed_out,"releaseUnconfirmed":release_unconfirmed,"deliveryUncertain":timed_out || release_unconfirmed,"steps":rows})
                     })
                 }).collect();
                 handles.into_iter().map(|handle| handle.join().unwrap_or_else(|_| {
@@ -686,7 +749,7 @@ pub async fn game_macro_compare_many(
                     serde_json::json!({"ok":false,"blockedBy":"Comparison worker failed"})
                 })).collect::<Vec<_>>()
             });
-            Ok(serde_json::json!({"ok":recipients.iter().all(|r| r["ok"] == true),"method":"inactive-activity-notify","gameEffect":"unknown","recipients":recipients}))
+            Ok(serde_json::json!({"ok":recipients.iter().all(|r| r["ok"] == true),"method":"inactive-activity-notify","gameEffect":"unknown","timing":timing,"timedOut":recipients.iter().any(|r| r["timedOut"] == true),"releaseUnconfirmed":recipients.iter().any(|r| r["releaseUnconfirmed"] == true),"deliveryUncertain":recipients.iter().any(|r| r["deliveryUncertain"] == true),"recipients":recipients}))
         }).await.map_err(|_| "Comparison worker failed")?
     }
     #[cfg(not(windows))]
@@ -976,10 +1039,20 @@ mod win {
         lp: LPARAM,
         method: BackgroundMethod,
     ) -> Result<(), u32> {
+        send_background_timed(hwnd, msg, wp, lp, method, 25)
+    }
+    unsafe fn send_background_timed(
+        hwnd: HWND,
+        msg: u32,
+        wp: WPARAM,
+        lp: LPARAM,
+        method: BackgroundMethod,
+        timeout_ms: u32,
+    ) -> Result<(), u32> {
         let cleanup = matches!(msg, WM_KEYUP | WM_SYSKEYUP)
             || (matches!(msg, WM_ACTIVATE | WM_ACTIVATEAPP) && wp.0 == 0);
         crate::input_arbiter::dispatch(cleanup, || {
-            send_background_unchecked(hwnd, msg, wp, lp, method)
+            send_background_unchecked(hwnd, msg, wp, lp, method, timeout_ms)
         })
         .unwrap_or(Err(995))
     }
@@ -989,6 +1062,7 @@ mod win {
         wp: WPARAM,
         lp: LPARAM,
         method: BackgroundMethod,
+        timeout_ms: u32,
     ) -> Result<(), u32> {
         SetLastError(WIN32_ERROR(0));
         let accepted = match method {
@@ -1002,7 +1076,7 @@ mod win {
             BackgroundMethod::SendTimeout => {
                 let mut result = 0;
                 // BLOCK | ABORTIFHUNG | ERRORONEXIT. Bounded wait; no activation API calls.
-                background_send_timeout(hwnd.0, msg, wp.0, lp.0, 0x23, 25, &mut result) != 0
+                background_send_timeout(hwnd.0, msg, wp.0, lp.0, 0x23, timeout_ms, &mut result) != 0
             }
         };
         if accepted {
@@ -1309,6 +1383,24 @@ mod win {
             }
         }
     }
+    pub fn comparison_key(
+        raw: u64,
+        pid: u32,
+        key: &str,
+        foreground: &str,
+        timing: ComparisonTiming,
+    ) -> Result<serde_json::Value, String> {
+        activity_key_timed(
+            raw,
+            pid,
+            key,
+            30,
+            false,
+            Some(foreground),
+            BackgroundMethod::ActivityNotify,
+            timing,
+        )
+    }
     fn activity_key(
         raw: u64,
         pid: u32,
@@ -1318,10 +1410,33 @@ mod win {
         expected: Option<&str>,
         method: BackgroundMethod,
     ) -> Result<serde_json::Value, String> {
+        activity_key_timed(
+            raw,
+            pid,
+            key,
+            hold_ms,
+            diagnostic,
+            expected,
+            method,
+            ComparisonTiming::default(),
+        )
+    }
+    fn activity_key_timed(
+        raw: u64,
+        pid: u32,
+        key: &str,
+        hold_ms: u64,
+        diagnostic: bool,
+        expected: Option<&str>,
+        method: BackgroundMethod,
+        timing: ComparisonTiming,
+    ) -> Result<serde_json::Value, String> {
         let (mods, vk) = chord(key)?;
         let _guard = ActivityGuard::acquire(raw)?;
         let hwnd = verified_window(raw, pid)?;
         let mut report = background_probe(raw, pid, key, false)?;
+        report["timeoutMs"] = serde_json::json!(timing.timeout_ms);
+        report["modifierGapMs"] = serde_json::json!(timing.modifier_gap_ms);
         report["activityTest"] = serde_json::json!(true);
         report["activityVariant"] = serde_json::json!(method.label());
         report["holdMs"] = serde_json::json!(hold_ms.clamp(10, 200));
@@ -1366,11 +1481,21 @@ mod win {
             }
             let transport = method.notification_transport(phase);
             let asynchronous = matches!(transport, BackgroundMethod::Notify);
-            let result = unsafe { send_background(hwnd, msg, WPARAM(wp), LPARAM(lp), transport) };
+            let started = std::time::Instant::now();
+            let result = unsafe {
+                send_background_timed(
+                    hwnd,
+                    msg,
+                    WPARAM(wp),
+                    LPARAM(lp),
+                    transport,
+                    timing.timeout_ms,
+                )
+            };
             failure.set(failure.get().or(result.err()));
             let after = unsafe { GetForegroundWindow() };
             changed.set(changed.get() || after != original);
-            steps.push(serde_json::json!({"phase":phase,"asynchronous":asynchronous,"wparam":wp,"message":format!("0x{msg:04X}"),"ok":result.is_ok(),"error":result.err().unwrap_or(0),"before":format!("0x{:X}",before.0 as usize),"after":format!("0x{:X}",after.0 as usize)}));
+            steps.push(serde_json::json!({"phase":phase,"elapsedUs":started.elapsed().as_micros() as u64,"timeoutMs":timing.timeout_ms,"asynchronous":asynchronous,"wparam":wp,"message":format!("0x{msg:04X}"),"ok":result.is_ok(),"error":result.err().unwrap_or(0),"before":format!("0x{:X}",before.0 as usize),"after":format!("0x{:X}",after.0 as usize)}));
             result.is_ok() && (cleanup || !changed.get())
         };
         // No early return below: always attempt reverse notifications, including timeout paths.
@@ -1401,12 +1526,31 @@ mod win {
             };
             report["inputSent"] = serde_json::json!(true);
             let mut down_ok = true;
-            for key in mods.iter().copied().chain(std::iter::once(vk)) {
+            for key in mods.iter().copied() {
                 pressed.push(key);
                 if !key_message(key, false) {
                     down_ok = false;
                     break;
                 }
+            }
+            if down_ok && !mods.is_empty() {
+                down_ok = wait_modifier_gap(timing.modifier_gap_ms, || {
+                    !crate::input_arbiter::cancelled()
+                        && unsafe { GetForegroundWindow() } == original
+                        && input_idle(Some(key)).unwrap_or(false)
+                });
+            }
+            if down_ok {
+                // Recheck after the gap: never dispatch the base key after stop/focus change.
+                down_ok = !crate::input_arbiter::cancelled()
+                    && unsafe { GetForegroundWindow() } == original;
+                if down_ok {
+                    pressed.push(vk);
+                    down_ok = key_message(vk, false);
+                }
+            }
+            if !down_ok && failure.get().is_none() {
+                failure.set(Some(995));
             }
             if down_ok {
                 let mut remaining = hold_ms.clamp(10, 200);
@@ -1416,6 +1560,10 @@ mod win {
                     remaining -= interval;
                     if unsafe { GetForegroundWindow() } != original {
                         changed.set(true);
+                        break;
+                    }
+                    if crate::input_arbiter::cancelled() {
+                        failure.set(failure.get().or(Some(995)));
                         break;
                     }
                 }
@@ -1454,6 +1602,10 @@ mod win {
             }
         }
         changed.set(changed.get() || unsafe { GetForegroundWindow() } != original);
+        let (timed_out, release_unconfirmed) = activity_delivery_flags(&steps);
+        report["timedOut"] = serde_json::json!(timed_out);
+        report["releaseUnconfirmed"] = serde_json::json!(release_unconfirmed);
+        report["deliveryUncertain"] = serde_json::json!(timed_out || release_unconfirmed);
         report["error"] = serde_json::json!(failure.get());
         report["ok"] = serde_json::json!(failure.get().is_none() && !changed.get());
         report["foregroundChanged"] = serde_json::json!(changed.get());
@@ -2603,6 +2755,93 @@ mod multi_comparison_tests {
     use super::*;
     fn plan(value: serde_json::Value) -> Vec<ComparisonStep> {
         serde_json::from_value(value).unwrap()
+    }
+    #[test]
+    fn modifier_gap_does_not_allow_base_key_after_cancel() {
+        assert!(wait_modifier_gap(0, || true));
+        assert!(!wait_modifier_gap(200, || false));
+        let mut checks = 0;
+        assert!(!wait_modifier_gap(200, || {
+            checks += 1;
+            checks < 2
+        }));
+        assert_eq!(checks, 2);
+    }
+    #[test]
+    fn budgets_and_uncertain_release_are_explicit() {
+        let steps = plan(serde_json::json!([{"key":"SHIFT+1"}]));
+        assert!(validate_comparison_timing(&steps, ComparisonTiming::default()).is_ok());
+        for timeout_ms in [25, 100, 250] {
+            for modifier_gap_ms in [0, 50, 100, 200] {
+                assert!(validate_comparison_timing(
+                    &steps,
+                    ComparisonTiming {
+                        timeout_ms,
+                        modifier_gap_ms
+                    }
+                )
+                .is_ok());
+            }
+        }
+        assert!(validate_comparison_timing(
+            &steps,
+            ComparisonTiming {
+                timeout_ms: 1000,
+                modifier_gap_ms: 0
+            }
+        )
+        .is_err());
+        assert!(validate_comparison_timing(
+            &steps,
+            ComparisonTiming {
+                timeout_ms: 25,
+                modifier_gap_ms: 999
+            }
+        )
+        .is_err());
+        let mut long = vec![
+            ComparisonStep {
+                key: None,
+                wait: Some(1500)
+            };
+            6
+        ];
+        long.extend(vec![
+            ComparisonStep {
+                key: Some("SHIFT+1".into()),
+                wait: None
+            };
+            5
+        ]);
+        assert!(validate_comparison_timing(
+            &long,
+            ComparisonTiming {
+                timeout_ms: 25,
+                modifier_gap_ms: 200
+            }
+        )
+        .is_err());
+        assert_eq!(
+            activity_delivery_flags(&[
+                serde_json::json!({"phase":"key-down","error":1460,"ok":false}),
+                serde_json::json!({"phase":"key-up","ok":true})
+            ]),
+            (true, false)
+        );
+        assert_eq!(
+            activity_delivery_flags(&[
+                serde_json::json!({"phase":"modifier-up","error":1460,"ok":false})
+            ]),
+            (true, true)
+        );
+        assert_eq!(
+            activity_delivery_flags(&[serde_json::json!({"phase":"key-up","skipped":true})]),
+            (false, true)
+        );
+        assert_eq!(
+            activity_delivery_flags(&[serde_json::json!({"phase":"key-up","ok":true})]),
+            (false, false)
+        );
     }
     #[test]
     fn allows_only_bounded_key_wait_plans() {

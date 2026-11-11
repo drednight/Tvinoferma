@@ -4,6 +4,10 @@ import { safeDiagnostic } from './trace.js';
 const KEY = 'tvinoferma.background-journal.v1';
 const fields = new Set([
   'schema',
+  'timing',
+  'modifierGapMs',
+  'timedOut',
+  'releaseUnconfirmed',
   'charId',
   'charIds',
   'leak',
