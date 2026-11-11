@@ -1481,10 +1481,10 @@
   grid-template-rows: repeat(6, 38px);
 }
 .gm-keyboard-nav {
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .gm-keyboard-num {
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 .gm-keyboard [aria-pressed='true'] {
   background: linear-gradient(#729bdb, #365d9e);
@@ -1500,4 +1500,14 @@
 }
 .gm-keyboard-num {
   margin-top: 86px;
+}
+
+/* Labels must not force fixed navigation/numpad tracks to overflow adjacent blocks. */
+.gm-keyboard-nav .btn,
+.gm-keyboard-num .btn {
+  min-width: 0;
+  width: 100%;
+  padding-inline: 2px;
+  font-size: 11px;
+  overflow: hidden;
 }

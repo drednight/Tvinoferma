@@ -818,6 +818,12 @@ function generateCardHTML(char, { archived = false } = {}) {
           <div class="card-head-side">
              ${
                archived
+                 ? ''
+                 : `<button class="card-act archive-character-action" type="button" aria-label="В архив"
+                          title="Переместить персонажа в архив">📦</button>`
+             }
+             ${
+               archived
                  ? '<span class="badge">В архиве</span>'
                  : `<div class="state ${authView.cls}" title="${statusTitle}">
                     <span class="state-dot"></span><span>${statusText}</span>
@@ -887,8 +893,7 @@ function generateCardHTML(char, { archived = false } = {}) {
                  archived
                    ? `<button class="card-act restore-character-action" type="button" aria-label="Восстановить"
                           title="Вернуть персонажа в активный список">↩</button>`
-                   : `<button class="card-act archive-character-action" type="button" aria-label="В архив"
-                          title="Переместить персонажа в архив">📦</button>`
+                   : ''
                }
            </div>
         </footer>

@@ -491,13 +491,20 @@ it('offers scoped close requests and preserves explicit checks on unrelated snap
     })
   );
 });
-it('keeps party access and full keyboard icon available while service controls are hidden', async () => {
+it('keeps pause/reconnect and full keyboard icon available without a duplicate party button', async () => {
   await mocks.handlers.get('game-macro-snapshot')({ payload: { mirrorKeys: false, mirrorMouse: false } });
   document.getElementById('info-toggle').click();
   expect(document.getElementById('overlay-controls').hidden).toBe(true);
   expect(document.getElementById('keyboard-repeat-toggle').querySelector('svg')).not.toBeNull();
-  expect(document.getElementById('compact-party').closest('[hidden]')).toBeNull();
-  document.getElementById('compact-party').click();
+  expect(document.getElementById('compact-party')).toBeNull();
+  for (const id of ['pause-macros', 'reconnect-input']) {
+    expect(document.getElementById(id).closest('.repeat-controls')).not.toBeNull();
+    expect(document.getElementById(id).closest('[hidden]')).toBeNull();
+  }
+  document.getElementById('pause-macros').click();
+  await vi.waitFor(() => expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-pause'));
+  document.getElementById('info-toggle').click();
+  document.querySelector('[data-view=party]').click();
   expect(document.getElementById('party-screen').hidden).toBe(false);
 });
 it('moves real repeat/hotkey toggles into the visible folded strip and restores them', async () => {
@@ -506,7 +513,13 @@ it('moves real repeat/hotkey toggles into the visible folded strip and restores 
   document.getElementById('fold').click();
   await vi.waitFor(() => expect(document.body.classList.contains('folded')).toBe(true));
   expect(controls.closest('header')).not.toBeNull();
-  for (const id of ['keyboard-repeat-toggle', 'mouse-repeat-toggle', 'hotkeys-toggle'])
+  for (const id of [
+    'keyboard-repeat-toggle',
+    'mouse-repeat-toggle',
+    'hotkeys-toggle',
+    'pause-macros',
+    'reconnect-input'
+  ])
     expect(document.getElementById(id).closest('#panel')).toBeNull();
   document.getElementById('fold').click();
   await vi.waitFor(() => expect(controls.parentElement).toBe(original));

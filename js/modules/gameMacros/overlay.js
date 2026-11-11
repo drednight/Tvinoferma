@@ -284,7 +284,6 @@ async function init() {
     });
   };
   document.querySelectorAll('[data-view]').forEach(button => (button.onclick = () => showView(button.dataset.view)));
-  document.getElementById('compact-party').onclick = () => showView('party');
   const extraNames = {
     pink: 'Розовый',
     cyan: 'Бирюзовый',

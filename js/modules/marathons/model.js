@@ -479,6 +479,14 @@ export function marathonTotals(m) {
       perChar[cid].coins += c.coins;
       perTask[t.id].coins += c.coins;
     });
+    for (const status of bonusStatus(m, cid)) {
+      const amount = bonusRewardCoins(status.bonus);
+      if (perChar[cid].assigned >= status.need) maxCoins += amount;
+      if (status.reached) {
+        coins += amount;
+        perChar[cid].coins += amount;
+      }
+    }
   });
 
   // Завершённый марафон: монеты берём из зафиксированных наград
@@ -530,6 +538,18 @@ export function freezeAwards(m, characters) {
         });
       }
     });
+    for (const { bonus, reached } of bonusStatus(m, cid)) {
+      const amount = bonusRewardCoins(bonus);
+      if (reached && amount > 0)
+        awards.push({
+          characterId: cid,
+          charNick: ch?.nick || '',
+          taskId: null,
+          taskTitle: 'Бонус',
+          rewardText: bonus.text,
+          coins: amount
+        });
+    }
   });
   return awards;
 }
@@ -655,6 +675,18 @@ export function applySiteQuests(m, charId, quests, at = new Date().toISOString()
     if (from !== to) changes.push({ taskId: task.id, from, to });
   });
   return changes;
+}
+
+/** Only explicitly named Ancient Coins count; other reward quantities are not coins. */
+export function bonusRewardCoins(bonus) {
+  const text = String(bonus.text || '').replace(/\u00a0|\u202f/g, ' ');
+  const coinName = 'древн[а-яё]*\\s+монет[а-яё]*';
+  const number = '(\\d+(?:[ \\t]\\d{3})*)';
+  const pattern = new RegExp(
+    `${number}\\s*(?:[xх×]\\s*)?[«"“]?${coinName}|${coinName}[»"”]?\\s*(?:[—–:хx×(-]\\s*)?${number}`,
+    'gi'
+  );
+  return [...text.matchAll(pattern)].reduce((sum, match) => sum + Number((match[1] || match[2]).replace(/\s/g, '')), 0);
 }
 
 /** Статус бонусов персонажа: [{ bonus, done, need, reached }] */
