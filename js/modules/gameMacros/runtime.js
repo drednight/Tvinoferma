@@ -1,3 +1,4 @@
+import { selectableRecipients, leaderChoices } from './recipients.js';
 import { appendBackgroundJournal, openBackgroundJournal } from './backgroundJournal.js';
 import { nativeResultStatus } from './nativeStatus.js';
 import { buildTrial } from './trialEvidence.js';
@@ -52,7 +53,9 @@ let mirroring = false,
 let paused = false,
   composing = false;
 let launchProgress = null;
-let overlayWindows = [],
+let overlayRecipientSession = null,
+  overlayRecipientNotice = 'Обновите список запущенных персонажей.',
+  overlayWindows = [],
   overlayWindowNotice = 'Нажмите «Обновить окна», чтобы проверить запущенные клиенты.';
 const logs = [];
 const logEntries = [];
@@ -152,6 +155,8 @@ export function snapshot() {
     parties: (state.parties || []).map(({ id, name }) => ({ id, name })),
     partyId: c.partyId,
     windows: overlayWindows,
+    recipients: overlayRecipientSession?.public || null,
+    recipientNotice: overlayRecipientNotice,
     windowNotice: overlayWindowNotice,
     launchProgress,
     executionState,
@@ -1608,6 +1613,9 @@ export async function initGameMacros() {
   await listen('game-overlay-ready', () => {
     void broadcast();
   });
+  await listen('game-overlay-recipients', event => {
+    void overlayRecipientAction(event.payload);
+  });
   await listen('game-overlay-party', event => {
     void overlayPartyAction(event.payload);
   });
@@ -2266,6 +2274,112 @@ export async function previewComposition(id) {
   } finally {
     busy = false;
     void broadcast();
+  }
+}
+
+// The overlay submits a reviewed snapshot, never arbitrary HWNDs or arbitrary character IDs.
+const recipientSettingsKey = c =>
+  JSON.stringify({ excluded: c.excludedCommandCharacters, leaders: c.leaders, partyId: c.partyId });
+const recipientIdentity = row => JSON.stringify([row.charId, row.pid, row.startedAt, row.hwnd]);
+export async function overlayRecipientAction(request) {
+  if (!['refresh', 'save'].includes(request?.action)) return;
+  if (busy) {
+    overlayRecipientNotice = 'Дождитесь завершения команды.';
+    await broadcast();
+    return;
+  }
+  busy = true;
+  overlayRecipientNotice = request.action === 'refresh' ? 'Проверяем окна…' : 'Сохраняем выбор…';
+  await broadcast();
+  try {
+    if (request.action === 'refresh') {
+      const rows = selectableRecipients(await listMacroWindows());
+      const c = config();
+      const choices = leaderChoices(state, c, rows);
+      overlayRecipientSession = {
+        identities: rows.map(recipientIdentity).sort(),
+        settingsKey: recipientSettingsKey(c),
+        public: {
+          revision: crypto.randomUUID(),
+          rows: rows.map(row => ({
+            charId: row.charId,
+            nick: row.nick || state.characters.find(char => char.id === row.charId)?.nick || 'Персонаж',
+            selected: !c.excludedCommandCharacters.includes(row.charId),
+            valid: !!(
+              row.startedAt &&
+              row.hwnd &&
+              (row.elevated === false || (row.elevated === true && row.selfElevated === true))
+            )
+          })),
+          ...choices
+        }
+      };
+      overlayRecipientNotice = rows.length
+        ? 'Измените отметки и нажмите «Сохранить».'
+        : 'Распознанных запущенных персонажей нет.';
+    } else {
+      const session = overlayRecipientSession;
+      if (
+        !session ||
+        request.revision !== session.public.revision ||
+        recipientSettingsKey(config()) !== session.settingsKey
+      )
+        throw new Error('Выбор изменился. Обновите список и повторите.');
+      if (!Array.isArray(request.selected) || request.selected.some(id => typeof id !== 'string'))
+        throw new Error('Некорректный выбор персонажей.');
+      const chosen = new Set(request.selected);
+      const currentRows = selectableRecipients(await listMacroWindows());
+      const identities = currentRows.map(recipientIdentity).sort();
+      if (JSON.stringify(identities) !== JSON.stringify(session.identities))
+        throw new Error('Список окон изменился. Обновите его и повторите.');
+      if ([...chosen].some(id => !currentRows.some(row => row.charId === id)))
+        throw new Error('Выбранный персонаж отсутствует. Обновите список.');
+      const c = config();
+      if (recipientSettingsKey(c) !== session.settingsKey) throw new Error('Настройки изменились. Обновите список.');
+      const excluded = new Set(c.excludedCommandCharacters);
+      for (const row of currentRows) {
+        if (chosen.has(row.charId)) excluded.delete(row.charId);
+        else excluded.add(row.charId);
+      }
+      const previous = state.settings.gameMacros;
+      const patch = { excludedCommandCharacters: [...excluded] };
+      if (request.leader) {
+        if (mirroring || mirrorKeys || mirrorMouse || mirrorPending)
+          throw new Error('Выключите повтор ввода перед изменением ПЛ.');
+        const { partyId, charId } = request.leader;
+        if (
+          !chosen.has(charId) ||
+          !session.public.options.some(option => option.partyId === partyId && option.charId === charId) ||
+          !partyMembers(state, partyId).some(char => char.id === charId)
+        )
+          throw new Error('ПЛ должен быть выбранным запущенным участником существующей пати.');
+        const leaderWindow = currentRows.find(row => row.charId === charId);
+        if (
+          !leaderWindow?.startedAt ||
+          !leaderWindow?.hwnd ||
+          !(leaderWindow.elevated === false || (leaderWindow.elevated === true && leaderWindow.selfElevated === true))
+        )
+          throw new Error('Окно ПЛ не прошло проверку. Откройте «Проверить окна».');
+        patch.partyId = partyId;
+        patch.leaders = { ...c.leaders, [partyId]: charId };
+      }
+      state.settings.gameMacros = normalizeGameMacros({ ...c, ...patch });
+      try {
+        await (await import('../../core/storage.js')).persist();
+      } catch (error) {
+        state.settings.gameMacros = previous;
+        throw error;
+      }
+      overlayRecipientSession = null;
+      overlayRecipientNotice = 'Выбор сохранён. Откройте список заново для изменений.';
+      window.dispatchEvent(new Event('tf-game-macro-party-selected'));
+    }
+  } catch (error) {
+    overlayRecipientNotice = macroErrorText(error);
+    if (request.action === 'refresh') overlayRecipientSession = null;
+  } finally {
+    busy = false;
+    await broadcast();
   }
 }
 

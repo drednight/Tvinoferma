@@ -142,7 +142,7 @@ it('saves and reopens an existing managed key command changed from all to except
   openCommandEditor(config, save, saved);
   expect(document.querySelector('[data-field="target"]').value).toBe('others');
 });
-it('saves a separate party-leader hybrid mode from the visible unified command settings', async () => {
+it('preserves a saved party-leader hybrid mode under advanced settings', async () => {
   const source = normalizeGameMacros({
     commands: [
       {
@@ -151,6 +151,9 @@ it('saves a separate party-leader hybrid mode from the visible unified command s
         action: 'sequence',
         target: 'others',
         scope: 'party',
+        delivery: 'background',
+        backgroundMethod: 'hybrid-party',
+        hybridConsent: true,
         sequence: 'CTRL+1\nALT+2',
         hotkey: 'F8'
       }
@@ -159,7 +162,7 @@ it('saves a separate party-leader hybrid mode from the visible unified command s
   config.commands = [source];
   openCommandEditor(config, save, source);
   const mode = document.querySelector('[name="commandInputMode"]');
-  expect(mode.closest('.gm-editor-basics')).not.toBeNull();
+  expect(mode.closest('.gm-editor-advanced')).not.toBeNull();
   mode.value = 'hybrid-party';
   document.querySelector('[name="hybridConsent"]').checked = true;
   submit();

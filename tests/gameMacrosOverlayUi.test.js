@@ -524,3 +524,40 @@ it('moves real repeat/hotkey toggles into the visible folded strip and restores 
   document.getElementById('fold').click();
   await vi.waitFor(() => expect(controls.parentElement).toBe(original));
 });
+
+it('opens recipient selection in the overlay, preserves edits on snapshots, and submits only on save', async () => {
+  document.querySelector('[data-view="recipients"]').click();
+  await vi.waitFor(() =>
+    expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-recipients', { action: 'refresh' })
+  );
+  const payload = {
+    recipients: {
+      revision: 'revision',
+      rows: [
+        { charId: 'a', nick: 'Alpha', selected: true, valid: true },
+        { charId: 'b', nick: 'Beta', selected: true, valid: true }
+      ],
+      options: [{ partyId: 'p', partyName: 'Пати', charId: 'a', nick: 'Alpha', current: false }]
+    },
+    recipientNotice: 'Измените отметки',
+    busy: false
+  };
+  mocks.handlers.get('game-macro-snapshot')({ payload });
+  expect(document.querySelector('#recipients-screen').hidden).toBe(false);
+  const check = document.querySelector('#recipient-list input[value="b"]');
+  check.checked = false;
+  check.dispatchEvent(new Event('change', { bubbles: true }));
+  mocks.handlers.get('game-macro-snapshot')({ payload });
+  expect(document.querySelector('#recipient-list input[value="b"]').checked).toBe(false);
+  document.querySelector('#recipient-leader').value = '1';
+  document.querySelector('#recipients-save').click();
+  await vi.waitFor(() =>
+    expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-recipients', {
+      action: 'save',
+      revision: 'revision',
+      selected: ['a'],
+      leader: { partyId: 'p', charId: 'a' }
+    })
+  );
+  expect(mocks.invoke).not.toHaveBeenCalledWith('game_macro_close_targets', expect.anything());
+});

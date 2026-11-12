@@ -1,3 +1,4 @@
+import { selectableRecipients, leaderChoices, leaderSuggestion } from './recipients.js';
 import { openModifierBatch } from './modifierBatch.js';
 import { openModifierExperiments } from './modifierExperiments.js';
 import { openInputComparison } from './inputComparison.js';
@@ -276,13 +277,16 @@ export function mountGameMacros(host) {
   host.querySelector('[data-gm-recipients]').onclick = safe(async () => {
     const { listMacroWindows } = await import('./runtime.js');
     const rows = await listMacroWindows();
-    const counts = new Map();
-    for (const row of rows) if (row.known && row.charId) counts.set(row.charId, (counts.get(row.charId) || 0) + 1);
-    const selectable = rows.filter(row => row.known && row.charId && counts.get(row.charId) === 1);
-    const excluded = new Set(config().excludedCommandCharacters);
+    const selectable = selectableRecipients(rows);
+    const currentSettingsKey = c =>
+      JSON.stringify({ excluded: c.excludedCommandCharacters, leaders: c.leaders, partyId: c.partyId });
+    const openedConfig = config();
+    const settingsKey = currentSettingsKey(openedConfig);
+    const choices = leaderChoices(state, openedConfig, selectable);
+    const excluded = new Set(openedConfig.excludedCommandCharacters);
     const modal = showModal({
       title: 'Персонажи для команд',
-      content: `<form class="gm-recipient-picker"><p>По умолчанию выбраны все распознанные запущенные персонажи. Снимите отметку, чтобы исключить персонажа из команд. Новые персонажи включаются автоматически.</p><p class="muted">Этот выбор ограничивает команды, но не меняет настройки непрерывного повтора клавиатуры и мыши. Для специальных команд действуют также их ограничения пати и ПЛ.</p><div class="gm-recipient-actions"><button type="button" class="btn ghost small" data-select-all>Выбрать всех</button><button type="button" class="btn ghost small" data-select-none>Снять все отметки</button></div><div class="gm-recipient-list">${selectable.map(row => `<label class="gm-recipient-row"><input type="checkbox" name="character" value="${esc(row.charId)}" ${excluded.has(row.charId) ? '' : 'checked'}><span><b>${esc(row.nick || state.characters.find(char => char.id === row.charId)?.nick || row.charId)}</b><small>${row.startedAt && row.hwnd && (row.elevated === false || (row.elevated === true && row.selfElevated === true)) ? 'Распознан' : 'Требуется проверить окно или права'}</small></span></label>`).join('') || '<p>Распознанных запущенных персонажей нет. Запустите игру и откройте выбор заново.</p>'}</div>${rows.length !== selectable.length ? '<p class="muted">Неоднозначные и нераспознанные окна не показаны. Откройте «Проверить окна», чтобы устранить проблему.</p>' : ''}<p class="muted">Отметки сохраняются для персонажей; закрытые окна не участвуют в отправке. Обновите список, открыв окно заново.</p></form>`,
+      content: `<form class="gm-recipient-picker"><p>По умолчанию выбраны все распознанные запущенные персонажи. Снимите отметку, чтобы исключить персонажа из команд. Новые персонажи включаются автоматически.</p><p class="muted">Этот выбор ограничивает команды, но не меняет настройки непрерывного повтора клавиатуры и мыши. Для специальных команд действуют также их ограничения пати и ПЛ.</p><div class="gm-recipient-actions"><button type="button" class="btn ghost small" data-select-all>Выбрать всех</button><button type="button" class="btn ghost small" data-select-none>Снять все отметки</button></div><div class="gm-recipient-list">${selectable.map(row => `<label class="gm-recipient-row"><input type="checkbox" name="character" value="${esc(row.charId)}" ${excluded.has(row.charId) ? '' : 'checked'}><span><b>${esc(row.nick || state.characters.find(char => char.id === row.charId)?.nick || row.charId)}</b><small>${row.startedAt && row.hwnd && (row.elevated === false || (row.elevated === true && row.selfElevated === true)) ? 'Распознан' : 'Требуется проверить окно или права'}</small></span></label>`).join('') || '<p>Распознанных запущенных персонажей нет. Запустите игру и откройте выбор заново.</p>'}</div>${rows.length !== selectable.length ? '<p class="muted">Неоднозначные и нераспознанные окна не показаны. Откройте «Проверить окна», чтобы устранить проблему.</p>' : ''}<label class="gm-leader-choice">ПЛ для специальных команд<select name="leaderChoice"><option value="">${choices.currentLeader ? `Не менять: ${esc(choices.currentLeader.nick)} — ${esc(choices.currentLeader.partyName)}` : 'Не назначать ПЛ'}</option>${choices.options.map(choice => `<option value="${esc(JSON.stringify([choice.partyId, choice.charId]))}">${esc(choice.nick)} — ${esc(choice.partyName)}${choice.current ? ' · ПЛ пати' : ''}</option>`).join('')}</select></label><p class="muted" data-leader-hint>${choices.suggestion ? `Подсказка: ${esc(choices.suggestion.name)} — ${choices.suggestion.count} выбранных окон. ` : choices.tie ? 'В нескольких пати поровну окон — выберите вручную. ' : ''}ПЛ назначается только по вашему выбору и меняет управляющую пати, но не лидерство в игре. Обычным командам ПЛ не нужен.</p><p class="muted">Отметки сохраняются для персонажей; закрытые окна не участвуют в отправке. Обновите список, открыв окно заново.</p></form>`,
       submitText: 'Сохранить выбор',
       cancelText: 'Отмена',
       onSubmit: async data => {
@@ -291,22 +295,75 @@ export function mountGameMacros(host) {
           return false;
         }
         const chosen = new Set(data.getAll('character'));
-        for (const row of selectable) {
-          if (chosen.has(row.charId)) excluded.delete(row.charId);
-          else excluded.add(row.charId);
+        const fresh = selectableRecipients(await listMacroWindows());
+        const identity = row => JSON.stringify([row.charId, row.pid, row.startedAt, row.hwnd]);
+        if (JSON.stringify(fresh.map(identity).sort()) !== JSON.stringify(selectable.map(identity).sort())) {
+          toast('Список окон изменился. Откройте выбор заново.', 'error');
+          return false;
         }
-        await save({ excludedCommandCharacters: [...excluded] });
+        if (snapshot().busy) {
+          toast('Дождитесь завершения команды.', 'error');
+          return false;
+        }
+        const latest = config();
+        if (currentSettingsKey(latest) !== settingsKey) {
+          toast('Настройки изменились. Откройте выбор заново.', 'error');
+          return false;
+        }
+        const nextExcluded = new Set(latest.excludedCommandCharacters);
+        for (const row of selectable) {
+          if (chosen.has(row.charId)) nextExcluded.delete(row.charId);
+          else nextExcluded.add(row.charId);
+        }
+        const patch = { excludedCommandCharacters: [...nextExcluded] };
+        if (data.get('leaderChoice')) {
+          const [partyId, charId] = JSON.parse(data.get('leaderChoice'));
+          const status = snapshot();
+          if (status.mirroring || status.mirrorKeys || status.mirrorMouse || status.mirrorPending) {
+            toast('Выключите повтор ввода перед изменением ПЛ.', 'error');
+            return false;
+          }
+          const leaderWindow = fresh.find(row => row.charId === charId);
+          if (
+            !chosen.has(charId) ||
+            !choices.options.some(option => option.partyId === partyId && option.charId === charId) ||
+            !partyMembers(state, partyId).some(char => char.id === charId) ||
+            !leaderWindow?.startedAt ||
+            !leaderWindow?.hwnd ||
+            !(leaderWindow.elevated === false || (leaderWindow.elevated === true && leaderWindow.selfElevated === true))
+          ) {
+            toast('ПЛ должен быть выбранным проверенным участником пати.', 'error');
+            return false;
+          }
+          patch.partyId = partyId;
+          patch.leaders = { ...latest.leaders, [partyId]: charId };
+        }
+        await save(patch);
       }
     });
     if (!modal) return;
-    modal.querySelector('[data-select-all]').onclick = () =>
-      modal.querySelectorAll('[name="character"]').forEach(box => {
-        box.checked = true;
-      });
-    modal.querySelector('[data-select-none]').onclick = () =>
-      modal.querySelectorAll('[name="character"]').forEach(box => {
-        box.checked = false;
-      });
+    const updateLeaderHint = () => {
+      const selected = new Set([...modal.querySelectorAll('[name="character"]:checked')].map(box => box.value));
+      const { suggestion, tie } = leaderSuggestion(choices.options, selected);
+      modal.querySelector('[data-leader-hint]').textContent =
+        (suggestion
+          ? `Подсказка: ${suggestion.name} — ${suggestion.count} выбранных окон. `
+          : tie
+            ? 'В нескольких пати поровну окон — выберите вручную. '
+            : '') +
+        'ПЛ назначается только по вашему выбору и меняет управляющую пати, но не лидерство в игре. Обычным командам ПЛ не нужен.';
+    };
+    modal.querySelectorAll('[name="character"]').forEach(box => box.addEventListener('change', updateLeaderHint));
+    for (const [selector, checked] of [
+      ['[data-select-all]', true],
+      ['[data-select-none]', false]
+    ])
+      modal.querySelector(selector).onclick = () => {
+        modal.querySelectorAll('[name="character"]').forEach(box => {
+          box.checked = checked;
+        });
+        updateLeaderHint();
+      };
   });
   const search = host.querySelector('[data-gm-search]');
   search.value = searchQuery;

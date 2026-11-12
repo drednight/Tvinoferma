@@ -1580,3 +1580,69 @@
   background: rgba(220, 60, 70, 0.1);
   border-radius: 6px;
 }
+
+/* Macro editor: clear steps and a compact action toolbar. */
+.gm-dialog [data-gm-form] {
+  gap: 16px;
+}
+.gm-editor-intro {
+  margin: 0;
+}
+.gm-editor-intro span {
+  color: var(--accent);
+  font-weight: 650;
+}
+.gm-editor-basics {
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2, var(--surface-1));
+}
+.gm-compose-block {
+  border-radius: 14px;
+}
+.gm-compose-workbench {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+.gm-action-library {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 10px;
+}
+.gm-action-library > strong {
+  width: 100%;
+}
+.gm-action-library .btn {
+  width: auto;
+  margin: 0;
+}
+.gm-action-library details {
+  flex-basis: 100%;
+}
+.gm-compose-workbench .gm-action-row {
+  border-radius: 10px;
+}
+.gm-compose-workbench .gm-action-row.is-selected {
+  border-color: var(--accent);
+}
+.gm-step-editor {
+  padding: 16px;
+}
+.gm-leader-choice {
+  display: grid;
+  gap: 7px;
+}
+.gm-more-library > summary,
+.gm-add-group > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 8px 0;
+}
+.gm-more-library details {
+  margin: 6px 0 6px 10px;
+}

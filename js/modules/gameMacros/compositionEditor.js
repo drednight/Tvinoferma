@@ -190,7 +190,7 @@ export function mountCompositionEditor(host, c, row) {
     );
   }
   function draw() {
-    host.innerHTML = `<div class="gm-compose-title"><h4>Что выполнить</h4><button type="button" class="btn ghost small" data-undo ${undo.length ? '' : 'disabled'}>↶ Отменить изменение</button></div><p>Добавьте действие слева, настройте его справа. Меняйте порядок стрелками ↑ ↓. По умолчанию действия выполняются на выбранных запущенных персонажах. Способ доставки и дополнительные настройки задаются в группе.</p>${blocks
+    host.innerHTML = `<div class="gm-compose-title"><h4>Что выполнить</h4><button type="button" class="btn ghost small" data-undo ${undo.length ? '' : 'disabled'}>↶ Отменить изменение</button></div><p>Добавьте действия и расположите их в нужном порядке. Команда выполняется на выбранных запущенных персонажах.</p>${blocks
       .map(
         (block, b) =>
           `<section class="gm-compose-block" data-block="${b}"><header><button type="button" class="btn ghost small" data-block-collapse aria-expanded="${!collapsed.has(b)}" title="Свернуть или раскрыть блок">${collapsed.has(b) ? '▸' : '▾'}</button><label>Название ${input('name', block.name)}</label><button class="btn ghost" type="button" data-block-up ${b === 0 ? 'disabled' : ''}>↑</button><button class="btn danger" type="button" data-block-delete>Удалить блок</button></header><p class="gm-compose-summary">${esc(block.name)} · ${block.steps.length} действий × ${block.repeat ?? 1} · ${block.scope === 'managed' ? 'Все распознанные окна' : esc(state.parties.find(p => p.id === (block.partyId || c.partyId))?.name || 'Текущая пати')} · ${block.delivery === 'background' ? 'В фоне' : 'С активацией'}</p><div ${collapsed.has(b) ? 'hidden' : ''}><label><input type="checkbox" data-field="parallel" ${block.parallel ? 'checked' : ''} ${b === 0 ? 'disabled' : ''}> Одновременно с предыдущим</label><div class="gm-compose-fields"><label>Область ${select(
@@ -245,7 +245,7 @@ export function mountCompositionEditor(host, c, row) {
                   )
                   .join('')}</fieldset>`
               : ''
-          }${block.scope === 'managed' && ['leader', 'others'].includes(block.target) ? '<small>ПЛ берётся из настроек выбранной пати; остальные распознанные окна остаются вне ПЛ.</small>' : ''}<label><input type="checkbox" data-field="perWindow" ${block.perWindow ? 'checked' : ''} ${block.delivery === 'background' && isActivityMethod(block.backgroundMethod) ? 'disabled' : ''}> Выполнить все шаги в одном окне, затем перейти к следующему</label><label class="gm-loop-setting">Повторить блок ${input('repeat', block.repeat ?? 1, 'number')} раз <small>1–100; Стоп прерывает цикл. Все повторы проверяются до запуска.</small></label><div class="gm-compose-workbench"><aside class="gm-action-library" aria-label="Добавить действие"><strong>Мышь и управление</strong>${[
+          }${block.scope === 'managed' && ['leader', 'others'].includes(block.target) ? '<small>ПЛ берётся из настроек выбранной пати; остальные распознанные окна остаются вне ПЛ.</small>' : ''}<label><input type="checkbox" data-field="perWindow" ${block.perWindow ? 'checked' : ''} ${block.delivery === 'background' && isActivityMethod(block.backgroundMethod) ? 'disabled' : ''}> Выполнить все шаги в одном окне, затем перейти к следующему</label><label class="gm-loop-setting">Повторить блок ${input('repeat', block.repeat ?? 1, 'number')} раз <small>1–100; Стоп прерывает цикл. Все повторы проверяются до запуска.</small></label><div class="gm-compose-workbench"><aside class="gm-action-library" aria-label="Добавить действие"><strong>Добавить действие</strong>${[
             ['keys', '⌨', 'Клавиша'],
             ['wait', '◷', 'Задержка'],
             ['screen', '↗', 'Клик']
@@ -254,7 +254,9 @@ export function mountCompositionEditor(host, c, row) {
               ([type, icon, label]) =>
                 `<button type="button" class="btn ghost small" data-add-type="${type}">${icon} ${label}</button>`
             )
-            .join('')}<details class="gm-extra-actions"><summary>Окна, пати и повтор</summary>${[
+            .join(
+              ''
+            )}<details class="gm-more-library"><summary>Другие действия и примеры</summary><details class="gm-extra-actions"><summary>Окна, пати и повтор</summary>${[
             ['focus', '▣', 'Окно'],
             ['launch', '▶', 'Пати'],
             ['pause', 'Ⅱ', 'Ожидание'],
@@ -276,11 +278,11 @@ export function mountCompositionEditor(host, c, row) {
             )
             .join(
               ''
-            )}<small>Копия редактируемых блоков, не эксклюзивная команда и не зависимость от её будущих изменений.</small></details></aside><ol class="gm-compose-steps">${block.steps.length ? '' : '<li class="gm-empty-plan"><b>С чего начнём?</b><p>Нажмите «Клавиша» слева, чтобы отправить кнопку в игру, или «Клик», чтобы задать действие мышью. Готовые примеры тоже можно менять.</p></li>'}${block.steps.map((step, i) => `<li class="gm-action-row ${i === (selected.get(b) || 0) ? 'is-selected' : ''}" data-step="${i}" data-step-type="${esc(step.type)}" ><div class="gm-step-heading"><button type="button" class="gm-step-select" data-step-select aria-expanded="${i === (selected.get(b) || 0)}"><span class="gm-step-number">${i + 1}</span><span class="gm-step-kind">${esc(STEP_LABELS[step.type])}</span><strong data-step-summary>${esc(summary(step))}</strong></button><div class="gm-step-actions"><button type="button" class="btn ghost small" data-step-up title="Переместить шаг вверх" aria-label="Переместить шаг вверх" ${i === 0 ? 'disabled' : ''}>↑</button><button type="button" class="btn ghost small" data-step-down title="Переместить шаг вниз" aria-label="Переместить шаг вниз" ${i === block.steps.length - 1 ? 'disabled' : ''}>↓</button><button type="button" class="btn ghost small" data-step-copy title="Дублировать шаг" aria-label="Дублировать шаг">⧉</button><button type="button" class="btn danger small" data-step-delete title="Удалить шаг" aria-label="Удалить шаг">×</button></div></div><div class="gm-compose-fields gm-step-editor" ${i === (selected.get(b) || 0) ? '' : 'hidden'}>${fields(step)}</div></li>`).join('')}</ol></div></div></section>`
+            )}<small>Копия редактируемых блоков, не эксклюзивная команда и не зависимость от её будущих изменений.</small></details></details></aside><ol class="gm-compose-steps">${block.steps.length ? '' : '<li class="gm-empty-plan"><b>С чего начнём?</b><p>Добавьте клавишу, задержку или клик. Затем настройте действие в появившейся карточке.</p></li>'}${block.steps.map((step, i) => `<li class="gm-action-row ${i === (selected.get(b) || 0) ? 'is-selected' : ''}" data-step="${i}" data-step-type="${esc(step.type)}" ><div class="gm-step-heading"><button type="button" class="gm-step-select" data-step-select aria-expanded="${i === (selected.get(b) || 0)}"><span class="gm-step-number">${i + 1}</span><span class="gm-step-kind">${esc(STEP_LABELS[step.type])}</span><strong data-step-summary>${esc(summary(step))}</strong></button><div class="gm-step-actions"><button type="button" class="btn ghost small" data-step-up title="Переместить шаг вверх" aria-label="Переместить шаг вверх" ${i === 0 ? 'disabled' : ''}>↑</button><button type="button" class="btn ghost small" data-step-down title="Переместить шаг вниз" aria-label="Переместить шаг вниз" ${i === block.steps.length - 1 ? 'disabled' : ''}>↓</button><button type="button" class="btn ghost small" data-step-copy title="Дублировать шаг" aria-label="Дублировать шаг">⧉</button><button type="button" class="btn danger small" data-step-delete title="Удалить шаг" aria-label="Удалить шаг">×</button></div></div><div class="gm-compose-fields gm-step-editor" ${i === (selected.get(b) || 0) ? '' : 'hidden'}>${fields(step)}</div></li>`).join('')}</ol></div></div></section>`
       )
       .join(
         ''
-      )}<button type="button" class="btn" data-block-add>＋ Ещё группа действий</button><p data-compose-error role="alert"></p>`;
+      )}<details class="gm-add-group"><summary>Сложная команда: несколько групп</summary><button type="button" class="btn" data-block-add>＋ Добавить группу</button></details><p data-compose-error role="alert"></p>`;
     host.querySelectorAll('.gm-compose-block').forEach(section => {
       const b = Number(section.dataset.block),
         block = blocks[b],
@@ -288,9 +290,19 @@ export function mountCompositionEditor(host, c, row) {
       const advanced = document.createElement('details');
       advanced.className = 'gm-block-advanced';
       advanced.innerHTML =
-        '<summary>Дополнительно: область, обход окон и повторения</summary><div class="gm-compose-fields"></div>';
+        '<summary>Дополнительные настройки группы</summary><p class="muted">Обычно менять не нужно. Для старых команд сохранены прежние ограничения.</p><div class="gm-compose-fields"></div>';
       const body = advanced.querySelector('div');
-      for (const field of ['scope', 'partyId', 'target', 'parallel', 'leaderSplit', 'perWindow', 'repeat']) {
+      for (const field of [
+        'scope',
+        'partyId',
+        'target',
+        'parallel',
+        'leaderSplit',
+        'perWindow',
+        'repeat',
+        'delivery',
+        'backgroundMethod'
+      ]) {
         const element = section.querySelector(`[data-field="${field}"]`);
         if (element) body.append(element.closest('label'));
       }
@@ -301,7 +313,8 @@ export function mountCompositionEditor(host, c, row) {
             block.perWindow ||
             block.repeat > 1 ||
             block.scope === 'party' ||
-            block.target !== 'all'
+            block.target !== 'all' ||
+            block.delivery === 'background'
           );
       advanced.addEventListener('toggle', () => {
         if (advanced.isConnected) advancedExpansion.set(b, advanced.open);

@@ -190,6 +190,41 @@
       [data-swatch='orange'] {
         color: #ffb380;
       }
+      #recipient-list {
+        list-style: none;
+        padding: 0;
+        max-height: 35vh;
+        overflow: auto;
+      }
+      #recipient-list label {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #4b5064;
+        border-radius: 8px;
+      }
+      #recipient-list li {
+        margin: 6px 0;
+      }
+      #recipients-screen select {
+        width: 100%;
+        padding: 8px;
+        background: #20283c;
+        color: inherit;
+        border: 1px solid #637090;
+        border-radius: 7px;
+      }
+      #recipients-screen .recipient-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+      }
+      #recipients-screen .recipient-help {
+        color: #aab1c6;
+        line-height: 1.5;
+      }
       #windows li {
         padding: 10px;
         border-bottom: 1px solid #4b5064;
@@ -395,8 +430,8 @@
         <div id="overlay-controls">
           <nav id="overlay-nav" aria-label="Разделы оверлея">
             <button data-view="shortcuts" aria-current="page">Назначенные клавиши</button
-            ><button data-view="journal">Журнал</button><button data-view="party">Пати и окна</button
-            ><button data-view="appearance">Настройки оверлея</button>
+            ><button data-view="recipients">Получатели</button><button data-view="journal">Журнал</button
+            ><button data-view="party">Пати и окна</button><button data-view="appearance">Настройки оверлея</button>
           </nav>
           <p id="status">Ожидание главного окна…</p>
         </div>
@@ -442,7 +477,37 @@
         </div>
         <section id="shortcuts-screen">
           <h3 data-service-heading>Назначенные клавиши</h3>
+          <button type="button" data-view="recipients">👥 Выбрать получателей</button>
           <ul id="commands"></ul>
+        </section>
+        <section id="recipients-screen" hidden>
+          <h3>Получатели команд</h3>
+          <p class="recipient-help">
+            По умолчанию выбраны все распознанные окна. Снимите отметку, чтобы исключить персонажа из команд. Новые окна
+            включаются автоматически.
+          </p>
+          <div class="recipient-actions">
+            <button type="button" id="recipients-refresh">↻ Обновить</button
+            ><button type="button" id="recipients-all">Выбрать всех</button
+            ><button type="button" id="recipients-none">Снять все</button>
+          </div>
+          <p id="recipients-notice" role="status" aria-live="polite">Обновите список.</p>
+          <ul id="recipient-list"></ul>
+          <label
+            >ПЛ для специальных команд
+            <select id="recipient-leader">
+              <option value="">Не менять текущего ПЛ</option>
+            </select></label
+          >
+          <p id="recipient-leader-hint" class="recipient-help">
+            ПЛ используется только там, где он нужен; в игре лидерство не меняется. При выборе ПЛ также меняется
+            управляющая пати. Обычные команды не требуют ПЛ.
+          </p>
+          <button type="button" id="recipients-save" disabled>Сохранить выбор</button>
+          <p class="recipient-help">
+            Старые команды могут дополнительно ограничивать получателей пати. Повтор клавиатуры и мыши настраивается
+            отдельно.
+          </p>
         </section>
         <section id="appearance-screen" hidden>
           <h3>Настройки оверлея</h3>

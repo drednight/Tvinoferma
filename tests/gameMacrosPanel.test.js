@@ -167,22 +167,9 @@ it('converts key steps to a composition without legacy add-command controls or l
   expect([...form.querySelectorAll('[data-step] [data-field="value"]')].map(e => e.value)).toEqual(['CTRL+F9', 'F8']);
   expect(form.querySelector('[data-field="ms"]').value).toBe('200');
 });
-it('creates three background test commands from the editor without running them', async () => {
+it('does not offer bulk creation of experimental variants in the normal editor', () => {
   document.querySelector('[data-gm-edit]').click();
-  const form = document.querySelector('[data-gm-form]');
-  form.querySelector('[name="action"][value="sequence"]').checked = true;
-  form.elements.namedItem('sequence').value = 'CTRL+F9';
-  form.elements.namedItem('delivery').value = 'background';
-  form.dispatchEvent(new Event('change', { bubbles: true }));
-  expect(form.querySelector('[data-gm-background-method]').hidden).toBe(false);
-  form.querySelector('[data-gm-background-variants]').click();
-  await vi.waitFor(() => expect(state.settings.gameMacros.commands).toHaveLength(4));
-  expect(state.settings.gameMacros.commands.slice(1).map(c => c.backgroundMethod)).toEqual([
-    'post',
-    'send-timeout',
-    'notify'
-  ]);
-  expect(state.settings.gameMacros.commands.slice(1).every(c => c.hotkey === '')).toBe(true);
+  expect(document.querySelector('[data-gm-background-variants]')).toBeNull();
   expect(mocks.run).not.toHaveBeenCalled();
 });
 
@@ -345,7 +332,7 @@ it('keeps current comparison and journal outside collapsed legacy diagnostics', 
 
 it('allows excluding only currently recognized characters and preserves absent exclusions', async () => {
   state.settings.gameMacros.excludedCommandCharacters = ['offline'];
-  mocks.listMacroWindows.mockResolvedValueOnce([
+  mocks.listMacroWindows.mockResolvedValue([
     { charId: 'a', known: true, nick: 'Alpha', pid: 10, hwnd: 100, startedAt: 1, elevated: false },
     { known: false, pid: 30 }
   ]);
@@ -357,4 +344,27 @@ it('allows excluding only currently recognized characters and preserves absent e
   checkbox.checked = false;
   document.querySelector('.modal-footer .primary').click();
   await vi.waitFor(() => expect(state.settings.gameMacros.excludedCommandCharacters).toEqual(['offline', 'a']));
+});
+
+it('assigns an explicitly chosen checked running leader to its party', async () => {
+  mocks.listMacroWindows.mockResolvedValue([
+    { charId: 'a', known: true, nick: 'Alpha', pid: 10, hwnd: 100, startedAt: 1, elevated: false }
+  ]);
+  document.querySelector('[data-gm-recipients]').click();
+  await vi.waitFor(() => expect(document.querySelector('[name="leaderChoice"]')).not.toBeNull());
+  document.querySelector('[name="leaderChoice"]').value = JSON.stringify(['p', 'a']);
+  document.querySelector('.modal-footer .primary').click();
+  await vi.waitFor(() => expect(state.settings.gameMacros.leaders.p).toBe('a'));
+  expect(state.settings.gameMacros.partyId).toBe('p');
+});
+it('refuses stale main-window choices if the overlay changed the settings', async () => {
+  mocks.listMacroWindows.mockResolvedValue([
+    { charId: 'a', known: true, nick: 'Alpha', pid: 10, hwnd: 100, startedAt: 1, elevated: false }
+  ]);
+  document.querySelector('[data-gm-recipients]').click();
+  await vi.waitFor(() => expect(document.querySelector('[name="character"]')).not.toBeNull());
+  state.settings.gameMacros.excludedCommandCharacters = ['a'];
+  document.querySelector('.modal-footer .primary').click();
+  await vi.waitFor(() => expect(document.querySelector('#toast-root').textContent).toContain('Настройки изменились'));
+  expect(state.settings.gameMacros.excludedCommandCharacters).toEqual(['a']);
 });

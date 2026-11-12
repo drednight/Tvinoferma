@@ -2,11 +2,10 @@ import { keyboardButton } from './keyboardPicker.js';
 import { readDraft, writeDraft, clearDraft } from './drafts.js';
 import { commandFingerprint } from './fingerprint.js';
 import { reviewCommand, reviewHtml } from './review.js';
-import { BACKGROUND_METHODS, backgroundVariants, validateActivityCommand } from './background.js';
+import { BACKGROUND_METHODS, validateActivityCommand } from './background.js';
 import { mountCompositionEditor } from './compositionEditor.js';
 import { compileComposition } from './composition.js';
 import { unifiedCommand, materializeUnifiedCommand } from './unified.js';
-import { openOverlay } from '../marathons/overlay.js';
 import { state } from '../../core/state.js';
 import { escapeHtml as esc } from '../../core/utils.js';
 import { showModal } from '../../core/ui.js';
@@ -155,7 +154,7 @@ export function openCommandEditor(c, save, row = null) {
       .map(([v, l]) => `<option value="${v}">${esc(l)}</option>`)
       .join(
         ''
-      )}</select></label><label><input type="checkbox" name="hybridConsent"> Разрешаю глобальные Ctrl/Alt/Shift в гибридном режиме из активного ПЛ. Они могут вызвать меню, смену раскладки или другие действия у ПЛ, даже если он не получатель. Все игровые действия проверены и безопасны.</label><small>Гибрид из ПЛ: только отдельная последовательность, до 8 шагов и 4 получателей выбранной пати. Запуск только из активного окна назначенного ПЛ, без Блокнота; фокус не переключается. Без резерва на другие окна, мыши и повтора. ПЛ-получатель получает полное сочетание SendInput, остальные — адресную клавишу с глобальными модификаторами. Фиксировано: gap 50 мс, hold 30 мс, timeout 100 мс, между командами 300 мс. Alt может открыть меню ПЛ; Alt+Shift/Ctrl+Shift — переключить раскладку. Не касайтесь ввода во время команды.</small><small>Уведомления активности + клавиша: отдельная последовательность, например SHIFT+1 и F2 с новой строки, при необходимости wait 200. Модификаторы передаются оконными сообщениями; обработка Shift/Ctrl/Alt игрой пока не подтверждена. Ручной B-тест не открыл инвентарь в двух клиентах PW. Новые способы тоже требуют ручной проверки. Не для мыши, повтора, F6→F1 и составных команд. Если получатели не определились, отправка останавливается без расширения области. Окна должны быть не свёрнуты, удерживаемые клавиши и мышь отпущены. Нет SetFocus/SetForegroundWindow и автоперехода к активации; сам клиент может сменить фокус. При ошибке дальнейшая отправка прекращается. Кнопка ниже создаёт только три прежних варианта, без уведомлений активности.</small><button type="button" class="btn ghost" data-gm-background-variants>Создать 3 варианта для проверки</button></fieldset><fieldset data-gm-timing><legend>Переключение и завершение</legend><label data-gm-return>После команды<select name="returnTo"><option value="leader">Вернуться к ПЛ выбранной пати</option><option value="last">Остаться на последнем окне</option></select></label><label>Задержка после активации, мс<input name="switchMs" type="number" min="0" max="500" value="30"></label><label>Удержание клавиши, мс<input name="holdMs" type="number" min="10" max="200" value="30"></label><small>Уменьшайте только после проверки в игре. Фокус проверяется независимо от задержки. В составной команде возврат выполняется один раз в самом конце к ПЛ явно выбранной пати, а не к ПЛ последнего блока. По умолчанию составная команда остаётся на последнем окне.</small></fieldset><label data-gm-scope-field>Область команды <select name="scope"><option value="party">Управляющая пати</option><option value="managed">Все распознанные запущенные окна</option></select><small>«Управляющая пати» — участники пати, выбранной в основном разделе. «Все распознанные окна» — все проверенные клиенты, даже из других пати; это нужно, например, для общего реса. Нераспознанные окна не получают команду. При ошибке определения выбранных окон отправка останавливается.</small></label><fieldset class="gm-choice-grid" data-gm-targets><legend>Кому отправлять</legend>${[
+      )}</select></label><label><input type="checkbox" name="hybridConsent"> Разрешаю глобальные Ctrl/Alt/Shift в гибридном режиме из активного ПЛ. Они могут вызвать меню, смену раскладки или другие действия у ПЛ, даже если он не получатель. Все игровые действия проверены и безопасны.</label><small>Гибрид из ПЛ: только отдельная последовательность, до 8 шагов и 4 получателей выбранной пати. Запуск только из активного окна назначенного ПЛ, без Блокнота; фокус не переключается. Без резерва на другие окна, мыши и повтора. ПЛ-получатель получает полное сочетание SendInput, остальные — адресную клавишу с глобальными модификаторами. Фиксировано: gap 50 мс, hold 30 мс, timeout 100 мс, между командами 300 мс. Alt может открыть меню ПЛ; Alt+Shift/Ctrl+Shift — переключить раскладку. Не касайтесь ввода во время команды.</small><small>Уведомления активности + клавиша: отдельная последовательность, например SHIFT+1 и F2 с новой строки, при необходимости wait 200. Модификаторы передаются оконными сообщениями; обработка Shift/Ctrl/Alt игрой пока не подтверждена. Ручной B-тест не открыл инвентарь в двух клиентах PW. Новые способы тоже требуют ручной проверки. Не для мыши, повтора, F6→F1 и составных команд. Если получатели не определились, отправка останавливается без расширения области. Окна должны быть не свёрнуты, удерживаемые клавиши и мышь отпущены. Нет SetFocus/SetForegroundWindow и автоперехода к активации; сам клиент может сменить фокус. При ошибке дальнейшая отправка прекращается. Кнопка ниже создаёт только три прежних варианта, без уведомлений активности.</small></fieldset><fieldset data-gm-timing><legend>Переключение и завершение</legend><label data-gm-return>После команды<select name="returnTo"><option value="leader">Вернуться к ПЛ выбранной пати</option><option value="last">Остаться на последнем окне</option></select></label><label>Задержка после активации, мс<input name="switchMs" type="number" min="0" max="500" value="30"></label><label>Удержание клавиши, мс<input name="holdMs" type="number" min="10" max="200" value="30"></label><small>Уменьшайте только после проверки в игре. Фокус проверяется независимо от задержки. В составной команде возврат выполняется один раз в самом конце к ПЛ явно выбранной пати, а не к ПЛ последнего блока. По умолчанию составная команда остаётся на последнем окне.</small></fieldset><label data-gm-scope-field>Область команды <select name="scope"><option value="party">Управляющая пати</option><option value="managed">Все распознанные запущенные окна</option></select><small>«Управляющая пати» — участники пати, выбранной в основном разделе. «Все распознанные окна» — все проверенные клиенты, даже из других пати; это нужно, например, для общего реса. Нераспознанные окна не получают команду. При ошибке определения выбранных окон отправка останавливается.</small></label><fieldset class="gm-choice-grid" data-gm-targets><legend>Кому отправлять</legend>${[
       ['all', 'Вся пати'],
       ['leader', 'Только ПЛ'],
       ['others', 'Кроме ПЛ'],
@@ -313,69 +312,11 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
     if (input.type === 'checkbox') input.checked = value === true;
     else input.value = value;
   }
-  form.querySelector('[data-gm-background-variants]').onclick = async () => {
-    const errorBox = document.querySelector('[data-gm-form-error]');
-    try {
-      const draft = Object.fromEntries(new FormData(form));
-      if (!String(draft.name || '').trim()) throw new Error('Введите название теста.');
-      if (draft.action === 'sequence') steps(draft.sequence);
-      draft.charIds = new FormData(form).getAll('charIds');
-      const variants = backgroundVariants(draft, configCommands());
-      await save({ commands: [...configCommands(), ...variants] });
-      c = { ...c, commands: [...c.commands, ...variants] };
-      form.querySelector('[data-gm-background-variants]').disabled = true;
-      errorBox.hidden = false;
-      errorBox.textContent = 'Три варианта сохранены без горячих клавиш. Закройте редактор и запускайте по одному.';
-    } catch (error) {
-      errorBox.hidden = false;
-      errorBox.textContent = error.message || 'Не удалось создать варианты.';
-    }
-  };
-  const configCommands = () => c.commands;
   form.querySelector('[name="compositeConsent"]').checked = row?.resourceAllowed === true;
   form.elements.namedItem('followSequence').value = row?.followSequence ?? 'SHIFT+1';
   form.elements.namedItem('followButton').value = row?.followButton || 'right';
   form.elements.namedItem('followMenuButton').value = row?.followMenuButton || 'left';
-  builder = mountCompositionEditor(form.querySelector('[data-composition-editor]'), c, row, {
-    cursor: async () => (await import('./runtime.js')).recorderCursor(),
-    newPoint: partyId =>
-      new Promise(resolve => {
-        const overlay = openOverlay({ title: 'Новая именованная точка', onClose: resolve });
-        overlay.body.innerHTML = `<label>Название<input class="input" data-new-name maxlength="80"></label><label>Участник управляющей пати<select class="input" data-new-character>${partyMembers(
-          state,
-          partyId
-        )
-          .map(char => `<option value="${esc(char.id)}">${esc(char.nick)}</option>`)
-          .join(
-            ''
-          )}</select></label><p>Переместите нативный маркер в нужное место игры. Сохранение не кликает в игру.</p><p data-new-error role="alert"></p>`;
-        overlay.foot.innerHTML =
-          '<button class="btn primary" data-new-save>Задать точку</button><button class="btn" data-new-cancel>Отмена</button>';
-        overlay.foot.querySelector('[data-new-cancel]').onclick = () => overlay.close();
-        overlay.foot.querySelector('[data-new-save]').onclick = async () => {
-          const button = overlay.foot.querySelector('[data-new-save]');
-          button.disabled = true;
-          const previous = state.settings.gameMacros;
-          try {
-            const runtime = await import('./runtime.js');
-            await runtime.pickPoint(
-              overlay.body.querySelector('[data-new-character]').value,
-              overlay.body.querySelector('[data-new-name]').value,
-              null,
-              partyId
-            );
-            await (await import('../../core/storage.js')).persist();
-            c.points = runtime.config().points;
-            overlay.close();
-          } catch (error) {
-            state.settings.gameMacros = previous;
-            overlay.body.querySelector('[data-new-error]').textContent = error.message;
-          } finally {
-            button.disabled = false;
-          }
-        };
-      })
-  });
+  builder = mountCompositionEditor(form.querySelector('[data-composition-editor]'), c, row);
   form.querySelectorAll('[name="charIds"]').forEach(input => {
     input.checked = !!row?.charIds?.includes(input.value);
   });
@@ -479,22 +420,27 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
   if (unified) {
     const intro = document.createElement('div');
     intro.className = 'gm-editor-intro';
-    intro.innerHTML =
-      '<span>1 · Назовите команду</span><span>2 · Добавьте действия</span><span>3 · Сохраните и проверьте</span>';
+    intro.innerHTML = '<span>1 · Название</span><span>2 · Действия</span><span>3 · Сохранить</span>';
     form.prepend(intro);
     const basics = document.createElement('div');
     basics.className = 'gm-editor-basics';
     intro.after(basics);
     for (const name of ['name', 'hotkey']) basics.append(form.elements.namedItem(name).closest('label'));
     const mode = document.createElement('label');
-    mode.innerHTML = `<span>Режим команд</span><select name="commandInputMode"><option value="standard">Обычный — доставка из настроек блока</option><option value="hybrid-party" ${row?.backgroundMethod === 'hybrid-party' ? 'selected' : ''}>Гибридный — запуск из активного ПЛ пати</option></select><small>Гибрид: один блок, до 8 клавиш/пауз, до 4 получателей выбранной пати, без повторов и мыши. Блокнот не нужен. ПЛ должен оставаться активным. Глобальные модификаторы могут открыть меню ПЛ или сменить раскладку, даже если ПЛ не получатель. Если ПЛ выбран получателем, ему отправляется полное сочетание SendInput. Старые команды сами не переключаются.</small>`;
-    basics.append(mode);
-    basics.append(form.elements.namedItem('hybridConsent').closest('label'));
-
+    mode.innerHTML = `<span>Режим команд</span><select name="commandInputMode"><option value="standard">Обычный — доставка из настроек блока</option><option value="hybrid-party" ${row?.backgroundMethod === 'hybrid-party' ? 'selected' : ''}>Гибридный режим из ПЛ (эксперимент)</option></select><small>Гибрид: один блок, до 8 клавиш/пауз, до 4 получателей выбранной пати, без повторов и мыши. Блокнот не нужен. ПЛ должен оставаться активным. Глобальные модификаторы могут открыть меню ПЛ или сменить раскладку, даже если ПЛ не получатель. Если ПЛ выбран получателем, ему отправляется полное сочетание SendInput. Старые команды сами не переключаются.</small>`;
     const advanced = document.createElement('details');
     advanced.className = 'gm-editor-advanced';
     advanced.innerHTML =
-      '<summary>Дополнительно: задержки, возврат и пати команды</summary><p>Обычно эти настройки менять не нужно. Шаги и получатели настраиваются выше.</p>';
+      '<summary>Дополнительные настройки</summary><p>Обычно менять ничего не нужно. Получатели выбираются в общем списке.</p>';
+    advanced.append(mode);
+    const hybridConsentLabel = form.elements.namedItem('hybridConsent').closest('label');
+    advanced.append(hybridConsentLabel);
+    const refreshHybridConsent = () => {
+      hybridConsentLabel.hidden = mode.querySelector('select').value !== 'hybrid-party';
+    };
+    mode.addEventListener('change', refreshHybridConsent);
+    refreshHybridConsent();
+    if (row?.backgroundMethod === 'hybrid-party') advanced.open = true;
     for (const selector of ['[data-gm-timing]', '[data-gm-launch-field]']) {
       const field = form.querySelector(selector);
       if (field) advanced.append(field);
