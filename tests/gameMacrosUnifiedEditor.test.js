@@ -142,7 +142,7 @@ it('saves and reopens an existing managed key command changed from all to except
   openCommandEditor(config, save, saved);
   expect(document.querySelector('[data-field="target"]').value).toBe('others');
 });
-it('preserves a saved party-leader hybrid mode under advanced settings', async () => {
+it('preserves a saved party-leader hybrid mode in the main mode selector', async () => {
   const source = normalizeGameMacros({
     commands: [
       {
@@ -162,7 +162,7 @@ it('preserves a saved party-leader hybrid mode under advanced settings', async (
   config.commands = [source];
   openCommandEditor(config, save, source);
   const mode = document.querySelector('[name="commandInputMode"]');
-  expect(mode.closest('.gm-editor-advanced')).not.toBeNull();
+  expect(mode.closest('.gm-editor-basics')).not.toBeNull();
   mode.value = 'hybrid-party';
   document.querySelector('[name="hybridConsent"]').checked = true;
   submit();
@@ -179,4 +179,136 @@ it('preserves a saved party-leader hybrid mode under advanced settings', async (
   });
   openCommandEditor(config, save, saved);
   expect(document.querySelector('[name="commandInputMode"]').value).toBe('hybrid-party');
+});
+
+it('saves the assist example with the requested keys and party except the leader', async () => {
+  openCommandEditor(config, save);
+  document.querySelector('[data-preset="assist"]').click();
+  expect(document.querySelector('[name="name"]').value).toBe('Ассист');
+  expect(document.querySelector('[name="hotkey"]').value).toBe('');
+  expect(save).not.toHaveBeenCalled();
+  submit();
+  await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  expect(save.mock.calls[0][0].commands[0]).toMatchObject({
+    name: 'Ассист',
+    action: 'sequence',
+    sequence: 'SHIFT+1\nwait 100\nF2',
+    scope: 'party',
+    target: 'others',
+    delivery: 'foreground',
+    hotkey: ''
+  });
+});
+
+it('does not overwrite a typed command name when applying an example', () => {
+  openCommandEditor(config, save);
+  const name = document.querySelector('[name="name"]');
+  name.value = 'Своя команда';
+  name.dispatchEvent(new Event('input', { bubbles: true }));
+  document.querySelector('[data-preset="buff"]').click();
+  expect(name.value).toBe('Своя команда');
+  expect(save).not.toHaveBeenCalled();
+});
+
+it('offers active and hybrid mode up front and saves a new hybrid party command only with consent', async () => {
+  openCommandEditor(config, save);
+  const form = document.querySelector('[data-gm-form]');
+  const mode = form.elements.namedItem('commandInputMode');
+  expect(mode.closest('.gm-editor-basics')).not.toBeNull();
+  expect([...mode.options].map(o => o.value)).toEqual(['standard', 'hybrid-party']);
+  expect(mode.value).toBe('standard');
+  form.elements.namedItem('name').value = 'Ассист';
+  form.querySelector('[data-add-type="keys"]').click();
+  const key = form.querySelector('[data-step="0"] [data-field="value"]');
+  key.value = 'SHIFT+1';
+  key.dispatchEvent(new Event('input', { bubbles: true }));
+  mode.value = 'hybrid-party';
+  mode.dispatchEvent(new Event('change', { bubbles: true }));
+  expect(form.elements.namedItem('hybridConsent').closest('label').hidden).toBe(false);
+  submit();
+  await vi.waitFor(() => expect(document.querySelector('[data-gm-form-error]').hidden).toBe(false));
+  expect(save).not.toHaveBeenCalled();
+  form.elements.namedItem('hybridConsent').checked = true;
+  submit();
+  await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  expect(save.mock.calls[0][0].commands[0]).toMatchObject({
+    name: 'Ассист',
+    action: 'sequence',
+    delivery: 'background',
+    backgroundMethod: 'hybrid-party',
+    scope: 'party',
+    target: 'all',
+    sequence: 'SHIFT+1',
+    hybridConsent: true
+  });
+});
+
+it('refuses incompatible hybrid plans without saving or executing', async () => {
+  openCommandEditor(config, save);
+  const form = document.querySelector('[data-gm-form]');
+  form.elements.namedItem('name').value = 'Несовместимая';
+  form.querySelector('[data-add-type="screen"]').click();
+  form.elements.namedItem('commandInputMode').value = 'hybrid-party';
+  form.elements.namedItem('hybridConsent').checked = true;
+  submit();
+  await vi.waitFor(() => expect(document.querySelector('[data-gm-form-error]').hidden).toBe(false));
+  expect(save).not.toHaveBeenCalled();
+});
+
+it('preserves existing background transport unless active mode is explicitly selected', async () => {
+  const source = normalizeGameMacros({
+    commands: [
+      {
+        id: 'old',
+        name: 'Старый фон',
+        action: 'sequence',
+        delivery: 'background',
+        backgroundMethod: 'activity-notify',
+        target: 'all',
+        sequence: 'F2'
+      }
+    ]
+  }).commands[0];
+  config.commands = [source];
+  openCommandEditor(config, save, source);
+  const mode = document.querySelector('[name="commandInputMode"]');
+  expect(mode.value).toBe('legacy');
+  mode.value = 'standard';
+  mode.dispatchEvent(new Event('change', { bubbles: true }));
+  submit();
+  await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  expect(save.mock.calls[0][0].commands[0]).toMatchObject({ delivery: 'foreground', sequence: 'F2' });
+});
+
+it('shows a hybrid plan as hybrid in the non-executing review', async () => {
+  openCommandEditor(config, save);
+  const form = document.querySelector('[data-gm-form]');
+  form.elements.namedItem('name').value = 'Тест';
+  form.querySelector('[data-add-type="keys"]').click();
+  const key = form.querySelector('[data-field="value"]');
+  key.value = 'F2';
+  key.dispatchEvent(new Event('input', { bubbles: true }));
+  form.elements.namedItem('commandInputMode').value = 'hybrid-party';
+  form.elements.namedItem('commandInputMode').dispatchEvent(new Event('change', { bubbles: true }));
+  await vi.waitFor(() =>
+    expect(document.querySelector('[data-editor-review]').textContent).toContain('гибридный из активного ПЛ')
+  );
+  expect(save).not.toHaveBeenCalled();
+});
+
+it('rejects a hybrid plan exceeding eight steps and preserves the original data', async () => {
+  openCommandEditor(config, save);
+  const form = document.querySelector('[data-gm-form]');
+  form.elements.namedItem('name').value = 'Длинная';
+  for (let i = 0; i < 9; i++) {
+    form.querySelector('[data-add-type="keys"]').click();
+    const key = form.querySelector(`[data-step="${i}"] [data-field="value"]`);
+    key.value = 'F2';
+    key.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  form.elements.namedItem('commandInputMode').value = 'hybrid-party';
+  form.elements.namedItem('hybridConsent').checked = true;
+  submit();
+  await vi.waitFor(() => expect(document.querySelector('[data-gm-form-error]').textContent).toContain('8'));
+  expect(save).not.toHaveBeenCalled();
 });

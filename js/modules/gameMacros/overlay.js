@@ -89,10 +89,6 @@ async function init() {
       copyButton.disabled = false;
     }
   };
-  document.getElementById('background-journal-open').onclick = () =>
-    invoke('game_macro_navigate', { action: 'background-logs', partyId: null }).catch(() => {
-      document.getElementById('status').textContent = 'Откройте журнал фонового ввода в главном приложении.';
-    });
   let acknowledgedOpen = '';
   let windowSignature = '';
   let recipientRevision = '',

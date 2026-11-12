@@ -73,7 +73,7 @@ export function reviewCommand(command, c, state, path = []) {
       `Группа ${index + 1}: ${block.scope === 'managed' && block.target === 'all' ? 'все распознанные окна (включая другие пати)' : selected.map(char => char.nick || char.id).join(' → ') || 'получатели ещё не определены'}. ${block.parallel ? 'Одновременно с предыдущей группой. ' : ''}Повторений: ${block.repeat ?? 1}. ${block.perWindow ? 'Все шаги в одном окне, затем следующее.' : 'Каждый шаг всем получателям, затем следующий шаг.'}`
     );
     lines.push(
-      `Доставка: ${block.delivery === 'background' ? BACKGROUND_METHODS[block.backgroundMethod || 'post'] || 'неизвестный способ' : 'с активацией окна'}.`
+      `Доставка: ${block.delivery === 'background' ? (block.backgroundMethod === 'hybrid-party' ? 'гибридный из активного ПЛ' : BACKGROUND_METHODS[block.backgroundMethod || 'post'] || 'неизвестный способ') : 'с активацией окна'}.`
     );
     for (const [stepIndex, step] of (block.steps || []).entries()) {
       const field = `block:${index}:step:${stepIndex}`;

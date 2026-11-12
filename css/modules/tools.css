@@ -1800,3 +1800,181 @@
     padding-inline: 14px;
   }
 }
+
+/* Action editor: readable steps, examples and grouped advanced settings. */
+.gm-compose-title {
+  margin-top: 22px;
+  flex-wrap: wrap;
+}
+.gm-compose-title h4 {
+  font-size: 1.05rem;
+}
+[data-composition-editor] > p {
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.gm-compose-block {
+  padding: 18px;
+  background: var(--surface-1);
+  border-color: var(--border-strong);
+}
+.gm-compose-block > header {
+  align-items: center;
+}
+.gm-compose-block > header strong {
+  font-size: 0.95rem;
+}
+.gm-compose-summary {
+  margin: 10px 0;
+  color: var(--text-dim);
+}
+.gm-action-library {
+  padding: 16px;
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+.gm-action-library > strong {
+  color: var(--text);
+  font-size: 0.85rem;
+}
+.gm-quick-templates {
+  width: 100%;
+}
+.gm-quick-templates > summary {
+  cursor: pointer;
+  padding: 8px 0;
+  color: var(--accent);
+  font-weight: 600;
+}
+.gm-quick-templates p {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+.gm-template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  gap: 8px;
+}
+.gm-template-grid button {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  text-align: left;
+  color: var(--text);
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.gm-template-grid button:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.gm-template-grid button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.gm-template-grid small {
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+.gm-compose-workbench .gm-action-row {
+  padding: 12px;
+  border-color: var(--border);
+  background: var(--surface-2);
+}
+.gm-compose-workbench .gm-action-row.is-selected {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 var(--accent);
+}
+.gm-step-number {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-3);
+  color: var(--text);
+}
+.gm-step-editor {
+  margin-top: 12px;
+  border-top: 1px solid var(--border-strong);
+}
+.gm-block-advanced {
+  padding: 0 16px 16px;
+  background: var(--surface-2);
+}
+.gm-block-advanced > summary {
+  padding: 16px 0;
+  color: var(--text);
+}
+.gm-block-advanced > p {
+  margin: 0 0 16px;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+.gm-block-advanced > .gm-compose-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  align-items: start;
+  gap: 14px;
+}
+.gm-block-advanced label {
+  min-width: 0;
+  line-height: 1.5;
+}
+.gm-block-advanced .gm-loop-setting input {
+  width: 76px;
+}
+.gm-block-subset {
+  margin-top: 16px;
+}
+@media (max-width: 640px) {
+  .gm-compose-block,
+  .gm-action-library {
+    padding: 12px;
+  }
+  .gm-step-heading {
+    flex-wrap: wrap;
+  }
+}
+.gm-block-advanced input[type='checkbox'] {
+  width: auto;
+  margin-right: 6px;
+}
+.gm-block-advanced > small {
+  display: block;
+  margin-top: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+/* New commands have one explicit mode; legacy transport controls are retained only for old commands. */
+[data-composition-editor][data-command-mode]:not([data-command-mode='legacy']) [data-gm-legacy-delivery] {
+  display: none !important;
+}
+.gm-command-mode {
+  grid-column: 1 / -1;
+}
+.gm-dialog .gm-editor-basics > .gm-hybrid-consent {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-md);
+  background: var(--warning-soft);
+  line-height: 1.5;
+}
+.gm-dialog .gm-editor-basics > .gm-hybrid-consent[hidden] {
+  display: none !important;
+}
+.gm-hybrid-consent input {
+  flex: 0 0 auto;
+}
+.gm-party-bar {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+}

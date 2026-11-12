@@ -58,6 +58,7 @@ export function mountCompositionEditor(host, c, row) {
       target: 'all',
       charIds: [],
       delivery: 'foreground',
+      backgroundMethod: 'activity-notify',
       steps: []
     };
   }
@@ -193,7 +194,7 @@ export function mountCompositionEditor(host, c, row) {
     host.innerHTML = `<div class="gm-compose-title"><h4>Что выполнить</h4><button type="button" class="btn ghost small" data-undo ${undo.length ? '' : 'disabled'}>↶ Отменить изменение</button></div><p>Добавьте действия и расположите их в нужном порядке. Команда выполняется на выбранных запущенных персонажах.</p>${blocks
       .map(
         (block, b) =>
-          `<section class="gm-compose-block" data-block="${b}"><header><button type="button" class="btn ghost small" data-block-collapse aria-expanded="${!collapsed.has(b)}" title="Свернуть или раскрыть блок">${collapsed.has(b) ? '▸' : '▾'}</button><label>Название ${input('name', block.name)}</label><button class="btn ghost" type="button" data-block-up ${b === 0 ? 'disabled' : ''}>↑</button><button class="btn danger" type="button" data-block-delete>Удалить блок</button></header><p class="gm-compose-summary">${esc(block.name)} · ${block.steps.length} действий × ${block.repeat ?? 1} · ${block.scope === 'managed' ? 'Все распознанные окна' : esc(state.parties.find(p => p.id === (block.partyId || c.partyId))?.name || 'Текущая пати')} · ${block.delivery === 'background' ? 'В фоне' : 'С активацией'}</p><div ${collapsed.has(b) ? 'hidden' : ''}><label><input type="checkbox" data-field="parallel" ${block.parallel ? 'checked' : ''} ${b === 0 ? 'disabled' : ''}> Одновременно с предыдущим</label><div class="gm-compose-fields"><label>Область ${select(
+          `<section class="gm-compose-block" data-block="${b}"><header><button type="button" class="btn ghost small" data-block-collapse aria-expanded="${!collapsed.has(b)}" title="Свернуть или раскрыть блок">${collapsed.has(b) ? '▸' : '▾'}</button><label>Название ${input('name', block.name)}</label><button class="btn ghost" type="button" data-block-up ${b === 0 ? 'disabled' : ''}>↑</button><button class="btn danger" type="button" data-block-delete>Удалить блок</button></header><p class="gm-compose-summary">${blocks.length > 1 ? `${esc(block.name)} · ` : ''}${block.steps.length} действий × ${block.repeat ?? 1} · ${block.scope === 'managed' ? 'Все распознанные окна' : esc(state.parties.find(p => p.id === (block.partyId || c.partyId))?.name || 'Текущая пати')}<span data-gm-legacy-delivery> · ${block.delivery === 'background' ? 'В фоне' : 'С активацией'}</span></p><div ${collapsed.has(b) ? 'hidden' : ''}><label><input type="checkbox" data-field="parallel" ${block.parallel ? 'checked' : ''} ${b === 0 ? 'disabled' : ''}> Одновременно с предыдущим</label><div class="gm-compose-fields"><label>Область ${select(
             'scope',
             [
               ['party', 'Пати'],
@@ -220,13 +221,23 @@ export function mountCompositionEditor(host, c, row) {
             block.delivery === 'background'
               ? `<label>Способ для клавиш ${select(
                   'backgroundMethod',
-                  Object.entries(BACKGROUND_METHODS),
+                  [
+                    ['activity-notify', BACKGROUND_METHODS['activity-notify']],
+                    ...((block.backgroundMethod || 'post') !== 'activity-notify'
+                      ? [
+                          [
+                            block.backgroundMethod || 'post',
+                            `${BACKGROUND_METHODS[block.backgroundMethod || 'post'] || block.backgroundMethod} · сохранённый прежний способ`
+                          ]
+                        ]
+                      : [])
+                  ],
                   block.backgroundMethod || 'post'
-                )}</label><small>Уведомления активности: в группе только клавиши и паузы, без циклов и параллельности. Вся цепочка выполняется в каждом выбранном окне. Для этой доставки паузы — 50–3000 мс. Клики и непрерывный повтор используют PostMessage. Другие способы здесь проверяются только для клавиш; без перебора и переключения.</small>`
+                )}</label><small class="gm-block-background-note" data-gm-legacy-delivery>${(block.backgroundMethod || 'post') === 'activity-notify' ? 'Метод E: только клавиши и паузы, без циклов и параллельности. Паузы — 50–3000 мс. В игре сочетания с Shift могут выполняться без модификатора.' : 'Сохранён прежний способ доставки; его работа в игре не гарантируется.'} Сначала проверьте безопасное действие. Автоматического переключения на другой способ нет.</small>`
               : ''
           }</div>${
             block.target === 'subset'
-              ? `<fieldset><legend>Участники</legend><label>Быстро отметить класс<select data-recipient-class><option value="">Выберите класс</option>${[
+              ? `<fieldset class="gm-block-subset"><legend>Участники</legend><label>Быстро отметить класс<select data-recipient-class><option value="">Выберите класс</option>${[
                   ...new Set(
                     recipients(block)
                       .map(char => char.class)
@@ -245,7 +256,7 @@ export function mountCompositionEditor(host, c, row) {
                   )
                   .join('')}</fieldset>`
               : ''
-          }${block.scope === 'managed' && ['leader', 'others'].includes(block.target) ? '<small>ПЛ берётся из настроек выбранной пати; остальные распознанные окна остаются вне ПЛ.</small>' : ''}<label><input type="checkbox" data-field="perWindow" ${block.perWindow ? 'checked' : ''} ${block.delivery === 'background' && isActivityMethod(block.backgroundMethod) ? 'disabled' : ''}> Выполнить все шаги в одном окне, затем перейти к следующему</label><label class="gm-loop-setting">Повторить блок ${input('repeat', block.repeat ?? 1, 'number')} раз <small>1–100; Стоп прерывает цикл. Все повторы проверяются до запуска.</small></label><div class="gm-compose-workbench"><aside class="gm-action-library" aria-label="Добавить действие"><strong>Добавить действие</strong>${[
+          }${block.scope === 'managed' && ['leader', 'others'].includes(block.target) ? '<small class="gm-block-leader-note">ПЛ берётся из настроек выбранной пати; остальные распознанные окна остаются вне ПЛ.</small>' : ''}<label><input type="checkbox" data-field="perWindow" ${block.perWindow ? 'checked' : ''} ${block.delivery === 'background' && isActivityMethod(block.backgroundMethod) ? 'disabled' : ''}> Выполнить все шаги в одном окне, затем перейти к следующему</label><label class="gm-loop-setting">Повторить блок ${input('repeat', block.repeat ?? 1, 'number')} раз <small>1–100; Стоп прерывает цикл. Все повторы проверяются до запуска.</small></label><div class="gm-compose-workbench"><aside class="gm-action-library" aria-label="Добавить действие"><strong>Добавить действие</strong>${[
             ['keys', '⌨', 'Клавиша'],
             ['wait', '◷', 'Задержка'],
             ['screen', '↗', 'Клик']
@@ -256,7 +267,7 @@ export function mountCompositionEditor(host, c, row) {
             )
             .join(
               ''
-            )}<details class="gm-more-library"><summary>Другие действия и примеры</summary><details class="gm-extra-actions"><summary>Окна, пати и повтор</summary>${[
+            )}<details class="gm-template-library gm-quick-templates"><summary>Готовые примеры для пати</summary><p>Добавляют группу действий, не запускают команду и не назначают горячую клавишу. Проверьте привязки в игре и назначьте ПЛ.</p><div class="gm-template-grid"><button type="button" data-preset="assist"><b>Ассист</b><small>Shift+1 → F2 · кроме ПЛ</small></button><button type="button" data-preset="buff"><b>Баф</b><small>9 · кроме ПЛ</small></button><button type="button" data-preset="debuff"><b>Раздебаф</b><small>1 · кроме ПЛ</small></button><button type="button" data-preset="assist-buff"><b>Ассист + баф</b><small>Shift+1 → F2 → 9 · кроме ПЛ</small></button><button type="button" data-preset="buff-debuff"><b>Баф + раздебаф</b><small>9 → 1 · кроме ПЛ</small></button><button type="button" data-preset="party-f1"><b>Общая клавиша</b><small>F1 · всей пати</small></button></div></details><details class="gm-more-library"><summary>Другие действия</summary><details class="gm-extra-actions"><summary>Окна, пати и повтор</summary>${[
             ['focus', '▣', 'Окно'],
             ['launch', '▶', 'Пати'],
             ['pause', 'Ⅱ', 'Ожидание'],
@@ -304,8 +315,16 @@ export function mountCompositionEditor(host, c, row) {
         'backgroundMethod'
       ]) {
         const element = section.querySelector(`[data-field="${field}"]`);
-        if (element) body.append(element.closest('label'));
+        if (element) {
+          const label = element.closest('label');
+          if (['delivery', 'backgroundMethod'].includes(field)) label.dataset.gmLegacyDelivery = '';
+          body.append(label);
+        }
       }
+      for (const note of section.querySelectorAll('.gm-block-background-note, .gm-block-leader-note'))
+        advanced.append(note);
+      const subset = section.querySelector('.gm-block-subset');
+      if (subset) advanced.append(subset);
       advanced.open = advancedExpansion.has(b)
         ? advancedExpansion.get(b)
         : !!(
@@ -321,8 +340,9 @@ export function mountCompositionEditor(host, c, row) {
       });
       if (blocks.length === 1) {
         const header = section.querySelector(':scope > header');
-        body.append(header.querySelector('[data-field="name"]').closest('label'));
-        body.append(header.querySelector('[data-block-up]'), header.querySelector('[data-block-delete]'));
+        header.querySelector('[data-field="name"]').closest('label').remove();
+        header.querySelector('[data-block-up]').remove();
+        header.querySelector('[data-block-delete]').remove();
         const title = document.createElement('strong');
         title.textContent = 'Действия команды';
         header.append(title);
@@ -429,6 +449,68 @@ export function mountCompositionEditor(host, c, row) {
     }
     if (button.hasAttribute('data-step-select')) {
       selected.set(b, i);
+      draw();
+      return;
+    }
+    if (button.dataset.preset) {
+      const templates = {
+        assist: {
+          name: 'Ассист',
+          steps: [
+            { type: 'keys', value: 'SHIFT+1' },
+            { type: 'wait', ms: 100 },
+            { type: 'keys', value: 'F2' }
+          ],
+          target: 'others'
+        },
+        buff: { name: 'Баф', steps: [{ type: 'keys', value: '9' }], target: 'others' },
+        debuff: { name: 'Раздебаф', steps: [{ type: 'keys', value: '1' }], target: 'others' },
+        'assist-buff': {
+          name: 'Ассист + баф',
+          steps: [
+            { type: 'keys', value: 'SHIFT+1' },
+            { type: 'wait', ms: 100 },
+            { type: 'keys', value: 'F2' },
+            { type: 'wait', ms: 200 },
+            { type: 'keys', value: '9' }
+          ],
+          target: 'others'
+        },
+        'buff-debuff': {
+          name: 'Баф + раздебаф',
+          steps: [
+            { type: 'keys', value: '9' },
+            { type: 'wait', ms: 200 },
+            { type: 'keys', value: '1' }
+          ],
+          target: 'others'
+        },
+        'party-f1': { name: 'Общая клавиша', steps: [{ type: 'keys', value: 'F1' }], target: 'all' }
+      };
+      const template = templates[button.dataset.preset];
+      if (!template) return;
+      const empty = blocks.length === 1 && !blocks[0].steps.length;
+      if (
+        !empty &&
+        (blocks.length >= 8 ||
+          blocks.reduce((count, block) => count + block.steps.length, 0) + template.steps.length > 128)
+      ) {
+        host.querySelector('[data-compose-error]').textContent = 'Максимум 8 групп и 128 действий в команде.';
+        return;
+      }
+      remember();
+      const added = {
+        ...newBlock(blocks.length + 1),
+        ...structuredClone(template),
+        scope: 'party',
+        partyId: '',
+        perWindow: true
+      };
+      if (empty) blocks = [added];
+      else blocks.push(added);
+      selected.clear();
+      if (empty)
+        host.dispatchEvent(new CustomEvent('gm-template-picked', { bubbles: true, detail: { name: template.name } }));
       draw();
       return;
     }

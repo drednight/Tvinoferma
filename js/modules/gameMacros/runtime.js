@@ -415,6 +415,30 @@ export async function windowTargets(
 export async function commandTargets(command, selected = config(), snapshotRows = null) {
   const excluded = new Set(selected.excludedCommandCharacters || []);
   const rows = snapshotRows || (await listMacroWindows());
+  if (command.delivery === 'background' && command.backgroundMethod === 'hybrid-party' && command.scope !== 'managed') {
+    const members = partyMembers(state, selected.partyId);
+    const leader = selected.leaders[selected.partyId];
+    if (!members.some(char => char.id === leader)) throw new Error('В настройках выбранной пати назначьте ПЛ.');
+    if (!['all', 'others', 'leader', 'subset'].includes(command.target)) throw new Error('Укажите получателей явно.');
+    if (
+      command.target === 'subset' &&
+      (!command.charIds?.length || command.charIds.some(id => !members.some(char => char.id === id)))
+    )
+      throw new Error('Выберите действующих участников пати.');
+    const ids = members
+      .filter(char => !excluded.has(char.id))
+      .filter(
+        char =>
+          command.target === 'all' ||
+          (command.target === 'others' && char.id !== leader) ||
+          (command.target === 'leader' && char.id === leader) ||
+          (command.target === 'subset' && command.charIds.includes(char.id))
+      )
+      .filter(char => rows.some(row => row.known && row.charId === char.id))
+      .map(char => char.id);
+    if (!ids.length) throw new Error('Нет выбранных распознанных получателей выбранной пати.');
+    return resolveTargets(state, selected, { ...command, target: 'subset', charIds: ids }, rows, excluded);
+  }
   if (command.scope === 'managed') {
     const recognized = rows.filter(row => row.known && row.charId && !excluded.has(row.charId));
     if (!recognized.length) throw new Error('Нет выбранных распознанных игровых окон.');

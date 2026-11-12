@@ -245,3 +245,69 @@ it('opens the full keyboard for a composition key step and persists the selected
   picker.querySelector('[data-apply]').click();
   expect(editor.read()[0].steps[0].value).toBe('NUMPAD7');
 });
+
+it.each([
+  [
+    'assist',
+    'others',
+    [
+      { type: 'keys', value: 'SHIFT+1' },
+      { type: 'wait', ms: 100 },
+      { type: 'keys', value: 'F2' }
+    ]
+  ],
+  ['buff', 'others', [{ type: 'keys', value: '9' }]],
+  ['debuff', 'others', [{ type: 'keys', value: '1' }]],
+  [
+    'assist-buff',
+    'others',
+    [
+      { type: 'keys', value: 'SHIFT+1' },
+      { type: 'wait', ms: 100 },
+      { type: 'keys', value: 'F2' },
+      { type: 'wait', ms: 200 },
+      { type: 'keys', value: '9' }
+    ]
+  ],
+  [
+    'buff-debuff',
+    'others',
+    [
+      { type: 'keys', value: '9' },
+      { type: 'wait', ms: 200 },
+      { type: 'keys', value: '1' }
+    ]
+  ],
+  ['party-f1', 'all', [{ type: 'keys', value: 'F1' }]]
+])('adds the %s example as an editable party plan without executing it', (preset, target, steps) => {
+  document.body.innerHTML = '<div id="editor"></div>';
+  const host = document.getElementById('editor');
+  const editor = mountCompositionEditor(host, { partyId: 'p', commands: [], points: [], profiles: [] }, null);
+  host.querySelector(`[data-preset="${preset}"]`).click();
+  expect(editor.read()).toHaveLength(1);
+  expect(editor.read()[0]).toMatchObject({ scope: 'party', partyId: '', target, delivery: 'foreground', steps });
+  expect(host.querySelector('.gm-block-advanced [data-field="name"]')).toBeNull();
+  expect(host.querySelector('.gm-block-advanced [data-field="target"]').value).toBe(target);
+  editor.dispose();
+});
+
+it('offers the tested activity-notify method for a new group while retaining an existing legacy method', () => {
+  document.body.innerHTML = '<div id="editor"></div>';
+  const host = document.getElementById('editor');
+  const config = { partyId: 'p', commands: [], points: [], profiles: [] };
+  let editor = mountCompositionEditor(host, config, null);
+  const delivery = host.querySelector('[data-field="delivery"]');
+  delivery.value = 'background';
+  delivery.dispatchEvent(new Event('change', { bubbles: true }));
+  let methods = host.querySelector('[data-field="backgroundMethod"]');
+  expect([...methods.options].map(o => o.value)).toEqual(['activity-notify']);
+  editor.dispose();
+  editor = mountCompositionEditor(host, config, {
+    blocks: [{ delivery: 'background', backgroundMethod: 'post', steps: [{ type: 'keys', value: 'F1' }] }]
+  });
+  methods = host.querySelector('[data-field="backgroundMethod"]');
+  expect(methods.value).toBe('post');
+  expect(methods.selectedOptions[0].textContent).toContain('сохранённый прежний способ');
+  expect(editor.read()[0].backgroundMethod).toBe('post');
+  editor.dispose();
+});

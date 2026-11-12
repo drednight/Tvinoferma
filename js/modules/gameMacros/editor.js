@@ -193,7 +193,6 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
             blocks.length !== 1 ||
             block.parallel ||
             block.repeat !== 1 ||
-            block.scope !== 'party' ||
             block.steps.some(s => !['keys', 'wait'].includes(s.type))
           )
             throw new Error('Гибрид из ПЛ: нужен один блок выбранной пати, только клавиши и паузы, без повторов.');
@@ -203,7 +202,7 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
             backgroundMethod: 'hybrid-party',
             scope: 'party',
             target: block.target,
-            partyId: block.partyId || value.partyId,
+            partyId: block.scope === 'party' ? block.partyId : '',
             charIds: block.charIds,
             sequence: block.steps.map(s => (s.type === 'wait' ? `wait ${s.ms}` : s.value)).join('\n')
           });
@@ -252,9 +251,10 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
         value.resourceAllowed =
           value.action === 'composite' ? data.has('compositeConsent') : data.has('resourceAllowed');
         if (value.action === 'composite') {
-          value.blocks = builder
-            .read()
-            .map(block => (block.backgroundMethod === 'hybrid-party' ? { ...block, backgroundMethod: 'post' } : block));
+          value.blocks = builder.read().map(block => {
+            const result = block.backgroundMethod === 'hybrid-party' ? { ...block, backgroundMethod: 'post' } : block;
+            return data.get('commandInputMode') === 'standard' ? { ...result, delivery: 'foreground' } : result;
+          });
           value.target = 'all';
           value.charIds = [];
         }
@@ -317,6 +317,13 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
   form.elements.namedItem('followButton').value = row?.followButton || 'right';
   form.elements.namedItem('followMenuButton').value = row?.followMenuButton || 'left';
   builder = mountCompositionEditor(form.querySelector('[data-composition-editor]'), c, row);
+  form.addEventListener('gm-template-picked', event => {
+    const name = form.elements.namedItem('name');
+    if (!row && !name.value.trim()) {
+      name.value = event.detail.name;
+      name.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  });
   form.querySelectorAll('[name="charIds"]').forEach(input => {
     input.checked = !!row?.charIds?.includes(input.value);
   });
@@ -427,20 +434,25 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
     intro.after(basics);
     for (const name of ['name', 'hotkey']) basics.append(form.elements.namedItem(name).closest('label'));
     const mode = document.createElement('label');
-    mode.innerHTML = `<span>Режим команд</span><select name="commandInputMode"><option value="standard">Обычный — доставка из настроек блока</option><option value="hybrid-party" ${row?.backgroundMethod === 'hybrid-party' ? 'selected' : ''}>Гибридный режим из ПЛ (эксперимент)</option></select><small>Гибрид: один блок, до 8 клавиш/пауз, до 4 получателей выбранной пати, без повторов и мыши. Блокнот не нужен. ПЛ должен оставаться активным. Глобальные модификаторы могут открыть меню ПЛ или сменить раскладку, даже если ПЛ не получатель. Если ПЛ выбран получателем, ему отправляется полное сочетание SendInput. Старые команды сами не переключаются.</small>`;
+    mode.className = 'gm-command-mode';
+    const legacyBackground =
+      row?.backgroundMethod !== 'hybrid-party' && row?.blocks?.some(block => block.delivery === 'background');
+    mode.innerHTML = `<span>Режим команды</span><select name="commandInputMode"><option value="standard">Активный — с переключением окон</option><option value="hybrid-party" ${row?.backgroundMethod === 'hybrid-party' ? 'selected' : ''}>Фоновый (гибридный) — из активного ПЛ</option>${legacyBackground ? '<option value="legacy" selected>Прежняя фоновая доставка (сохранённая команда)</option>' : ''}</select><small>Активный режим переключает окна. Гибридный не переключает окна, но требует активного ПЛ выбранной пати, выключенного повтора и явного согласия ниже. Только один блок клавиш и пауз, до 8 шагов и 1–4 получателей. Из общего выбора используются только участники выбранной пати; ограничения группы сохраняются.</small>`;
+    basics.append(mode);
+    const hybridConsentLabel = form.elements.namedItem('hybridConsent').closest('label');
+    hybridConsentLabel.classList.add('gm-hybrid-consent');
+    basics.append(hybridConsentLabel);
+    const refreshHybridConsent = () => {
+      const selectedMode = mode.querySelector('select').value;
+      hybridConsentLabel.hidden = selectedMode !== 'hybrid-party';
+      form.querySelector('[data-composition-editor]').dataset.commandMode = selectedMode;
+    };
+    mode.addEventListener('change', refreshHybridConsent);
+    refreshHybridConsent();
     const advanced = document.createElement('details');
     advanced.className = 'gm-editor-advanced';
     advanced.innerHTML =
       '<summary>Дополнительные настройки</summary><p>Обычно менять ничего не нужно. Получатели выбираются в общем списке.</p>';
-    advanced.append(mode);
-    const hybridConsentLabel = form.elements.namedItem('hybridConsent').closest('label');
-    advanced.append(hybridConsentLabel);
-    const refreshHybridConsent = () => {
-      hybridConsentLabel.hidden = mode.querySelector('select').value !== 'hybrid-party';
-    };
-    mode.addEventListener('change', refreshHybridConsent);
-    refreshHybridConsent();
-    if (row?.backgroundMethod === 'hybrid-party') advanced.open = true;
     for (const selector of ['[data-gm-timing]', '[data-gm-launch-field]']) {
       const field = form.querySelector(selector);
       if (field) advanced.append(field);
@@ -504,6 +516,7 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
       builder.restoreBlocks(restore.blocks);
       banner.remove();
       sync();
+      form.querySelector('[name="commandInputMode"]')?.dispatchEvent(new Event('change', { bubbles: true }));
       refreshChecks();
       captureDraft();
     };
@@ -542,7 +555,37 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
       delivery: values.action === 'composite' ? 'foreground' : values.delivery,
       needsConfiguration: false
     };
+    const hybrid = values.commandInputMode === 'hybrid-party';
+    const blocks = draft.blocks;
+    if (hybrid && blocks.length === 1) {
+      const block = blocks[0];
+      Object.assign(draft, {
+        action: 'sequence',
+        scope: 'party',
+        partyId: block.scope === 'party' ? block.partyId : '',
+        target: block.target,
+        charIds: block.charIds,
+        delivery: 'background',
+        backgroundMethod: 'hybrid-party',
+        hybridConsent: form.elements.namedItem('hybridConsent').checked,
+        sequence: block.steps.map(step => (step.type === 'wait' ? `wait ${step.ms}` : step.value || '')).join('\n')
+      });
+    } else if (values.commandInputMode === 'standard' && draft.action === 'composite') {
+      draft.blocks = blocks.map(block => ({ ...block, delivery: 'foreground' }));
+    }
     const report = reviewCommand(draft, c, state);
+    if (
+      hybrid &&
+      (blocks.length !== 1 ||
+        blocks[0].parallel ||
+        blocks[0].repeat !== 1 ||
+        blocks[0].steps.some(step => !['keys', 'wait'].includes(step.type)))
+    )
+      report.issues.push({
+        severity: 'error',
+        field: 'blocks',
+        message: 'Гибрид: один блок клавиш и пауз, без повторов и параллельности.'
+      });
     checks.querySelector('[data-editor-review]').innerHTML = reviewHtml(report);
     for (const node of form.querySelectorAll('[data-field-check]')) node.remove();
     for (const node of form.querySelectorAll('[aria-invalid]')) node.removeAttribute('aria-invalid');

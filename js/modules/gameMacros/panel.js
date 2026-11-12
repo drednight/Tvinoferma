@@ -1,20 +1,15 @@
 import { selectableRecipients, leaderChoices, leaderSuggestion } from './recipients.js';
 import { openModifierBatch } from './modifierBatch.js';
 import { openModifierExperiments } from './modifierExperiments.js';
-import { openInputComparison } from './inputComparison.js';
 import { openMultiInputTrial } from './multiInputTrial.js';
-import { runInputComparison, runMultiInputTrial, runModifierExperiment, runModifierBatch } from './runtime.js';
-import { openBackgroundJournal } from './backgroundJournal.js';
-import { openMirrorObservation } from './mirrorObservation.js';
-import { openReceiverTools } from './receiverTools.js';
-import { openTrialWizard, openTrialComparison, outcomeHtml } from './trialWizard.js';
+import { runMultiInputTrial, runModifierExperiment, runModifierBatch } from './runtime.js';
+import { outcomeHtml } from './trialWizard.js';
 import { summarizeExecution } from './trialEvidence.js';
 import { openCommandReview, openCommandTransfer, openExecutionDiagnostics } from './commandTools.js';
 import { deleteCommandPlan, restoreDeletedCommand } from './transfer.js';
 import { LAB_VERDICTS, labVerdict, recordLabVerdict } from './labResults.js';
 import { commandFingerprint } from './fingerprint.js';
 import { reviewCommand } from './review.js';
-import { openBackgroundLab } from './backgroundLab.js';
 import { updateRepeatButton } from './repeatButton.js';
 import { copyJournal } from './journal.js';
 import { state } from '../../core/state.js';
@@ -26,8 +21,6 @@ import { commandLabels, openCommandEditor } from './editor.js';
 import {
   config,
   getExecutionHistory,
-  runBackgroundTrial,
-  controlReceiver,
   clearLogs,
   diagnoseBackground,
   configure,
@@ -135,7 +128,12 @@ export function mountGameMacros(host) {
       : ''
   }</article></div>
   <details class="gm-advanced-tools" data-gm-details="advanced"><summary><span><b>Настройки и диагностика</b><small>Повтор ввода, точки, журнал и дополнительные проверки</small></span></summary><div class="gm-advanced-content">
-  <details class="gm-party-settings" data-gm-details="party"><summary>Пати и ПЛ для специальных действий</summary><p class="muted">Нужны для запуска пати, перехода к ПЛ и старых команд с выбором пати.</p><div class="gm-control-bar gm-party-bar"><label class="gm-field">Пати<select data-gm-party><option value="">Выберите пати</option>${state.parties.map(p => option(p.id, p.name, c.partyId)).join('')}</select></label></div></details>
+  <details class="gm-party-settings" data-gm-details="party"><summary>Пати-действия и гибридный режим</summary><p class="muted">Выберите управляющую пати и назначьте её ПЛ в приложении. Это не меняет лидера в игре.</p><div class="gm-control-bar gm-party-bar"><label class="gm-field">Пати<select data-gm-party><option value="">Выберите пати</option>${state.parties.map(p => option(p.id, p.name, c.partyId)).join('')}</select></label><label class="gm-field">Назначенный ПЛ<select data-gm-leader><option value="">Не назначен</option>${partyMembers(
+    state,
+    c.partyId
+  )
+    .map(char => option(char.id, char.nick, c.leaders[c.partyId]))
+    .join('')}</select></label></div></details>
   <div class="gm-repeat-toolbar"><button class="btn ghost" data-gm-reconnect title="Заново зарегистрировать сочетания и подключить включённые режимы повтора; настройки и данные не сбрасываются">↻ Переподключить ввод</button><button class="btn ghost" data-gm-diagnostics>◎ Проверить окна</button><button class="btn ghost" data-gm-background-probe>◎ Диагностика фона (без клавиш)</button><button class="btn ghost" data-gm-recognize>Распознать пати / порядок</button></div><details class="gm-repeat-settings" data-gm-details="repeat"><summary>Настройки повтора клавиатуры и мыши</summary><fieldset><legend>Повтор клавиатуры и мыши</legend><p>Общий источник для обоих режимов и модификаторы маршрутизации мыши. Кнопки включения находятся выше.</p><div class="gm-repeat-settings-grid"><label class="gm-field">Способ клавиатурного повтора<select data-gm-keyboard-method><option value="post" ${c.mirrorKeyboardMethod === 'post' ? 'selected' : ''}>PostMessage — обычный</option><option value="activity-notify" ${c.mirrorKeyboardMethod === 'activity-notify' ? 'selected' : ''}>Только activity-notify — эксперимент</option><option value="combined" ${c.mirrorKeyboardMethod === 'combined' ? 'selected' : ''}>PostMessage + activity-notify — эксперимент</option></select><small>Только повтор, не команды и не мышь. В совмещённом режиме две отправки могут вызвать двойное действие. Чат автоматически не определяется. Сначала проверяйте безопасные действия на одном твине.</small></label><label class="gm-field"><input type="checkbox" data-gm-hold-only ${c.mirrorHoldOnly ? 'checked' : ''}> Удержание без автоповтора клавиш<small>При удержании: один DOWN и один UP. Сочетания сохраняются; автоповторные DOWN не отправляются. Игра может не распознать удержание через оконные сообщения.</small></label><label class="gm-field">Источник только клавиатуры<select data-gm-keyboard-source>${[
     ['shared', 'Как общий источник'],
     ['any', 'Любое распознанное игровое окно'],
@@ -223,21 +221,8 @@ export function mountGameMacros(host) {
     .join(
       ''
     )}</select></label><button class="btn primary">⊕ Задать координаты</button></form><p class="muted">Размер окна и DPI определяются автоматически. Для другого размера окна создайте вариант точки; после перемещения элементов интерфейса задайте точку заново.</p><div class="gm-points-workbench"><nav class="gm-point-list" aria-label="Сохранённые координатные точки">${c.points.map(p => `<button class="gm-point-choice" data-gm-point="${esc(p.id)}"><b>${esc(p.name)}</b><small>${p.width} × ${p.height}</small></button>`).join('') || '<p>Нет сохранённых точек.</p>'}</nav><article class="gm-point-detail" data-gm-point-detail></article></div></details>
-  <details class="gm-background-section" data-gm-details="background"><summary>Проверки фонового ввода</summary><div class="gm-journal-actions"><button class="btn primary" data-gm-input-comparison>Сравнение A–E: один клиент…</button><button class="btn primary" data-gm-multi-trial>Клавиши и сочетания E · 1–4 окна…</button><button type="button" class="btn primary" data-gm-modifier-batch>Пакет Ctrl / Shift / Alt · 1–4 клиента…</button><button type="button" class="btn primary" data-gm-modifier-experiments>Эксперименты Shift · один клиент…</button><button class="btn" data-gm-background-journal>Фоновый журнал…</button></div><p>Начните с одиночного опыта и сохраните наблюдение игры. Успешная отправка Windows не подтверждает действие игры. Методы не перебираются автоматически.</p><details data-gm-legacy-checks data-gm-details="legacy"><summary>Расширенные и прежние проверки</summary><p class="muted">Резервные инструменты диагностики. Для обычной проверки используйте мастер A–E выше.</p><div class="gm-journal-actions"><button class="btn" data-gm-trial-wizard>Прежний мастер одиночной проверки</button><button class="btn" data-gm-receiver>Окно-приёмник Windows</button><button class="btn" data-gm-mirror-observation>Наблюдение клавиатурного повтора</button><button class="btn" data-gm-trial-table>Прежняя таблица результатов</button><button type="button" class="btn ghost" data-gm-background-lab>Подготовить прежние 5 вариантов</button></div></details></details>
+  <details class="gm-background-section" data-gm-details="background"><summary>Проверки фонового ввода</summary><p>Метод E и гибридный режим требуют ручной проверки в игре. Shift может обрабатываться неверно; начните с безопасного действия.</p><div class="gm-journal-actions"><button class="btn" data-gm-multi-trial>Проверить клавиши · метод E…</button><button type="button" class="btn" data-gm-modifier-batch>Проверить Ctrl / Shift / Alt…</button><button type="button" class="btn" data-gm-modifier-experiments>Проверить Shift · один клиент…</button></div></details>
   <details class="gm-latest-run" data-gm-details="latest"><summary>Результат последнего запуска</summary><div data-gm-outcome></div></details><footer class="gm-bottom-actions"><button class="btn" data-gm-logs>≡ Журнал сеанса</button><button class="btn ghost" data-gm-traces>Диагностика по запускам</button><button class="btn ghost" data-gm-transfer>Импорт / экспорт</button><button class="btn ghost" data-gm-overlay-settings>⚙ Настройки оверлея</button></footer></div></details></section>`;
-  host.querySelector('[data-gm-trial-wizard]').onclick = () =>
-    openTrialWizard({
-      getConfig: config,
-      state,
-      diagnose: diagnoseBackground,
-      runTrial: runBackgroundTrial,
-      save,
-      stop
-    });
-  host.querySelector('[data-gm-mirror-observation]').onclick = () =>
-    openMirrorObservation({ getConfig: config, state, save });
-  host.querySelector('[data-gm-receiver]').onclick = () => openReceiverTools(controlReceiver);
-  host.querySelector('[data-gm-trial-table]').onclick = () => openTrialComparison(config(), state);
   host.querySelector('[data-gm-transfer]').onclick = () => openCommandTransfer(config, save);
   host.querySelector('[data-gm-undo-delete]')?.addEventListener(
     'click',
@@ -265,16 +250,12 @@ export function mountGameMacros(host) {
   host.querySelectorAll('details[data-gm-details]').forEach(node => {
     node.open = openDetails.has(node.dataset.gmDetails);
   });
-  host.querySelector('[data-gm-input-comparison]').onclick = () =>
-    openInputComparison({ state, run: runInputComparison, stop });
   host.querySelector('[data-gm-multi-trial]').onclick = () =>
     openMultiInputTrial({ state, run: runMultiInputTrial, stop });
   host.querySelector('[data-gm-modifier-batch]').onclick = () =>
     openModifierBatch({ state, run: runModifierBatch, stop });
   host.querySelector('[data-gm-modifier-experiments]').onclick = () =>
     openModifierExperiments({ state, run: runModifierExperiment, stop });
-  host.querySelector('[data-gm-background-journal]').onclick = openBackgroundJournal;
-  host.querySelector('[data-gm-background-lab]').onclick = () => openBackgroundLab(config(), save);
   host.querySelector('[data-gm-recipients]').onclick = safe(async () => {
     const { listMacroWindows } = await import('./runtime.js');
     const rows = await listMacroWindows();
@@ -425,6 +406,16 @@ export function mountGameMacros(host) {
     });
   });
   host.querySelector('[data-gm-party]').onchange = safe(e => save({ partyId: e.target.value }));
+  host.querySelector('[data-gm-leader]').onchange = safe(e => {
+    const leaderId = e.target.value;
+    const current = config();
+    if (!current.partyId || (leaderId && !partyMembers(state, current.partyId).some(char => char.id === leaderId)))
+      throw new Error('Сначала выберите пати и её участника.');
+    const leaders = { ...current.leaders };
+    if (leaderId) leaders[current.partyId] = leaderId;
+    else delete leaders[current.partyId];
+    return save({ leaders });
+  });
   host.querySelector('[data-gm-active-modifier]').onchange = safe(event =>
     save({ mirrorActiveModifier: event.target.value })
   );

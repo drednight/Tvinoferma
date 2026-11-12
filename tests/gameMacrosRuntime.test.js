@@ -1614,3 +1614,74 @@ it('does not require an offline character explicitly excluded from a legacy part
     10
   ]);
 });
+
+describe('hybrid recipients use the running selection within one party', () => {
+  const hybrid = {
+    action: 'sequence',
+    delivery: 'background',
+    backgroundMethod: 'hybrid-party',
+    scope: 'party',
+    target: 'others',
+    sequence: 'F2',
+    hybridConsent: true
+  };
+  const beta = { pid: 20, startedAt: 2000, hwnd: 200, elevated: false, known: true, charId: 'b' };
+  beforeEach(() => {
+    state.characters = [
+      { id: 'a', nick: 'Alpha', partyIds: ['p'] },
+      { id: 'b', nick: 'Beta', partyIds: ['p'] },
+      { id: 'c', nick: 'Offline', partyIds: ['p'] },
+      { id: 'd', nick: 'Other party', partyIds: ['q'] }
+    ];
+  });
+  it('only includes running, selected party members and ignores absent or other-party characters', async () => {
+    const c = { partyId: 'p', leaders: { p: 'a' }, excludedCommandCharacters: [] };
+    const rows = [{ ...client, known: true, charId: 'a' }, beta, { ...beta, pid: 30, hwnd: 300, charId: 'd' }];
+    expect((await runtime.commandTargets(hybrid, c, rows)).map(row => row.charId)).toEqual(['b']);
+    c.excludedCommandCharacters = ['b'];
+    await expect(runtime.commandTargets(hybrid, c, rows)).rejects.toThrow('Нет выбранных');
+  });
+  it('refuses ambiguous or insufficiently verified windows instead of guessing', async () => {
+    const c = { partyId: 'p', leaders: { p: 'a' }, excludedCommandCharacters: [] };
+    await expect(runtime.commandTargets(hybrid, c, [beta, { ...beta, pid: 21, hwnd: 201 }])).rejects.toThrow();
+    await expect(runtime.commandTargets(hybrid, c, [{ ...beta, hwnd: null }])).rejects.toThrow();
+  });
+});
+
+it('rejects a hybrid plan with more than four selected recipients before any input', async () => {
+  state.characters = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon'].map((nick, i) => ({
+    id: `c${i}`,
+    nick,
+    partyIds: ['p']
+  }));
+  state.settings.gameMacros.partyId = 'p';
+  state.settings.gameMacros.leaders = { p: 'c0' };
+  state.settings.gameMacros.commands = [
+    {
+      id: 'many',
+      name: 'many',
+      action: 'sequence',
+      scope: 'party',
+      target: 'all',
+      sequence: 'F2',
+      delivery: 'background',
+      backgroundMethod: 'hybrid-party',
+      hybridConsent: true
+    }
+  ];
+  invoke.mockImplementation(async command =>
+    command === 'launcher_running_details'
+      ? state.characters.map((char, i) => ({
+          pid: i + 10,
+          hwnd: i + 100,
+          startedAt: 1000 + i,
+          elevated: false,
+          title: `${char.nick} — Воин`
+        }))
+      : null
+  );
+  await runtime.run('many');
+  expect(invoke.mock.calls.some(([command]) => command === 'game_macro_modifier_trial')).toBe(false);
+  expect(runtime.snapshot().executionState).toBe('failed');
+  expect(runtime.snapshot().notice).toContain('1–4');
+});

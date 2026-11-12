@@ -72,6 +72,11 @@ it('keeps settings and journal inside the overlay using only its top navigation'
   expect(document.querySelectorAll('[data-action="stop"]')).toHaveLength(1);
   expect(document.querySelector('[data-action="settings"]')).toBeNull();
 });
+it('keeps recipient selection in navigation but not on assigned keys, without the background-only journal', () => {
+  expect(document.querySelector('#shortcuts-screen [data-view="recipients"]')).toBeNull();
+  expect(document.querySelector('[data-view="recipients"]')).not.toBeNull();
+  expect(document.querySelector('#background-journal-open')).toBeNull();
+});
 it('hides the service panel without hiding assigned shortcuts', () => {
   document.querySelector('#info-toggle').click();
   expect(document.querySelector('#overlay-controls').hidden).toBe(true);

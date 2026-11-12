@@ -80,7 +80,7 @@ describe('party command workspace', () => {
     for (const selector of [
       '[data-gm-diagnostics]',
       '[data-gm-background-probe]',
-      '[data-gm-trial-wizard]',
+      '[data-gm-multi-trial]',
       '[data-gm-logs]',
       '[data-gm-transfer]',
       '[data-gm-party]',
@@ -351,25 +351,12 @@ it('groups execution controls together and separates repeat configuration in a n
   expect(group.contains(document.querySelector('[data-gm-twins-modifier]'))).toBe(true);
 });
 
-it('filters commands without executing them and prepares background test commands without sending input', async () => {
+it('filters commands without executing them', () => {
   const search = document.querySelector('[data-gm-search]');
   search.value = 'нет такой';
   search.dispatchEvent(new Event('input', { bubbles: true }));
   expect(document.querySelector('[data-gm-select]').hidden).toBe(true);
   expect(document.querySelector('[data-gm-no-matches]').hidden).toBe(false);
-  search.value = '';
-  search.dispatchEvent(new Event('input', { bubbles: true }));
-  state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['p'] });
-  state.settings.gameMacros.leaders = { p: 'a' };
-  document.querySelector('[data-gm-background-lab]').click();
-  const form = document.querySelector('.gm-background-lab');
-  form.elements.charId.value = 'b';
-  form.elements.key.value = 'B';
-  document.querySelector('.modal-footer .primary').click();
-  await vi.waitFor(() => expect(state.settings.gameMacros.commands).toHaveLength(6));
-  expect(
-    state.settings.gameMacros.commands.slice(1).every(c => c.strictTargets && c.charIds[0] === 'b' && !c.hotkey)
-  ).toBe(true);
   expect(mocks.run).not.toHaveBeenCalled();
 });
 it('offers independent active-window-only mouse modifier, disabled by default and persisted', async () => {
@@ -382,13 +369,20 @@ it('offers independent active-window-only mouse modifier, disabled by default an
   expect(state.settings.gameMacros.mirrorTwinsModifier).toBe('');
 });
 
-it('keeps current comparison and journal outside collapsed legacy diagnostics', () => {
-  const legacy = document.querySelector('[data-gm-legacy-checks]');
-  expect(legacy.open).toBe(false);
-  expect(document.querySelector('[data-gm-input-comparison]').closest('[data-gm-legacy-checks]')).toBeNull();
-  expect(document.querySelector('[data-gm-background-journal]').closest('[data-gm-legacy-checks]')).toBeNull();
-  for (const selector of ['trial-wizard', 'receiver', 'mirror-observation', 'trial-table', 'background-lab']) {
-    expect(document.querySelector(`[data-gm-${selector}]`).closest('[data-gm-legacy-checks]')).toBe(legacy);
+it('removes obsolete background test shortcuts and the separate journal while retaining E and hybrid checks', () => {
+  for (const selector of [
+    'trial-wizard',
+    'receiver',
+    'mirror-observation',
+    'trial-table',
+    'background-lab',
+    'background-journal',
+    'input-comparison'
+  ]) {
+    expect(document.querySelector(`[data-gm-${selector}]`)).toBeNull();
+  }
+  for (const selector of ['multi-trial', 'modifier-batch', 'modifier-experiments']) {
+    expect(document.querySelector(`[data-gm-${selector}]`)).not.toBeNull();
   }
 });
 
@@ -429,4 +423,15 @@ it('refuses stale main-window choices if the overlay changed the settings', asyn
   document.querySelector('.modal-footer .primary').click();
   await vi.waitFor(() => expect(document.querySelector('#toast-root').textContent).toContain('Настройки изменились'));
   expect(state.settings.gameMacros.excludedCommandCharacters).toEqual(['a']);
+});
+
+it('assigns and clears the leader of the explicitly selected party from settings', async () => {
+  const leader = document.querySelector('[data-gm-leader]');
+  expect(leader.value).toBe('');
+  leader.value = 'a';
+  leader.dispatchEvent(new Event('change'));
+  await vi.waitFor(() => expect(state.settings.gameMacros.leaders.p).toBe('a'));
+  document.querySelector('[data-gm-leader]').value = '';
+  document.querySelector('[data-gm-leader]').dispatchEvent(new Event('change'));
+  await vi.waitFor(() => expect(state.settings.gameMacros.leaders.p).toBeUndefined());
 });
