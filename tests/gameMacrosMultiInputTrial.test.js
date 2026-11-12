@@ -125,3 +125,12 @@ it('warns before sending that message-only modifiers can trigger the base action
   expect(warning.textContent).toContain('состояние клавиатуры игры не меняется');
   ov.close();
 });
+it('allows only explicit generic/left/right Shift variants and preserves legacy defaults', () => {
+  for (const shiftVk of [160, 161])
+    expect(validateMultiTrial({ charIds: ['a'], sequence: 'SHIFT+1', timing: { shiftVk } }, state).timing.shiftVk).toBe(
+      shiftVk
+    );
+  expect(validateMultiTrial({ charIds: ['a'], sequence: 'SHIFT+1' }, state).timing.shiftVk).toBeUndefined();
+  for (const shiftVk of [0, 17, 162, 'invalid'])
+    expect(() => validateMultiTrial({ charIds: ['a'], sequence: 'SHIFT+1', timing: { shiftVk } }, state)).toThrow();
+});

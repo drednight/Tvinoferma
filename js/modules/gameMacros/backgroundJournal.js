@@ -7,6 +7,7 @@ const fields = new Set([
   'timing',
   'modifierGapMs',
   'modifierState',
+  'shiftVk',
   'timedOut',
   'releaseUnconfirmed',
   'charId',

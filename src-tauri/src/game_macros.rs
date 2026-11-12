@@ -593,12 +593,14 @@ fn validate_comparison_steps(steps: &[ComparisonStep]) -> Result<(), String> {
 pub struct ComparisonTiming {
     timeout_ms: u32,
     modifier_gap_ms: u64,
+    shift_vk: u16,
 }
 impl Default for ComparisonTiming {
     fn default() -> Self {
         Self {
             timeout_ms: 25,
             modifier_gap_ms: 0,
+            shift_vk: 0x10,
         }
     }
 }
@@ -608,6 +610,7 @@ fn validate_comparison_timing(
 ) -> Result<(), String> {
     if ![25, 100, 250].contains(&timing.timeout_ms)
         || ![0, 50, 100, 200].contains(&timing.modifier_gap_ms)
+        || ![0x10, 0xa0, 0xa1].contains(&timing.shift_vk)
     {
         return Err("Invalid comparison timing".into());
     }
@@ -1431,12 +1434,19 @@ mod win {
         method: BackgroundMethod,
         timing: ComparisonTiming,
     ) -> Result<serde_json::Value, String> {
-        let (mods, vk) = chord(key)?;
+        let (mut mods, vk) = chord(key)?;
+        for modifier in &mut mods {
+            if *modifier == 0x10 {
+                *modifier = timing.shift_vk;
+            }
+        }
         let _guard = ActivityGuard::acquire(raw)?;
         let hwnd = verified_window(raw, pid)?;
         let mut report = background_probe(raw, pid, key, false)?;
         report["timeoutMs"] = serde_json::json!(timing.timeout_ms);
         report["modifierGapMs"] = serde_json::json!(timing.modifier_gap_ms);
+        report["shiftVk"] = serde_json::json!(timing.shift_vk);
+        report["modifiers"] = serde_json::json!(mods);
         // Window messages do not set the target thread's GetKeyState/GetAsyncKeyState.
         // Never substitute global SendInput or attach input queues in this protocol.
         report["modifierState"] = serde_json::json!(if mods.is_empty() {
@@ -2780,13 +2790,24 @@ mod multi_comparison_tests {
     fn budgets_and_uncertain_release_are_explicit() {
         let steps = plan(serde_json::json!([{"key":"SHIFT+1"}]));
         assert!(validate_comparison_timing(&steps, ComparisonTiming::default()).is_ok());
+        for shift_vk in [0x10, 0xa0, 0xa1, 0, 0x11] {
+            let timing = ComparisonTiming {
+                shift_vk,
+                ..ComparisonTiming::default()
+            };
+            assert_eq!(
+                validate_comparison_timing(&steps, timing).is_ok(),
+                [0x10, 0xa0, 0xa1].contains(&shift_vk)
+            );
+        }
         for timeout_ms in [25, 100, 250] {
             for modifier_gap_ms in [0, 50, 100, 200] {
                 assert!(validate_comparison_timing(
                     &steps,
                     ComparisonTiming {
                         timeout_ms,
-                        modifier_gap_ms
+                        modifier_gap_ms,
+                        ..ComparisonTiming::default()
                     }
                 )
                 .is_ok());
@@ -2796,7 +2817,8 @@ mod multi_comparison_tests {
             &steps,
             ComparisonTiming {
                 timeout_ms: 1000,
-                modifier_gap_ms: 0
+                modifier_gap_ms: 0,
+                ..ComparisonTiming::default()
             }
         )
         .is_err());
@@ -2804,7 +2826,8 @@ mod multi_comparison_tests {
             &steps,
             ComparisonTiming {
                 timeout_ms: 25,
-                modifier_gap_ms: 999
+                modifier_gap_ms: 999,
+                ..ComparisonTiming::default()
             }
         )
         .is_err());
@@ -2826,7 +2849,8 @@ mod multi_comparison_tests {
             &long,
             ComparisonTiming {
                 timeout_ms: 25,
-                modifier_gap_ms: 200
+                modifier_gap_ms: 200,
+                ..ComparisonTiming::default()
             }
         )
         .is_err());

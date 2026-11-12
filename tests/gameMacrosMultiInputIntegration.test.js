@@ -31,6 +31,7 @@ it('real UI/runtime starts countdown for one recipient and dispatches the valida
   const ov = openMultiInputTrial({ state, run: runtime.runMultiInputTrial, stop: runtime.stop });
   ov.body.querySelector('[data-char]').checked = true;
   ov.body.querySelector('[data-sequence]').value = 'SHIFT+1';
+  ov.body.querySelector('[data-shift]').value = '161';
   ov.body.querySelector('[data-consent]').checked = true;
   try {
     ov.body.querySelector('[data-run]').click();
@@ -42,7 +43,7 @@ it('real UI/runtime starts countdown for one recipient and dispatches the valida
     expect(invoke).toHaveBeenCalledWith('game_macro_compare_many', {
       targets: [{ pid: 10, startedAt: 1000, hwnd: 100 }],
       steps: [{ key: 'SHIFT+1' }],
-      timing: { timeoutMs: 25, modifierGapMs: 0 }
+      timing: { timeoutMs: 25, modifierGapMs: 0, shiftVk: 161 }
     });
     expect(ov.body.querySelector('[data-char]').checked).toBe(true);
     expect(ov.body.querySelector('[data-consent]').checked).toBe(false);
