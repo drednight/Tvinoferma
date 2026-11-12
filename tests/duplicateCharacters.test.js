@@ -48,3 +48,19 @@ it('does not read passwords when searching candidates, even if present as a gett
   expect(duplicateReasons({ nick: 'A', contacts }, { nick: 'B', contacts })).toEqual([]);
   expect(duplicateReasons({ nick: 'Same', contacts }, { nick: 'same', contacts })).toEqual(['ник']);
 });
+
+it('ignores shared recovery emails and never reads them when matching candidates', () => {
+  expect(
+    duplicateReasons(
+      { nick: 'A', contacts: { recoveryEmail: 'same@example.com' } },
+      { nick: 'B', contacts: { recoveryEmail: 'same@example.com' } }
+    )
+  ).toEqual([]);
+  const contacts = {
+    email: 'main@example.com',
+    get recoveryEmail() {
+      throw new Error('Recovery email must not participate in candidate matching');
+    }
+  };
+  expect(duplicateReasons({ nick: 'A', contacts }, { nick: 'B', contacts })).toEqual(['почта / логин']);
+});
