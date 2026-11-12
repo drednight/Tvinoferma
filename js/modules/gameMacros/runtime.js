@@ -354,7 +354,8 @@ export async function listMacroWindows() {
 export async function windowTargets(
   command = { target: 'all', action: 'next' },
   selected = config(),
-  snapshotRows = null
+  snapshotRows = null,
+  excluded = new Set()
 ) {
   selected = scopedConfig(selected, command);
   const rows = snapshotRows || (await listMacroWindows());
@@ -402,7 +403,21 @@ export async function windowTargets(
       return [];
     }
   }
-  return resolveTargets(state, selected, command, rows);
+  return resolveTargets(state, selected, command, rows, excluded);
+}
+// Ordinary command execution uses a fresh list and a single, explicit exclusion list.
+// Diagnostics and calibration keep their own exact targets; explicit command subsets are never broadened.
+export async function commandTargets(command, selected = config(), snapshotRows = null) {
+  const excluded = new Set(selected.excludedCommandCharacters || []);
+  const rows = snapshotRows || (await listMacroWindows());
+  if (command.scope === 'managed') {
+    const recognized = rows.filter(row => row.known && row.charId && !excluded.has(row.charId));
+    if (!recognized.length) throw new Error('Нет выбранных распознанных игровых окон.');
+    return windowTargets(command, selected, recognized);
+  }
+  const targets = await windowTargets(command, selected, rows, excluded);
+  if (!targets.length && !command.allowEmptyOthers) throw new Error('Нет выбранных получателей команды.');
+  return targets;
 }
 let inputStarted = 0,
   firstInputLogged = false;
@@ -1007,12 +1022,32 @@ async function executeCommand(id, hotkey = false, trial = null) {
     };
     inputTiming = rootTiming;
     if (command.action === 'composite') {
+      if (hotkey) {
+        const candidates = (await listMacroWindows()).filter(
+          row =>
+            row.known &&
+            row.startedAt &&
+            row.hwnd &&
+            (row.elevated === false || (row.elevated === true && row.selfElevated === true))
+        );
+        let foreground = false;
+        for (const row of candidates) {
+          try {
+            await act(row, 'foreground');
+            foreground = true;
+            break;
+          } catch {
+            /* not the active game */
+          }
+        }
+        if (!foreground) throw new Error('Горячая команда пропущена: активное окно не относится к распознанной игре.');
+      }
       composing = true;
       const plan = compileComposition(command, c);
       await preflightComposition(plan, c, false);
       await executeComposition(plan, {
         action: (cmd, target) => executeLegacy(cmd, c, false, false, null, target),
-        targets: selector => windowTargets(selector, scopedConfig(c, selector)),
+        targets: selector => commandTargets(selector, scopedConfig(c, selector)),
         wait,
         checkpoint,
         pause: async () => {
@@ -1118,52 +1153,7 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
     throw new Error('Эта команда не поддерживает фоновую доставку. Нужна последовательность клавиш либо F6→F1.');
   validateActivityCommand(command, composing);
   const snapshotRows = await (preparedRows || listMacroWindows());
-  let rows,
-    fallbackAll = false;
-  try {
-    rows = await windowTargets(command, c, snapshotRows);
-  } catch (error) {
-    if (
-      command.backgroundMethod === 'hybrid-party' ||
-      command.strictTargets ||
-      exactTarget ||
-      composing ||
-      command.action !== 'sequence' ||
-      command.scope === 'managed'
-    )
-      throw error;
-    // Resolution-only fallback, before input. Never retry/broaden after a delivery failure.
-    if (
-      !snapshotRows.length ||
-      snapshotRows.some(
-        row =>
-          !row.pid ||
-          !row.startedAt ||
-          !row.hwnd ||
-          !(row.elevated === false || (row.elevated === true && row.selfElevated === true))
-      ) ||
-      new Set(snapshotRows.map(row => row.pid)).size !== snapshotRows.length
-    ) {
-      throw new Error(
-        'Резерв для всех окон недоступен: есть непроверенный процесс, дескриптор или права. Ввод не отправлен.',
-        { cause: error }
-      );
-    }
-    rows = orderManagedTargets(
-      state,
-      c,
-      snapshotRows.map(row => ({
-        ...row,
-        charId: row.known ? row.charId : `window:${row.pid}`,
-        nick: row.known ? row.nick : `PID ${row.pid}`
-      }))
-    );
-    fallbackAll = true;
-    log(
-      `Управляющая пати недоступна: ${macroErrorText(error)} Резерв: ВСЕ проверенные игровые окна (${rows.length}). Фильтр ПЛ/поднабора не применяется.`,
-      command.name
-    );
-  }
+  let rows = await commandTargets(command, c, snapshotRows);
   if (exactTarget) {
     rows = rows.filter(
       row =>
@@ -1241,8 +1231,14 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
     let foreground = false;
     const memberIds = new Set((await import('./model.js')).partyMembers(state, c.partyId).map(ch => ch.id));
     const sources =
-      fallbackAll || command.scope === 'managed'
-        ? rows
+      command.scope === 'managed'
+        ? snapshotRows.filter(
+            row =>
+              row.known &&
+              row.startedAt &&
+              row.hwnd &&
+              (row.elevated === false || (row.elevated === true && row.selfElevated === true))
+          )
         : snapshotRows.filter(row => row.known && memberIds.has(row.charId));
     for (const row of sources) {
       try {
@@ -1254,12 +1250,12 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
       }
     }
     if (!foreground) {
-      throw new Error('Горячая команда пропущена: активное окно не относится к выбранной пати.');
+      throw new Error('Горячая команда пропущена: активное окно не относится к распознанной игре или выбранной пати.');
     }
   }
   log(`Начало: ${command.name}. Получателей: ${rows.length}.`);
   log(
-    `Порядок «${fallbackAll ? 'Все проверенные игровые окна (резерв)' : state.parties.find(p => p.id === c.partyId)?.name || 'Все окна'}»: ${rows.map(row => state.characters.find(ch => ch.id === row.charId)?.nick || row.pid).join(' → ')}`
+    `Порядок «${command.scope === 'managed' ? 'Все выбранные окна' : state.parties.find(p => p.id === c.partyId)?.name || 'Пати'}»: ${rows.map(row => state.characters.find(ch => ch.id === row.charId)?.nick || row.pid).join(' → ')}`
   );
   if (command.delivery === 'background' && ['sequence', 'f6f1'].includes(command.action)) {
     log(
@@ -1449,7 +1445,6 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
   }
   if (
     restore &&
-    !fallbackAll &&
     command.returnTo !== 'last' &&
     ['sequence', 'follow', 'click', 'resize', 'layout'].includes(command.action) &&
     !cancelled
@@ -1509,7 +1504,7 @@ export async function previewCommand(id) {
   cancelled = false;
   void broadcast();
   try {
-    const rows = await windowTargets(command, c);
+    const rows = await commandTargets(command, c);
     const plan =
       command.action === 'click'
         ? await pointPlan(c, command, rows, false, false)
@@ -2232,7 +2227,7 @@ async function preflightComposition(plan, c, preview) {
     }
     let rows;
     try {
-      rows = await windowTargets(cmd, scoped);
+      rows = await commandTargets(cmd, scoped);
     } catch (error) {
       if (!launched.has(party)) throw error;
       log('Окна после запуска будут проверены непосредственно перед действием.');

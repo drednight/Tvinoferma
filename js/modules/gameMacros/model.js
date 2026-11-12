@@ -138,6 +138,13 @@ export function normalizeGameMacros(input = {}) {
       )
         ? { x: input.overlayPosition.x, y: input.overlayPosition.y }
         : null,
+    excludedCommandCharacters: [
+      ...new Set(
+        (Array.isArray(input.excludedCommandCharacters) ? input.excludedCommandCharacters : []).filter(
+          id => typeof id === 'string' && id.length <= 200
+        )
+      )
+    ].slice(0, 200),
     enabled: input.enabled === true,
     mirrorMouse: input.mirrorMouse === true,
     mirrorKeyboardMethod: ['combined', 'activity-notify'].includes(input.mirrorKeyboardMethod)
@@ -201,7 +208,7 @@ export function normalizeGameMacros(input = {}) {
 export function partyMembers(state, partyId) {
   return charactersInPartyOrdered(state.characters, partyId);
 }
-export function resolveTargets(state, config, command, rows) {
+export function resolveTargets(state, config, command, rows, excluded = new Set()) {
   if (!['all', 'others', 'leader', 'subset'].includes(command.target)) throw new Error('Укажите получателей явно.');
   const members = partyMembers(state, config.partyId);
   if (!members.length) throw new Error('Выберите непустую пати.');
@@ -226,6 +233,7 @@ export function resolveTargets(state, config, command, rows) {
             ? command.charIds.includes(c.id)
             : true
     )
+    .filter(c => !excluded.has(c.id))
     .map(c => {
       const candidates = rows.filter(r => r.known && r.charId === c.id);
       const matches = candidates.filter(

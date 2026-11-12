@@ -855,7 +855,7 @@ it('sends Shift+1 then F2 in order to each recipient with activity delivery', as
   expect(runtime.snapshot().executionState).toBe('finished');
 });
 it.each(['missing-party', 'missing-member'])(
-  'falls back to all validated game processes before input when %s cannot resolve',
+  'does not broaden to unrelated processes when %s cannot resolve',
   async reason => {
     if (reason === 'missing-party') state.settings.gameMacros.partyId = 'gone';
     else state.characters.push({ id: 'b', nick: 'Absent', partyIds: ['p'] });
@@ -876,14 +876,8 @@ it.each(['missing-party', 'missing-member'])(
     const calls = invoke.mock.calls
       .filter(([, args]) => args?.action === 'key-background')
       .map(([, args]) => [args.target.pid, args.key]);
-    expect(calls).toEqual([
-      [10, 'SHIFT+1'],
-      [10, 'F2'],
-      [30, 'SHIFT+1'],
-      [30, 'F2']
-    ]);
-    expect(runtime.snapshot().logs.join('\n')).toContain('Резерв: ВСЕ проверенные игровые окна (2)');
-    expect(runtime.snapshot().executionState).toBe('finished');
+    expect(calls).toEqual([]);
+    expect(runtime.snapshot().executionState).toBe('failed');
   }
 );
 it('does not fall back if any game process lacks a verified window identity', async () => {
@@ -1089,7 +1083,7 @@ it('resumes a composition waiting step through the always-available pause contro
   expect(invoke.mock.calls.some(([, a]) => a?.key === 'F2')).toBe(true);
 });
 
-it('retains explicit all-managed-window F6/F1 routing, validates the PL, and refuses unknown windows before input', async () => {
+it('retains explicit all-managed-window F6/F1 routing and skips unknown windows', async () => {
   const { unifiedCommand } = await import('../js/modules/gameMacros/unified.js');
   state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['q'] });
   const beta = { ...client, pid: 20, startedAt: 2000, hwnd: 200, title: 'Beta — Воин' };
@@ -1111,8 +1105,10 @@ it('retains explicit all-managed-window F6/F1 routing, validates the PL, and ref
     c === 'launcher_running_details' ? [client, { ...beta, title: 'Perfect World' }] : null
   );
   await runtime.run('global');
-  expect(invoke.mock.calls.some(([, a]) => a?.action === 'key')).toBe(false);
-  expect(runtime.snapshot().executionState).toBe('failed');
+  expect(invoke.mock.calls.filter(([, a]) => a?.action === 'key').map(([, a]) => [a.target.pid, a.key])).toEqual([
+    [10, 'F1']
+  ]);
+  expect(runtime.snapshot().executionState).toBe('finished');
 });
 
 it('fails closed for strict laboratory recipients instead of widening to every running game', async () => {
@@ -1532,4 +1528,89 @@ describe('party leader hybrid commands', () => {
     await runtime.run('hybrid');
     expect(invoke.mock.calls.filter(([c]) => c === 'game_macro_modifier_trial')).toHaveLength(1);
   });
+});
+
+describe('shared command recipient selection', () => {
+  const beta = { ...client, pid: 20, startedAt: 2000, hwnd: 200, title: 'Beta — Воин' };
+  const unknown = { ...client, pid: 30, startedAt: 3000, hwnd: 300, title: 'Element Client' };
+  const setup = () => {
+    state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['q'] });
+    state.settings.gameMacros.commands = [
+      { id: 'test', name: 'test', action: 'sequence', target: 'all', scope: 'managed', sequence: 'B', returnTo: 'last' }
+    ];
+    invoke.mockImplementation(async name => (name === 'launcher_running_details' ? [client, beta, unknown] : null));
+  };
+  const keys = () => invoke.mock.calls.filter(([, a]) => a?.action === 'key').map(([, a]) => a.target.pid);
+  it('sends to recognized running windows across parties by default and ignores unknown windows', async () => {
+    setup();
+    await runtime.run('test');
+    expect(keys()).toEqual([10, 20]);
+  });
+  it('excludes manually unchecked characters and includes a newly opened character', async () => {
+    setup();
+    state.settings.gameMacros.excludedCommandCharacters = ['a'];
+    await runtime.run('test');
+    expect(keys()).toEqual([20]);
+  });
+  it('does not send when all recognized characters are excluded', async () => {
+    setup();
+    state.settings.gameMacros.excludedCommandCharacters = ['a', 'b'];
+    await runtime.run('test');
+    expect(keys()).toEqual([]);
+    expect(runtime.snapshot().executionState).toBe('failed');
+  });
+  it('refuses ambiguous or insufficiently checked selected windows', async () => {
+    setup();
+    invoke.mockImplementation(async name =>
+      name === 'launcher_running_details' ? [client, { ...beta, elevated: null }] : null
+    );
+    await runtime.run('test');
+    expect(keys()).toEqual([]);
+    expect(runtime.snapshot().executionState).toBe('failed');
+  });
+  it('applies exclusions to composite command preflight and execution', async () => {
+    setup();
+    state.settings.gameMacros.excludedCommandCharacters = ['a'];
+    state.settings.gameMacros.commands = [
+      {
+        id: 'test',
+        name: 'composite',
+        action: 'composite',
+        returnTo: 'last',
+        blocks: [{ scope: 'managed', target: 'all', perWindow: true, steps: [{ type: 'keys', value: 'B' }] }]
+      }
+    ];
+    await runtime.run('test');
+    expect(keys()).toEqual([20]);
+  });
+});
+
+it('never runs a composite hotkey from outside a recognized game window', async () => {
+  state.settings.gameMacros.commands = [
+    {
+      id: 'test',
+      name: 'composite',
+      action: 'composite',
+      blocks: [{ scope: 'managed', target: 'all', steps: [{ type: 'keys', value: 'B' }] }]
+    }
+  ];
+  invoke.mockImplementation(async (name, args) => {
+    if (name === 'launcher_running_details') return [client];
+    if (args?.action === 'foreground') throw new Error('not active');
+    return null;
+  });
+  await runtime.run('test', true);
+  expect(invoke.mock.calls.some(([, args]) => args?.action === 'key')).toBe(false);
+  expect(runtime.snapshot().executionState).toBe('failed');
+});
+
+it('does not require an offline character explicitly excluded from a legacy party command', async () => {
+  state.characters.push({ id: 'b', nick: 'Absent', partyIds: ['p'] });
+  state.settings.gameMacros.excludedCommandCharacters = ['b'];
+  state.settings.gameMacros.commands[0].sequence = 'B';
+  state.settings.gameMacros.commands[0].returnTo = 'last';
+  await runtime.run('test');
+  expect(invoke.mock.calls.filter(([, args]) => args?.action === 'key').map(([, args]) => args.target.pid)).toEqual([
+    10
+  ]);
 });

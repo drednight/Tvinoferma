@@ -53,8 +53,8 @@ export function mountCompositionEditor(host, c, row) {
       parallel: false,
       repeat: 1,
       leaderSplit: false,
-      scope: 'party',
-      partyId: c.partyId,
+      scope: 'managed',
+      partyId: '',
       target: 'all',
       charIds: [],
       delivery: 'foreground',
@@ -190,7 +190,7 @@ export function mountCompositionEditor(host, c, row) {
     );
   }
   function draw() {
-    host.innerHTML = `<div class="gm-compose-title"><h4>Что выполнить</h4><button type="button" class="btn ghost small" data-undo ${undo.length ? '' : 'disabled'}>↶ Отменить изменение</button></div><p>Добавьте действие слева, настройте его справа. Меняйте порядок стрелками ↑ ↓. Получатели и способ доставки выбираются для каждой группы; повторения и параллельность — в дополнительных настройках.</p>${blocks
+    host.innerHTML = `<div class="gm-compose-title"><h4>Что выполнить</h4><button type="button" class="btn ghost small" data-undo ${undo.length ? '' : 'disabled'}>↶ Отменить изменение</button></div><p>Добавьте действие слева, настройте его справа. Меняйте порядок стрелками ↑ ↓. По умолчанию действия выполняются на выбранных запущенных персонажах. Способ доставки и дополнительные настройки задаются в группе.</p>${blocks
       .map(
         (block, b) =>
           `<section class="gm-compose-block" data-block="${b}"><header><button type="button" class="btn ghost small" data-block-collapse aria-expanded="${!collapsed.has(b)}" title="Свернуть или раскрыть блок">${collapsed.has(b) ? '▸' : '▾'}</button><label>Название ${input('name', block.name)}</label><button class="btn ghost" type="button" data-block-up ${b === 0 ? 'disabled' : ''}>↑</button><button class="btn danger" type="button" data-block-delete>Удалить блок</button></header><p class="gm-compose-summary">${esc(block.name)} · ${block.steps.length} действий × ${block.repeat ?? 1} · ${block.scope === 'managed' ? 'Все распознанные окна' : esc(state.parties.find(p => p.id === (block.partyId || c.partyId))?.name || 'Текущая пати')} · ${block.delivery === 'background' ? 'В фоне' : 'С активацией'}</p><div ${collapsed.has(b) ? 'hidden' : ''}><label><input type="checkbox" data-field="parallel" ${block.parallel ? 'checked' : ''} ${b === 0 ? 'disabled' : ''}> Одновременно с предыдущим</label><div class="gm-compose-fields"><label>Область ${select(
@@ -290,13 +290,19 @@ export function mountCompositionEditor(host, c, row) {
       advanced.innerHTML =
         '<summary>Дополнительно: область, обход окон и повторения</summary><div class="gm-compose-fields"></div>';
       const body = advanced.querySelector('div');
-      for (const field of ['scope', 'partyId', 'parallel', 'leaderSplit', 'perWindow', 'repeat']) {
+      for (const field of ['scope', 'partyId', 'target', 'parallel', 'leaderSplit', 'perWindow', 'repeat']) {
         const element = section.querySelector(`[data-field="${field}"]`);
         if (element) body.append(element.closest('label'));
       }
       advanced.open = advancedExpansion.has(b)
         ? advancedExpansion.get(b)
-        : !!(block.parallel || block.perWindow || block.repeat > 1 || block.scope === 'managed');
+        : !!(
+            block.parallel ||
+            block.perWindow ||
+            block.repeat > 1 ||
+            block.scope === 'party' ||
+            block.target !== 'all'
+          );
       advanced.addEventListener('toggle', () => {
         if (advanced.isConnected) advancedExpansion.set(b, advanced.open);
       });

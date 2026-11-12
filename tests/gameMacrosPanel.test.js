@@ -6,7 +6,8 @@ const mocks = vi.hoisted(() => ({
   showSize: vi.fn(),
   openOverlay: vi.fn(),
   run: vi.fn(),
-  pickPoint: vi.fn()
+  pickPoint: vi.fn(),
+  listMacroWindows: vi.fn(async () => [])
 }));
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}) }));
 vi.mock('../js/modules/gameMacros/runtime.js', async () => {
@@ -14,6 +15,7 @@ vi.mock('../js/modules/gameMacros/runtime.js', async () => {
   const { state } = await import('../js/core/state.js');
   return {
     diagnoseBackground: mocks.diagnoseBackground,
+    listMacroWindows: mocks.listMacroWindows,
     clearLogs: vi.fn(async () => {}),
     config: () => normalizeGameMacros(state.settings.gameMacros),
     toggleKeyboardMirror: vi.fn(async () => {}),
@@ -86,7 +88,7 @@ describe('party command workspace', () => {
       name: 'Моя команда',
       action: 'composite',
       scope: 'party',
-      blocks: [expect.objectContaining({ steps: [{ type: 'keys', value: 'F7' }] })]
+      blocks: [expect.objectContaining({ scope: 'managed', target: 'all', steps: [{ type: 'keys', value: 'F7' }] })]
     });
   });
   it('opens overlay preferences and session logs only on request', () => {
@@ -339,4 +341,20 @@ it('keeps current comparison and journal outside collapsed legacy diagnostics', 
   for (const selector of ['trial-wizard', 'receiver', 'mirror-observation', 'trial-table', 'background-lab']) {
     expect(document.querySelector(`[data-gm-${selector}]`).closest('[data-gm-legacy-checks]')).toBe(legacy);
   }
+});
+
+it('allows excluding only currently recognized characters and preserves absent exclusions', async () => {
+  state.settings.gameMacros.excludedCommandCharacters = ['offline'];
+  mocks.listMacroWindows.mockResolvedValueOnce([
+    { charId: 'a', known: true, nick: 'Alpha', pid: 10, hwnd: 100, startedAt: 1, elevated: false },
+    { known: false, pid: 30 }
+  ]);
+  document.querySelector('[data-gm-recipients]').click();
+  await vi.waitFor(() => expect(document.querySelector('.gm-recipient-picker')).not.toBeNull());
+  const checkbox = document.querySelector('[name="character"]');
+  expect(checkbox.checked).toBe(true);
+  expect(document.querySelectorAll('[name="character"]')).toHaveLength(1);
+  checkbox.checked = false;
+  document.querySelector('.modal-footer .primary').click();
+  await vi.waitFor(() => expect(state.settings.gameMacros.excludedCommandCharacters).toEqual(['offline', 'a']));
 });

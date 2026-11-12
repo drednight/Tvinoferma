@@ -1519,3 +1519,64 @@
   color: var(--danger, #f7768e);
   overflow-wrap: anywhere;
 }
+
+/* Compact, opt-in recipient selection; details stay out of the normal workflow. */
+.gm-recipient-picker {
+  display: grid;
+  gap: 12px;
+}
+.gm-recipient-picker p {
+  margin: 0;
+}
+.gm-recipient-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.gm-recipient-list {
+  display: grid;
+  gap: 6px;
+  max-height: 45vh;
+  overflow: auto;
+}
+.gm-recipient-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #344153);
+  border-radius: 10px;
+}
+.gm-recipient-row span {
+  display: grid;
+  gap: 3px;
+}
+.gm-recipient-row small {
+  opacity: 0.75;
+}
+.gm-party-settings,
+.gm-routing-settings,
+.gm-routing-details,
+.gm-latest-run {
+  margin: 12px 0;
+}
+.gm-party-settings > summary,
+.gm-routing-settings > summary,
+.gm-routing-details > summary,
+.gm-latest-run > summary,
+.gm-repeat-settings > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.gm-repeat-settings > fieldset {
+  border: 0;
+  padding: 0;
+  margin: 12px 0 0;
+  min-width: 0;
+}
+.gm-command-error {
+  border-left: 3px solid #ef6b73;
+  padding: 10px 12px;
+  background: rgba(220, 60, 70, 0.1);
+  border-radius: 6px;
+}
