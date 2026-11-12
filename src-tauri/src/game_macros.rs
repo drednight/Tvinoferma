@@ -775,19 +775,35 @@ fn validate_modifier_experiment(
     consent: bool,
     risk: bool,
 ) -> Result<(), String> {
-    let base = key
-        .strip_prefix("SHIFT+")
-        .ok_or("Only SHIFT + one base key is allowed")?;
-    let valid = (base.len() == 1
+    let parts: Vec<_> = key.split('+').collect();
+    let base = *parts.last().unwrap_or(&"");
+    let mods = &parts[..parts.len().saturating_sub(1)];
+    let valid_base = (base.len() == 1
         && base
             .bytes()
             .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit()))
         || base.strip_prefix('F').is_some_and(|n| {
             n.parse::<u8>()
                 .is_ok_and(|v| (1..=24).contains(&v) && v.to_string() == n)
-        });
-    if !valid || !consent || (method != ModifierExperiment::Isolated && !risk) {
-        return Err("Invalid Shift experiment or explicit consent missing".into());
+        })
+        || (base.len() == 7 && base.starts_with("NUMPAD") && base.as_bytes()[6].is_ascii_digit())
+        || [
+            "LEFT", "RIGHT", "UP", "DOWN", "HOME", "END", "PAGEUP", "PAGEDOWN",
+        ]
+        .contains(&base);
+    let canonical: Vec<_> = ["CTRL", "ALT", "SHIFT"]
+        .into_iter()
+        .filter(|m| mods.contains(m))
+        .collect();
+    let isolated = method == ModifierExperiment::Isolated;
+    if !valid_base
+        || canonical != mods
+        || (isolated && (mods != ["SHIFT"] || !(base.len() == 1 || base.starts_with('F'))))
+        || (mods.contains(&"ALT") && base == "F4")
+        || !consent
+        || (!isolated && !risk)
+    {
+        return Err("Invalid bounded modifier experiment or explicit consent missing".into());
     }
     Ok(())
 }
@@ -1178,11 +1194,14 @@ mod win {
     // This is a process-local safeguard, not protection against process termination.
     static MODIFIER_TRIAL_BLOCKED: std::sync::atomic::AtomicBool =
         std::sync::atomic::AtomicBool::new(false);
+    fn keys_modifier_matches(key: i32, owned: u16) -> bool {
+        matches!((key, owned), (0x11, 0xa2) | (0x12, 0xa4))
+    }
     struct ModifierTrialKeys {
         raw: u64,
         pid: u32,
         global: Vec<u16>,
-        addressed: Option<(u16, u32)>,
+        addressed: Option<(u16, u32, bool)>,
     }
     impl ModifierTrialKeys {
         fn global_event(vk: u16, up: bool) -> bool {
@@ -1191,11 +1210,15 @@ mod win {
                 Anonymous: INPUT_0 {
                     ki: KEYBDINPUT {
                         wVk: VIRTUAL_KEY(vk),
-                        dwFlags: if up {
+                        dwFlags: (if up {
                             KEYEVENTF_KEYUP
                         } else {
                             KEYBD_EVENT_FLAGS(0)
-                        },
+                        }) | (if extended_key(vk) {
+                            KEYEVENTF_EXTENDEDKEY
+                        } else {
+                            KEYBD_EVENT_FLAGS(0)
+                        }),
                         ..Default::default()
                     },
                 },
@@ -1208,8 +1231,8 @@ mod win {
         }
         fn release(&mut self, steps: &mut Vec<serde_json::Value>) -> bool {
             let mut ok = true;
-            if let Some((vk, scan)) = self.addressed.take() {
-                let (msg, flags) = background_key_message(vk, scan, true, false);
+            if let Some((vk, scan, alt)) = self.addressed.take() {
+                let (msg, flags) = background_key_message(vk, scan, true, alt);
                 let result = match verified_window(self.raw, self.pid) {
                     Ok(hwnd) => unsafe {
                         send_background_timed(
@@ -1228,7 +1251,7 @@ mod win {
             }
             while let Some(vk) = self.global.pop() {
                 let result = Self::global_event(vk, true);
-                steps.push(serde_json::json!({"phase":if vk == 0xa0 {"modifier-up"} else {"key-up"},"ok":result,"vk":vk,"method":"send-input"}));
+                steps.push(serde_json::json!({"phase":if [0xa0, 0xa2, 0xa4].contains(&vk) {"modifier-up"} else {"key-up"},"ok":result,"vk":vk,"method":"send-input"}));
                 ok &= result;
             }
             ok
@@ -1240,9 +1263,9 @@ mod win {
                 MODIFIER_TRIAL_BLOCKED.store(true, Ordering::SeqCst);
             }
             // Do not allocate/report while unwinding. UP only; never retry DOWN.
-            if let Some((vk, scan)) = self.addressed.take() {
+            if let Some((vk, scan, alt)) = self.addressed.take() {
                 if let Ok(hwnd) = verified_window(self.raw, self.pid) {
-                    let (msg, flags) = background_key_message(vk, scan, true, false);
+                    let (msg, flags) = background_key_message(vk, scan, true, alt);
                     let result = unsafe {
                         send_background_timed(
                             hwnd,
@@ -1279,7 +1302,16 @@ mod win {
         let original = unsafe { GetForegroundWindow() };
         let expected = comparison_foreground()?;
         let hwnd = verified_window(raw, pid)?;
-        let (_, vk) = chord(key)?;
+        let (mods, vk) = chord(key)?;
+        let globals: Vec<u16> = mods
+            .iter()
+            .map(|m| match m {
+                0x10 => 0xa0,
+                0x11 => 0xa2,
+                _ => 0xa4,
+            })
+            .collect();
+        let alt = mods.contains(&0x12);
         if method == ModifierExperiment::Isolated {
             comparison_ready(raw, pid, key, &expected)?;
             let report = comparison_key(
@@ -1301,12 +1333,14 @@ mod win {
         let _guard = ActivityGuard::acquire(raw)?;
         let mut report = background_probe(raw, pid, key, false)?;
         report["globalInput"] = serde_json::json!(true);
-        report["modifiers"] = serde_json::json!([160]);
-        report["shiftVk"] = serde_json::json!(160);
+        report["modifiers"] = serde_json::json!(globals);
+        if mods.contains(&0x10) {
+            report["shiftVk"] = serde_json::json!(160);
+        }
         report["modifierState"] = serde_json::json!(if method == ModifierExperiment::Hybrid {
-            "global-shift-addressed-base"
+            "global-modifiers-addressed-base"
         } else {
-            "global-shift-global-base"
+            "global-modifiers-global-base"
         });
         report["activationRequested"] = serde_json::json!(method == ModifierExperiment::Activate);
         report["originalForeground"] = serde_json::json!(expected);
@@ -1364,9 +1398,16 @@ mod win {
                 && !unsafe { IsIconic(hwnd) }.as_bool()
                 && unsafe { IsWindowVisible(hwnd) }.as_bool()
                 && !unsafe { IsHungAppWindow(hwnd) }.as_bool()
-                && [0x01, 0x02, 0x04, 0x05, 0x06, 0x11, 0x12, 0x5b, 0x5c, 0xa1]
-                    .iter()
-                    .all(|key| unsafe { GetAsyncKeyState(*key) } >= 0)
+                && [
+                    0x01, 0x02, 0x04, 0x05, 0x06, 0x11, 0x12, 0x5b, 0x5c, 0xa1, 0xa3, 0xa5,
+                ]
+                .iter()
+                .all(|key| {
+                    globals
+                        .iter()
+                        .any(|owned| keys_modifier_matches(*key, *owned))
+                        || unsafe { GetAsyncKeyState(*key) } >= 0
+                })
         };
         let mut keys = ModifierTrialKeys {
             raw,
@@ -1392,7 +1433,7 @@ mod win {
         let source_thread = unsafe { GetWindowThreadProcessId(original, None) };
         let result = (|| -> Result<(), String> {
             if !allowed() || !input_idle(Some(key))? {
-                return Err("Условия изменились до нажатия Shift".into());
+                return Err("Условия изменились до нажатия модификаторов".into());
             }
             if hybrid {
                 let app = notification(WM_ACTIVATEAPP, 1, source_thread as isize);
@@ -1404,16 +1445,21 @@ mod win {
             }
             // Recheck at each DOWN. Physical same-side Shift races cannot be distinguished.
             if !allowed() || !input_idle(Some(key))? {
-                return Err("Условия изменились перед глобальным Shift".into());
+                return Err("Условия изменились перед глобальными модификаторами".into());
             }
             report["inputSent"] = serde_json::json!(true);
-            let shifted = keys.down(0xa0);
-            steps.push(serde_json::json!({"phase":"modifier-down","vk":160,"ok":shifted,"method":"send-input"}));
-            if !shifted {
-                return Err("Windows не приняла глобальный Shift".into());
+            for modifier in &globals {
+                if !allowed() {
+                    return Err("Условия изменились перед модификатором".into());
+                }
+                let sent = keys.down(*modifier);
+                steps.push(serde_json::json!({"phase":"modifier-down","vk":modifier,"ok":sent,"method":"send-input"}));
+                if !sent {
+                    return Err("Windows не приняла глобальный модификатор".into());
+                }
             }
             if !wait_modifier_gap(50, allowed) {
-                return Err("Остановка или смена условий после Shift".into());
+                return Err("Остановка или смена условий после модификаторов".into());
             }
             if !allowed() || unsafe { GetAsyncKeyState(vk as i32) } < 0 {
                 return Err("Основная клавиша удерживается или условия изменились".into());
@@ -1421,8 +1467,8 @@ mod win {
             if hybrid {
                 let layout = unsafe { GetKeyboardLayout(GetWindowThreadProcessId(hwnd, None)) };
                 let scan = unsafe { MapVirtualKeyExW(vk as u32, MAPVK_VK_TO_VSC, Some(layout)) };
-                let (msg, flags) = background_key_message(vk, scan, false, false);
-                keys.addressed = Some((vk, scan));
+                let (msg, flags) = background_key_message(vk, scan, false, alt);
+                keys.addressed = Some((vk, scan, alt));
                 let sent = unsafe {
                     send_background_timed(
                         hwnd,
@@ -3312,6 +3358,10 @@ mod modifier_experiment_tests {
             ModifierExperiment::Hybrid,
             ModifierExperiment::Activate,
         ] {
+            assert_eq!(
+                validate_modifier_experiment("CTRL+1", method, true, true).is_ok(),
+                method != ModifierExperiment::Isolated
+            );
             assert!(validate_modifier_experiment("SHIFT+1", method, true, true).is_ok());
             assert!(validate_modifier_experiment("SHIFT+F24", method, true, true).is_ok());
             assert!(validate_modifier_experiment("SHIFT+1", method, false, true).is_err());
@@ -3320,8 +3370,6 @@ mod modifier_experiment_tests {
                 method == ModifierExperiment::Isolated
             );
             for key in [
-                "1",
-                "CTRL+1",
                 "ALT+F4",
                 "SHIFT+ENTER",
                 "SHIFT+F25",

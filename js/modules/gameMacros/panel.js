@@ -1,7 +1,8 @@
+import { openModifierBatch } from './modifierBatch.js';
 import { openModifierExperiments } from './modifierExperiments.js';
 import { openInputComparison } from './inputComparison.js';
 import { openMultiInputTrial } from './multiInputTrial.js';
-import { runInputComparison, runMultiInputTrial, runModifierExperiment } from './runtime.js';
+import { runInputComparison, runMultiInputTrial, runModifierExperiment, runModifierBatch } from './runtime.js';
 import { openBackgroundJournal } from './backgroundJournal.js';
 import { openMirrorObservation } from './mirrorObservation.js';
 import { openReceiverTools } from './receiverTools.js';
@@ -220,7 +221,7 @@ export function mountGameMacros(host) {
     .join(
       ''
     )}</select></label><button class="btn primary">⊕ Задать координаты</button></form><p class="muted">Размер окна и DPI определяются автоматически. Для другого размера окна создайте вариант точки; после перемещения элементов интерфейса задайте точку заново.</p><div class="gm-points-workbench"><nav class="gm-point-list" aria-label="Сохранённые координатные точки">${c.points.map(p => `<button class="gm-point-choice" data-gm-point="${esc(p.id)}"><b>${esc(p.name)}</b><small>${p.width} × ${p.height}</small></button>`).join('') || '<p>Нет сохранённых точек.</p>'}</nav><article class="gm-point-detail" data-gm-point-detail></article></div></details>
-  <details class="gm-background-section"><summary>Проверки фонового ввода</summary><div class="gm-journal-actions"><button class="btn primary" data-gm-input-comparison>Сравнение A–E: один клиент…</button><button class="btn primary" data-gm-multi-trial>Клавиши и сочетания E · 1–4 окна…</button><button type="button" class="btn primary" data-gm-modifier-experiments>Эксперименты Shift · один клиент…</button><button class="btn" data-gm-background-journal>Фоновый журнал…</button></div><p>Начните с одиночного опыта и сохраните наблюдение игры. Успешная отправка Windows не подтверждает действие игры. Методы не перебираются автоматически.</p><details data-gm-legacy-checks><summary>Расширенные и прежние проверки</summary><p class="muted">Резервные инструменты диагностики. Для обычной проверки используйте мастер A–E выше.</p><div class="gm-journal-actions"><button class="btn" data-gm-trial-wizard>Прежний мастер одиночной проверки</button><button class="btn" data-gm-receiver>Окно-приёмник Windows</button><button class="btn" data-gm-mirror-observation>Наблюдение клавиатурного повтора</button><button class="btn" data-gm-trial-table>Прежняя таблица результатов</button><button type="button" class="btn ghost" data-gm-background-lab>Подготовить прежние 5 вариантов</button></div></details></details>
+  <details class="gm-background-section"><summary>Проверки фонового ввода</summary><div class="gm-journal-actions"><button class="btn primary" data-gm-input-comparison>Сравнение A–E: один клиент…</button><button class="btn primary" data-gm-multi-trial>Клавиши и сочетания E · 1–4 окна…</button><button type="button" class="btn primary" data-gm-modifier-batch>Пакет Ctrl / Shift / Alt · 1–4 клиента…</button><button type="button" class="btn primary" data-gm-modifier-experiments>Эксперименты Shift · один клиент…</button><button class="btn" data-gm-background-journal>Фоновый журнал…</button></div><p>Начните с одиночного опыта и сохраните наблюдение игры. Успешная отправка Windows не подтверждает действие игры. Методы не перебираются автоматически.</p><details data-gm-legacy-checks><summary>Расширенные и прежние проверки</summary><p class="muted">Резервные инструменты диагностики. Для обычной проверки используйте мастер A–E выше.</p><div class="gm-journal-actions"><button class="btn" data-gm-trial-wizard>Прежний мастер одиночной проверки</button><button class="btn" data-gm-receiver>Окно-приёмник Windows</button><button class="btn" data-gm-mirror-observation>Наблюдение клавиатурного повтора</button><button class="btn" data-gm-trial-table>Прежняя таблица результатов</button><button type="button" class="btn ghost" data-gm-background-lab>Подготовить прежние 5 вариантов</button></div></details></details>
   <div data-gm-outcome></div><footer class="gm-bottom-actions"><button class="btn ghost" data-gm-traces>Диагностика по запускам</button><button class="btn" data-gm-logs>≡ Журнал сеанса</button><button class="btn" data-gm-overlay>▣ Открыть оверлей</button><button class="btn ghost" data-gm-overlay-settings>⚙ Настройки оверлея</button></footer></section>`;
   host.querySelector('[data-gm-trial-wizard]').onclick = () =>
     openTrialWizard({
@@ -265,6 +266,8 @@ export function mountGameMacros(host) {
     openInputComparison({ state, run: runInputComparison, stop });
   host.querySelector('[data-gm-multi-trial]').onclick = () =>
     openMultiInputTrial({ state, run: runMultiInputTrial, stop });
+  host.querySelector('[data-gm-modifier-batch]').onclick = () =>
+    openModifierBatch({ state, run: runModifierBatch, stop });
   host.querySelector('[data-gm-modifier-experiments]').onclick = () =>
     openModifierExperiments({ state, run: runModifierExperiment, stop });
   host.querySelector('[data-gm-background-journal]').onclick = openBackgroundJournal;

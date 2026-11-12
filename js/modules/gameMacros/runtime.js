@@ -644,6 +644,99 @@ export async function runInputComparison(selection, countdown = () => {}) {
     void broadcast();
   }
 }
+export async function runModifierBatch(selection, progress = () => {}) {
+  const revision = stopRevision;
+  const unavailable = () => busy || paused || mirroring || mirrorPending || mirrorKeys || mirrorMouse;
+  if (unavailable()) throw new Error('Завершите команду, снимите паузу и выключите повтор.');
+  const { validateModifierBatch } = await import('./modifierBatch.js');
+  selection = validateModifierBatch(
+    { ...selection, sequence: selection.sequence ?? selection.steps?.map(s => s.key || `wait ${s.wait}`).join('\n') },
+    state
+  );
+  if (revision !== stopRevision || unavailable()) throw new Error('Состояние ввода изменилось.');
+  busy = true;
+  cancelled = false;
+  const runId = crypto.randomUUID();
+  const results = [];
+  let failure = null;
+  appendBackgroundJournal('modifier-batch-start', {
+    runId,
+    charIds: selection.charIds,
+    steps: selection.steps,
+    method: selection.method
+  });
+  void broadcast();
+  try {
+    const rows = await listMacroWindows();
+    const targets = selection.charIds.map(charId => {
+      const matches = rows.filter(row => row.known && row.charId === charId);
+      if (matches.length !== 1 || !matches[0].hwnd || !matches[0].startedAt)
+        throw new Error('Окно персонажа не определено однозначно.');
+      return { charId, target: { pid: matches[0].pid, startedAt: matches[0].startedAt, hwnd: matches[0].hwnd } };
+    });
+    if (new Set(targets.map(t => t.target.hwnd)).size !== targets.length)
+      throw new Error('Один HWND назначен нескольким персонажам.');
+    for (let left = 5; left > 0; left--) {
+      await checkpoint();
+      progress(`До пакета: ${left} с. Отпустите клавиатуру и мышь; активируйте пустой Блокнот.`);
+      await wait(1000);
+    }
+    for (const { charId, target } of targets) {
+      for (const [index, step] of selection.steps.entries()) {
+        await checkpoint();
+        if (step.wait) {
+          await wait(step.wait);
+          continue;
+        }
+        progress(`${charId} · шаг ${index + 1}: ${step.key}. Не меняйте фокус.`);
+        const details = await native('game_macro_modifier_trial', {
+          target,
+          key: step.key,
+          method: selection.method,
+          consent: true,
+          riskConsent: true
+        });
+        const row = { charId, index, key: step.key, details };
+        results.push(row);
+        appendBackgroundJournal('modifier-batch-step', { runId, method: selection.method, ...row });
+        if (
+          !details.ok ||
+          details.refused ||
+          details.timedOut ||
+          details.deliveryUncertain ||
+          details.releaseUnconfirmed
+        ) {
+          failure = details.blockedBy || 'Доставка команды или отпускание не подтверждены.';
+          break;
+        }
+        await wait(300);
+      }
+      if (failure) break;
+    }
+    await checkpoint();
+  } catch (error) {
+    failure = macroErrorText(error);
+  } finally {
+    busy = false;
+    void broadcast();
+  }
+  const result = {
+    runId,
+    method: selection.method,
+    ok: !failure,
+    blockedBy: failure,
+    releaseUnconfirmed: results.some(r => r.details.releaseUnconfirmed),
+    results
+  };
+  appendBackgroundJournal('modifier-batch-result', {
+    runId,
+    method: selection.method,
+    ok: result.ok,
+    blockedBy: failure,
+    releaseUnconfirmed: result.releaseUnconfirmed
+  });
+  return result;
+}
 export async function runModifierExperiment(selection, countdown = () => {}) {
   const revision = stopRevision;
   if (busy || paused || mirroring || mirrorPending || mirrorKeys || mirrorMouse)

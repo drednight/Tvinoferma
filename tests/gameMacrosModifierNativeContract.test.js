@@ -19,10 +19,23 @@ it('records attempted keys before DOWN and always reaches explicit and unwind UP
   );
   expect(protocol.indexOf('self.global.push(vk)')).toBeLessThan(protocol.indexOf('Self::global_event(vk, false)'));
   expect(protocol).toContain('impl Drop for ModifierTrialKeys');
-  expect(protocol).toContain('keys.addressed = Some((vk, scan))');
+  expect(protocol).toContain('keys.addressed = Some((vk, scan, alt))');
   expect(protocol).toContain('let released = keys.release(&mut steps)');
   expect(protocol).toContain('MODIFIER_TRIAL_BLOCKED.store(true');
   expect(protocol).toContain('eq_ignore_ascii_case("Notepad")');
   expect(protocol).not.toMatch(/AttachThreadInput|SetKeyboardState/);
   expect(protocol).toContain('BackgroundMethod::SendTimeout');
+});
+it('uses left Ctrl/Alt/Shift with reverse cleanup, Alt context on addressed DOWN and UP, and extended global keys', () => {
+  const protocol = source.slice(
+    source.indexOf('struct ModifierTrialKeys'),
+    source.indexOf('pub fn comparison_foreground()')
+  );
+  expect(protocol).toContain('0x10 => 0xa0');
+  expect(protocol).toContain('0x11 => 0xa2');
+  expect(protocol).toContain('for modifier in &globals');
+  expect(protocol).toContain('self.global.pop()');
+  expect(protocol).toContain('background_key_message(vk, scan, false, alt)');
+  expect(protocol.match(/background_key_message\(vk, scan, true, alt\)/g)).toHaveLength(2);
+  expect(protocol).toContain('KEYEVENTF_EXTENDEDKEY');
 });
