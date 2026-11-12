@@ -52,10 +52,13 @@ export function openMultiInputTrial({ state, run, stop }) {
       if (pending) stop();
     }
   });
-  ov.body.innerHTML = `<p>Одна попытка на 1–4 клиентах (при нескольких — параллельно) методом E (activity-notify). Общий старт, но без гарантии точной синхронности. Все игровые окна должны быть неактивны, видимы и не свёрнуты. Фокус вручную переведите в пустой Блокнот. Нет SendInput, переключения фокуса, циклов или повторного запуска.</p><fieldset data-fields><legend>Получатели</legend>${state.characters.map(c => `<label class="switch-row"><input type="checkbox" data-char value="${esc(c.id)}">${esc(c.nick)}</label>`).join('')}<div class="gm-profile-controls"><label>Ожидание обработки сообщения<select data-timeout><option value="25">25 мс · исходное</option><option value="100">100 мс</option><option value="250">250 мс</option></select></label><label>Пауза после Ctrl/Shift перед основной клавишей<select data-gap><option value="0">0 мс · исходное</option><option value="50">50 мс</option><option value="100">100 мс</option><option value="200">200 мс</option></select></label></div><p class="muted">Меняйте один параметр за раз. Ожидание — предел одного синхронного вызова, а не гарантированная доставка. Пауза применяется один раз после всех модификаторов. Увеличение задержек не гарантирует распознавание сочетания.</p><label>Последовательность — одна клавиша/сочетание или wait N на строку<textarea class="input" data-sequence rows="7" placeholder="B&#10;wait 500&#10;C"></textarea></label><p class="muted">До 10 нажатий и 20 строк, паузы 50–1500 мс, всего до 10 с. Ctrl/Shift допускаются только после ручной проверки. Каждое сочетание нажимается и отпускается отдельно; удержания между строками нет.</p><label class="switch-row"><input type="checkbox" data-consent> Проверил все клавиши и сочетания вручную на каждом клиенте; чат закрыт, действия безопасны и не расходуют предметы.</label></fieldset><p><button class="btn primary" data-run>Запустить через 5 секунд</button><button class="btn danger" data-stop disabled>Остановить</button><button class="btn" data-log>Журнал</button></p><p role="status" data-status>Повторы должны быть выключены. Ошибка одного клиента останавливает дальнейшие шаги остальных; уже отправленный ввод отменить нельзя.</p><div data-summary aria-live="polite"></div><details><summary>Технический отчёт</summary><pre data-result></pre></details><fieldset data-observations disabled><legend>Наблюдения после попытки</legend><div data-verdicts></div><label class="switch-row"><input type="checkbox" data-focus>Заметил смену фокуса</label><label class="switch-row"><input type="checkbox" data-leak>Был ввод в Блокноте или другом приложении</label><button class="btn" data-save>Сохранить наблюдения</button></fieldset>`;
+  ov.body.innerHTML = `<p>Одна попытка на 1–4 клиентах (при нескольких — параллельно) методом E (activity-notify). Общий старт, но без гарантии точной синхронности. Все игровые окна должны быть неактивны, видимы и не свёрнуты. Фокус вручную переведите в пустой Блокнот. Нет SendInput, переключения фокуса, циклов или повторного запуска.</p><p class="gm-trial-error" role="alert" data-error hidden></p><fieldset data-fields><legend>Получатели</legend>${state.characters.map(c => `<label class="switch-row"><input type="checkbox" data-char value="${esc(c.id)}">${esc(c.nick)}</label>`).join('')}<div class="gm-profile-controls"><label>Ожидание обработки сообщения<select data-timeout><option value="25">25 мс · исходное</option><option value="100">100 мс</option><option value="250">250 мс</option></select></label><label>Пауза после Ctrl/Shift перед основной клавишей<select data-gap><option value="0">0 мс · исходное</option><option value="50">50 мс</option><option value="100">100 мс</option><option value="200">200 мс</option></select></label></div><p class="muted">Меняйте один параметр за раз. Ожидание — предел одного синхронного вызова, а не гарантированная доставка. Пауза применяется один раз после всех модификаторов. Увеличение задержек не гарантирует распознавание сочетания.</p><label>Последовательность — одна клавиша/сочетание или wait N на строку<textarea class="input" data-sequence rows="7" placeholder="B&#10;wait 500&#10;C"></textarea></label><p class="muted">До 10 нажатий и 20 строк, паузы 50–1500 мс, всего до 10 с. Ctrl/Shift допускаются только после ручной проверки. Каждое сочетание нажимается и отпускается отдельно; удержания между строками нет.</p><label class="switch-row"><input type="checkbox" data-consent> Проверил все клавиши и сочетания вручную на каждом клиенте; чат закрыт, действия безопасны и не расходуют предметы.</label></fieldset><p><button type="button" class="btn primary" data-run>Запустить через 5 секунд</button><button type="button" class="btn danger" data-stop disabled>Остановить</button><button type="button" class="btn" data-log>Журнал</button></p><p role="status" data-status>Повторы должны быть выключены. Ошибка одного клиента останавливает дальнейшие шаги остальных; уже отправленный ввод отменить нельзя.</p><div data-summary aria-live="polite"></div><details><summary>Технический отчёт</summary><pre data-result></pre></details><fieldset data-observations disabled><legend>Наблюдения после попытки</legend><div data-verdicts></div><label class="switch-row"><input type="checkbox" data-focus>Заметил смену фокуса</label><label class="switch-row"><input type="checkbox" data-leak>Был ввод в Блокноте или другом приложении</label><button type="button" class="btn" data-save>Сохранить наблюдения</button></fieldset>`;
   const q = name => ov.body.querySelector(`[data-${name}]`);
-  q('run').onclick = async () => {
+  q('run').onclick = async event => {
+    event.preventDefault();
+    let armed = false;
     if (pending) return;
+    q('error').hidden = true;
     try {
       const selection = validateMultiTrial(
         {
@@ -74,12 +77,15 @@ export function openMultiInputTrial({ state, run, stop }) {
       q('observations').disabled = true;
       q('result').textContent = '';
       q('summary').textContent = '';
+      q('status').textContent = 'Проверяю выбранные игровые окна перед отсчётом…';
       const result = await run(selection, left => {
+        armed = true;
         if (!closed)
           q('status').textContent = left
             ? `До общего запуска: ${left} с. Оставьте все выбранные игры неактивными, отпустите клавиши и мышь.`
             : 'Выполняется последовательность. Не меняйте фокус; можно запросить остановку.';
       });
+      armed = true;
       if (closed) return;
       last = { runId: result.runId, charIds: selection.charIds, timing: selection.timing };
       q('result').textContent = JSON.stringify(result, null, 2);
@@ -100,14 +106,22 @@ export function openMultiInputTrial({ state, run, stop }) {
       q('leak').checked = false;
       q('observations').disabled = false;
     } catch (error) {
-      if (!closed) q('status').textContent = error.message || 'Опыт не завершён.';
+      const message = error.message || 'Опыт не завершён.';
+      appendBackgroundJournal('multi-ui-error', { blockedBy: message });
+      if (!closed) {
+        q('status').textContent = message;
+        q('error').textContent = `Проверка не запущена или остановлена: ${message}`;
+        q('error').hidden = false;
+        q('error').scrollIntoView?.({ block: 'nearest' });
+      }
     } finally {
       pending = false;
       if (!closed) {
         q('fields').disabled = false;
         q('run').disabled = false;
         q('stop').disabled = true;
-        q('consent').checked = false;
+        // Keep the selection and consent when preflight refused before arming.
+        if (armed) q('consent').checked = false;
       }
     }
   };
@@ -130,7 +144,7 @@ export function openMultiInputTrial({ state, run, stop }) {
       'Наблюдения добавлены в журнал. При предупреждении хранилища скачайте журнал до закрытия.';
   };
   q('log').onclick = openBackgroundJournal;
-  ov.foot.innerHTML = '<button class="btn" data-close>Закрыть</button>';
+  ov.foot.innerHTML = '<button type="button" class="btn" data-close>Закрыть</button>';
   ov.foot.querySelector('[data-close]').onclick = () => ov.close();
   return ov;
 }

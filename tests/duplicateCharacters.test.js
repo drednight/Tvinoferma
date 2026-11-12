@@ -1,13 +1,16 @@
 import { expect, it } from 'vitest';
 import { duplicateReasons, mergeDuplicateData } from '../js/settings/duplicateCharacters.js';
-it('finds candidates but returns reasons only, with exact nonempty password comparison', () => {
+it('finds candidates by non-password contacts and never treats shared passwords as duplicates', () => {
   expect(
     duplicateReasons(
       { nick: 'A', contacts: { email: ' X@Y ', password: 'secret' } },
       { nick: 'B', contacts: { email: 'x@y', password: 'secret' } }
     )
-  ).toEqual(['почта / логин', 'пароль']);
+  ).toEqual(['почта / логин']);
   expect(duplicateReasons({ contacts: { password: 'Secret' } }, { contacts: { password: 'secret' } })).toEqual([]);
+  expect(
+    duplicateReasons({ nick: 'A', contacts: { password: 'same' } }, { nick: 'B', contacts: { password: 'same' } })
+  ).toEqual([]);
   expect(duplicateReasons({}, {})).toEqual([]);
 });
 it('fills missing compatible data, unions tags/memberships and preserves primary identity', () => {
@@ -35,4 +38,13 @@ it('rejects conflicting values and launcher bindings without mutating inputs', (
     expect(() => mergeDuplicateData(a, b)).toThrow();
     expect(JSON.stringify(a)).toBe(before);
   }
+});
+it('does not read passwords when searching candidates, even if present as a getter', () => {
+  const contacts = {
+    get password() {
+      throw new Error('Password must not participate in candidate matching');
+    }
+  };
+  expect(duplicateReasons({ nick: 'A', contacts }, { nick: 'B', contacts })).toEqual([]);
+  expect(duplicateReasons({ nick: 'Same', contacts }, { nick: 'same', contacts })).toEqual(['ник']);
 });

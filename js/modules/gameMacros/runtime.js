@@ -330,6 +330,8 @@ export async function listMacroWindows() {
   const { windowRows } = await import('../launcher/windowList.js');
   const { windowOwnershipOptions } = await import('../launcher/launchedWindows.js');
   const clients = await native('launcher_running_details');
+  if (!Array.isArray(clients))
+    throw new Error('Не удалось получить список игровых окон. Нажмите «Проверить окна» и повторите проверку.');
   const selfElevated = clients.some(c => c.elevated === true) && (await native('launcher_self_elevated')) === true;
   const rows = windowRows(clients, state.characters, windowOwnershipOptions(clients)).map(r => ({
     ...r,
@@ -641,7 +643,18 @@ export async function runInputComparison(selection, countdown = () => {}) {
 export async function runMultiInputTrial(selection, countdown = () => {}) {
   const revision = stopRevision;
   const unavailable = () => busy || paused || mirroring || mirrorPending || mirrorKeys || mirrorMouse;
-  if (unavailable()) throw new Error('Завершите команду, снимите паузу и выключите повтор.');
+  const rejected = message => {
+    appendBackgroundJournal('multi-rejected', { blockedBy: message });
+    throw new Error(message);
+  };
+  if (unavailable())
+    rejected(
+      paused
+        ? 'Макросы на паузе: снимите паузу перед тестом E.'
+        : busy
+          ? 'Дождитесь завершения текущей команды или её остановки.'
+          : 'Выключите повтор клавиатуры и мыши перед тестом E.'
+    );
   const { validateMultiTrial } = await import('./multiInputTrial.js');
   // Revalidate the parsed plan as text; callers cannot bypass the bounded UI validator.
   selection = validateMultiTrial(
@@ -652,8 +665,7 @@ export async function runMultiInputTrial(selection, countdown = () => {}) {
     },
     state
   );
-  if (revision !== stopRevision || unavailable())
-    throw new Error('Состояние ввода изменилось или запрошена остановка.');
+  if (revision !== stopRevision || unavailable()) rejected('Состояние ввода изменилось или запрошена остановка.');
   busy = true;
   cancelled = false;
   const runId = crypto.randomUUID();
@@ -663,8 +675,17 @@ export async function runMultiInputTrial(selection, countdown = () => {}) {
     const rows = await listMacroWindows();
     const targets = selection.charIds.map(charId => {
       const found = rows.filter(row => row.known && row.charId === charId);
-      if (found.length !== 1 || !found[0].hwnd || !found[0].startedAt)
-        throw new Error('Окно каждого персонажа должно определяться однозначно.');
+      const label = state.characters.find(c => c.id === charId)?.nick || charId;
+      if (!found.length)
+        throw new Error(
+          `Для «${label}» нет распознанного игрового окна. Откройте «Проверить окна», свяжите окно с персонажем и повторите запуск.`
+        );
+      if (found.length > 1)
+        throw new Error(
+          `Для «${label}» найдено несколько окон. Оставьте одного получателя или уточните привязку в «Проверить окна».`
+        );
+      if (!found[0].hwnd || !found[0].startedAt)
+        throw new Error(`Для «${label}» нет полного идентификатора окна. Обновите список через «Проверить окна».`);
       const { pid, startedAt, hwnd } = found[0];
       return { pid, startedAt, hwnd };
     });

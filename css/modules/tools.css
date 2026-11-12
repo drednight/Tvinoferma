@@ -1511,3 +1511,11 @@
   font-size: 11px;
   overflow: hidden;
 }
+
+.gm-trial-error {
+  padding: 12px;
+  border: 1px solid var(--danger, #f7768e);
+  border-radius: 8px;
+  color: var(--danger, #f7768e);
+  overflow-wrap: anywhere;
+}
