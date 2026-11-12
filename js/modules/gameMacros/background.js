@@ -9,7 +9,8 @@ export const BACKGROUND_METHODS = {
   'activity-window': 'Только активность окна + клавиша · эксперимент',
   'activity-notify': 'Асинхронная активность + клавиша · эксперимент'
 };
-export const backgroundMethod = value => (Object.hasOwn(BACKGROUND_METHODS, value) ? value : 'post');
+export const backgroundMethod = value =>
+  value === 'hybrid-party' || Object.hasOwn(BACKGROUND_METHODS, value) ? value : 'post';
 export function backgroundVariants(command, commands, makeId = () => crypto.randomUUID()) {
   if (!['sequence', 'f6f1'].includes(command.action)) throw new Error('Варианты доступны только для клавиш и F6→F1.');
   if (commands.length > 61) throw new Error('Для трёх вариантов нужны три свободных места (максимум 64 команды).');
@@ -26,6 +27,25 @@ export function backgroundVariants(command, commands, makeId = () => crypto.rand
 }
 
 export function validateActivityCommand(command, composing = false) {
+  if (command.delivery === 'background' && command.backgroundMethod === 'hybrid-party') {
+    if (composing || command.action !== 'sequence' || command.scope === 'managed' || command.hybridConsent !== true)
+      throw new Error(
+        'Гибрид из ПЛ: только отдельная последовательность выбранной пати с явным разрешением глобальных модификаторов.'
+      );
+    const plan = steps(command.sequence);
+    if (plan.length > 8 || !plan.some(s => s.key))
+      throw new Error('Гибрид из ПЛ: от 1 до 8 шагов, хотя бы одна клавиша.');
+    for (const s of plan)
+      if (
+        s.key &&
+        (!/^(?:(?:CTRL\+)?(?:ALT\+)?(?:SHIFT\+)?)(?:[A-Z0-9]|F(?:[1-9]|1[0-9]|2[0-4])|NUMPAD[0-9]|LEFT|RIGHT|UP|DOWN|HOME|END|PAGEUP|PAGEDOWN)$/.test(
+          s.key
+        ) ||
+          (s.key.split('+').includes('ALT') && s.key.endsWith('+F4')))
+      )
+        throw new Error('Недопустимая клавиша гибридного режима. Системные сочетания исключены.');
+    return;
+  }
   if (command.delivery !== 'background' || !isActivityMethod(command.backgroundMethod)) return;
   if ((composing && command.activityBlock !== true) || command.action !== 'sequence')
     throw new Error(

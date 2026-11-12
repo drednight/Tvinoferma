@@ -765,6 +765,7 @@ pub async fn game_macro_compare_many(
 #[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum ModifierExperiment {
+    HybridParty,
     Isolated,
     Hybrid,
     Activate,
@@ -815,6 +816,7 @@ pub async fn game_macro_modifier_trial(
     method: ModifierExperiment,
     consent: bool,
     risk_consent: bool,
+    source: Option<Target>,
 ) -> Result<serde_json::Value, String> {
     main_only(&window)?;
     validate_modifier_experiment(&key, method, consent, risk_consent)?;
@@ -829,11 +831,26 @@ pub async fn game_macro_modifier_trial(
             if !compatible_integrity(client.elevated, crate::launcher::self_elevated()) {
                 return Err("Game client identity changed or access is unavailable".into());
             }
+            let source_window = if method == ModifierExperiment::HybridParty {
+                let source = source.as_ref().ok_or("Party leader source required")?;
+                let leader =
+                    crate::launcher::macro_client_at(source.pid, source.started_at, source.hwnd)?;
+                if !compatible_integrity(leader.elevated, crate::launcher::self_elevated()) {
+                    return Err("Party leader access unavailable".into());
+                }
+                Some((
+                    leader.hwnd.ok_or("Party leader window required")?,
+                    source.pid,
+                ))
+            } else {
+                None
+            };
             let mut report = win::modifier_experiment(
                 client.hwnd.ok_or("No game window")?,
                 target.pid,
                 &key,
                 method,
+                source_window,
             )?;
             report["identityChecked"] = serde_json::json!(true);
             report["globalInput"] = serde_json::json!(method != ModifierExperiment::Isolated);
@@ -848,7 +865,7 @@ pub async fn game_macro_modifier_trial(
     }
     #[cfg(not(windows))]
     {
-        let _ = target;
+        let _ = (target, source);
         Err("Game control is Windows-only".into())
     }
 }
@@ -1295,11 +1312,21 @@ mod win {
         pid: u32,
         key: &str,
         method: ModifierExperiment,
+        source: Option<(u64, u32)>,
     ) -> Result<serde_json::Value, String> {
         if MODIFIER_TRIAL_BLOCKED.load(Ordering::SeqCst) {
             return Err("Previous modifier release was unconfirmed; check keyboard state and restart application before more experiments".into());
         }
         let original = unsafe { GetForegroundWindow() };
+        if method == ModifierExperiment::HybridParty {
+            let (leader_raw, leader_pid) = source.ok_or("Party leader source required")?;
+            if verified_window(leader_raw, leader_pid)? != original {
+                return Err(
+                    "Активируйте окно ПЛ выбранной пати; фокус не переключается автоматически"
+                        .into(),
+                );
+            }
+        }
         let expected = comparison_foreground()?;
         let hwnd = verified_window(raw, pid)?;
         let (mods, vk) = chord(key)?;
@@ -1337,7 +1364,7 @@ mod win {
         if mods.contains(&0x10) {
             report["shiftVk"] = serde_json::json!(160);
         }
-        report["modifierState"] = serde_json::json!(if method == ModifierExperiment::Hybrid {
+        report["modifierState"] = serde_json::json!(if method != ModifierExperiment::Activate {
             "global-modifiers-addressed-base"
         } else {
             "global-modifiers-global-base"
@@ -1377,14 +1404,15 @@ mod win {
                 report["blockedBy"] = serde_json::json!("Для гибридного опыта активируйте пустой Блокнот (класс Notepad). Игра должна быть неактивна.");
                 return Ok(report);
             }
-        } else if let Err(error) =
-            action(raw, pid, "focus", None, None, None, InputTiming::default())
-        {
-            report["refused"] = serde_json::json!(true);
-            report["blockedBy"] = serde_json::json!(error);
-            report["foregroundChanged"] =
-                serde_json::json!(unsafe { GetForegroundWindow() } != original);
-            return Ok(report);
+        } else if method == ModifierExperiment::Activate {
+            if let Err(error) = action(raw, pid, "focus", None, None, None, InputTiming::default())
+            {
+                report["refused"] = serde_json::json!(true);
+                report["blockedBy"] = serde_json::json!(error);
+                report["foregroundChanged"] =
+                    serde_json::json!(unsafe { GetForegroundWindow() } != original);
+                return Ok(report);
+            }
         }
         let intended = if method == ModifierExperiment::Activate {
             hwnd
@@ -1394,6 +1422,9 @@ mod win {
         let allowed = || {
             !crate::input_arbiter::cancelled()
                 && verified_window(raw, pid).is_ok()
+                && source.is_none_or(|(raw, pid)| {
+                    verified_window(raw, pid).is_ok_and(|window| window == original)
+                })
                 && unsafe { GetForegroundWindow() } == intended
                 && !unsafe { IsIconic(hwnd) }.as_bool()
                 && unsafe { IsWindowVisible(hwnd) }.as_bool()
@@ -1429,7 +1460,8 @@ mod win {
                 100,
             )
         };
-        let hybrid = method == ModifierExperiment::Hybrid;
+        let hybrid = method == ModifierExperiment::Hybrid
+            || (method == ModifierExperiment::HybridParty && original != hwnd);
         let source_thread = unsafe { GetWindowThreadProcessId(original, None) };
         let result = (|| -> Result<(), String> {
             if !allowed() || !input_idle(Some(key))? {

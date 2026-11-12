@@ -1463,3 +1463,68 @@ it('passes explicit timing parameters through the validated one-client batch', a
     vi.useRealTimers();
   }
 });
+
+describe('party leader hybrid commands', () => {
+  const setup = () => {
+    state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['p'] });
+    state.settings.gameMacros.commands = [
+      {
+        id: 'hybrid',
+        name: 'hybrid',
+        action: 'sequence',
+        delivery: 'background',
+        backgroundMethod: 'hybrid-party',
+        hybridConsent: true,
+        target: 'others',
+        sequence: 'CTRL+1\nALT+2'
+      }
+    ];
+    invoke.mockImplementation(async (command, args) => {
+      if (command === 'launcher_running_details')
+        return [client, { pid: 20, startedAt: 2000, hwnd: 200, elevated: false, title: 'Beta — Воин' }];
+      if (command === 'game_macro_modifier_trial')
+        return { ok: true, releaseUnconfirmed: false, foregroundChanged: false };
+      return null;
+    });
+  };
+  it('sends only to selected twins with the verified leader source, never activates windows', async () => {
+    setup();
+    await runtime.run('hybrid', true);
+    const calls = invoke.mock.calls.filter(([c]) => c === 'game_macro_modifier_trial');
+    expect(calls.map(([, a]) => a.key)).toEqual(['CTRL+1', 'ALT+2']);
+    for (const [, args] of calls)
+      expect(args).toMatchObject({
+        target: { pid: 20, startedAt: 2000, hwnd: 200 },
+        source: { pid: 10, startedAt: 1000, hwnd: 100 },
+        method: 'hybrid-party',
+        riskConsent: true
+      });
+    expect(invoke.mock.calls.some(([, a]) => ['focus', 'key-background', 'key'].includes(a?.action))).toBe(false);
+  });
+  it('refuses execution outside the leader window, including manual button runs', async () => {
+    setup();
+    invoke.mockImplementation(async (c, a) => {
+      if (c === 'launcher_running_details')
+        return [client, { pid: 20, startedAt: 2000, hwnd: 200, elevated: false, title: 'Beta — Воин' }];
+      if (a?.action === 'foreground') throw new Error('not leader');
+      return null;
+    });
+    await runtime.run('hybrid');
+    expect(invoke.mock.calls.some(([c]) => c === 'game_macro_modifier_trial')).toBe(false);
+  });
+  it('never broadens unresolved party targets to all windows', async () => {
+    setup();
+    state.settings.gameMacros.leaders = {};
+    await runtime.run('hybrid');
+    expect(invoke.mock.calls.some(([c]) => c === 'game_macro_modifier_trial')).toBe(false);
+  });
+  it('stops remaining keys on unconfirmed release', async () => {
+    setup();
+    const previous = invoke.getMockImplementation();
+    invoke.mockImplementation(async (c, a) =>
+      c === 'game_macro_modifier_trial' ? { ok: false, releaseUnconfirmed: true } : previous(c, a)
+    );
+    await runtime.run('hybrid');
+    expect(invoke.mock.calls.filter(([c]) => c === 'game_macro_modifier_trial')).toHaveLength(1);
+  });
+});

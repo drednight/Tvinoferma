@@ -137,3 +137,25 @@ it('keeps every activity variant isolated from composition, mouse and repeat', a
     ).toThrow();
   }
 });
+it('party hybrid is explicit, bounded and rejects composites, system keys and managed scope', () => {
+  const command = {
+    action: 'sequence',
+    scope: 'party',
+    delivery: 'background',
+    backgroundMethod: 'hybrid-party',
+    hybridConsent: true,
+    sequence: 'CTRL+SHIFT+1\nALT+2\nF2'
+  };
+  expect(() => validateActivityCommand(command)).not.toThrow();
+  for (const extra of [
+    { hybridConsent: false },
+    { scope: 'managed' },
+    { action: 'f6f1' },
+    { sequence: 'ALT+F4' },
+    { sequence: 'CTRL+ALT+DELETE' },
+    { sequence: 'F2\n'.repeat(9) }
+  ])
+    expect(() => validateActivityCommand({ ...command, ...extra })).toThrow();
+  expect(() => validateActivityCommand(command, true)).toThrow();
+  expect(backgroundMethod('hybrid-party')).toBe('hybrid-party');
+});

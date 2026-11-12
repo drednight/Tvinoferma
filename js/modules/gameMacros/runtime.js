@@ -1121,6 +1121,7 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
     rows = await windowTargets(command, c, snapshotRows);
   } catch (error) {
     if (
+      command.backgroundMethod === 'hybrid-party' ||
       command.strictTargets ||
       exactTarget ||
       composing ||
@@ -1169,6 +1170,69 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
         row.charId === exactTarget.charId
     );
     if (rows.length !== 1) throw new Error('Получатель изменился во время обхода окон. Ввод остановлен.');
+  }
+  if (command.delivery === 'background' && command.backgroundMethod === 'hybrid-party') {
+    if (mirrorKeys || mirrorMouse || mirroring || mirrorPending)
+      throw new Error('Выключите повтор перед гибридной командой.');
+    const leaderId = c.leaders[c.partyId];
+    const leaders = snapshotRows.filter(r => r.known && r.charId === leaderId);
+    if (
+      !partyMembers(state, c.partyId).some(ch => ch.id === leaderId) ||
+      leaders.length !== 1 ||
+      !leaders[0].hwnd ||
+      !leaders[0].startedAt
+    )
+      throw new Error('ПЛ выбранной пати не определён однозначно.');
+    if (
+      !rows.length ||
+      rows.length > 4 ||
+      rows.some(r => !r.known || !r.hwnd || !r.startedAt) ||
+      new Set(rows.map(r => r.hwnd)).size !== rows.length
+    )
+      throw new Error('Гибрид: нужны 1–4 однозначных получателя.');
+    const leader = leaders[0];
+    await act(leader, 'foreground');
+    const source = { pid: leader.pid, startedAt: leader.startedAt, hwnd: leader.hwnd };
+    log(
+      'Гибрид из ПЛ: модификаторы глобальные, возможны побочные действия у ПЛ. Без смены фокуса и автоматических повторов.'
+    );
+    for (const row of rows) {
+      for (const [index, step] of steps(command.sequence).entries()) {
+        await checkpoint();
+        await act(leader, 'foreground');
+        if (step.wait) {
+          await wait(step.wait);
+          continue;
+        }
+        const result = await native('game_macro_modifier_trial', {
+          target: { pid: row.pid, startedAt: row.startedAt, hwnd: row.hwnd },
+          source,
+          key: step.key,
+          method: 'hybrid-party',
+          consent: true,
+          riskConsent: command.hybridConsent === true
+        });
+        appendBackgroundJournal('hybrid-party-step', {
+          runId: currentExecutionId(),
+          charId: row.charId,
+          key: step.key,
+          index,
+          method: 'hybrid-party',
+          details: result
+        });
+        if (
+          !result.ok ||
+          result.refused ||
+          result.timedOut ||
+          result.deliveryUncertain ||
+          result.releaseUnconfirmed ||
+          result.foregroundChanged
+        )
+          throw new Error(result.blockedBy || 'Гибридная доставка или отпускание не подтверждены.');
+        await wait(300);
+      }
+    }
+    return;
   }
   if (hotkey) {
     let foreground = false;

@@ -74,6 +74,7 @@ export function normalizeGameMacros(input = {}) {
           : 'last',
       switchMs: Math.max(0, Math.min(500, Math.round(Number(row.switchMs ?? 30)) || 0)),
       holdMs: Math.max(10, Math.min(200, Math.round(Number(row.holdMs ?? 30)) || 30)),
+      hybridConsent: row.hybridConsent === true,
       backgroundMethod: backgroundMethod(row.backgroundMethod),
       delivery: row.delivery === 'background' ? 'background' : 'foreground',
       hotkey: chord(row.hotkey),

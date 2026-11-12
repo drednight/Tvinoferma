@@ -142,3 +142,38 @@ it('saves and reopens an existing managed key command changed from all to except
   openCommandEditor(config, save, saved);
   expect(document.querySelector('[data-field="target"]').value).toBe('others');
 });
+it('saves a separate party-leader hybrid mode from the visible unified command settings', async () => {
+  const source = normalizeGameMacros({
+    commands: [
+      {
+        id: 'hybrid',
+        name: 'Команда',
+        action: 'sequence',
+        target: 'others',
+        scope: 'party',
+        sequence: 'CTRL+1\nALT+2',
+        hotkey: 'F8'
+      }
+    ]
+  }).commands[0];
+  config.commands = [source];
+  openCommandEditor(config, save, source);
+  const mode = document.querySelector('[name="commandInputMode"]');
+  expect(mode.closest('.gm-editor-basics')).not.toBeNull();
+  mode.value = 'hybrid-party';
+  document.querySelector('[name="hybridConsent"]').checked = true;
+  submit();
+  await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  const saved = normalizeGameMacros(save.mock.calls[0][0]).commands[0];
+  expect(saved).toMatchObject({
+    action: 'sequence',
+    delivery: 'background',
+    backgroundMethod: 'hybrid-party',
+    hybridConsent: true,
+    target: 'others',
+    sequence: 'CTRL+1\nALT+2',
+    hotkey: 'F8'
+  });
+  openCommandEditor(config, save, saved);
+  expect(document.querySelector('[name="commandInputMode"]').value).toBe('hybrid-party');
+});

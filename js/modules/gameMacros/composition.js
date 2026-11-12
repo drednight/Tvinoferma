@@ -161,6 +161,8 @@ export function compileComposition(command, config) {
         backgroundMethod: block.backgroundMethod,
         resourceAllowed: cmd.resourceAllowed
       };
+      if (block.backgroundMethod === 'hybrid-party')
+        throw new Error('Гибрид из ПЛ доступен только отдельным режимом команды, без составных блоков.');
       if (block.delivery === 'background' && isActivityMethod(block.backgroundMethod)) {
         if (
           block.repeat !== 1 ||

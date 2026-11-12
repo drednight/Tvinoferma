@@ -155,7 +155,7 @@ export function openCommandEditor(c, save, row = null) {
       .map(([v, l]) => `<option value="${v}">${esc(l)}</option>`)
       .join(
         ''
-      )}</select></label><small>Уведомления активности + клавиша: отдельная последовательность, например SHIFT+1 и F2 с новой строки, при необходимости wait 200. Модификаторы передаются оконными сообщениями; обработка Shift/Ctrl/Alt игрой пока не подтверждена. Ручной B-тест не открыл инвентарь в двух клиентах PW. Новые способы тоже требуют ручной проверки. Не для мыши, повтора, F6→F1 и составных команд. Если получатели управляющей пати не определились до ввода, отдельная последовательность отправляется всем проверенным игровым окнам; расширение области видно в журнале. После ошибки ввода резерв не запускается. Окна должны быть не свёрнуты, удерживаемые клавиши и мышь отпущены. Нет SetFocus/SetForegroundWindow и автоперехода к активации; сам клиент может сменить фокус. При ошибке дальнейшая отправка прекращается. Кнопка ниже создаёт только три прежних варианта, без уведомлений активности.</small><button type="button" class="btn ghost" data-gm-background-variants>Создать 3 варианта для проверки</button></fieldset><fieldset data-gm-timing><legend>Переключение и завершение</legend><label data-gm-return>После команды<select name="returnTo"><option value="leader">Вернуться к ПЛ выбранной пати</option><option value="last">Остаться на последнем окне</option></select></label><label>Задержка после активации, мс<input name="switchMs" type="number" min="0" max="500" value="30"></label><label>Удержание клавиши, мс<input name="holdMs" type="number" min="10" max="200" value="30"></label><small>Уменьшайте только после проверки в игре. Фокус проверяется независимо от задержки. В составной команде возврат выполняется один раз в самом конце к ПЛ явно выбранной пати, а не к ПЛ последнего блока. По умолчанию составная команда остаётся на последнем окне.</small></fieldset><label data-gm-scope-field>Область команды <select name="scope"><option value="party">Управляющая пати</option><option value="managed">Все распознанные запущенные окна</option></select><small>«Управляющая пати» — участники пати, выбранной в основном разделе. «Все распознанные окна» — все проверенные клиенты, даже из других пати; это нужно, например, для общего реса. В явно выбранной общей области неизвестное окно блокирует запуск. Для отдельной последовательности с управляющей пати при ошибке определения получателей включается резерв на все проверенные игровые PID, даже без распознанного ника; причина и получатели видны в журнале до ввода.</small></label><fieldset class="gm-choice-grid" data-gm-targets><legend>Кому отправлять</legend>${[
+      )}</select></label><label><input type="checkbox" name="hybridConsent"> Разрешаю глобальные Ctrl/Alt/Shift в гибридном режиме из активного ПЛ. Они могут вызвать меню, смену раскладки или другие действия у ПЛ, даже если он не получатель. Все игровые действия проверены и безопасны.</label><small>Гибрид из ПЛ: только отдельная последовательность, до 8 шагов и 4 получателей выбранной пати. Запуск только из активного окна назначенного ПЛ, без Блокнота; фокус не переключается. Без резерва на другие окна, мыши и повтора. ПЛ-получатель получает полное сочетание SendInput, остальные — адресную клавишу с глобальными модификаторами. Фиксировано: gap 50 мс, hold 30 мс, timeout 100 мс, между командами 300 мс. Alt может открыть меню ПЛ; Alt+Shift/Ctrl+Shift — переключить раскладку. Не касайтесь ввода во время команды.</small><small>Уведомления активности + клавиша: отдельная последовательность, например SHIFT+1 и F2 с новой строки, при необходимости wait 200. Модификаторы передаются оконными сообщениями; обработка Shift/Ctrl/Alt игрой пока не подтверждена. Ручной B-тест не открыл инвентарь в двух клиентах PW. Новые способы тоже требуют ручной проверки. Не для мыши, повтора, F6→F1 и составных команд. Если получатели управляющей пати не определились до ввода, отдельная последовательность отправляется всем проверенным игровым окнам; расширение области видно в журнале. После ошибки ввода резерв не запускается. Окна должны быть не свёрнуты, удерживаемые клавиши и мышь отпущены. Нет SetFocus/SetForegroundWindow и автоперехода к активации; сам клиент может сменить фокус. При ошибке дальнейшая отправка прекращается. Кнопка ниже создаёт только три прежних варианта, без уведомлений активности.</small><button type="button" class="btn ghost" data-gm-background-variants>Создать 3 варианта для проверки</button></fieldset><fieldset data-gm-timing><legend>Переключение и завершение</legend><label data-gm-return>После команды<select name="returnTo"><option value="leader">Вернуться к ПЛ выбранной пати</option><option value="last">Остаться на последнем окне</option></select></label><label>Задержка после активации, мс<input name="switchMs" type="number" min="0" max="500" value="30"></label><label>Удержание клавиши, мс<input name="holdMs" type="number" min="10" max="200" value="30"></label><small>Уменьшайте только после проверки в игре. Фокус проверяется независимо от задержки. В составной команде возврат выполняется один раз в самом конце к ПЛ явно выбранной пати, а не к ПЛ последнего блока. По умолчанию составная команда остаётся на последнем окне.</small></fieldset><label data-gm-scope-field>Область команды <select name="scope"><option value="party">Управляющая пати</option><option value="managed">Все распознанные запущенные окна</option></select><small>«Управляющая пати» — участники пати, выбранной в основном разделе. «Все распознанные окна» — все проверенные клиенты, даже из других пати; это нужно, например, для общего реса. В явно выбранной общей области неизвестное окно блокирует запуск. Для отдельной последовательности с управляющей пати при ошибке определения получателей включается резерв на все проверенные игровые PID, даже без распознанного ника; причина и получатели видны в журнале до ввода.</small></label><fieldset class="gm-choice-grid" data-gm-targets><legend>Кому отправлять</legend>${[
       ['all', 'Вся пати'],
       ['leader', 'Только ПЛ'],
       ['others', 'Кроме ПЛ'],
@@ -186,6 +186,29 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
     onSubmit: async data => {
       try {
         const value = Object.fromEntries(data);
+        value.hybridConsent = data.has('hybridConsent');
+        if (data.get('commandInputMode') === 'hybrid-party') {
+          const blocks = builder.read();
+          const block = blocks[0];
+          if (
+            blocks.length !== 1 ||
+            block.parallel ||
+            block.repeat !== 1 ||
+            block.scope !== 'party' ||
+            block.steps.some(s => !['keys', 'wait'].includes(s.type))
+          )
+            throw new Error('Гибрид из ПЛ: нужен один блок выбранной пати, только клавиши и паузы, без повторов.');
+          Object.assign(value, {
+            action: 'sequence',
+            delivery: 'background',
+            backgroundMethod: 'hybrid-party',
+            scope: 'party',
+            target: block.target,
+            partyId: block.partyId || value.partyId,
+            charIds: block.charIds,
+            sequence: block.steps.map(s => (s.type === 'wait' ? `wait ${s.ms}` : s.value)).join('\n')
+          });
+        }
         value.strictTargets = row?.strictTargets === true;
         value.needsConfiguration = false;
         if (value.action === 'follow' && String(value.followSequence || '').trim()) steps(value.followSequence);
@@ -225,12 +248,14 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
           value.scope = 'managed';
           value.delivery = 'background';
         }
-        value.charIds = data.getAll('charIds');
+        if (data.get('commandInputMode') !== 'hybrid-party') value.charIds = data.getAll('charIds');
         value.pointIds = data.getAll('pointIds');
         value.resourceAllowed =
           value.action === 'composite' ? data.has('compositeConsent') : data.has('resourceAllowed');
         if (value.action === 'composite') {
-          value.blocks = builder.read();
+          value.blocks = builder
+            .read()
+            .map(block => (block.backgroundMethod === 'hybrid-party' ? { ...block, backgroundMethod: 'post' } : block));
           value.target = 'all';
           value.charIds = [];
         }
@@ -461,6 +486,10 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
     basics.className = 'gm-editor-basics';
     intro.after(basics);
     for (const name of ['name', 'hotkey']) basics.append(form.elements.namedItem(name).closest('label'));
+    const mode = document.createElement('label');
+    mode.innerHTML = `<span>Режим команд</span><select name="commandInputMode"><option value="standard">Обычный — доставка из настроек блока</option><option value="hybrid-party" ${row?.backgroundMethod === 'hybrid-party' ? 'selected' : ''}>Гибридный — запуск из активного ПЛ пати</option></select><small>Гибрид: один блок, до 8 клавиш/пауз, до 4 получателей выбранной пати, без повторов и мыши. Блокнот не нужен. ПЛ должен оставаться активным. Глобальные модификаторы могут открыть меню ПЛ или сменить раскладку, даже если ПЛ не получатель. Если ПЛ выбран получателем, ему отправляется полное сочетание SendInput. Старые команды сами не переключаются.</small>`;
+    basics.append(mode);
+    basics.append(form.elements.namedItem('hybridConsent').closest('label'));
 
     const advanced = document.createElement('details');
     advanced.className = 'gm-editor-advanced';

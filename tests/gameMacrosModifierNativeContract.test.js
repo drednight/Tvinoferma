@@ -39,3 +39,18 @@ it('uses left Ctrl/Alt/Shift with reverse cleanup, Alt context on addressed DOWN
   expect(protocol.match(/background_key_message\(vk, scan, true, alt\)/g)).toHaveLength(2);
   expect(protocol).toContain('KEYEVENTF_EXTENDEDKEY');
 });
+it('party mode requires a separately verified leader and never uses focus activation', () => {
+  const command = source.slice(
+    source.indexOf('pub async fn game_macro_modifier_trial('),
+    source.indexOf('pub async fn game_macro_compare_once(')
+  );
+  expect(command).toContain('source.as_ref().ok_or("Party leader source required")?');
+  expect(command).toContain('macro_client_at(source.pid, source.started_at, source.hwnd)');
+  const protocol = source.slice(
+    source.indexOf('pub fn modifier_experiment('),
+    source.indexOf('pub fn comparison_foreground()')
+  );
+  expect(protocol).toContain('verified_window(leader_raw, leader_pid)? != original');
+  expect(protocol).toContain('else if method == ModifierExperiment::Activate');
+  expect(protocol).toContain('method == ModifierExperiment::HybridParty && original != hwnd');
+});
