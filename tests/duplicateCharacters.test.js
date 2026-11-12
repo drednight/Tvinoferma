@@ -13,6 +13,20 @@ it('finds candidates by non-password contacts and never treats shared passwords 
   ).toEqual([]);
   expect(duplicateReasons({}, {})).toEqual([]);
 });
+it('matches only nonempty email or login, regardless of nickname, case or surrounding spaces', () => {
+  expect(
+    duplicateReasons({ nick: 'Same', contacts: { email: 'a' } }, { nick: 'same', contacts: { email: 'b' } })
+  ).toEqual([]);
+  expect(
+    duplicateReasons({ nick: 'Same', contacts: { email: '  ' } }, { nick: 'same', contacts: { email: '' } })
+  ).toEqual([]);
+  expect(
+    duplicateReasons({ nick: 'one', contacts: { email: '  LOGIN  ' } }, { nick: 'two', contacts: { email: 'login' } })
+  ).toEqual(['почта / логин']);
+  expect(
+    duplicateReasons({ nick: 'same', contacts: { email: 'x' } }, { nick: 'same', contacts: { email: 'x' } })
+  ).toEqual(['почта / логин']);
+});
 it('fills missing compatible data, unions tags/memberships and preserves primary identity', () => {
   const a = { id: 'a', nick: 'A', tags: ['x'], partyIds: ['p'], contacts: { email: 'x' } };
   const b = { id: 'b', nick: 'B', tags: ['y'], partyIds: ['q'], contacts: { email: 'x', phone: '1' } };
@@ -46,7 +60,7 @@ it('does not read passwords when searching candidates, even if present as a gett
     }
   };
   expect(duplicateReasons({ nick: 'A', contacts }, { nick: 'B', contacts })).toEqual([]);
-  expect(duplicateReasons({ nick: 'Same', contacts }, { nick: 'same', contacts })).toEqual(['ник']);
+  expect(duplicateReasons({ nick: 'Same', contacts }, { nick: 'same', contacts })).toEqual([]);
 });
 
 it('ignores shared recovery emails and never reads them when matching candidates', () => {

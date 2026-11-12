@@ -27,7 +27,6 @@ export function duplicateReasons(a, b) {
     const value = normalize(a.contacts?.[key]);
     if (value && value === normalize(b.contacts?.[key])) reasons.push(label);
   }
-  if (a.nick?.trim().toLowerCase() === b.nick?.trim().toLowerCase() && a.nick?.trim()) reasons.push('ник');
   return reasons;
 }
 
@@ -104,7 +103,7 @@ export function openDuplicateCharacters() {
         if (reasons.length) pairs.push({ a: chars[i], b: chars[j], reasons });
       }
     ov.body.innerHTML =
-      '<p>Совпадения — только кандидаты: один аккаунт может иметь разных персонажей. Значения контактов не показываются. Пароль, резервная почта и телефон не используются для поиска совпадений. Можно оставить пару, открыть профиль для удаления или выбрать основную карточку. Слияние переносит совместимые данные и известные ссылки; источник каждого конфликтующего поля выбирается вручную. Сохранённые входы не объединяются. При защищённом хранении перед слиянием отдельно копируются исходные контакты обеих карточек в хранилище ОС и создаётся копия состояния. Другие копии приложения нужно закрыть. Профили браузера и сохранённые входы не объединяются.</p>' +
+      '<p>Совпадения — только кандидаты по непустой почте / логину (без учёта регистра и пробелов по краям): один аккаунт может иметь разных персонажей. Одинаковый ник не означает дубль. Значения контактов не показываются. Пароль, резервная почта и телефон не используются для поиска совпадений. Можно оставить пару, открыть профиль для удаления или выбрать основную карточку. Слияние переносит совместимые данные и известные ссылки; источник каждого конфликтующего поля выбирается вручную. Сохранённые входы не объединяются. При защищённом хранении перед слиянием отдельно копируются исходные контакты обеих карточек в хранилище ОС и создаётся копия состояния. Другие копии приложения нужно закрыть. Профили браузера и сохранённые входы не объединяются.</p>' +
       `<p data-duplicate-count>Найдено пар-кандидатов: <strong>${pairs.length}</strong>. Персонажей в них: <strong>${new Set(pairs.flatMap(({ a, b }) => [a.id, b.id])).size}</strong>.</p>` +
       (pairs.length ? '' : '<p>Совпадений не найдено. Недоступные контакты ОС не сравниваются.</p>');
     for (const { a, b, reasons } of pairs) {
@@ -131,6 +130,15 @@ export function openDuplicateCharacters() {
         let mutated = false;
         try {
           const [primary, duplicate] = selected();
+          const current = [...state.characters, ...state.archivedCharacters];
+          if (
+            !current.includes(primary) ||
+            !current.includes(duplicate) ||
+            !duplicateReasons(primary, duplicate).length
+          ) {
+            render();
+            throw new Error('Карточки изменились или почта / логин больше не совпадают');
+          }
           const status = vaultStatus();
           const protectedContacts = isTauri() && state.settings.security?.useVault !== false;
           if (status.blocked || ((status.count || state.secretsInVault) && !protectedContacts))

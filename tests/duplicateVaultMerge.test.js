@@ -23,7 +23,7 @@ beforeEach(async () => {
   state.settings.security.useVault = true;
   originalRecords = {
     a: record({ email: 'a@example.test', password: 'PRIVATE-A' }),
-    b: record({ phone: 'PRIVATE-B' })
+    b: record({ email: 'a@example.test', phone: 'PRIVATE-B' })
   };
   records = { ...originalRecords };
   disk = null;
@@ -184,7 +184,7 @@ it('does not reveal contacts before explicit consent in backup review', async ()
 });
 
 it('completes the actual UI flow with a chosen conflicting password and preserves both versions', async () => {
-  records.b = record({ password: 'PRIVATE-OTHER', phone: 'PRIVATE-B' });
+  records.b = record({ email: 'a@example.test', password: 'PRIVATE-OTHER', phone: 'PRIVATE-B' });
   secrets.__setInvoke(transport.invoke);
   state.characters[1].contacts = { ...empty };
   await secrets.hydrateSecrets(state.characters, { requiresVault: true });
