@@ -68,3 +68,14 @@ it('retains timing choices and uncertain-release flags without dropping message 
     steps: [{ phase: 'modifier-up', elapsedUs: 101000 }]
   });
 });
+it('retains message-only modifier semantics and packed key flags in exported reports', () => {
+  journal.appendBackgroundJournal('multi-step', {
+    details: {
+      modifierState: 'window-messages-only',
+      steps: [{ phase: 'modifier-down', wparam: 16, lparam: '0x002A0001', ok: true }]
+    }
+  });
+  const report = JSON.parse(journal.backgroundJournalText()).records[0].details.details;
+  expect(report.modifierState).toBe('window-messages-only');
+  expect(report.steps[0]).toMatchObject({ wparam: 16, lparam: '0x002A0001' });
+});

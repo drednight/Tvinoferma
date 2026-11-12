@@ -117,3 +117,11 @@ it('passes selected budgets to one-client run and displays release warning witho
   expect(ov.body.querySelectorAll('[data-verdict]')).toHaveLength(1);
   ov.close();
 });
+it('warns before sending that message-only modifiers can trigger the base action', () => {
+  const ov = openMultiInputTrial({ state, run: vi.fn(), stop: vi.fn() });
+  const warning = ov.body.querySelector('[data-modifier-warning]');
+  expect(warning.hidden).toBe(false);
+  expect(warning.textContent).toContain('обычная 1');
+  expect(warning.textContent).toContain('состояние клавиатуры игры не меняется');
+  ov.close();
+});

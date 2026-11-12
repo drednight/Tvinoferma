@@ -6,6 +6,7 @@ const fields = new Set([
   'schema',
   'timing',
   'modifierGapMs',
+  'modifierState',
   'timedOut',
   'releaseUnconfirmed',
   'charId',

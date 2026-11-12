@@ -1437,6 +1437,13 @@ mod win {
         let mut report = background_probe(raw, pid, key, false)?;
         report["timeoutMs"] = serde_json::json!(timing.timeout_ms);
         report["modifierGapMs"] = serde_json::json!(timing.modifier_gap_ms);
+        // Window messages do not set the target thread's GetKeyState/GetAsyncKeyState.
+        // Never substitute global SendInput or attach input queues in this protocol.
+        report["modifierState"] = serde_json::json!(if mods.is_empty() {
+            "not-requested"
+        } else {
+            "window-messages-only"
+        });
         report["activityTest"] = serde_json::json!(true);
         report["activityVariant"] = serde_json::json!(method.label());
         report["holdMs"] = serde_json::json!(hold_ms.clamp(10, 200));
@@ -1495,7 +1502,7 @@ mod win {
             failure.set(failure.get().or(result.err()));
             let after = unsafe { GetForegroundWindow() };
             changed.set(changed.get() || after != original);
-            steps.push(serde_json::json!({"phase":phase,"elapsedUs":started.elapsed().as_micros() as u64,"timeoutMs":timing.timeout_ms,"asynchronous":asynchronous,"wparam":wp,"message":format!("0x{msg:04X}"),"ok":result.is_ok(),"error":result.err().unwrap_or(0),"before":format!("0x{:X}",before.0 as usize),"after":format!("0x{:X}",after.0 as usize)}));
+            steps.push(serde_json::json!({"phase":phase,"elapsedUs":started.elapsed().as_micros() as u64,"timeoutMs":timing.timeout_ms,"asynchronous":asynchronous,"wparam":wp,"lparam":format!("0x{:08X}",lp as u32),"message":format!("0x{msg:04X}"),"ok":result.is_ok(),"error":result.err().unwrap_or(0),"before":format!("0x{:X}",before.0 as usize),"after":format!("0x{:X}",after.0 as usize)}));
             result.is_ok() && (cleanup || !changed.get())
         };
         // No early return below: always attempt reverse notifications, including timeout paths.
@@ -1510,8 +1517,10 @@ mod win {
             // Keep a list even when DOWN times out: every attempted key gets an UP.
             let mut pressed = Vec::new();
             let mut alt_down = false;
+            let target_layout = unsafe { GetKeyboardLayout(GetWindowThreadProcessId(hwnd, None)) };
             let mut key_message = |key: u16, up: bool| {
-                let scan = unsafe { MapVirtualKeyW(key as u32, MAPVK_VK_TO_VSC) };
+                let scan =
+                    unsafe { MapVirtualKeyExW(key as u32, MAPVK_VK_TO_VSC, Some(target_layout)) };
                 let (msg, flags) = background_key_message(key, scan, up, alt_down);
                 if key == 0x12 {
                     alt_down = !up;
