@@ -21,3 +21,6 @@ pnpm-lock.yaml
 # Disposable CI timing metadata (no test titles, bodies, or credentials).
 .ci-results/
 .ci-timings/
+
+# Unsigned local Windows acceptance executables and build manifests.
+/local-acceptance/
