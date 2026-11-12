@@ -417,7 +417,10 @@ const act = async (row, action, extra = {}) => {
   }
   const result = await native('game_macro_action', {
     target: { pid: row.pid, startedAt: row.startedAt, ...(row.hwnd ? { hwnd: row.hwnd } : {}) },
-    timing: inputTiming,
+    // hybrid-party is routed by the command executor, not a native BackgroundMethod.
+    // Even foreground-only actions deserialize timing before inspecting the action.
+    timing:
+      inputTiming.backgroundMethod === 'hybrid-party' ? { ...inputTiming, backgroundMethod: 'post' } : inputTiming,
     action,
     key: null,
     rect: null,

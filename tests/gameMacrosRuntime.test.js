@@ -1482,6 +1482,8 @@ describe('party leader hybrid commands', () => {
     invoke.mockImplementation(async (command, args) => {
       if (command === 'launcher_running_details')
         return [client, { pid: 20, startedAt: 2000, hwnd: 200, elevated: false, title: 'Beta — Воин' }];
+      if (command === 'game_macro_action' && args?.timing?.backgroundMethod === 'hybrid-party')
+        throw new Error('unknown native BackgroundMethod variant hybrid-party');
       if (command === 'game_macro_modifier_trial')
         return { ok: true, releaseUnconfirmed: false, foregroundChanged: false };
       return null;
@@ -1490,6 +1492,9 @@ describe('party leader hybrid commands', () => {
   it('sends only to selected twins with the verified leader source, never activates windows', async () => {
     setup();
     await runtime.run('hybrid', true);
+    const checks = invoke.mock.calls.filter(([c, a]) => c === 'game_macro_action' && a.action === 'foreground');
+    expect(checks.length).toBeGreaterThan(0);
+    for (const [, args] of checks) expect(args.timing.backgroundMethod).toBe('post');
     const calls = invoke.mock.calls.filter(([c]) => c === 'game_macro_modifier_trial');
     expect(calls.map(([, a]) => a.key)).toEqual(['CTRL+1', 'ALT+2']);
     for (const [, args] of calls)

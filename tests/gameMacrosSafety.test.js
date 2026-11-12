@@ -116,6 +116,12 @@ it('never treats API acceptance as game acceptance and reports distinct blocking
   expect(explainBackgroundResult({ error: 5 })).toContain('ACCESS_DENIED');
   expect(explainBackgroundResult({ ok: true, foregroundChanged: true })).toContain('FOREGROUND_CHANGED');
 });
+it('hybrid party review does not warn about all-window fallback', () => {
+  const c = config();
+  const hybrid = { ...c.commands[0], backgroundMethod: 'hybrid-party', hybridConsent: true };
+  const review = reviewCommand(hybrid, c, { parties: [], characters: [] });
+  expect(review.issues.some(issue => issue.field === 'targets')).toBe(false);
+});
 it('configuration review catches duplicate chord and stays pure', () => {
   const c = config();
   c.commands.push({ ...c.commands[0], id: 'b' });

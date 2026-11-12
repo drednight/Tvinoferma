@@ -157,7 +157,12 @@ export function reviewCommand(command, c, state, path = []) {
     } catch (error) {
       add('error', 'sequence', error.message);
     }
-  if (!command.strictTargets && command.action === 'sequence' && command.scope !== 'managed')
+  if (
+    !command.strictTargets &&
+    command.action === 'sequence' &&
+    command.scope !== 'managed' &&
+    command.backgroundMethod !== 'hybrid-party'
+  )
     add(
       'warning',
       'targets',
