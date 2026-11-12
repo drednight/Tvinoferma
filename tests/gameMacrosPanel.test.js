@@ -39,6 +39,7 @@ vi.mock('../js/modules/gameMacros/runtime.js', async () => {
 });
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.removeItem('tf-gm-points-collapsed');
   state.parties = [{ id: 'p', name: 'Пати' }];
   state.characters = [{ id: 'a', nick: 'Alpha', class: 'Воин', partyIds: ['p'] }];
   state.settings.gameMacros = {
@@ -83,8 +84,7 @@ describe('party command workspace', () => {
       '[data-gm-multi-trial]',
       '[data-gm-logs]',
       '[data-gm-transfer]',
-      '[data-gm-party]',
-      '.gm-points-section'
+      '[data-gm-party]'
     ]) {
       expect(advanced.querySelector(selector)).not.toBeNull();
     }
@@ -97,14 +97,12 @@ describe('party command workspace', () => {
     const host = document.querySelector('#host');
     host.querySelector('.gm-advanced-tools').open = true;
     host.querySelector('.gm-points-section').open = true;
-    host.querySelector('.gm-repeat-settings').open = true;
     const search = host.querySelector('[data-gm-search]');
     search.value = 'unsafe';
     search.dispatchEvent(new Event('input'));
     host.querySelector('[data-gm-select]').click();
     expect(host.querySelector('.gm-advanced-tools').open).toBe(true);
     expect(host.querySelector('.gm-points-section').open).toBe(true);
-    expect(host.querySelector('.gm-repeat-settings').open).toBe(true);
     expect(host.querySelector('[data-gm-search]').value).toBe('unsafe');
     expect(mocks.run).not.toHaveBeenCalled();
   });
@@ -217,6 +215,7 @@ it('keeps the master switch in the standalone page header', () => {
   toggle.closest('label').dispatchEvent(click);
   expect(details.querySelector(':scope > summary')).toBeNull();
   expect(toggle.checked).toBe(true);
+  document.querySelector('[data-gm-repeat-config]').click();
   expect(document.querySelector('[data-gm-mirror-source]').value).toBe('any');
 });
 it('converts key steps to a composition without legacy add-command controls or losing steps', () => {
@@ -295,7 +294,7 @@ it('requires explicit opt-in before the one-key activity experiment', async () =
 });
 it('does not render the command execution notice below the repeat source', () => {
   expect(document.querySelector('[data-gm-runtime]')).toBeNull();
-  expect(document.querySelector('[data-gm-mirror-source]')).not.toBeNull();
+  expect(document.querySelector('[data-gm-repeat-config]')).not.toBeNull();
   expect(document.querySelector('[data-gm-logs]')).not.toBeNull();
 });
 it('hides size/profile settings and commands without deleting saved data', () => {
@@ -317,6 +316,7 @@ it('hides size/profile settings and commands without deleting saved data', () =>
 });
 
 it('lets the user choose or disable a twins-only click modifier without automatically enabling mouse repeat', async () => {
+  document.querySelector('[data-gm-repeat-config]').click();
   const field = document.querySelector('[data-gm-twins-modifier]');
   expect(field.value).toBe('');
   expect([...field.options].map(o => o.value)).toEqual([
@@ -331,6 +331,7 @@ it('lets the user choose or disable a twins-only click modifier without automati
   ]);
   field.value = 'ALT+SHIFT';
   field.dispatchEvent(new Event('change', { bubbles: true }));
+  document.querySelector('.modal-footer .primary').click();
   await vi.waitFor(() => expect(state.settings.gameMacros.mirrorTwinsModifier).toBe('ALT+SHIFT'));
   const runtime = await import('../js/modules/gameMacros/runtime.js');
   expect(runtime.toggleKeyboardMirror).not.toHaveBeenCalled();
@@ -342,10 +343,12 @@ it('groups execution controls together and separates repeat configuration in a n
   expect([...buttons.querySelectorAll('button')].map(b => b.textContent)).toEqual([
     '⌨ ВЫКЛ',
     '🖱 ВЫКЛ',
+    '⚙ Настройки повтора',
     'Ⅱ Пауза',
     '■ Остановить'
   ]);
-  const group = document.querySelector('.gm-repeat-settings');
+  document.querySelector('[data-gm-repeat-config]').click();
+  const group = document.querySelector('.gm-repeat-modal');
   expect(group.querySelector('legend').textContent).toContain('Повтор клавиатуры и мыши');
   expect(group.contains(document.querySelector('[data-gm-mirror-source]'))).toBe(true);
   expect(group.contains(document.querySelector('[data-gm-twins-modifier]'))).toBe(true);
@@ -360,11 +363,13 @@ it('filters commands without executing them', () => {
   expect(mocks.run).not.toHaveBeenCalled();
 });
 it('offers independent active-window-only mouse modifier, disabled by default and persisted', async () => {
+  document.querySelector('[data-gm-repeat-config]').click();
   const input = document.querySelector('[data-gm-active-modifier]');
   expect(input).not.toBeNull();
   expect(input.value).toBe('');
   input.value = 'SHIFT';
   input.dispatchEvent(new Event('change'));
+  document.querySelector('.modal-footer .primary').click();
   await vi.waitFor(() => expect(state.settings.gameMacros.mirrorActiveModifier).toBe('SHIFT'));
   expect(state.settings.gameMacros.mirrorTwinsModifier).toBe('');
 });
@@ -434,4 +439,51 @@ it('assigns and clears the leader of the explicitly selected party from settings
   document.querySelector('[data-gm-leader]').value = '';
   document.querySelector('[data-gm-leader]').dispatchEvent(new Event('change'));
   await vi.waitFor(() => expect(state.settings.gameMacros.leaders.p).toBeUndefined());
+});
+
+it('shows coordinates directly under commands and remembers the user collapsing the card', async () => {
+  const host = document.querySelector('#host');
+  const points = host.querySelector('.gm-points-section');
+  expect(points.open).toBe(true);
+  expect(points.closest('.gm-advanced-tools')).toBeNull();
+  expect(
+    host.querySelector('.gm-command-workbench').compareDocumentPosition(points) & Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy();
+  points.open = false;
+  await vi.waitFor(() => expect(localStorage.getItem('tf-gm-points-collapsed')).toBe('yes'));
+  mountGameMacros(host);
+  expect(host.querySelector('.gm-points-section').open).toBe(false);
+  host.innerHTML = '';
+  mountGameMacros(host);
+  expect(host.querySelector('.gm-points-section').open).toBe(false);
+});
+
+it('does not apply repeat settings when the modal is cancelled', () => {
+  document.querySelector('[data-gm-repeat-config]').click();
+  document.querySelector('[data-gm-active-modifier]').value = 'SHIFT';
+  document.querySelector('.modal-footer .ghost').click();
+  expect(state.settings.gameMacros.mirrorActiveModifier).toBeUndefined();
+  expect(document.querySelector('.gm-repeat-modal')).toBeNull();
+});
+
+it('refuses to overwrite repeat settings changed after opening the dialog', async () => {
+  document.querySelector('[data-gm-repeat-config]').click();
+  document.querySelector('[data-gm-mirror-source]').value = 'leader';
+  state.settings.gameMacros.mirrorSource = 'leader';
+  state.settings.gameMacros.mirrorActiveModifier = 'CTRL';
+  document.querySelector('.modal-footer .primary').click();
+  await vi.waitFor(() => expect(document.querySelector('#toast-root').textContent).toContain('изменились'));
+  expect(state.settings.gameMacros.mirrorActiveModifier).toBe('CTRL');
+  expect(document.querySelector('.gm-repeat-modal')).not.toBeNull();
+});
+
+it('keeps the repeat dialog open and restores previous settings if persistence fails', async () => {
+  const { persist } = await import('../js/core/storage.js');
+  persist.mockRejectedValueOnce(new Error('Ошибка сохранения'));
+  document.querySelector('[data-gm-repeat-config]').click();
+  document.querySelector('[data-gm-active-modifier]').value = 'SHIFT';
+  document.querySelector('.modal-footer .primary').click();
+  await vi.waitFor(() => expect(document.querySelector('#toast-root').textContent).toContain('Ошибка сохранения'));
+  expect(state.settings.gameMacros.mirrorActiveModifier).toBeUndefined();
+  expect(document.querySelector('.gm-repeat-modal')).not.toBeNull();
 });

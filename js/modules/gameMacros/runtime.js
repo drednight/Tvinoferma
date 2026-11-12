@@ -1207,11 +1207,10 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
       throw new Error('ПЛ выбранной пати не определён однозначно.');
     if (
       !rows.length ||
-      rows.length > 4 ||
       rows.some(r => !r.known || !r.hwnd || !r.startedAt) ||
       new Set(rows.map(r => r.hwnd)).size !== rows.length
     )
-      throw new Error('Гибрид: нужны 1–4 однозначных получателя.');
+      throw new Error('Гибрид: нужны однозначно распознанные получатели.');
     const leader = leaders[0];
     await act(leader, 'foreground');
     const source = { pid: leader.pid, startedAt: leader.startedAt, hwnd: leader.hwnd };

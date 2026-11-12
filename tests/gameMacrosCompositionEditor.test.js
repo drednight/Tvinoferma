@@ -311,3 +311,20 @@ it('offers the tested activity-notify method for a new group while retaining an 
   expect(editor.read()[0].backgroundMethod).toBe('post');
   editor.dispose();
 });
+
+it('places each group settings beside its ordered steps and examples outside the groups', () => {
+  document.body.innerHTML = '<div id="editor"></div>';
+  const host = document.getElementById('editor');
+  const editor = mountCompositionEditor(host, { partyId: '', commands: [], points: [], profiles: [] }, null);
+  expect(host.querySelector('.gm-examples-panel [data-preset="assist"]')).not.toBeNull();
+  const group = host.querySelector('[data-block="0"]');
+  expect(group.querySelector('.gm-action-library [data-field="scope"]')).not.toBeNull();
+  expect(group.querySelector('.gm-action-library [data-field="repeat"]')).not.toBeNull();
+  expect(group.querySelector('.gm-action-library [data-add-type="focus"]')).not.toBeNull();
+  expect(group.querySelector('.gm-action-library [data-preset]')).toBeNull();
+  expect(group.querySelector('.gm-compose-steps')).not.toBeNull();
+  group.querySelector('[data-add-type="keys"]').click();
+  host.querySelector('[data-add-type="wait"]').click();
+  expect([...host.querySelectorAll('[data-step] .gm-step-number')].map(node => node.textContent)).toEqual(['1', '2']);
+  editor.dispose();
+});

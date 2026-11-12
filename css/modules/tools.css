@@ -1978,3 +1978,178 @@
 .gm-party-bar {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
 }
+
+/* Command editor: group tools on the left and the ordered plan on the right. */
+.gm-compose-workbench {
+  grid-template-columns: minmax(210px, 270px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.gm-action-library {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  padding: 14px;
+}
+.gm-action-library > strong,
+.gm-action-library > .gm-more-library,
+.gm-action-library > .gm-block-advanced {
+  grid-column: 1 / -1;
+}
+.gm-action-library > .btn,
+.gm-extra-actions .btn {
+  width: 100%;
+  min-width: 0;
+  white-space: normal;
+  text-align: left;
+}
+.gm-extra-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.gm-extra-actions > strong {
+  grid-column: 1 / -1;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+.gm-block-advanced {
+  margin: 4px 0 0;
+  padding: 14px 0 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+}
+.gm-block-advanced h5 {
+  margin: 0 0 6px;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+.gm-block-advanced > .gm-compose-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+.gm-block-advanced .gm-field,
+.gm-block-advanced .gm-compose-fields > label {
+  display: grid;
+  gap: 5px;
+}
+.gm-block-advanced .gm-compose-fields label:has(input[type='checkbox']) {
+  display: flex;
+  align-items: flex-start;
+}
+.gm-block-advanced .gm-loop-setting {
+  display: flex;
+  flex-wrap: wrap;
+}
+.gm-compose-steps {
+  min-width: 0;
+}
+.gm-compose-block > header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.gm-compose-block > header label {
+  flex: 1;
+  min-width: min(100%, 180px);
+}
+.gm-examples-panel {
+  margin: 14px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+.gm-examples-panel > summary {
+  cursor: pointer;
+  font-weight: 650;
+  color: var(--accent);
+}
+.gm-examples-panel p,
+.gm-examples-panel small {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+.gm-examples-panel > details {
+  margin-top: 12px;
+}
+.gm-examples-panel > details > summary {
+  cursor: pointer;
+  color: var(--text-dim);
+}
+.gm-examples-panel > details .btn {
+  margin: 8px 6px 0 0;
+}
+.gm-editor-advanced {
+  padding: 16px;
+  background: var(--surface-2);
+}
+.gm-editor-advanced h4 {
+  margin: 0 0 6px;
+}
+.gm-points-section {
+  margin: 24px 0;
+  padding: 0 20px 20px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+}
+.gm-points-section > summary {
+  padding: 18px 0;
+}
+.gm-points-section > summary span {
+  display: inline-grid;
+  gap: 4px;
+  vertical-align: top;
+}
+.gm-points-section > summary small {
+  color: var(--text-dim);
+  font-weight: 400;
+}
+.gm-points-section .gm-section-top {
+  margin-top: 4px;
+}
+.gm-repeat-modal fieldset {
+  padding: 18px;
+}
+.gm-repeat-modal .gm-field {
+  display: grid;
+  gap: 7px;
+}
+.gm-repeat-modal .gm-field:has(input[type='checkbox']) {
+  display: block;
+}
+.gm-repeat-modal select {
+  width: 100%;
+}
+.gm-repeat-modal small {
+  display: block;
+  margin-top: 5px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+@media (max-width: 760px) {
+  .gm-compose-workbench {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .gm-points-section {
+    padding-inline: 14px;
+  }
+}
+[data-gm-hybrid-scope] {
+  display: none;
+}
+[data-composition-editor][data-command-mode='hybrid-party'] [data-gm-standard-scope] {
+  display: none;
+}
+[data-composition-editor][data-command-mode='hybrid-party'] [data-gm-hybrid-scope] {
+  display: inline;
+}

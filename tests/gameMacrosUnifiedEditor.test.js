@@ -106,8 +106,8 @@ it('starts with a simple empty plan and keeps advanced command settings optional
   expect(document.querySelector('.gm-empty-plan').textContent).toContain('С чего начнём');
   // The empty state suggests actions, not a preselected key or an automatic input run.
   expect(document.querySelectorAll('[data-step]')).toHaveLength(0);
-  expect(document.querySelector('.gm-editor-advanced').open).toBe(false);
-  expect(document.querySelector('.gm-block-advanced').open).toBe(false);
+  expect(document.querySelector('.gm-editor-advanced').tagName).toBe('SECTION');
+  expect(document.querySelector('.gm-block-advanced').tagName).toBe('SECTION');
 });
 
 it('saves and reopens an existing managed key command changed from all to except PL', async () => {

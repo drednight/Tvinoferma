@@ -1648,12 +1648,14 @@ describe('hybrid recipients use the running selection within one party', () => {
   });
 });
 
-it('rejects a hybrid plan with more than four selected recipients before any input', async () => {
-  state.characters = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon'].map((nick, i) => ({
-    id: `c${i}`,
-    nick,
-    partyIds: ['p']
-  }));
+it('executes a hybrid plan for ten recipients in sequence without changing focus', async () => {
+  state.characters = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta', 'Iota', 'Kappa'].map(
+    (nick, i) => ({
+      id: `c${i}`,
+      nick,
+      partyIds: ['p']
+    })
+  );
   state.settings.gameMacros.partyId = 'p';
   state.settings.gameMacros.leaders = { p: 'c0' };
   state.settings.gameMacros.commands = [
@@ -1669,19 +1671,69 @@ it('rejects a hybrid plan with more than four selected recipients before any inp
       hybridConsent: true
     }
   ];
-  invoke.mockImplementation(async command =>
-    command === 'launcher_running_details'
-      ? state.characters.map((char, i) => ({
-          pid: i + 10,
-          hwnd: i + 100,
-          startedAt: 1000 + i,
-          elevated: false,
-          title: `${char.nick} — Воин`
-        }))
-      : null
-  );
+  let inFlight = 0,
+    peak = 0;
+  invoke.mockImplementation(async command => {
+    if (command === 'launcher_running_details')
+      return state.characters.map((char, i) => ({
+        pid: i + 10,
+        hwnd: i + 100,
+        startedAt: 1000 + i,
+        elevated: false,
+        title: `${char.nick} — Воин`
+      }));
+    if (command === 'game_macro_modifier_trial') {
+      peak = Math.max(peak, ++inFlight);
+      await Promise.resolve();
+      inFlight--;
+      return { ok: true, releaseUnconfirmed: false, foregroundChanged: false };
+    }
+    return null;
+  });
   await runtime.run('many');
-  expect(invoke.mock.calls.some(([command]) => command === 'game_macro_modifier_trial')).toBe(false);
+  const calls = invoke.mock.calls.filter(([command]) => command === 'game_macro_modifier_trial');
+  expect(calls.map(([, args]) => args.target.pid).sort((a, b) => a - b)).toEqual([
+    10, 11, 12, 13, 14, 15, 16, 17, 18, 19
+  ]);
+  expect(peak).toBe(1);
+  expect(calls.every(([, args]) => args.source.pid === 10 && args.method === 'hybrid-party')).toBe(true);
+  expect(invoke.mock.calls.some(([, args]) => ['focus', 'key', 'key-background'].includes(args?.action))).toBe(false);
+  expect(runtime.snapshot().executionState).toBe('finished');
+});
+
+it('stops a larger hybrid sequence immediately when one recipient returns an uncertain delivery', async () => {
+  state.characters = Array.from({ length: 10 }, (_, i) => ({ id: `c${i}`, nick: `Player${i}`, partyIds: ['p'] }));
+  state.settings.gameMacros.partyId = 'p';
+  state.settings.gameMacros.leaders = { p: 'c0' };
+  state.settings.gameMacros.commands = [
+    {
+      id: 'many',
+      name: 'many',
+      action: 'sequence',
+      scope: 'party',
+      target: 'all',
+      sequence: 'F2',
+      delivery: 'background',
+      backgroundMethod: 'hybrid-party',
+      hybridConsent: true
+    }
+  ];
+  let sent = 0;
+  invoke.mockImplementation(async command => {
+    if (command === 'launcher_running_details')
+      return state.characters.map((char, i) => ({
+        pid: i + 10,
+        hwnd: i + 100,
+        startedAt: i + 1000,
+        elevated: false,
+        title: `${char.nick} — Воин`
+      }));
+    if (command === 'game_macro_modifier_trial')
+      return ++sent === 5 ? { ok: false, deliveryUncertain: true } : { ok: true };
+    return null;
+  });
+  await runtime.run('many');
+  expect(sent).toBe(5);
   expect(runtime.snapshot().executionState).toBe('failed');
-  expect(runtime.snapshot().notice).toContain('1–4');
+  expect(invoke.mock.calls.some(([, args]) => ['focus', 'key', 'key-background'].includes(args?.action))).toBe(false);
 });
