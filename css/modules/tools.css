@@ -1646,3 +1646,157 @@
 .gm-more-library details {
   margin: 6px 0 6px 10px;
 }
+
+/* Commands workspace: everyday actions first, technical tools on demand. */
+.gm-hero {
+  padding: 24px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(120deg, var(--accent-soft), transparent 75%), var(--surface-2);
+}
+.gm-hero-copy {
+  min-width: 0;
+  max-width: 680px;
+}
+.gm-hero h3 {
+  font-size: 1.65rem;
+  letter-spacing: -0.02em;
+}
+.gm-hero-copy > small {
+  display: block;
+  margin-top: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.gm-hero-actions,
+.gm-execution-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.gm-hero-actions {
+  margin-top: 18px;
+}
+.gm-hero .gm-hotkey-master {
+  padding: 10px 12px;
+  margin-bottom: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+}
+.gm-quick-controls {
+  margin: 18px 0 26px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+}
+.gm-control-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.gm-control-heading p {
+  margin: 6px 0 0;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.gm-stop-hint {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+}
+.gm-stop-hint kbd {
+  color: var(--text);
+}
+.gm-quick-controls .gm-control-buttons {
+  align-items: end;
+  margin: 16px 0 0;
+  gap: 12px;
+}
+.gm-device {
+  display: grid;
+  gap: 6px;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+}
+.gm-device .gm-repeat-toggle {
+  min-width: 125px;
+}
+.gm-execution-controls {
+  margin-left: auto;
+}
+.gm-safety-note {
+  margin: 14px 0 0;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+.gm-execution-status {
+  margin: 12px 0 0;
+  color: var(--accent);
+  font-size: 0.85rem;
+}
+.gm-command-detail .gm-icon-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.gm-command-empty {
+  max-width: 420px;
+  padding: 20px 0;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.gm-command-empty strong {
+  color: var(--text);
+}
+.gm-advanced-tools {
+  margin-top: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+}
+.gm-advanced-tools > summary {
+  padding: 18px 20px;
+  cursor: pointer;
+}
+.gm-advanced-tools > summary span {
+  display: inline-grid;
+  gap: 4px;
+  vertical-align: top;
+}
+.gm-advanced-tools > summary small {
+  color: var(--text-dim);
+  font-weight: normal;
+}
+.gm-advanced-content {
+  padding: 0 20px 20px;
+}
+.gm-advanced-tools[open] > summary {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+@media (max-width: 640px) {
+  .gm-workspace {
+    padding: 14px;
+  }
+  .gm-hero,
+  .gm-quick-controls {
+    padding: 16px;
+  }
+  .gm-hero .gm-hotkey-master,
+  .gm-execution-controls {
+    margin-left: 0;
+  }
+  .gm-detail-head {
+    flex-wrap: wrap;
+  }
+  .gm-command-detail .gm-icon-actions {
+    justify-content: flex-start;
+  }
+  .gm-advanced-content {
+    padding-inline: 14px;
+  }
+}

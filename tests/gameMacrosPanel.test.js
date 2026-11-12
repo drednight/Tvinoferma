@@ -58,6 +58,68 @@ describe('party command workspace', () => {
     expect(document.body.textContent).not.toContain('Глобальные хоткеи');
     expect(document.body.textContent).not.toContain('Перед массовыми');
   });
+  it('keeps everyday controls visible and technical tools collapsed below the command list', () => {
+    const host = document.querySelector('#host');
+    const advanced = host.querySelector('.gm-advanced-tools');
+    expect(host.querySelector('.gm-page-heading h3').textContent).toBe('Команды');
+    expect(advanced.open).toBe(false);
+    for (const selector of [
+      '[data-gm-recipients]',
+      '[data-gm-overlay]',
+      '[data-gm-enabled]',
+      '[data-gm-mirror]',
+      '[data-gm-mirror-mouse]',
+      '[data-gm-pause]',
+      '[data-gm-stop]',
+      '[data-gm-create]',
+      '[data-gm-run]',
+      '[data-gm-edit]'
+    ]) {
+      expect(host.querySelector(selector).closest('.gm-advanced-tools')).toBeNull();
+    }
+    for (const selector of [
+      '[data-gm-diagnostics]',
+      '[data-gm-background-probe]',
+      '[data-gm-trial-wizard]',
+      '[data-gm-logs]',
+      '[data-gm-transfer]',
+      '[data-gm-party]',
+      '.gm-points-section'
+    ]) {
+      expect(advanced.querySelector(selector)).not.toBeNull();
+    }
+    expect(
+      host.querySelector('.gm-command-workbench').compareDocumentPosition(advanced) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(host.querySelector('[data-gm-execution-status]').hidden).toBe(true);
+  });
+  it('preserves expanded sections and search on remount without running a command', () => {
+    const host = document.querySelector('#host');
+    host.querySelector('.gm-advanced-tools').open = true;
+    host.querySelector('.gm-points-section').open = true;
+    host.querySelector('.gm-repeat-settings').open = true;
+    const search = host.querySelector('[data-gm-search]');
+    search.value = 'unsafe';
+    search.dispatchEvent(new Event('input'));
+    host.querySelector('[data-gm-select]').click();
+    expect(host.querySelector('.gm-advanced-tools').open).toBe(true);
+    expect(host.querySelector('.gm-points-section').open).toBe(true);
+    expect(host.querySelector('.gm-repeat-settings').open).toBe(true);
+    expect(host.querySelector('[data-gm-search]').value).toBe('unsafe');
+    expect(mocks.run).not.toHaveBeenCalled();
+  });
+  it('runs a saved command only from its explicit run button', () => {
+    document.querySelector('[data-gm-run]').click();
+    expect(mocks.run).toHaveBeenCalledWith('next');
+  });
+  it('keeps saved pause commands available during execution', () => {
+    state.settings.gameMacros.commands = [{ id: 'pause', name: 'Пауза', action: 'pause' }];
+    mountGameMacros(document.querySelector('#host'));
+    const button = document.querySelector('[data-gm-run]');
+    expect(button.hasAttribute('data-gm-pause')).toBe(true);
+    button.click();
+    expect(mocks.run).toHaveBeenCalledWith('pause');
+  });
   it('opens a clean creation modal and can cancel without creating a command', () => {
     expect(document.querySelector('[data-gm-form]')).toBeNull();
     document.querySelector('[data-gm-create]').click();
