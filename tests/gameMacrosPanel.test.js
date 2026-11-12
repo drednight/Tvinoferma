@@ -7,7 +7,14 @@ const mocks = vi.hoisted(() => ({
   openOverlay: vi.fn(),
   run: vi.fn(),
   pickPoint: vi.fn(),
-  listMacroWindows: vi.fn(async () => [])
+  listMacroWindows: vi.fn(async () => []),
+  saveProfile: vi.fn(async name => {
+    state.settings.gameMacros.profiles = [
+      ...(state.settings.gameMacros.profiles || []),
+      { id: 'new-profile', name, windows: [] }
+    ];
+    state.settings.gameMacros.profileId = 'new-profile';
+  })
 }));
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}) }));
 vi.mock('../js/modules/gameMacros/runtime.js', async () => {
@@ -30,7 +37,7 @@ vi.mock('../js/modules/gameMacros/runtime.js', async () => {
     run: mocks.run,
     stop: vi.fn(),
     togglePause: vi.fn(),
-    saveProfile: vi.fn(),
+    saveProfile: mocks.saveProfile,
     pickPoint: mocks.pickPoint,
     previewCommand: vi.fn(),
     showSize: mocks.showSize,
@@ -297,7 +304,7 @@ it('does not render the command execution notice below the repeat source', () =>
   expect(document.querySelector('[data-gm-repeat-config]')).not.toBeNull();
   expect(document.querySelector('[data-gm-logs]')).not.toBeNull();
 });
-it('hides size/profile settings and commands without deleting saved data', () => {
+it('keeps saved profiles available while hiding obsolete size and layout commands', () => {
   state.settings.gameMacros.commands.push(
     { id: 'size', action: 'resize', name: 'Old size' },
     { id: 'layout', action: 'layout', name: 'Old layout' }
@@ -305,7 +312,8 @@ it('hides size/profile settings and commands without deleting saved data', () =>
   state.settings.gameMacros.profiles = [{ id: 'saved', name: 'Saved profile', windows: [] }];
   mountGameMacros(document.getElementById('host'));
   expect(document.querySelector('[data-gm-hidden-sizes]').hidden).toBe(true);
-  expect(document.querySelector('[data-gm-hidden-profiles]').hidden).toBe(true);
+  expect(document.querySelector('.gm-profiles-section').open).toBe(false);
+  expect(document.querySelector('[data-gm-profile] option[value="saved"]').textContent).toBe('Saved profile');
   expect(document.querySelector('[data-gm-select="size"]')).toBeNull();
   expect(document.querySelector('[data-gm-select="layout"]')).toBeNull();
   expect(state.settings.gameMacros.commands.some(row => row.id === 'size')).toBe(true);
@@ -486,4 +494,30 @@ it('keeps the repeat dialog open and restores previous settings if persistence f
   await vi.waitFor(() => expect(document.querySelector('#toast-root').textContent).toContain('Ошибка сохранения'));
   expect(state.settings.gameMacros.mirrorActiveModifier).toBeUndefined();
   expect(document.querySelector('.gm-repeat-modal')).not.toBeNull();
+});
+
+it('puts collapsed window profiles immediately below coordinates and saves, selects and deletes profiles', async () => {
+  const host = document.querySelector('#host');
+  const points = host.querySelector('.gm-points-section');
+  const profiles = host.querySelector('.gm-profiles-section');
+  expect(points.nextElementSibling).toBe(profiles);
+  expect(profiles.open).toBe(false);
+  expect(profiles.closest('.gm-advanced-tools')).toBeNull();
+  profiles.open = true;
+  profiles.querySelector('[data-gm-profile-name]').value = 'Моё расположение';
+  profiles.querySelector('[data-gm-save-profile]').click();
+  await vi.waitFor(() => expect(mocks.saveProfile).toHaveBeenCalledWith('Моё расположение'));
+  await vi.waitFor(() => expect(host.querySelector('[data-gm-profile]').value).toBe('new-profile'));
+  expect(host.querySelector('.gm-profiles-section').open).toBe(true);
+  expect(state.settings.gameMacros.profiles[0].name).toBe('Моё расположение');
+  const select = host.querySelector('[data-gm-profile]');
+  select.value = '';
+  select.dispatchEvent(new Event('change'));
+  await vi.waitFor(() => expect(state.settings.gameMacros.profileId).toBe(''));
+  host.querySelector('[data-gm-profile]').value = 'new-profile';
+  host.querySelector('[data-gm-profile]').dispatchEvent(new Event('change'));
+  await vi.waitFor(() => expect(state.settings.gameMacros.profileId).toBe('new-profile'));
+  host.querySelector('[data-gm-delete-profile]').click();
+  await vi.waitFor(() => expect(state.settings.gameMacros.profiles).toEqual([]));
+  expect(state.settings.gameMacros.profileId).toBe('');
 });

@@ -2153,3 +2153,50 @@
 [data-composition-editor][data-command-mode='hybrid-party'] [data-gm-hybrid-scope] {
   display: inline;
 }
+
+.gm-block-advanced .gm-compose-fields > .gm-per-window-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-left: 0;
+  gap: 12px;
+}
+.gm-block-advanced .gm-per-window-switch input[type='checkbox'] {
+  width: 1px;
+  height: 1px;
+  margin: 0;
+}
+.gm-per-window-switch i {
+  flex: 0 0 38px;
+}
+.gm-per-window-switch input:disabled + i {
+  opacity: 0.5;
+}
+.gm-add-group {
+  margin-top: 16px;
+}
+.gm-profiles-section {
+  margin: 24px 0;
+  padding: 0 20px 20px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+}
+.gm-profiles-section > summary {
+  padding: 18px 0;
+  cursor: pointer;
+}
+.gm-profiles-section > summary span {
+  display: inline-grid;
+  gap: 4px;
+  vertical-align: top;
+}
+.gm-profiles-section > summary small {
+  color: var(--text-dim);
+  font-weight: 400;
+}
+@media (max-width: 760px) {
+  .gm-profiles-section {
+    padding-inline: 14px;
+  }
+}

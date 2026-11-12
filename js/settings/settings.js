@@ -55,6 +55,7 @@ import { bindInitialCloudPanel } from '../modules/cloudSync/ui/initialCloudPanel
 import { bindCloudActivityPanel } from '../modules/cloudSync/ui/cloudActivityPanel.js';
 import { bindCloudPublicationPanel } from '../modules/cloudSync/ui/cloudPublicationPanel.js';
 import { bindPrivateTransferPanel } from '../modules/cloudSync/ui/privateTransferPanel.js';
+import { duplicateBackupToken, openDuplicateContactBackup } from './duplicateContactBackup.js';
 import '../modules/automation/promoLogView.js'; // виды логов «Промокоды», «Передачи» и «Подарки»
 import '../modules/automation/transferLogView.js';
 import '../modules/automation/shopLogView.js'; // вид логов «Подарки» (покупка за Древние монеты)
@@ -81,6 +82,7 @@ function backupRowsHtml(backups) {
               ${createdAt ? `<small class="muted">${escapeHtml(name)}${size ? ` · ${Math.round(size / 1024)} КБ` : ''}</small>` : ''}
             </div>
             <div class="row gap">
+              ${duplicateBackupToken(name) ? `<button class="btn" data-duplicate-contact-backup="${escapeHtml(name)}">Исходные контакты</button>` : ''}
               <button class="btn" data-backup-restore="${escapeHtml(name)}">Восстановить</button>
               <button class="btn danger" data-backup-delete="${escapeHtml(name)}">Удалить</button>
             </div>
@@ -829,6 +831,18 @@ export function bindSettings() {
 
   // Backup Actions (Delegate)
   document.addEventListener('click', async e => {
+    const contactsBtn = e.target.closest?.('[data-duplicate-contact-backup]');
+    if (contactsBtn) {
+      contactsBtn.disabled = true;
+      try {
+        await openDuplicateContactBackup(contactsBtn.dataset.duplicateContactBackup);
+      } catch {
+        toast('Не удалось прочитать отдельную копию контактов в хранилище ОС.', 'warning', 8000);
+      } finally {
+        contactsBtn.disabled = false;
+      }
+      return;
+    }
     const restoreBtn = e.target.closest?.('[data-backup-restore]');
     const deleteBtn = e.target.closest?.('[data-backup-delete]');
     if (!restoreBtn && !deleteBtn) return;
@@ -862,7 +876,7 @@ export function bindSettings() {
         }
         const ok = await confirmModal({
           title: 'Восстановить файл состояния?',
-          text: `Выбрана копия «${name}». ${reviewDescription(inspection)}`,
+          text: `Выбрана копия «${name}». ${reviewDescription(inspection)}${duplicateBackupToken(name) ? ' Восстановление не вернёт автоматически контакты до слияния: до или после восстановления откройте «Исходные контакты» рядом с этой копией и при необходимости внесите значения вручную.' : ''}`,
           okText: 'Восстановить состояние',
           danger: true
         });
@@ -897,7 +911,7 @@ export function bindSettings() {
       const name = deleteBtn.dataset.backupDelete;
       const ok = await confirmModal({
         title: 'Удалить резервную копию?',
-        text: `Копия «${name}» будет удалена безвозвратно. Восстановить из неё данные больше не получится.`,
+        text: `Копия «${name}» будет удалена безвозвратно. Восстановить из неё данные больше не получится.${duplicateBackupToken(name) ? ' Она также содержит идентификатор отдельных защищённых копий контактов до слияния; сохраните имя, если они могут понадобиться.' : ''}`,
         okText: 'Удалить копию',
         danger: true
       });

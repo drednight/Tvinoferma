@@ -67,15 +67,23 @@ export function mountCompositionEditor(host, c, row) {
     `<select class="input" data-field="${field}">${values.map(([v, l]) => option(v, l, value, field === 'commandId' && c.commands.some(cmd => cmd.id === v && !commandVisible(cmd)))).join('')}</select>`;
   const input = (field, value, type = 'text') =>
     `<input class="input" data-field="${field}" type="${type}" value="${esc(value ?? '')}">`;
-  const recipients = block =>
-    block.scope === 'managed' ? state.characters : partyMembers(state, block.partyId || c.partyId);
+  const recipients = block => {
+    if (host.dataset.commandMode !== 'hybrid-party')
+      return block.scope === 'managed' ? state.characters : partyMembers(state, block.partyId || c.partyId);
+    const members = partyMembers(state, block.scope === 'party' ? block.partyId || c.partyId : c.partyId);
+    // Keep previously selected outsiders visible so they can be unchecked without data loss.
+    return [
+      ...members,
+      ...state.characters.filter(char => block.charIds.includes(char.id) && !members.some(m => m.id === char.id))
+    ];
+  };
   const parties = () => [['', 'Текущая управляющая пати'], ...state.parties.map(p => [p.id, p.name])];
   function fields(step) {
     switch (step.type) {
       case 'keys':
         return `<label>Клавиша ${input('value', step.value)}${quickKeysHtml()}</label><small>Например SHIFT+1, CTRL+F2 или F8. Сочетание задаётся здесь, без отдельного окна ввода.</small>`;
       case 'wait':
-        return `<label>Задержка, мс ${input('ms', step.ms, 'number')}</label>`;
+        return `<label>Задержка, мс ${input('ms', step.ms, 'number')}${host.dataset.commandMode === 'hybrid-party' ? '<small>Для гибрида: от 50 до 3000 мс.</small>' : ''}</label>`;
       case 'command':
         return `<label>Команда ${select(
           'commandId',
@@ -88,7 +96,7 @@ export function mountCompositionEditor(host, c, row) {
           step.commandId
         )}</label><small>Ссылка: изменения исходной команды применяются здесь. Рекурсивные ссылки запрещены; повторения задаются для блока.</small>`;
       case 'point':
-        return `${clickSource(step)}<label>Точка ${select('pointId', [['', 'Выбрать точку'], ...c.points.map(p => [p.id, p.name])], step.pointId)}</label>${pointVariants(step)}${mouse(step)}`;
+        return `${clickSource(step)}<label>Точка ${select('pointId', [['', 'Выбрать точку'], ...c.points.map(p => [p.id, p.name])], step.pointId)}</label>${step.pointIds?.length ? '<small>Для этого сохранённого действия также используются ранее выбранные дополнительные точки. Чтобы убрать их, удалите действие и добавьте его заново.</small>' : ''}${mouse(step)}`;
       case 'screen':
         return `${clickSource(step)}<label>Экран X ${input('x', step.x, 'number')}</label><label>Экран Y ${input('y', step.y, 'number')}</label>${mouse(step)}`;
       case 'repeat':
@@ -127,17 +135,6 @@ export function mountCompositionEditor(host, c, row) {
       default:
         return '<small>Ожидает команды «Пауза / продолжить». Остановка отменяет весь план.</small>';
     }
-  }
-  function pointVariants(step) {
-    return `<details><summary>Дополнительные шаблоны для других размеров/DPI</summary>${c.points
-      .filter(p => p.id !== step.pointId)
-      .map(
-        p =>
-          `<label><input type="checkbox" data-point-variant="${esc(p.id)}" ${step.pointIds?.includes(p.id) ? 'checked' : ''}>${esc(p.name)} · ${p.width}×${p.height} · DPI ${p.dpi}</label>`
-      )
-      .join(
-        ''
-      )}<small>Для каждого окна должен подходить ровно один шаблон; автоматического растягивания нет.</small></details>`;
   }
   function clickSource(step) {
     return `<label>Координаты<select class="input" data-click-source><option value="screen" ${step.type === 'screen' ? 'selected' : ''}>Свои — экранные X/Y</option><option value="point" ${step.type === 'point' ? 'selected' : ''}>Сохранённый шаблон точки</option></select></label>`;
@@ -190,7 +187,7 @@ export function mountCompositionEditor(host, c, row) {
     );
   }
   function draw() {
-    host.innerHTML = `<div class="gm-compose-title"><h4>Что выполнить</h4><button type="button" class="btn ghost small" data-undo ${undo.length ? '' : 'disabled'}>↶ Отменить изменение</button></div><p>Добавьте действия и расположите их в нужном порядке. Команда выполняется на выбранных запущенных персонажах.</p>${blocks
+    host.innerHTML = `<div class="gm-compose-title"><h4>Что выполнить</h4><button type="button" class="btn ghost small" data-undo ${undo.length ? '' : 'disabled'}>↶ Отменить изменение</button></div><p>Добавьте действия и расположите их в нужном порядке. Команда выполняется на выбранных запущенных персонажах.</p><p class="gm-safety-note" data-hybrid-plan-warning hidden></p>${blocks
       .map(
         (block, b) =>
           `<section class="gm-compose-block" data-block="${b}"><header><button type="button" class="btn ghost small" data-block-collapse aria-expanded="${!collapsed.has(b)}" title="Свернуть или раскрыть блок">${collapsed.has(b) ? '▸' : '▾'}</button><label>Название ${input('name', block.name)}</label><button class="btn ghost" type="button" data-block-up ${b === 0 ? 'disabled' : ''}>↑</button><button class="btn danger" type="button" data-block-delete>Удалить блок</button></header><p class="gm-compose-summary">${blocks.length > 1 ? `${esc(block.name)} · ` : ''}${block.steps.length} действий × ${block.repeat ?? 1} · <span data-gm-standard-scope>${block.scope === 'managed' ? 'Все распознанные окна' : esc(state.parties.find(p => p.id === (block.partyId || c.partyId))?.name || 'Текущая пати')}</span><span data-gm-hybrid-scope>Гибрид: ${esc(state.parties.find(p => p.id === (block.scope === 'party' ? block.partyId || c.partyId : c.partyId))?.name || 'текущая пати')}</span><span data-gm-legacy-delivery> · ${block.delivery === 'background' ? 'В фоне' : 'С активацией'}</span></p><div ${collapsed.has(b) ? 'hidden' : ''}><label><input type="checkbox" data-field="parallel" ${block.parallel ? 'checked' : ''} ${b === 0 ? 'disabled' : ''}> Одновременно с предыдущим</label><div class="gm-compose-fields"><label>Область ${select(
@@ -251,11 +248,11 @@ export function mountCompositionEditor(host, c, row) {
                 )
                   .map(
                     char =>
-                      `<label><input type="checkbox" data-character="${esc(char.id)}" ${block.charIds.includes(char.id) ? 'checked' : ''}>${esc(char.nick)}</label>`
+                      `<label><input type="checkbox" data-character="${esc(char.id)}" ${block.charIds.includes(char.id) ? 'checked' : ''}>${esc(char.nick)}${host.dataset.commandMode === 'hybrid-party' && !partyMembers(state, block.scope === 'party' ? block.partyId || c.partyId : c.partyId).some(member => member.id === char.id) ? ' · вне выбранной пати — снимите отметку' : ''}</label>`
                   )
                   .join('')}</fieldset>`
               : ''
-          }${block.scope === 'managed' && ['leader', 'others'].includes(block.target) ? '<small class="gm-block-leader-note">ПЛ берётся из настроек выбранной пати; остальные распознанные окна остаются вне ПЛ.</small>' : ''}<label><input type="checkbox" data-field="perWindow" ${block.perWindow ? 'checked' : ''} ${block.delivery === 'background' && isActivityMethod(block.backgroundMethod) ? 'disabled' : ''}> Выполнить все шаги в одном окне, затем перейти к следующему</label><label class="gm-loop-setting">Повторить блок ${input('repeat', block.repeat ?? 1, 'number')} раз <small>1–100; Стоп прерывает цикл. Все повторы проверяются до запуска.</small></label><div class="gm-compose-workbench"><aside class="gm-action-library" aria-label="Добавить действие"><strong>Добавить действие</strong>${[
+          }${block.scope === 'managed' && ['leader', 'others'].includes(block.target) ? '<small class="gm-block-leader-note">ПЛ берётся из настроек выбранной пати; остальные распознанные окна остаются вне ПЛ.</small>' : ''}<label class="gm-slider-switch gm-per-window-switch"><span>Выполнить все шаги в одном окне, затем перейти к следующему</span><input type="checkbox" role="switch" data-field="perWindow" ${block.perWindow ? 'checked' : ''} ${block.delivery === 'background' && isActivityMethod(block.backgroundMethod) ? 'disabled' : ''}><i aria-hidden="true"></i></label><label class="gm-loop-setting">Повторить блок ${input('repeat', block.repeat ?? 1, 'number')} раз <small>1–100; Стоп прерывает цикл. Все повторы проверяются до запуска.</small></label><div class="gm-compose-workbench"><aside class="gm-action-library" aria-label="Добавить действие"><strong>Добавить действие</strong>${[
             ['keys', '⌨', 'Клавиша'],
             ['wait', '◷', 'Задержка'],
             ['screen', '↗', 'Клик']
@@ -292,7 +289,7 @@ export function mountCompositionEditor(host, c, row) {
       )
       .join(
         ''
-      )}<details class="gm-add-group"><summary>Сложная команда: несколько групп</summary><button type="button" class="btn" data-block-add>＋ Добавить группу</button></details><p data-compose-error role="alert"></p>`;
+      )}<div class="gm-add-group"><button type="button" class="btn" data-block-add ${blocks.length >= 8 ? 'disabled' : ''}>＋ Добавить группу</button></div><p data-compose-error role="alert"></p>`;
     host.querySelectorAll('.gm-compose-block').forEach(section => {
       const b = Number(section.dataset.block),
         block = blocks[b],
@@ -361,6 +358,95 @@ export function mountCompositionEditor(host, c, row) {
     host
       .querySelectorAll('[data-step-type="keys"] [data-field="value"]')
       .forEach(input => input.after(keyboardButton(input)));
+    updateMode();
+  }
+  function updateMode() {
+    const hybrid = host.dataset.commandMode === 'hybrid-party';
+    host.querySelectorAll('.gm-compose-block').forEach(section => {
+      const block = blocks[Number(section.dataset.block)];
+      const fieldLabel = field => section.querySelector(`[data-field="${field}"]`)?.closest('label');
+      const scope = fieldLabel('scope');
+      const perWindow = fieldLabel('perWindow');
+      const repeat = fieldLabel('repeat');
+      const party = fieldLabel('partyId');
+      const parallel = fieldLabel('parallel');
+      const split = fieldLabel('leaderSplit');
+      if (scope) scope.hidden = hybrid;
+      if (perWindow) {
+        perWindow.hidden = hybrid;
+        const toggle = perWindow.querySelector('input');
+        const unsupported = block.steps.some(
+          step => !['keys', 'wait', 'point', 'screen', 'resize'].includes(step.type)
+        );
+        toggle.disabled =
+          (block.delivery === 'background' && isActivityMethod(block.backgroundMethod)) ||
+          (!block.perWindow && unsupported);
+        toggle.title =
+          unsupported && !block.perWindow ? 'Для обхода по окнам оставьте только клавиши, паузы, клики и размеры.' : '';
+      }
+      if (repeat) repeat.hidden = hybrid && (block.repeat ?? 1) === 1;
+      if (party)
+        party.hidden = hybrid
+          ? block.scope !== 'party'
+          : block.scope === 'managed' && !['leader', 'others'].includes(block.target);
+      if (parallel) parallel.hidden = Number(section.dataset.block) === 0 || (hybrid && !block.parallel);
+      if (split) split.hidden = hybrid;
+      const note = section.querySelector('.gm-block-leader-note');
+      if (note) note.hidden = hybrid;
+      const extra = section.querySelector('.gm-more-library');
+      if (extra) extra.hidden = hybrid;
+      for (const button of section.querySelectorAll(
+        '[data-add-type="focus"], [data-add-type="launch"], [data-add-type="pause"], [data-add-type="repeat"], [data-add-type="profile"]'
+      )) {
+        button.disabled = !!block.perWindow;
+        button.title = button.disabled ? 'Выключите обход по окнам или добавьте действие в другую группу.' : '';
+      }
+      const click = section.querySelector('[data-add-type="screen"]');
+      if (click) click.hidden = hybrid;
+      for (const button of section.querySelectorAll(
+        '[data-add-type="keys"], [data-add-type="wait"], [data-step-copy]'
+      )) {
+        const limit = hybrid && block.steps.length >= 8;
+        button.disabled = limit;
+        button.title = limit
+          ? 'В гибридном режиме не более 8 шагов.'
+          : button.hasAttribute('data-step-copy')
+            ? 'Дублировать шаг'
+            : '';
+      }
+    });
+    const add = host.querySelector('[data-block-add]');
+    if (add) add.hidden = hybrid;
+    const incompatibleExamples = host.querySelectorAll('[data-template], [data-unpack-command]');
+    incompatibleExamples.forEach(button => {
+      button.hidden = hybrid;
+    });
+    host.querySelectorAll('.gm-examples-panel > details').forEach(details => {
+      details.hidden = hybrid;
+    });
+    const empty = blocks.length === 1 && blocks[0].steps.length === 0;
+    host.querySelectorAll('[data-preset]').forEach(button => {
+      button.disabled = hybrid && !empty;
+      button.title = button.disabled
+        ? 'Гибрид поддерживает одну группу; пример можно добавить только в пустую команду.'
+        : '';
+    });
+    const warning = host.querySelector('[data-hybrid-plan-warning]');
+    if (warning) {
+      warning.hidden = !hybrid;
+      const incompatible =
+        blocks.length !== 1 ||
+        blocks.some(
+          block =>
+            block.parallel ||
+            (block.repeat ?? 1) !== 1 ||
+            block.steps.length > 8 ||
+            block.steps.some(step => !['keys', 'wait'].includes(step.type))
+        );
+      warning.textContent = incompatible
+        ? 'Для гибрида оставьте одну группу, не более 8 шагов клавиш и пауз, без повтора и параллельности. Существующие действия не удалены: исправьте их или вернитесь в активный режим.'
+        : 'Гибрид: одна группа клавиш и пауз, до 8 шагов; пауза 50–3000 мс. Выполняется последовательно на участниках выбранной пати.';
+    }
   }
   host.onchange = e => {
     const field = e.target.dataset.field,
@@ -370,8 +456,16 @@ export function mountCompositionEditor(host, c, row) {
       stepEl = e.target.closest('[data-step]');
     if (e.target.matches('[data-recipient-class]')) {
       if (e.target.value) {
-        blocks[b].charIds = recipients(blocks[b])
-          .filter(char => char.class === e.target.value)
+        const block = blocks[b];
+        const hybridMembers =
+          host.dataset.commandMode === 'hybrid-party'
+            ? partyMembers(state, block.scope === 'party' ? block.partyId || c.partyId : c.partyId)
+            : null;
+        block.charIds = recipients(block)
+          .filter(
+            char =>
+              char.class === e.target.value && (!hybridMembers || hybridMembers.some(member => member.id === char.id))
+          )
           .map(char => char.id);
         draw();
       }
@@ -382,14 +476,6 @@ export function mountCompositionEditor(host, c, row) {
       if (e.target.checked) set.add(e.target.dataset.character);
       else set.delete(e.target.dataset.character);
       blocks[b].charIds = [...set];
-      return;
-    }
-    if (e.target.dataset.pointVariant && stepEl) {
-      const step = blocks[b].steps[Number(stepEl.dataset.step)];
-      const ids = new Set(step.pointIds || []);
-      if (e.target.checked) ids.add(e.target.dataset.pointVariant);
-      else ids.delete(e.target.dataset.pointVariant);
-      step.pointIds = [...ids];
       return;
     }
     if (e.target.matches('[data-click-source]') && stepEl) {
@@ -419,6 +505,7 @@ export function mountCompositionEditor(host, c, row) {
           ? Number(e.target.value)
           : e.target.value;
     if (stepEl) stepEl.querySelector('[data-step-summary]').textContent = summary(object);
+    if (!stepEl && ['repeat', 'parallel', 'perWindow'].includes(field)) updateMode();
     if (!stepEl && ['partyId', 'target', 'scope', 'delivery', 'backgroundMethod', 'leaderSplit'].includes(field)) {
       if (object.delivery === 'background' && isActivityMethod(object.backgroundMethod)) object.perWindow = true;
       if (field === 'partyId') object.charIds = [];
@@ -643,6 +730,10 @@ export function mountCompositionEditor(host, c, row) {
     },
     setBlocks: next => {
       blocks = normalizeComposition(next);
+      draw();
+    },
+    setMode: mode => {
+      host.dataset.commandMode = mode;
       draw();
     },
     dispose: () => {

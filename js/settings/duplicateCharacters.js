@@ -1,5 +1,6 @@
 import { vaultStatus } from '../core/secrets.js';
-import { state } from '../core/state.js';
+import { prepareDuplicateVaultMerge } from './duplicateVaultMerge.js';
+import { state, serializeState } from '../core/state.js';
 import { escapeHtml } from '../core/utils.js';
 import { openOverlay } from '../modules/marathons/overlay.js';
 import { confirmModal, toast } from '../core/ui.js';
@@ -8,7 +9,10 @@ import {
   createBackup,
   assertStateWriteAvailable,
   forceRenderAndPersist,
-  haltAfterPartialStateChange
+  haltAfterPartialStateChange,
+  isTauri,
+  withExclusiveDuplicateMerge,
+  renderAfterPersist
 } from '../core/storage.js';
 import { mergeCharacterReferences } from '../modules/characters/identity.js';
 
@@ -84,6 +88,10 @@ export function mergeDuplicateData(primary, duplicate, choices = {}) {
   return merged;
 }
 
+function stateWitness() {
+  return JSON.stringify(state, (_key, value) => (value instanceof Set ? [...value] : value));
+}
+
 export function openDuplicateCharacters() {
   const ov = openOverlay({ title: 'Проверить дубли персонажей' });
   let working = false;
@@ -96,7 +104,7 @@ export function openDuplicateCharacters() {
         if (reasons.length) pairs.push({ a: chars[i], b: chars[j], reasons });
       }
     ov.body.innerHTML =
-      '<p>Совпадения — только кандидаты: один аккаунт может иметь разных персонажей. Значения контактов не показываются. Пароль, резервная почта и телефон не используются для поиска совпадений. Можно оставить пару, открыть профиль для удаления или выбрать основную карточку. Слияние переносит только совместимые данные и известные ссылки; конфликтующие значения и сохранённые входы не затираются. При активных записях контактов ОС слияние заблокировано: их безопасная миграция требует отдельной процедуры. Профили браузера и записи ОС не объединяются и не удаляются. Перед слиянием создаётся копия состояния (без отдельного хранилища ОС).</p>' +
+      '<p>Совпадения — только кандидаты: один аккаунт может иметь разных персонажей. Значения контактов не показываются. Пароль, резервная почта и телефон не используются для поиска совпадений. Можно оставить пару, открыть профиль для удаления или выбрать основную карточку. Слияние переносит совместимые данные и известные ссылки; источник каждого конфликтующего поля выбирается вручную. Сохранённые входы не объединяются. При защищённом хранении перед слиянием отдельно копируются исходные контакты обеих карточек в хранилище ОС и создаётся копия состояния. Другие копии приложения нужно закрыть. Профили браузера и сохранённые входы не объединяются.</p>' +
       `<p data-duplicate-count>Найдено пар-кандидатов: <strong>${pairs.length}</strong>. Персонажей в них: <strong>${new Set(pairs.flatMap(({ a, b }) => [a.id, b.id])).size}</strong>.</p>` +
       (pairs.length ? '' : '<p>Совпадений не найдено. Недоступные контакты ОС не сравниваются.</p>');
     for (const { a, b, reasons } of pairs) {
@@ -123,11 +131,13 @@ export function openDuplicateCharacters() {
         let mutated = false;
         try {
           const [primary, duplicate] = selected();
-          if (vaultStatus().count || vaultStatus().blocked || state.secretsInVault)
-            throw new Error(
-              'Слияние контактов из хранилища ОС пока не поддерживается. Нужна отдельная миграция контактов; отключение защиты само по себе не переносит записи.'
-            );
-          const witness = JSON.stringify(state);
+          const status = vaultStatus();
+          const protectedContacts = isTauri() && state.settings.security?.useVault !== false;
+          if (status.blocked || ((status.count || state.secretsInVault) && !protectedContacts))
+            throw new Error('Хранилище ОС недоступно или отключено; сначала проверьте защищённые контакты');
+          if (protectedContacts && (!status.ready || !status.checked))
+            throw new Error('Хранилище ОС не проверено или недоступно');
+          const witness = stateWitness();
           const choices = {};
           while (true) {
             try {
@@ -138,37 +148,69 @@ export function openDuplicateCharacters() {
               const choice = await chooseMergeConflict(error.field, primary, duplicate);
               if (!choice) return;
               choices[error.field] = choice;
-              if (JSON.stringify(state) !== witness) throw new Error('changed', { cause: error });
+              if (stateWitness() !== witness) throw new Error('changed', { cause: error });
             }
           }
           if (
             !(await confirmModal({
               title: 'Слить карточки?',
-              text: `Оставить «${primary.nick}», убрать «${duplicate.nick}». Конфликты остановят слияние. Копия не содержит отдельных записей ОС; браузерные профили не объединяются.`,
+              text: `Оставить «${primary.nick}», убрать «${duplicate.nick}». Браузерные профили не объединяются. ${protectedContacts ? 'Закройте другие копии приложения. Перед изменением будут созданы копия состояния и отдельные защищённые копии контактов обеих карточек.' : 'Перед изменением будет создана копия состояния.'}`,
               okText: 'Создать копию и слить',
               danger: true
             }))
           )
             return;
           await saveNow();
-          const backup = await createBackup('before-merge-duplicates');
-          if (!backup || JSON.stringify(state) !== witness) throw new Error('changed');
-          const merged = mergeDuplicateData(primary, duplicate, choices);
-          assertStateWriteAvailable();
-          // Reference helper prepares everything first, rejects collisions without mutation.
-          mergeCharacterReferences(duplicate.id, primary.id);
-          mutated = true;
-          Object.assign(primary, merged);
-          state.characters = state.characters.filter(c => c.id !== duplicate.id);
-          state.archivedCharacters = state.archivedCharacters.filter(c => c.id !== duplicate.id);
-          await forceRenderAndPersist();
-          toast('Совместимые данные объединены. Профили браузера и хранилище ОС не менялись.', 'success');
+          if (stateWitness() !== witness) throw new Error('Данные изменились во время проверки');
+          let backup;
+          const applyMerge = () => {
+            const merged = mergeDuplicateData(primary, duplicate, choices);
+            // Reference helper prepares everything first, rejects collisions without mutation.
+            mergeCharacterReferences(duplicate.id, primary.id);
+            mutated = true;
+            Object.assign(primary, merged);
+            state.characters = state.characters.filter(c => c.id !== duplicate.id);
+            state.archivedCharacters = state.archivedCharacters.filter(c => c.id !== duplicate.id);
+          };
+          if (protectedContacts) {
+            const token = crypto.randomUUID().replaceAll('-', '').slice(0, 24);
+            await withExclusiveDuplicateMerge(async commit => {
+              if (stateWitness() !== witness) throw new Error('Данные изменились во время проверки');
+              const snapshot = JSON.parse(JSON.stringify(serializeState()));
+              const prepared = await prepareDuplicateVaultMerge(
+                snapshot,
+                [primary.id, duplicate.id],
+                token,
+                () => stateWitness() === witness
+              );
+              backup = prepared.name;
+              if (stateWitness() !== witness) throw new Error('Данные изменились во время проверки');
+              applyMerge();
+              const mergedWitness = stateWitness();
+              await commit(prepared.raw);
+              if (stateWitness() !== mergedWitness) throw new Error('Данные изменились во время сохранения');
+            });
+            await renderAfterPersist();
+          } else {
+            backup = await createBackup('before-merge-duplicates');
+            if (!backup || stateWitness() !== witness) throw new Error('Данные изменились во время проверки');
+            assertStateWriteAvailable();
+            applyMerge();
+            await forceRenderAndPersist();
+          }
+          toast(
+            protectedContacts
+              ? `Карточки объединены. Исходные контакты сохранены отдельно; копия состояния: ${backup}.`
+              : 'Совместимые данные объединены. Профили браузера и хранилище ОС не менялись.',
+            'success',
+            10000
+          );
           render();
         } catch (error) {
           if (mutated) haltAfterPartialStateChange();
           toast(
             mutated
-              ? 'Сохранение слияния не подтверждено. Не продолжайте изменения; проверьте резервную копию.'
+              ? 'Сохранение слияния не подтверждено. Не продолжайте изменения; откройте Настройки → резервные копии и проверьте последнюю копию до слияния и её исходные контакты.'
               : `Слияние остановлено: ${error.message || 'не удалось сохранить данные'}. Данные не затираются.`,
             'warning',
             8000

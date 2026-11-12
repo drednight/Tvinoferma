@@ -328,3 +328,121 @@ it('places each group settings beside its ordered steps and examples outside the
   expect([...host.querySelectorAll('[data-step] .gm-step-number')].map(node => node.textContent)).toEqual(['1', '2']);
   editor.dispose();
 });
+
+it('shows the add-group button immediately and exposes per-window ordering as an accessible switch', () => {
+  state.parties = [];
+  state.characters = [];
+  document.body.innerHTML = '<div id="editor"></div>';
+  const host = document.getElementById('editor');
+  const editor = mountCompositionEditor(host, { partyId: '', commands: [], points: [], profiles: [] }, null);
+  const add = host.querySelector('[data-block-add]');
+  expect(add.closest('details')).toBeNull();
+  expect(host.textContent).not.toContain('Сложная команда: несколько групп');
+  host.querySelector('[data-add-type="keys"]').click();
+  const input = host.querySelector('[data-field="value"]');
+  input.value = 'F1';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  const toggle = host.querySelector('[data-field="perWindow"]');
+  expect(toggle.getAttribute('role')).toBe('switch');
+  expect(toggle.checked).toBe(false);
+  toggle.click();
+  expect(editor.read()[0].perWindow).toBe(true);
+  host.querySelector('[data-block-add]').click();
+  expect(host.querySelectorAll('[data-block]')).toHaveLength(2);
+  expect(editor.snapshot()[0].perWindow).toBe(true);
+  editor.dispose();
+});
+
+it('removes point-variant controls but preserves and flags variants in saved click actions', () => {
+  state.parties = [];
+  state.characters = [];
+  document.body.innerHTML = '<div id="editor"></div>';
+  const host = document.getElementById('editor');
+  const row = {
+    blocks: [
+      {
+        name: 'Клики',
+        scope: 'managed',
+        target: 'all',
+        steps: [{ type: 'point', pointId: 'main', pointIds: ['small'], button: 'left', count: 1, modifiers: [] }]
+      }
+    ]
+  };
+  const editor = mountCompositionEditor(
+    host,
+    {
+      partyId: '',
+      commands: [],
+      profiles: [],
+      points: [
+        { id: 'main', name: 'Основная' },
+        { id: 'small', name: 'Малая' }
+      ]
+    },
+    row
+  );
+  expect(host.textContent).not.toContain('Дополнительные шаблоны для других размеров/DPI');
+  expect(host.querySelector('[data-point-variant]')).toBeNull();
+  expect(host.textContent).toContain('ранее выбранные дополнительные точки');
+  expect(editor.read()[0].steps[0].pointIds).toEqual(['small']);
+  editor.dispose();
+});
+
+it('prevents incompatible actions in per-window groups while letting saved conflicts be corrected', () => {
+  state.parties = [];
+  state.characters = [];
+  document.body.innerHTML = '<div id="editor"></div>';
+  const host = document.getElementById('editor');
+  const editor = mountCompositionEditor(host, { partyId: '', commands: [], points: [], profiles: [] }, null);
+  host.querySelector('[data-field="perWindow"]').click();
+  expect(host.querySelector('[data-add-type="repeat"]').disabled).toBe(true);
+  expect(host.querySelector('[data-add-type="launch"]').disabled).toBe(true);
+  expect(host.querySelector('[data-add-type="keys"]').disabled).toBe(false);
+  host.querySelector('[data-field="perWindow"]').click();
+  host.querySelector('[data-add-type="repeat"]').click();
+  expect(host.querySelector('[data-field="perWindow"]').disabled).toBe(true);
+  host.querySelector('[data-step-delete]').click();
+  expect(host.querySelector('[data-field="perWindow"]').disabled).toBe(false);
+  editor.dispose();
+});
+
+it('limits hybrid subset choices to the selected party while preserving and allowing removal of old outsiders', () => {
+  state.parties = [
+    { id: 'p', name: 'Пати' },
+    { id: 'q', name: 'Другая' }
+  ];
+  state.characters = [
+    { id: 'a', nick: 'A', class: 'Воин', partyIds: ['p'] },
+    { id: 'b', nick: 'B', class: 'Воин', partyIds: ['q'] },
+    { id: 'c', nick: 'C', class: 'Воин', partyIds: ['q'] }
+  ];
+  document.body.innerHTML = '<div id="editor"></div>';
+  const host = document.getElementById('editor');
+  const editor = mountCompositionEditor(
+    host,
+    { partyId: 'p', commands: [], points: [], profiles: [] },
+    {
+      blocks: [
+        {
+          name: 'Группа',
+          scope: 'managed',
+          target: 'subset',
+          charIds: ['a', 'b'],
+          steps: [{ type: 'keys', value: 'F1' }]
+        }
+      ]
+    }
+  );
+  editor.setMode('hybrid-party');
+  expect(host.querySelector('[data-character="a"]')).not.toBeNull();
+  expect(host.querySelector('[data-character="b"]').checked).toBe(true);
+  expect(host.textContent).toContain('вне выбранной пати');
+  expect(host.querySelector('[data-character="c"]')).toBeNull();
+  const classes = host.querySelector('[data-recipient-class]');
+  classes.value = 'Воин';
+  classes.dispatchEvent(new Event('change', { bubbles: true }));
+  expect(editor.snapshot()[0].charIds).toEqual(['a']);
+  editor.setMode('standard');
+  expect(host.querySelector('[data-character="c"]')).not.toBeNull();
+  editor.dispose();
+});

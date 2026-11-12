@@ -115,19 +115,32 @@ pub async fn game_macro_overlay(
     topmost: bool,
     position: Option<ScreenPosition>,
     existing_only: bool,
-) -> Result<(), String> {
+) -> Result<&'static str, String> {
     main_only(&window)?;
     if let Some(overlay) = app.get_webview_window("game-overlay") {
         overlay
             .set_always_on_top(topmost)
             .map_err(|_| "Оверлей: не удалось применить режим поверх окон")?;
-        if !existing_only {
-            reveal_overlay(&overlay)?;
+        if existing_only {
+            return Ok("unchanged");
         }
-        return Ok(());
+        let visible = overlay
+            .is_visible()
+            .map_err(|_| "Оверлей: не удалось проверить видимость окна")?;
+        let minimized = overlay
+            .is_minimized()
+            .map_err(|_| "Оверлей: не удалось проверить состояние окна")?;
+        if visible && !minimized && overlay_on_screen(&overlay)? {
+            overlay
+                .hide()
+                .map_err(|_| "Оверлей: не удалось скрыть окно")?;
+            return Ok("closed");
+        }
+        reveal_overlay(&overlay)?;
+        return Ok("opened");
     }
     if existing_only {
-        return Ok(());
+        return Ok("unchanged");
     }
     *OVERLAY_EXPANDED_SIZE
         .lock()
@@ -174,7 +187,7 @@ pub async fn game_macro_overlay(
             );
         }
     });
-    Ok(())
+    Ok("opened")
 }
 // Explicit user opening recovers minimized/off-screen windows without changing saved preferences.
 fn overlay_intersects_screen(window: (i32, i32, u32, u32), screen: (i32, i32, u32, u32)) -> bool {
@@ -186,10 +199,7 @@ fn overlay_intersects_screen(window: (i32, i32, u32, u32), screen: (i32, i32, u3
     let bottom = (i64::from(y) + i64::from(height)).min(i64::from(my) + i64::from(mh));
     right - left >= 60 && bottom - top >= 40
 }
-fn reveal_overlay(overlay: &tauri::WebviewWindow) -> Result<(), String> {
-    overlay
-        .unminimize()
-        .map_err(|_| "Оверлей: не удалось развернуть окно")?;
+fn overlay_on_screen(overlay: &tauri::WebviewWindow) -> Result<bool, String> {
     let position = overlay
         .outer_position()
         .map_err(|_| "Оверлей: не удалось прочитать положение")?;
@@ -199,16 +209,21 @@ fn reveal_overlay(overlay: &tauri::WebviewWindow) -> Result<(), String> {
     let monitors = overlay
         .available_monitors()
         .map_err(|_| "Оверлей: не удалось проверить экраны")?;
-    if !monitors.is_empty()
-        && !monitors.iter().any(|monitor| {
+    Ok(monitors.is_empty()
+        || monitors.iter().any(|monitor| {
             let origin = monitor.position();
             let screen = monitor.size();
             overlay_intersects_screen(
                 (position.x, position.y, size.width, size.height),
                 (origin.x, origin.y, screen.width, screen.height),
             )
-        })
-    {
+        }))
+}
+fn reveal_overlay(overlay: &tauri::WebviewWindow) -> Result<(), String> {
+    overlay
+        .unminimize()
+        .map_err(|_| "Оверлей: не удалось развернуть окно")?;
+    if !overlay_on_screen(overlay)? {
         overlay
             .center()
             .map_err(|_| "Оверлей: не удалось вернуть окно на экран")?;
@@ -960,8 +975,14 @@ pub async fn game_macro_action(
     {
         let epoch = crate::input_arbiter::INPUT.epoch();
         tauri::async_runtime::spawn_blocking(move || {
-            let lease = crate::input_arbiter::INPUT.acquire("command", epoch)?;
-            let _binding = lease.bind();
+            // Foreground checks only read window state and must remain available while
+            // the mirror owns the input lease (e.g. its hotkey needs to turn it off).
+            let lease = if action == "foreground" {
+                None
+            } else {
+                Some(crate::input_arbiter::INPUT.acquire("command", epoch)?)
+            };
+            let _binding = lease.as_ref().map(|lease| lease.bind());
             let client =
                 crate::launcher::macro_client_at(target.pid, target.started_at, target.hwnd)?;
             if !compatible_integrity(client.elevated, crate::launcher::self_elevated()) {

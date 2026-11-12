@@ -447,7 +447,7 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
     const refreshHybridConsent = () => {
       const selectedMode = mode.querySelector('select').value;
       hybridConsentLabel.hidden = selectedMode !== 'hybrid-party';
-      form.querySelector('[data-composition-editor]').dataset.commandMode = selectedMode;
+      builder.setMode(selectedMode);
       sync();
     };
     mode.addEventListener('change', refreshHybridConsent);

@@ -1729,11 +1729,113 @@ it('stops a larger hybrid sequence immediately when one recipient returns an unc
         title: `${char.nick} — Воин`
       }));
     if (command === 'game_macro_modifier_trial')
-      return ++sent === 5 ? { ok: false, deliveryUncertain: true } : { ok: true };
+      return ++sent === 5
+        ? {
+            ok: false,
+            timedOut: true,
+            timeoutMs: 100,
+            releaseUnconfirmed: false,
+            deliveryUncertain: true,
+            steps: [{ phase: 'key-down', ok: false, error: 1460 }]
+          }
+        : { ok: true };
     return null;
   });
   await runtime.run('many');
   expect(sent).toBe(5);
+  const trace = runtime.getExecutionHistory().at(-1);
+  const failed = trace.events.find(
+    event => event.stage === 'native:game_macro_modifier_trial' && event.status === 'blocked'
+  );
+  expect(failed.details).toMatchObject({
+    errorCode: 1460,
+    timedOut: true,
+    timeoutMs: 100,
+    releaseUnconfirmed: false,
+    deliveryUncertain: true
+  });
   expect(runtime.snapshot().executionState).toBe('failed');
   expect(invoke.mock.calls.some(([, args]) => ['focus', 'key', 'key-background'].includes(args?.action))).toBe(false);
+});
+
+it('toggles mouse repeat off via a composite hotkey while the mirror owns the input lease', async () => {
+  state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['p'] });
+  state.settings.gameMacros.commands = [
+    {
+      id: 'mouse-toggle',
+      name: 'Повтор мыши',
+      action: 'composite',
+      hotkey: 'CTRL+F8',
+      returnTo: 'last',
+      blocks: [
+        {
+          name: 'Повтор',
+          scope: 'managed',
+          target: 'all',
+          steps: [{ type: 'repeat', device: 'mouse', mode: 'toggle' }]
+        }
+      ]
+    }
+  ];
+  let mirrorRunning = false;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'launcher_running_details')
+      return [client, { ...client, pid: 20, hwnd: 200, startedAt: 2000, title: 'Beta — Воин' }];
+    if (command === 'game_macro_mirror' && args.operation === 'start') {
+      mirrorRunning = true;
+      return true;
+    }
+    if (command === 'game_macro_mirror' && args.operation === 'stop') {
+      mirrorRunning = false;
+      return true;
+    }
+    if (command === 'game_macro_action' && mirrorRunning && args.action !== 'foreground')
+      throw new Error('Native input busy');
+    if (command === 'game_macro_action' && args.action === 'foreground' && args.target.pid !== 10)
+      throw new Error('not active');
+    return null;
+  });
+  await runtime.run('mouse-toggle', true);
+  expect(runtime.snapshot().mirrorMouse).toBe(true);
+  const stopsBefore = invoke.mock.calls.filter(([c, a]) => c === 'game_macro_mirror' && a.operation === 'stop').length;
+  await runtime.run('mouse-toggle', true);
+  expect(runtime.snapshot().mirrorMouse).toBe(false);
+  expect(runtime.snapshot().executionState).toBe('finished');
+  expect(invoke.mock.calls.filter(([c, a]) => c === 'game_macro_mirror' && a.operation === 'stop')).toHaveLength(
+    stopsBefore + 1
+  );
+});
+
+it('keeps a composite hotkey blocked outside a recognized foreground game even when repeat is active', async () => {
+  state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['p'] });
+  state.settings.gameMacros.commands = [
+    {
+      id: 'toggle',
+      name: 'Повтор',
+      action: 'composite',
+      returnTo: 'last',
+      blocks: [
+        {
+          name: 'Повтор',
+          scope: 'managed',
+          target: 'all',
+          steps: [{ type: 'repeat', device: 'mouse', mode: 'toggle' }]
+        }
+      ]
+    }
+  ];
+  let inGame = true;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'launcher_running_details')
+      return [client, { ...client, pid: 20, hwnd: 200, startedAt: 2000, title: 'Beta — Воин' }];
+    if (command === 'game_macro_mirror' && args.operation === 'start') return true;
+    if (command === 'game_macro_action' && args.action === 'foreground' && !inGame) throw new Error('not active');
+    return null;
+  });
+  await runtime.run('toggle', true);
+  inGame = false;
+  await runtime.run('toggle', true);
+  expect(runtime.snapshot().mirrorMouse).toBe(true);
+  expect(runtime.snapshot().notice).toContain('Горячая команда пропущена');
+  await runtime.disableKeyboardMirror();
 });

@@ -28,9 +28,11 @@ beforeEach(async () => {
   state.characters = [{ id: 'a', nick: 'Alpha', partyIds: ['p'] }];
   state.settings.gameMacros = { partyId: 'p' };
   mocks.invoke.mockImplementation(async command =>
-    command === 'launcher_running_details'
-      ? [{ pid: 10, startedAt: 1000, hwnd: 100, elevated: false, title: 'Alpha — Воин' }]
-      : null
+    command === 'game_macro_overlay'
+      ? 'opened'
+      : command === 'launcher_running_details'
+        ? [{ pid: 10, startedAt: 1000, hwnd: 100, elevated: false, title: 'Alpha — Воин' }]
+        : null
   );
   runtime = await import('../js/modules/gameMacros/runtime.js');
 });
@@ -213,4 +215,53 @@ it('rejects an unchecked leader and detects settings changed in the main window'
   expect(mocks.persist).not.toHaveBeenCalled();
   expect(runtime.config().excludedCommandCharacters).toEqual(['a']);
   expect(runtime.snapshot().recipientNotice).toContain('изменился');
+});
+
+it('serializes rapid toggles and cancels the opening confirmation on close', async () => {
+  vi.useFakeTimers();
+  try {
+    let release;
+    const first = new Promise(resolve => {
+      release = resolve;
+    });
+    let count = 0;
+    mocks.invoke.mockImplementation(async name => {
+      if (name === 'game_macro_overlay') return ++count === 1 ? first : 'closed';
+      return null;
+    });
+    const opening = runtime.openOverlay();
+    const closing = runtime.openOverlay();
+    await vi.waitFor(() => expect(count).toBe(1));
+    release('opened');
+    await Promise.all([opening, closing]);
+    expect(count).toBe(2);
+    expect(runtime.snapshot().overlayOpenRequest).toBe('');
+    await vi.advanceTimersByTimeAsync(5001);
+    expect(runtime.snapshot().logs.join('\n')).toContain('окно скрыто');
+    expect(runtime.snapshot().logs.join('\n')).not.toContain('нет подтверждения интерфейса');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('opens again after closing and starts a new confirmation request', async () => {
+  const replies = ['opened', 'closed', 'opened'];
+  mocks.invoke.mockImplementation(async name => (name === 'game_macro_overlay' ? replies.shift() : null));
+  await runtime.openOverlay();
+  const first = runtime.snapshot().overlayOpenRequest;
+  await runtime.openOverlay();
+  expect(runtime.snapshot().overlayOpenRequest).toBe('');
+  await runtime.openOverlay();
+  const reopened = runtime.snapshot().overlayOpenRequest;
+  expect(reopened).toBeTruthy();
+  expect(reopened).not.toBe(first);
+  mocks.handlers.get('game-overlay-opened')({ payload: { requestId: first } });
+  expect(runtime.snapshot().overlayOpenRequest).toBe(reopened);
+  mocks.handlers.get('game-overlay-opened')({ payload: { requestId: reopened } });
+});
+
+it('does not claim an opening when native toggle returns an unknown result', async () => {
+  mocks.invoke.mockImplementation(async () => null);
+  await expect(runtime.openOverlay()).rejects.toThrow('Не удалось подтвердить состояние');
+  expect(runtime.snapshot().overlayOpenRequest).toBe('');
 });

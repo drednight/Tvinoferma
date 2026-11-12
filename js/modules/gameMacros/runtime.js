@@ -95,7 +95,7 @@ const native = async (command, args) => {
   const details = {
     action: args?.action || args?.operation,
     key: args?.key,
-    method: args?.timing?.backgroundMethod,
+    method: args?.timing?.backgroundMethod || args?.method,
     pid: args?.target?.pid,
     startedAt: args?.target?.startedAt,
     hwnd: args?.target?.hwnd
@@ -122,7 +122,16 @@ const native = async (command, args) => {
         ok: result?.ok,
         inputSent: result?.inputSent,
         foregroundChanged: result?.foregroundChanged,
-        errorCode: typeof result?.error === 'number' ? result.error : undefined,
+        errorCode:
+          typeof result?.error === 'number'
+            ? result.error
+            : command === 'game_macro_modifier_trial'
+              ? result?.steps?.find(step => step.phase === 'key-down' && step.ok === false)?.error
+              : undefined,
+        timedOut: result?.timedOut,
+        timeoutMs: result?.timeoutMs,
+        releaseUnconfirmed: result?.releaseUnconfirmed,
+        deliveryUncertain: result?.deliveryUncertain,
         blockedBy: result?.blockedBy
       });
     if (traced && currentExecutionId() === traceId && command === 'game_macro_action')
@@ -306,19 +315,32 @@ export async function reconnectInput() {
     `Повторная настройка ввода завершена. ${config().enabled ? (hotkeyFailures.length ? 'Есть конфликты сочетаний — см. журнал.' : 'Сочетания зарегистрированы Windows.') : 'Сочетания выключены пользователем.'} Обработка ввода игрой не подтверждена.`
   );
 }
-export async function openOverlay() {
+// Queue clicks so each native toggle observes the result of the previous one.
+let overlayToggleChain = Promise.resolve();
+export function openOverlay() {
+  const toggle = overlayToggleChain.then(toggleOverlay);
+  overlayToggleChain = toggle.catch(() => {});
+  return toggle;
+}
+async function toggleOverlay() {
   clearTimeout(overlayOpenTimer);
-  overlayOpenRequest = crypto.randomUUID();
-  const request = overlayOpenRequest;
-  log(`Оверлей [${request.slice(0, 8)}]: запрос открытия.`);
+  overlayOpenRequest = '';
+  const request = crypto.randomUUID();
+  log(`Оверлей [${request.slice(0, 8)}]: запрос переключения.`);
   try {
     await initGameMacros();
-    state.settings.gameMacros = { ...config(), appearance: { ...config().appearance, hideHeader: false } };
-    await native('game_macro_overlay', {
+    const result = await native('game_macro_overlay', {
       topmost: config().topmost,
       position: config().overlayPosition,
       existingOnly: false
     });
+    if (result === 'closed') {
+      log(`Оверлей [${request.slice(0, 8)}]: окно скрыто.`);
+      return;
+    }
+    if (result !== 'opened') throw new Error('Не удалось подтвердить состояние окна оверлея');
+    state.settings.gameMacros = { ...config(), appearance: { ...config().appearance, hideHeader: false } };
+    overlayOpenRequest = request;
     log(
       `Оверлей [${request.slice(0, 8)}]: Windows выполнила показ/разворачивание и вывод окна вперёд. Ожидаем подтверждение интерфейса.`
     );
@@ -331,6 +353,7 @@ export async function openOverlay() {
     await broadcast();
   } catch (error) {
     clearTimeout(overlayOpenTimer);
+    overlayOpenRequest = '';
     log(`Оверлей [${request.slice(0, 8)}]: открытие не завершено. ${macroErrorText(error)}`);
     throw error;
   }
@@ -595,7 +618,7 @@ export function macroErrorText(error) {
     'preview required':
       'Для этой координатной команды нажмите «Предпросмотр без клика» в «Моих командах». Это нужно один раз в текущем сеансе и после изменения точки.',
     'Ambiguous/missing calibration for client size and DPI':
-      'Для одного из окон нет единственной подходящей точки. Задайте точку при его текущем размере и масштабе Windows; для других размеров добавьте дополнительные профили этой же точки.',
+      'Для одного из окон нет единственной подходящей точки. Задайте точку при текущем размере и масштабе Windows. Для окон разных размеров используйте отдельные группы с соответствующими точками.',
     'no complete profile': 'Не выбран полный профиль размещения окон. Сначала сохраните профиль для текущей пати.',
     'missing profile member':
       'В профиле размещения отсутствует участник пати. Сохраните профиль заново для текущего состава.',

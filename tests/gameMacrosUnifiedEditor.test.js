@@ -312,3 +312,48 @@ it('rejects a hybrid plan exceeding eight steps and preserves the original data'
   await vi.waitFor(() => expect(document.querySelector('[data-gm-form-error]').textContent).toContain('8'));
   expect(save).not.toHaveBeenCalled();
 });
+
+it('offers only compatible additions and relevant settings in hybrid mode without losing active-mode edits', () => {
+  openCommandEditor(config, save);
+  const form = document.querySelector('[data-gm-form]');
+  const mode = form.elements.namedItem('commandInputMode');
+  form.querySelector('[data-add-type="screen"]').click();
+  mode.value = 'hybrid-party';
+  mode.dispatchEvent(new Event('change', { bubbles: true }));
+  expect(form.querySelector('[data-add-type="screen"]').hidden).toBe(true);
+  expect(form.querySelector('.gm-more-library').hidden).toBe(true);
+  expect(form.querySelector('[data-block-add]').hidden).toBe(true);
+  expect(form.querySelector('[data-field="perWindow"]').closest('label').hidden).toBe(true);
+  expect(form.querySelector('[data-field="scope"]').closest('label').hidden).toBe(true);
+  expect(form.querySelector('[data-field="repeat"]').closest('label').hidden).toBe(true);
+  expect(form.querySelector('[data-field="target"]').closest('label').hidden).toBe(false);
+  expect(form.querySelector('[data-step-type="screen"]')).not.toBeNull();
+  expect(form.querySelector('[data-hybrid-plan-warning]').textContent).toContain('Существующие действия не удалены');
+  mode.value = 'standard';
+  mode.dispatchEvent(new Event('change', { bubbles: true }));
+  expect(form.querySelector('[data-add-type="screen"]').hidden).toBe(false);
+  expect(form.querySelector('[data-step-type="screen"]')).not.toBeNull();
+  expect(form.querySelector('[data-field="perWindow"]').closest('label').hidden).toBe(false);
+});
+
+it('allows fixing a pre-existing repeat setting in hybrid mode and limits additions to eight steps', () => {
+  openCommandEditor(config, save);
+  const form = document.querySelector('[data-gm-form]');
+  const count = form.querySelector('[data-field="repeat"]');
+  count.value = '2';
+  count.dispatchEvent(new Event('input', { bubbles: true }));
+  const mode = form.elements.namedItem('commandInputMode');
+  mode.value = 'hybrid-party';
+  mode.dispatchEvent(new Event('change', { bubbles: true }));
+  const repeat = form.querySelector('[data-field="repeat"]');
+  expect(repeat.closest('label').hidden).toBe(false);
+  repeat.value = '1';
+  repeat.dispatchEvent(new Event('input', { bubbles: true }));
+  expect(repeat.closest('label').hidden).toBe(true);
+  for (let i = 0; i < 8; i++) form.querySelector('[data-add-type="wait"]').click();
+  expect(form.querySelector('[data-add-type="keys"]').disabled).toBe(true);
+  expect(form.querySelector('[data-step="7"] [data-step-copy]').disabled).toBe(true);
+  expect(form.querySelector('[data-step="7"]').textContent).toContain('от 50 до 3000 мс');
+  form.querySelector('[data-step="7"] [data-step-delete]').click();
+  expect(form.querySelector('[data-add-type="keys"]').disabled).toBe(false);
+});
