@@ -72,12 +72,16 @@ const native = async (command, args) => {
       'game_macro_pointer',
       'game_macro_background_probe',
       'game_macro_compare_once',
-      'game_macro_compare_many'
+      'game_macro_compare_many',
+      'game_macro_modifier_trial'
     ].includes(command) ||
     (command === 'game_macro_mirror' && args?.operation === 'start')
   ) {
     if (!(await nativeStopPending)) throw new Error('Native input stop unconfirmed; restart application before input');
-    if (['game_macro_compare_once', 'game_macro_compare_many'].includes(command) && cancelled)
+    if (
+      ['game_macro_compare_once', 'game_macro_compare_many', 'game_macro_modifier_trial'].includes(command) &&
+      cancelled
+    )
       throw new Error('Остановлено пользователем.');
   }
   const traceId = currentExecutionId();
@@ -632,6 +636,58 @@ export async function runInputComparison(selection, countdown = () => {}) {
   } catch (error) {
     const message = macroErrorText(error);
     appendBackgroundJournal('comparison-failed', { runId, method: selection.method, blockedBy: message });
+    // Native exceptions may contain private data; do not retain them as an error cause.
+    // eslint-disable-next-line preserve-caught-error
+    throw new Error(message);
+  } finally {
+    busy = false;
+    void broadcast();
+  }
+}
+export async function runModifierExperiment(selection, countdown = () => {}) {
+  const revision = stopRevision;
+  if (busy || paused || mirroring || mirrorPending || mirrorKeys || mirrorMouse)
+    throw new Error('Завершите команду, снимите паузу и выключите повтор.');
+  const { validateModifierExperiment } = await import('./modifierExperiments.js');
+  selection = validateModifierExperiment(selection, state);
+  if (revision !== stopRevision) throw new Error('Остановлено пользователем.');
+  if (busy || paused || mirroring || mirrorPending || mirrorKeys || mirrorMouse)
+    throw new Error('Состояние ввода изменилось.');
+  busy = true;
+  cancelled = false;
+  const runId = crypto.randomUUID();
+  appendBackgroundJournal('modifier-start', { runId, key: selection.key, method: selection.method });
+  void broadcast();
+  try {
+    const rows = await listMacroWindows();
+    const matches = rows.filter(row => row.known && row.charId === selection.charId);
+    if (matches.length !== 1 || !matches[0].hwnd || !matches[0].startedAt)
+      throw new Error('Окно персонажа не определено однозначно.');
+    const { pid, startedAt, hwnd } = matches[0];
+    for (let left = 5; left > 0; left--) {
+      await checkpoint();
+      countdown(left);
+      await wait(1000);
+    }
+    await checkpoint();
+    countdown(0);
+    const result = await native('game_macro_modifier_trial', {
+      target: { pid, startedAt, hwnd },
+      key: selection.key,
+      method: selection.method,
+      consent: selection.consent,
+      riskConsent: selection.riskConsent
+    });
+    appendBackgroundJournal('modifier-result', {
+      runId,
+      key: selection.key,
+      method: selection.method,
+      details: result
+    });
+    return { runId, ...result };
+  } catch (error) {
+    const message = macroErrorText(error);
+    appendBackgroundJournal('modifier-failed', { runId, method: selection.method, blockedBy: message });
     // Native exceptions may contain private data; do not retain them as an error cause.
     // eslint-disable-next-line preserve-caught-error
     throw new Error(message);

@@ -762,6 +762,80 @@ pub async fn game_macro_compare_many(
     }
 }
 
+#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ModifierExperiment {
+    Isolated,
+    Hybrid,
+    Activate,
+}
+fn validate_modifier_experiment(
+    key: &str,
+    method: ModifierExperiment,
+    consent: bool,
+    risk: bool,
+) -> Result<(), String> {
+    let base = key
+        .strip_prefix("SHIFT+")
+        .ok_or("Only SHIFT + one base key is allowed")?;
+    let valid = (base.len() == 1
+        && base
+            .bytes()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit()))
+        || base.strip_prefix('F').is_some_and(|n| {
+            n.parse::<u8>()
+                .is_ok_and(|v| (1..=24).contains(&v) && v.to_string() == n)
+        });
+    if !valid || !consent || (method != ModifierExperiment::Isolated && !risk) {
+        return Err("Invalid Shift experiment or explicit consent missing".into());
+    }
+    Ok(())
+}
+#[tauri::command]
+pub async fn game_macro_modifier_trial(
+    window: tauri::WebviewWindow,
+    target: Target,
+    key: String,
+    method: ModifierExperiment,
+    consent: bool,
+    risk_consent: bool,
+) -> Result<serde_json::Value, String> {
+    main_only(&window)?;
+    validate_modifier_experiment(&key, method, consent, risk_consent)?;
+    #[cfg(windows)]
+    {
+        let epoch = crate::input_arbiter::INPUT.epoch();
+        tauri::async_runtime::spawn_blocking(move || {
+            let lease = crate::input_arbiter::INPUT.acquire("modifier-experiment", epoch)?;
+            let _binding = lease.bind();
+            let client =
+                crate::launcher::macro_client_at(target.pid, target.started_at, target.hwnd)?;
+            if !compatible_integrity(client.elevated, crate::launcher::self_elevated()) {
+                return Err("Game client identity changed or access is unavailable".into());
+            }
+            let mut report = win::modifier_experiment(
+                client.hwnd.ok_or("No game window")?,
+                target.pid,
+                &key,
+                method,
+            )?;
+            report["identityChecked"] = serde_json::json!(true);
+            report["globalInput"] = serde_json::json!(method != ModifierExperiment::Isolated);
+            report["activationRequested"] =
+                serde_json::json!(method == ModifierExperiment::Activate);
+            report["method"] = serde_json::json!(method);
+            report["gameEffect"] = serde_json::json!("unknown");
+            Ok(report)
+        })
+        .await
+        .map_err(|_| "Modifier experiment worker failed")?
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = target;
+        Err("Game control is Windows-only".into())
+    }
+}
 #[tauri::command]
 pub async fn game_macro_compare_once(
     window: tauri::WebviewWindow,
@@ -1100,6 +1174,314 @@ mod win {
         }
         Ok(hwnd)
     }
+    // Owned keys are released on normal completion, stop, refusal and worker unwind.
+    // This is a process-local safeguard, not protection against process termination.
+    static MODIFIER_TRIAL_BLOCKED: std::sync::atomic::AtomicBool =
+        std::sync::atomic::AtomicBool::new(false);
+    struct ModifierTrialKeys {
+        raw: u64,
+        pid: u32,
+        global: Vec<u16>,
+        addressed: Option<(u16, u32)>,
+    }
+    impl ModifierTrialKeys {
+        fn global_event(vk: u16, up: bool) -> bool {
+            let event = INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wVk: VIRTUAL_KEY(vk),
+                        dwFlags: if up {
+                            KEYEVENTF_KEYUP
+                        } else {
+                            KEYBD_EVENT_FLAGS(0)
+                        },
+                        ..Default::default()
+                    },
+                },
+            };
+            unsafe { guarded_send_input(&[event], std::mem::size_of::<INPUT>() as i32) == 1 }
+        }
+        fn down(&mut self, vk: u16) -> bool {
+            self.global.push(vk); // Partial/failed DOWN still requires attempted UP.
+            Self::global_event(vk, false)
+        }
+        fn release(&mut self, steps: &mut Vec<serde_json::Value>) -> bool {
+            let mut ok = true;
+            if let Some((vk, scan)) = self.addressed.take() {
+                let (msg, flags) = background_key_message(vk, scan, true, false);
+                let result = match verified_window(self.raw, self.pid) {
+                    Ok(hwnd) => unsafe {
+                        send_background_timed(
+                            hwnd,
+                            msg,
+                            WPARAM(vk as usize),
+                            LPARAM(flags as isize),
+                            BackgroundMethod::SendTimeout,
+                            100,
+                        )
+                    },
+                    Err(_) => Err(1400),
+                };
+                steps.push(serde_json::json!({"phase":"key-up","ok":result.is_ok(),"error":result.err(),"vk":vk,"method":"send-timeout"}));
+                ok &= result.is_ok();
+            }
+            while let Some(vk) = self.global.pop() {
+                let result = Self::global_event(vk, true);
+                steps.push(serde_json::json!({"phase":if vk == 0xa0 {"modifier-up"} else {"key-up"},"ok":result,"vk":vk,"method":"send-input"}));
+                ok &= result;
+            }
+            ok
+        }
+    }
+    impl Drop for ModifierTrialKeys {
+        fn drop(&mut self) {
+            if std::thread::panicking() {
+                MODIFIER_TRIAL_BLOCKED.store(true, Ordering::SeqCst);
+            }
+            // Do not allocate/report while unwinding. UP only; never retry DOWN.
+            if let Some((vk, scan)) = self.addressed.take() {
+                if let Ok(hwnd) = verified_window(self.raw, self.pid) {
+                    let (msg, flags) = background_key_message(vk, scan, true, false);
+                    let result = unsafe {
+                        send_background_timed(
+                            hwnd,
+                            msg,
+                            WPARAM(vk as usize),
+                            LPARAM(flags as isize),
+                            BackgroundMethod::SendTimeout,
+                            100,
+                        )
+                    };
+                    if result.is_err() {
+                        MODIFIER_TRIAL_BLOCKED.store(true, Ordering::SeqCst);
+                    }
+                } else {
+                    MODIFIER_TRIAL_BLOCKED.store(true, Ordering::SeqCst);
+                }
+            }
+            while let Some(vk) = self.global.pop() {
+                if !Self::global_event(vk, true) {
+                    MODIFIER_TRIAL_BLOCKED.store(true, Ordering::SeqCst);
+                }
+            }
+        }
+    }
+    pub fn modifier_experiment(
+        raw: u64,
+        pid: u32,
+        key: &str,
+        method: ModifierExperiment,
+    ) -> Result<serde_json::Value, String> {
+        if MODIFIER_TRIAL_BLOCKED.load(Ordering::SeqCst) {
+            return Err("Previous modifier release was unconfirmed; check keyboard state and restart application before more experiments".into());
+        }
+        let original = unsafe { GetForegroundWindow() };
+        let expected = comparison_foreground()?;
+        let hwnd = verified_window(raw, pid)?;
+        let (_, vk) = chord(key)?;
+        if method == ModifierExperiment::Isolated {
+            comparison_ready(raw, pid, key, &expected)?;
+            let report = comparison_key(
+                raw,
+                pid,
+                key,
+                &expected,
+                ComparisonTiming {
+                    timeout_ms: 100,
+                    modifier_gap_ms: 50,
+                    ..Default::default()
+                },
+            )?;
+            if report["releaseUnconfirmed"] == true {
+                MODIFIER_TRIAL_BLOCKED.store(true, Ordering::SeqCst);
+            }
+            return Ok(report);
+        }
+        let _guard = ActivityGuard::acquire(raw)?;
+        let mut report = background_probe(raw, pid, key, false)?;
+        report["globalInput"] = serde_json::json!(true);
+        report["modifiers"] = serde_json::json!([160]);
+        report["shiftVk"] = serde_json::json!(160);
+        report["modifierState"] = serde_json::json!(if method == ModifierExperiment::Hybrid {
+            "global-shift-addressed-base"
+        } else {
+            "global-shift-global-base"
+        });
+        report["activationRequested"] = serde_json::json!(method == ModifierExperiment::Activate);
+        report["originalForeground"] = serde_json::json!(expected);
+        report["holdMs"] = serde_json::json!(30);
+        report["modifierGapMs"] = serde_json::json!(50);
+        report["timeoutMs"] = serde_json::json!(100);
+        report["ok"] = serde_json::json!(false);
+        report["inputSent"] = serde_json::json!(false);
+        if report["visible"] != true
+            || report["minimized"] == true
+            || report["hung"] == true
+            || !input_idle(Some(key))?
+            || crate::input_arbiter::cancelled()
+        {
+            report["refused"] = serde_json::json!(true);
+            report["blockedBy"] = serde_json::json!(
+                "Отпустите клавиши/мышь; окно игры должно быть видимым, не свёрнутым и отвечать."
+            );
+            return Ok(report);
+        }
+        if method == ModifierExperiment::Hybrid {
+            let mut class = [0u16; 128];
+            let length = unsafe { GetClassNameW(original, &mut class) };
+            let mut foreground_pid = 0;
+            unsafe {
+                GetWindowThreadProcessId(original, Some(&mut foreground_pid));
+            }
+            if original == hwnd
+                || foreground_pid == pid
+                || !String::from_utf16_lossy(&class[..length.max(0) as usize])
+                    .eq_ignore_ascii_case("Notepad")
+            {
+                report["refused"] = serde_json::json!(true);
+                report["blockedBy"] = serde_json::json!("Для гибридного опыта активируйте пустой Блокнот (класс Notepad). Игра должна быть неактивна.");
+                return Ok(report);
+            }
+        } else if let Err(error) =
+            action(raw, pid, "focus", None, None, None, InputTiming::default())
+        {
+            report["refused"] = serde_json::json!(true);
+            report["blockedBy"] = serde_json::json!(error);
+            report["foregroundChanged"] =
+                serde_json::json!(unsafe { GetForegroundWindow() } != original);
+            return Ok(report);
+        }
+        let intended = if method == ModifierExperiment::Activate {
+            hwnd
+        } else {
+            original
+        };
+        let allowed = || {
+            !crate::input_arbiter::cancelled()
+                && verified_window(raw, pid).is_ok()
+                && unsafe { GetForegroundWindow() } == intended
+                && !unsafe { IsIconic(hwnd) }.as_bool()
+                && unsafe { IsWindowVisible(hwnd) }.as_bool()
+                && !unsafe { IsHungAppWindow(hwnd) }.as_bool()
+                && [0x01, 0x02, 0x04, 0x05, 0x06, 0x11, 0x12, 0x5b, 0x5c, 0xa1]
+                    .iter()
+                    .all(|key| unsafe { GetAsyncKeyState(*key) } >= 0)
+        };
+        let mut keys = ModifierTrialKeys {
+            raw,
+            pid,
+            global: Vec::new(),
+            addressed: None,
+        };
+        let mut steps = Vec::new();
+        let mut timed_out = false;
+        let mut failure = None;
+        // Notification and base DOWN failures still reach all cleanup below.
+        let notification = |message, wp, lp| unsafe {
+            send_background_timed(
+                hwnd,
+                message,
+                WPARAM(wp),
+                LPARAM(lp),
+                BackgroundMethod::Notify,
+                100,
+            )
+        };
+        let hybrid = method == ModifierExperiment::Hybrid;
+        let source_thread = unsafe { GetWindowThreadProcessId(original, None) };
+        let result = (|| -> Result<(), String> {
+            if !allowed() || !input_idle(Some(key))? {
+                return Err("Условия изменились до нажатия Shift".into());
+            }
+            if hybrid {
+                let app = notification(WM_ACTIVATEAPP, 1, source_thread as isize);
+                steps.push(serde_json::json!({"phase":"activate-app","ok":app.is_ok(),"error":app.err(),"asynchronous":true}));
+                app.map_err(|_| "Не отправлено уведомление активности")?;
+                let window = notification(WM_ACTIVATE, 1, original.0 as isize);
+                steps.push(serde_json::json!({"phase":"activate-window","ok":window.is_ok(),"error":window.err(),"asynchronous":true}));
+                window.map_err(|_| "Не отправлено уведомление окна")?;
+            }
+            // Recheck at each DOWN. Physical same-side Shift races cannot be distinguished.
+            if !allowed() || !input_idle(Some(key))? {
+                return Err("Условия изменились перед глобальным Shift".into());
+            }
+            report["inputSent"] = serde_json::json!(true);
+            let shifted = keys.down(0xa0);
+            steps.push(serde_json::json!({"phase":"modifier-down","vk":160,"ok":shifted,"method":"send-input"}));
+            if !shifted {
+                return Err("Windows не приняла глобальный Shift".into());
+            }
+            if !wait_modifier_gap(50, allowed) {
+                return Err("Остановка или смена условий после Shift".into());
+            }
+            if !allowed() || unsafe { GetAsyncKeyState(vk as i32) } < 0 {
+                return Err("Основная клавиша удерживается или условия изменились".into());
+            }
+            if hybrid {
+                let layout = unsafe { GetKeyboardLayout(GetWindowThreadProcessId(hwnd, None)) };
+                let scan = unsafe { MapVirtualKeyExW(vk as u32, MAPVK_VK_TO_VSC, Some(layout)) };
+                let (msg, flags) = background_key_message(vk, scan, false, false);
+                keys.addressed = Some((vk, scan));
+                let sent = unsafe {
+                    send_background_timed(
+                        hwnd,
+                        msg,
+                        WPARAM(vk as usize),
+                        LPARAM(flags as isize),
+                        BackgroundMethod::SendTimeout,
+                        100,
+                    )
+                };
+                timed_out = sent == Err(1460);
+                steps.push(serde_json::json!({"phase":"key-down","vk":vk,"ok":sent.is_ok(),"error":sent.err(),"lparam":format!("0x{flags:08X}"),"method":"send-timeout"}));
+                sent.map_err(|_| {
+                    "Доставка основной клавиши не подтверждена; повторять автоматически нельзя"
+                })?;
+            } else {
+                let sent = keys.down(vk);
+                steps.push(
+                    serde_json::json!({"phase":"key-down","vk":vk,"ok":sent,"method":"send-input"}),
+                );
+                if !sent {
+                    return Err("Windows не приняла основную клавишу".into());
+                }
+            }
+            if !wait_modifier_gap(30, allowed) {
+                return Err("Остановка или смена условий во время нажатия".into());
+            }
+            Ok(())
+        })();
+        if let Err(error) = result {
+            failure = Some(error);
+        }
+        let released = keys.release(&mut steps);
+        if !released {
+            MODIFIER_TRIAL_BLOCKED.store(true, Ordering::SeqCst);
+        }
+        if hybrid {
+            // Do not claim the window is active; restore notifications to its current state.
+            let active = unsafe { GetForegroundWindow() } == hwnd;
+            let current = unsafe { GetForegroundWindow() };
+            let window = notification(WM_ACTIVATE, usize::from(active), current.0 as isize);
+            let current_thread = unsafe { GetWindowThreadProcessId(current, None) };
+            let app = notification(WM_ACTIVATEAPP, usize::from(active), current_thread as isize);
+            steps.push(serde_json::json!({"phase":"restore-window","ok":window.is_ok(),"error":window.err(),"asynchronous":true}));
+            steps.push(serde_json::json!({"phase":"restore-app","ok":app.is_ok(),"error":app.err(),"asynchronous":true}));
+        }
+        timed_out |= activity_delivery_flags(&steps).0;
+        let focus_ok = unsafe { GetForegroundWindow() } == intended;
+        report["ok"] = serde_json::json!(failure.is_none() && released && focus_ok);
+        report["blockedBy"] = serde_json::json!(failure);
+        report["timedOut"] = serde_json::json!(timed_out);
+        report["releaseUnconfirmed"] = serde_json::json!(!released);
+        report["deliveryUncertain"] = serde_json::json!(timed_out || !released || !focus_ok);
+        report["foregroundChanged"] =
+            serde_json::json!(unsafe { GetForegroundWindow() } != original);
+        report["steps"] = serde_json::json!(steps);
+        Ok(report)
+    }
+
     pub fn comparison_foreground() -> Result<String, String> {
         let hwnd = unsafe { GetForegroundWindow() };
         if hwnd.0.is_null() {
@@ -2917,5 +3299,39 @@ mod multi_comparison_tests {
             serde_json::json!({"key":"B","hold":10000})
         )
         .is_err());
+    }
+}
+
+#[cfg(test)]
+mod modifier_experiment_tests {
+    use super::*;
+    #[test]
+    fn requires_explicit_consents_and_one_bounded_shift_chord() {
+        for method in [
+            ModifierExperiment::Isolated,
+            ModifierExperiment::Hybrid,
+            ModifierExperiment::Activate,
+        ] {
+            assert!(validate_modifier_experiment("SHIFT+1", method, true, true).is_ok());
+            assert!(validate_modifier_experiment("SHIFT+F24", method, true, true).is_ok());
+            assert!(validate_modifier_experiment("SHIFT+1", method, false, true).is_err());
+            assert_eq!(
+                validate_modifier_experiment("SHIFT+1", method, true, false).is_ok(),
+                method == ModifierExperiment::Isolated
+            );
+            for key in [
+                "1",
+                "CTRL+1",
+                "ALT+F4",
+                "SHIFT+ENTER",
+                "SHIFT+F25",
+                "SHIFT+F01",
+                "SHIFT+1\nSHIFT+2",
+                "SHIFT+CTRL+1",
+            ] {
+                assert!(validate_modifier_experiment(key, method, true, true).is_err());
+            }
+        }
+        assert!(serde_json::from_str::<ModifierExperiment>("\"unknown\"").is_err());
     }
 }

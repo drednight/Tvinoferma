@@ -7,6 +7,8 @@ const fields = new Set([
   'timing',
   'modifierGapMs',
   'modifierState',
+  'globalInput',
+  'activationRequested',
   'shiftVk',
   'timedOut',
   'releaseUnconfirmed',
