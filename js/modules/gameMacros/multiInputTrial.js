@@ -1,3 +1,4 @@
+import { keyboardButton } from './keyboardPicker.js';
 import { chord, steps } from './keySyntax.js';
 import { openOverlay } from '../marathons/overlay.js';
 import { appendBackgroundJournal, openBackgroundJournal } from './backgroundJournal.js';
@@ -57,6 +58,16 @@ export function openMultiInputTrial({ state, run, stop }) {
   });
   ov.body.innerHTML = `<p>Одна попытка на 1–4 клиентах (при нескольких — параллельно) методом E (activity-notify). Общий старт, но без гарантии точной синхронности. Все игровые окна должны быть неактивны, видимы и не свёрнуты. Фокус вручную переведите в пустой Блокнот. Нет SendInput, переключения фокуса, циклов или повторного запуска.</p><p class="gm-trial-error" data-modifier-warning>Ctrl/Shift в E отправляются только сообщениями окна: состояние клавиатуры игры не меняется. В проверке PW сочетание SHIFT+1 срабатывало как обычная 1. Возможен запуск другого действия; физическая проверка сочетания не подтверждает его работу через E. Увеличение задержек это не исправляет гарантированно.</p><p class="gm-trial-error" role="alert" data-error hidden></p><fieldset data-fields><legend>Получатели</legend>${state.characters.map(c => `<label class="switch-row"><input type="checkbox" data-char value="${esc(c.id)}">${esc(c.nick)}</label>`).join('')}<div class="gm-profile-controls"><label>Ожидание обработки сообщения<select data-timeout><option value="25">25 мс · исходное</option><option value="100">100 мс</option><option value="250">250 мс</option></select></label><label>Вариант Shift · эксперимент<select data-shift><option value="16">Общий Shift · исходное</option><option value="160">Левый Shift · VK_LSHIFT</option><option value="161">Правый Shift · VK_RSHIFT</option></select></label><label>Пауза после Ctrl/Shift перед основной клавишей<select data-gap><option value="0">0 мс · исходное</option><option value="50">50 мс</option><option value="100">100 мс</option><option value="200">200 мс</option></select></label></div><p class="muted">Меняйте один параметр за раз. Ожидание — предел одного синхронного вызова, а не гарантированная доставка. Пауза применяется один раз после всех модификаторов. Увеличение задержек не гарантирует распознавание сочетания.</p><label>Последовательность — одна клавиша/сочетание или wait N на строку<textarea class="input" data-sequence rows="7" placeholder="B&#10;wait 500&#10;C"></textarea></label><p class="muted">До 10 нажатий и 20 строк, паузы 50–1500 мс, всего до 10 с. Ctrl/Shift допускаются только после ручной проверки. Каждое сочетание нажимается и отпускается отдельно; удержания между строками нет.</p><label class="switch-row"><input type="checkbox" data-consent> Проверил все клавиши и сочетания вручную на каждом клиенте; чат закрыт, действия безопасны и не расходуют предметы.</label></fieldset><p><button type="button" class="btn primary" data-run>Запустить через 5 секунд</button><button type="button" class="btn danger" data-stop disabled>Остановить</button><button type="button" class="btn" data-log>Журнал</button></p><p role="status" data-status>Повторы должны быть выключены. Ошибка одного клиента останавливает дальнейшие шаги остальных; уже отправленный ввод отменить нельзя.</p><div data-summary aria-live="polite"></div><details><summary>Технический отчёт</summary><pre data-result></pre></details><fieldset data-observations disabled><legend>Наблюдения после попытки</legend><div data-verdicts></div><label class="switch-row"><input type="checkbox" data-focus>Заметил смену фокуса</label><label class="switch-row"><input type="checkbox" data-leak>Был ввод в Блокноте или другом приложении</label><button type="button" class="btn" data-save>Сохранить наблюдения</button></fieldset>`;
   const q = name => ov.body.querySelector(`[data-${name}]`);
+  q('sequence').after(
+    keyboardButton(q('sequence'), token => {
+      const input = q('sequence');
+      const caret = input.selectionStart ?? input.value.length;
+      const start = input.value.lastIndexOf('\n', caret - 1) + 1;
+      const next = input.value.indexOf('\n', caret);
+      input.setRangeText(token, start, next < 0 ? input.value.length : next, 'end');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    })
+  );
   q('run').onclick = async event => {
     event.preventDefault();
     let armed = false;

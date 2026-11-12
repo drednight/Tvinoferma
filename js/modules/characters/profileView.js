@@ -63,7 +63,7 @@ function contactRowHtml(type, label, value) {
     </div>`;
 }
 
-export function openCharacterProfile(char) {
+export function openCharacterProfile(char, { onClose = () => {} } = {}) {
   const isArchived = state.archivedCharacters.some(item => item.id === char.id);
   const archivedPartyLinks = isArchived
     ? state.archivedParties.flatMap(party =>
@@ -328,7 +328,7 @@ export function openCharacterProfile(char) {
     submitText: null,
     cancelText: null,
     onSubmit: () => true,
-    onClose: () => {}
+    onClose
   });
 
   // Привязка событий после рендера

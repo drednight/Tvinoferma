@@ -205,6 +205,7 @@ export const DEFAULT_SETTINGS = {
   },
   // Видимые окна браузера персонажей
   browser: {
+    marathonFollowCheckLinks: true,
     linkOpenMode: 'webview',
     linkCharacterId: '', // no implicit first-character fallback for ordinary links
     unlimitedGiftItems: true, // на странице передачи предметов снять лимит сайта «не более 6 предметов» (панель «Типы предметов»)

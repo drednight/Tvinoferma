@@ -11,6 +11,18 @@
             report(TF.waitKind(), 'challenge');
             return;
         }
+        // A news URL can redirect to a check page. Preserve its task classes, not the account sidebar.
+        const check = document.querySelector('.season_marathon');
+        if (check) {
+            const root = document.createElement('div');
+            root.id = 'media_tabs';
+            for (const node of [document.querySelector('#media_tabs > h2'), document.querySelector('.status_legend'), check]) {
+                if (node) root.appendChild(node.cloneNode(true));
+            }
+            root.querySelectorAll('script, iframe, form, input, button').forEach(node => node.remove());
+            report({ title: root.querySelector('h2')?.textContent || document.title, url: location.href.split('#')[0], html: root.outerHTML }, null);
+            return;
+        }
         const art = TF.q('news.article');
         if (!art) { report(null, 'no_article'); return; }
         const clone = art.cloneNode(true);

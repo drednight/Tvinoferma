@@ -10,7 +10,7 @@ import {
   forceRenderAndPersist,
   haltAfterPartialStateChange
 } from '../core/storage.js';
-import { renameCharacterReferences } from '../modules/characters/identity.js';
+import { mergeCharacterReferences } from '../modules/characters/identity.js';
 
 // Only reasons and IDs leave the comparison; never expose values/password hashes.
 export function duplicateReasons(a, b) {
@@ -28,7 +28,7 @@ export function duplicateReasons(a, b) {
 }
 
 // Fill missing data only. Different populated values require manual editing first.
-export function mergeDuplicateData(primary, duplicate) {
+export function mergeDuplicateData(primary, duplicate, choices = {}) {
   const ignored = new Set([
     'id',
     'nick',
@@ -40,7 +40,9 @@ export function mergeDuplicateData(primary, duplicate) {
     'mainPartyId',
     'contacts',
     'secretsRef',
-    'launch'
+    'launch',
+    'lastLoginCheck',
+    'isLoggedIn'
   ]);
   const empty = value =>
     value == null ||
@@ -48,25 +50,36 @@ export function mergeDuplicateData(primary, duplicate) {
     (Array.isArray(value) && !value.length) ||
     (typeof value === 'object' && !Array.isArray(value) && !Object.keys(value).length);
   const merged = structuredClone(primary);
+  const combine = (left, right, path) => {
+    if (empty(right)) return structuredClone(left);
+    if (empty(left)) return structuredClone(right);
+    if (JSON.stringify(left) === JSON.stringify(right)) return structuredClone(left);
+    if (Array.isArray(left) && Array.isArray(right))
+      return [...new Map([...left, ...right].map(v => [JSON.stringify(v), structuredClone(v)])).values()];
+    if (typeof left === 'object' && typeof right === 'object' && !Array.isArray(left) && !Array.isArray(right)) {
+      const out = structuredClone(left);
+      for (const [key, value] of Object.entries(right)) out[key] = combine(out[key], value, `${path}.${key}`);
+      return out;
+    }
+    if (choices[path] === 'primary') return structuredClone(left);
+    if (choices[path] === 'duplicate') return structuredClone(right);
+    const error = new Error(`Конфликт поля: ${path}`);
+    error.field = path;
+    throw error;
+  };
   for (const [key, value] of Object.entries(duplicate)) {
     if (ignored.has(key) || empty(value)) continue;
-    if (empty(merged[key])) merged[key] = structuredClone(value);
-    else if (JSON.stringify(merged[key]) !== JSON.stringify(value)) throw new Error('conflict');
+    merged[key] = combine(merged[key], value, key);
   }
-  merged.contacts = { ...primary.contacts };
-  for (const [key, value] of Object.entries(duplicate.contacts || {})) {
-    if (!value) continue;
-    if (merged.contacts[key] && merged.contacts[key] !== value) throw new Error('contacts');
-    merged.contacts[key] = value;
-  }
+  merged.contacts = combine(primary.contacts || {}, duplicate.contacts || {}, 'contacts');
   // Credentials/profile stores cannot be merged transactionally. Never drop those bindings.
   if (duplicate.secretsRef || Object.values(duplicate.launch || {}).some(v => !empty(v) && v !== false))
-    throw new Error('binding');
+    throw new Error(
+      'У удаляемой карточки есть сохранённый вход или привязка запуска. Сохраните эту карточку основной либо перенесите привязку вручную'
+    );
   merged.tags = [...new Set([...(primary.tags || []), ...(duplicate.tags || [])])];
   merged.partyIds = [...new Set([...(primary.partyIds || []), ...(duplicate.partyIds || [])])];
-  if (primary.mainPartyId && duplicate.mainPartyId && primary.mainPartyId !== duplicate.mainPartyId)
-    throw new Error('party');
-  merged.mainPartyId ||= duplicate.mainPartyId;
+  merged.mainPartyId = combine(primary.mainPartyId, duplicate.mainPartyId, 'mainPartyId');
   merged.updatedAt = new Date().toISOString();
   return merged;
 }
@@ -98,8 +111,10 @@ export function openDuplicateCharacters() {
           const char = button.dataset.profile === 'a' ? a : b;
           const { openCharacterProfile } = await import('../modules/characters/profileView.js');
           if (working) return;
-          ov.close();
-          openCharacterProfile(char);
+          // Suspend rather than destroy the candidate list while the profile owns modal-root.
+          const root = ov.el.parentElement;
+          ov.el.remove();
+          openCharacterProfile(char, { onClose: () => root?.append(ov.el) });
         };
       }
       row.querySelector('[data-merge]').onclick = async () => {
@@ -108,9 +123,24 @@ export function openDuplicateCharacters() {
         let mutated = false;
         try {
           const [primary, duplicate] = selected();
-          if (vaultStatus().count || vaultStatus().blocked || state.secretsInVault) throw new Error('vault');
-          mergeDuplicateData(primary, duplicate);
+          if (vaultStatus().count || vaultStatus().blocked || state.secretsInVault)
+            throw new Error(
+              'Слияние контактов из хранилища ОС пока не поддерживается. Нужна отдельная миграция контактов; отключение защиты само по себе не переносит записи.'
+            );
           const witness = JSON.stringify(state);
+          const choices = {};
+          while (true) {
+            try {
+              mergeDuplicateData(primary, duplicate, choices);
+              break;
+            } catch (error) {
+              if (!error.field) throw error;
+              const choice = await chooseMergeConflict(error.field, primary, duplicate);
+              if (!choice) return;
+              choices[error.field] = choice;
+              if (JSON.stringify(state) !== witness) throw new Error('changed', { cause: error });
+            }
+          }
           if (
             !(await confirmModal({
               title: 'Слить карточки?',
@@ -123,10 +153,10 @@ export function openDuplicateCharacters() {
           await saveNow();
           const backup = await createBackup('before-merge-duplicates');
           if (!backup || JSON.stringify(state) !== witness) throw new Error('changed');
-          const merged = mergeDuplicateData(primary, duplicate);
+          const merged = mergeDuplicateData(primary, duplicate, choices);
           assertStateWriteAvailable();
           // Reference helper prepares everything first, rejects collisions without mutation.
-          renameCharacterReferences(duplicate.id, primary.id);
+          mergeCharacterReferences(duplicate.id, primary.id);
           mutated = true;
           Object.assign(primary, merged);
           state.characters = state.characters.filter(c => c.id !== duplicate.id);
@@ -134,14 +164,14 @@ export function openDuplicateCharacters() {
           await forceRenderAndPersist();
           toast('Совместимые данные объединены. Профили браузера и хранилище ОС не менялись.', 'success');
           render();
-        } catch {
+        } catch (error) {
           if (mutated) haltAfterPartialStateChange();
           toast(
             mutated
               ? 'Сохранение слияния не подтверждено. Не продолжайте изменения; проверьте резервную копию.'
-              : 'Слияние остановлено: конфликт данных/ссылок, активное хранилище контактов ОС, сохранённая привязка у удаляемого дубля, изменение состояния или недоступная копия. Отредактируйте карточки вручную; данные не затираются.',
+              : `Слияние остановлено: ${error.message || 'не удалось сохранить данные'}. Данные не затираются.`,
             'warning',
-            60000
+            8000
           );
         } finally {
           working = false;
@@ -156,4 +186,31 @@ export function openDuplicateCharacters() {
     if (!working) ov.close();
   };
   return ov;
+}
+
+function chooseMergeConflict(field, primary, duplicate) {
+  return new Promise(resolve => {
+    const ov = openOverlay({ title: 'Конфликт при слиянии', onClose: () => resolve(null) });
+    ov.body.innerHTML = `<p>Различается поле <strong>${escapeHtml(field)}</strong>. Выберите источник значения. Значения контактов и паролей здесь не показываются.</p>`;
+    for (const [choice, char] of [
+      ['primary', primary],
+      ['duplicate', duplicate]
+    ]) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn';
+      button.textContent = `Взять из «${char.nick}» (${char.id})`;
+      button.onclick = () => {
+        resolve(choice);
+        ov.close();
+      };
+      ov.foot.append(button);
+    }
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'btn ghost';
+    cancel.textContent = 'Отмена';
+    cancel.onclick = () => ov.close();
+    ov.foot.append(cancel);
+  });
 }

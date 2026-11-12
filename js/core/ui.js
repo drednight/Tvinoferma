@@ -157,7 +157,15 @@ export function toast(message, type = 'info', durationMs = 3000) {
 
   const el = document.createElement('div');
   el.className = `toast toast-${type}`;
-  el.textContent = message;
+  const text = document.createElement('span');
+  text.textContent = message;
+  const dismiss = document.createElement('button');
+  dismiss.type = 'button';
+  dismiss.className = 'icon-btn';
+  dismiss.textContent = '×';
+  dismiss.setAttribute('aria-label', 'Закрыть уведомление');
+  dismiss.onclick = () => el.remove();
+  el.append(text, dismiss);
 
   root.appendChild(el);
 

@@ -87,6 +87,17 @@
             }
         });
 
+        if (!stages.length) {
+            const reSingle = new RegExp('с\\s+' + T + '(\\d{1,2})\\s+(' + G + ')(?:\\s+(\\d{4}))?[\\s\\S]{0,80}?(?:до|по)\\s+' + T + '(\\d{1,2})\\s+(' + G + ')(?:\\s+(\\d{4}))?', 'i');
+            const mt = legendText.match(reSingle);
+            if (mt) {
+                const sm = MONTH_GEN[mt[2].toLowerCase()], em = MONTH_GEN[mt[5].toLowerCase()];
+                const sy = mt[3] ? Number(mt[3]) : yearFor(sm);
+                stages = [{ name: marathonName, key: 'весь марафон', startDate: iso(sy, sm, Number(mt[1])), endDate: iso(mt[6] ? Number(mt[6]) : sy + Number(em < sm), em, Number(mt[4])) }];
+                debug.push('Общие сроки марафона прочитаны из легенды; проверьте год.');
+            }
+        }
+
         // 3. Парсинг заданий
         const container = TF.q('marathon.container');
         const quests = [];
@@ -131,6 +142,7 @@
 
         const resultData = {
             name: marathonName,
+            description: legendText,
             sourceUrl: window.location.href.split('#')[0],
             detectedAt: new Date().toISOString(),
             stages: stages,

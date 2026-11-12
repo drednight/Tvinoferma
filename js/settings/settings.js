@@ -292,7 +292,11 @@ export async function renderSettings() {
   // Значения настроек
   document.querySelectorAll('[data-setting]').forEach(el => {
     const value = getSetting(el.dataset.setting);
-    if (el.type === 'checkbox') el.checked = value !== false && value !== undefined;
+    if (el.type === 'checkbox')
+      el.checked =
+        el.dataset.setting === 'browser.marathonFollowCheckLinks'
+          ? value !== false
+          : value !== false && value !== undefined;
     else if (el.dataset.setting === 'updates.mode') el.value = resolveUpdateMode(state.settings);
     else el.value = value ?? '';
   });
@@ -672,6 +676,50 @@ export function bindSettings() {
     bindCloudDiagnosticsPanel({ desktop: isTauri(), check: standaloneFiles && (() => standaloneFiles.check(true)) });
   }
   bindGuides();
+  document.getElementById('marathon-site-html')?.addEventListener('change', async event => {
+    const input = event.target;
+    const file = input.files?.[0];
+    if (!file) return;
+    const status = document.getElementById('marathon-site-import-status');
+    input.disabled = true;
+    status.textContent = 'Читаю сохранённую страницу…';
+    try {
+      const { parseCheckPageHtml, readSavedSiteHtml } = await import('../modules/marathons/checkPageParser.js');
+      const html = await readSavedSiteHtml(file);
+      let parsed;
+      if (new DOMParser().parseFromString(html, 'text/html').querySelector('.season_marathon'))
+        parsed = parseCheckPageHtml(html);
+      else {
+        const { parseNewsHtml } = await import('../modules/marathons/newsParser.js');
+        parsed = parseNewsHtml(html, { title: file.name.replace(/\.html?$/i, '') });
+        if (!parsed.quests.length && parsed.sourceUrl && state.settings.browser?.marathonFollowCheckLinks !== false) {
+          const { parseMarathonPage } = await import('../modules/marathons/siteSync.js');
+          const result = await parseMarathonPage(parsed.sourceUrl);
+          result.task?.finish(
+            result.error ? 'Страница сверки не прочитана' : 'Страница сверки прочитана',
+            result.error ? 'error' : 'done'
+          );
+          if (result.marathon)
+            parsed = {
+              ...result.marathon,
+              name: parsed.name,
+              sourceUrl: parsed.sourceUrl,
+              description: [parsed.description, result.marathon.description].filter(Boolean).join('\n\n')
+            };
+        }
+      }
+      if (!parsed.quests.length)
+        throw new Error('Задания не найдены. Загрузите также сохранённую страницу сверки или проверьте вход на сайт.');
+      const { openMarathonWizard } = await import('../modules/marathons/wizard.js');
+      openMarathonWizard({ source: 'site', parsedSite: parsed });
+      status.textContent = `Извлечено заданий: ${parsed.quests.length}. Проверьте данные в мастере; марафон ещё не сохранён.`;
+    } catch (error) {
+      status.textContent = error.message || 'Не удалось прочитать HTML.';
+    } finally {
+      input.disabled = false;
+      input.value = '';
+    }
+  });
   bindFeedback();
   balanceSettingsColumns();
   bindSettingInputs();

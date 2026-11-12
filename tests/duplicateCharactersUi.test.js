@@ -29,7 +29,17 @@ it.each(['a', 'b'])('opens card %s independently of the primary merge selection'
   const row = ov.body.querySelector('section');
   row.querySelector('select').value = side === 'a' ? 'b' : 'a';
   row.querySelector(`[data-profile="${side}"]`).click();
-  await vi.waitFor(() => expect(openCharacterProfile).toHaveBeenCalledWith(state.characters[side === 'a' ? 0 : 1]));
+  await vi.waitFor(() =>
+    expect(openCharacterProfile).toHaveBeenCalledWith(
+      state.characters[side === 'a' ? 0 : 1],
+      expect.objectContaining({ onClose: expect.any(Function) })
+    )
+  );
+  expect(ov.el.isConnected).toBe(false);
+  openCharacterProfile.mock.calls[0][1].onClose();
+  expect(ov.el.isConnected).toBe(true);
+  expect(row.querySelector('select').value).toBe(side === 'a' ? 'b' : 'a');
+  ov.close();
 });
 it('shows a zero count when no candidates match', () => {
   state.characters = [

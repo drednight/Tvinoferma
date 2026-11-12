@@ -134,3 +134,18 @@ it('allows only explicit generic/left/right Shift variants and preserves legacy 
   for (const shiftVk of [0, 17, 162, 'invalid'])
     expect(() => validateMultiTrial({ charIds: ['a'], sequence: 'SHIFT+1', timing: { shiftVk } }, state)).toThrow();
 });
+it('inserts a keyboard choice into the current sequence line without dispatching input', () => {
+  const run = vi.fn();
+  const ov = openMultiInputTrial({ state, run, stop: vi.fn() });
+  const input = ov.body.querySelector('[data-sequence]');
+  input.value = 'B\nSHIFT+1\nwait 100';
+  input.setSelectionRange(4, 4);
+  [...ov.body.querySelectorAll('button')].find(b => b.textContent.includes('Полная клавиатура')).click();
+  const picker = document.querySelector('.gm-keyboard-picker');
+  picker.querySelector('[data-key="F8"]').click();
+  picker.querySelector('[data-apply]').click();
+  expect(input.value).toBe('B\nSHIFT+F8\nwait 100');
+  expect(run).not.toHaveBeenCalled();
+  expect(ov.el.isConnected).toBe(true);
+  ov.close();
+});

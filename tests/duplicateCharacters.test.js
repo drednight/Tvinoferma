@@ -74,3 +74,16 @@ it('ignores shared phones and never reads them when matching candidates', () => 
   };
   expect(duplicateReasons({ contacts }, { contacts })).toEqual(['почта / логин']);
 });
+it('deep-merges complementary fields and resolves differing values only with an explicit choice', () => {
+  const a = { id: 'a', class: 'Воин', stats: { hp: 10 }, contacts: { email: 'main' } };
+  const b = { id: 'b', class: 'Маг', stats: { mp: 20 }, contacts: { phone: '123' } };
+  expect(() => mergeDuplicateData(a, b)).toThrow('class');
+  expect(mergeDuplicateData(a, b, { class: 'primary' })).toMatchObject({
+    id: 'a',
+    class: 'Воин',
+    stats: { hp: 10, mp: 20 },
+    contacts: { email: 'main', phone: '123' }
+  });
+  expect(mergeDuplicateData(a, b, { class: 'duplicate' }).class).toBe('Маг');
+  expect(a.stats).toEqual({ hp: 10 });
+});
