@@ -15,10 +15,7 @@ import { renameCharacterReferences } from '../modules/characters/identity.js';
 // Only reasons and IDs leave the comparison; never expose values/password hashes.
 export function duplicateReasons(a, b) {
   const reasons = [];
-  for (const [key, label] of [
-    ['email', 'почта / логин'],
-    ['phone', 'телефон']
-  ]) {
+  for (const [key, label] of [['email', 'почта / логин']]) {
     const normalize = value =>
       String(value || '')
         .trim()
@@ -86,21 +83,25 @@ export function openDuplicateCharacters() {
         if (reasons.length) pairs.push({ a: chars[i], b: chars[j], reasons });
       }
     ov.body.innerHTML =
-      '<p>Совпадения — только кандидаты: один аккаунт может иметь разных персонажей. Значения контактов не показываются. Пароль и резервная почта не используются для поиска совпадений. Можно оставить пару, открыть профиль для удаления или выбрать основную карточку. Слияние переносит только совместимые данные и известные ссылки; конфликтующие значения и сохранённые входы не затираются. При активных записях контактов ОС слияние заблокировано: их безопасная миграция требует отдельной процедуры. Профили браузера и записи ОС не объединяются и не удаляются. Перед слиянием создаётся копия состояния (без отдельного хранилища ОС).</p>' +
+      '<p>Совпадения — только кандидаты: один аккаунт может иметь разных персонажей. Значения контактов не показываются. Пароль, резервная почта и телефон не используются для поиска совпадений. Можно оставить пару, открыть профиль для удаления или выбрать основную карточку. Слияние переносит только совместимые данные и известные ссылки; конфликтующие значения и сохранённые входы не затираются. При активных записях контактов ОС слияние заблокировано: их безопасная миграция требует отдельной процедуры. Профили браузера и записи ОС не объединяются и не удаляются. Перед слиянием создаётся копия состояния (без отдельного хранилища ОС).</p>' +
+      `<p data-duplicate-count>Найдено пар-кандидатов: <strong>${pairs.length}</strong>. Персонажей в них: <strong>${new Set(pairs.flatMap(({ a, b }) => [a.id, b.id])).size}</strong>.</p>` +
       (pairs.length ? '' : '<p>Совпадений не найдено. Недоступные контакты ОС не сравниваются.</p>');
     for (const { a, b, reasons } of pairs) {
       const row = document.createElement('section');
       row.className = 'panel';
-      row.innerHTML = `<h3>${escapeHtml(a.nick)} ↔ ${escapeHtml(b.nick)}</h3><p>Совпадает: ${escapeHtml(reasons.join(', '))}</p><select aria-label="Основной персонаж"><option value="a">Основной: ${escapeHtml(a.nick)} (${escapeHtml(a.id)})</option><option value="b">Основной: ${escapeHtml(b.nick)} (${escapeHtml(b.id)})</option></select><div class="row gap"><button class="btn" data-merge>Слить совместимые данные</button><button class="btn" data-profile>Профиль выбранного / удалить…</button><button class="btn ghost" data-keep>Оставить как есть</button></div>`;
+      row.innerHTML = `<h3>${escapeHtml(a.nick)} ↔ ${escapeHtml(b.nick)}</h3><p data-classes>${escapeHtml(a.nick)}: ${escapeHtml(a.class || 'Класс не выбран')} ↔ ${escapeHtml(b.nick)}: ${escapeHtml(b.class || 'Класс не выбран')}</p><p>Совпадает: ${escapeHtml(reasons.join(', '))}</p><select aria-label="Основной персонаж"><option value="a">Основной: ${escapeHtml(a.nick)} (${escapeHtml(a.id)})</option><option value="b">Основной: ${escapeHtml(b.nick)} (${escapeHtml(b.id)})</option></select><div class="row gap"><button class="btn" data-merge>Слить совместимые данные</button><button type="button" class="btn" data-profile="a">Открыть карточку: ${escapeHtml(a.nick)} (${escapeHtml(a.id)})</button><button type="button" class="btn" data-profile="b">Открыть карточку: ${escapeHtml(b.nick)} (${escapeHtml(b.id)})</button><button class="btn ghost" data-keep>Оставить как есть</button></div>`;
       const selected = () => (row.querySelector('select').value === 'a' ? [a, b] : [b, a]);
       row.querySelector('[data-keep]').onclick = () => row.remove();
-      row.querySelector('[data-profile]').onclick = async () => {
-        if (working) return;
-        const [char] = selected();
-        const { openCharacterProfile } = await import('../modules/characters/profileView.js');
-        ov.close();
-        openCharacterProfile(char);
-      };
+      for (const button of row.querySelectorAll('[data-profile]')) {
+        button.onclick = async () => {
+          if (working) return;
+          const char = button.dataset.profile === 'a' ? a : b;
+          const { openCharacterProfile } = await import('../modules/characters/profileView.js');
+          if (working) return;
+          ov.close();
+          openCharacterProfile(char);
+        };
+      }
       row.querySelector('[data-merge]').onclick = async () => {
         if (working) return;
         working = true;

@@ -64,3 +64,13 @@ it('ignores shared recovery emails and never reads them when matching candidates
   };
   expect(duplicateReasons({ nick: 'A', contacts }, { nick: 'B', contacts })).toEqual(['почта / логин']);
 });
+it('ignores shared phones and never reads them when matching candidates', () => {
+  expect(duplicateReasons({ contacts: { phone: '123' } }, { contacts: { phone: '123' } })).toEqual([]);
+  const contacts = {
+    email: 'main@example.com',
+    get phone() {
+      throw new Error('Phone must not participate in candidate matching');
+    }
+  };
+  expect(duplicateReasons({ contacts }, { contacts })).toEqual(['почта / логин']);
+});
