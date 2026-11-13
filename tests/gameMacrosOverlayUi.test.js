@@ -566,3 +566,33 @@ it('opens recipient selection in the overlay, preserves edits on snapshots, and 
   );
   expect(mocks.invoke).not.toHaveBeenCalledWith('game_macro_close_targets', expect.anything());
 });
+
+it('confirms before discarding changed recipients and ignores duplicate confirmation clicks', async () => {
+  document.querySelector('[data-view="recipients"]').click();
+  await vi.waitFor(() =>
+    expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-recipients', { action: 'refresh' })
+  );
+  mocks.handlers.get('game-macro-snapshot')({
+    payload: {
+      recipients: { revision: 'r', rows: [{ charId: 'a', nick: 'A', selected: true, valid: true }], options: [] },
+      busy: false
+    }
+  });
+  const checkbox = document.querySelector('#recipient-list input');
+  checkbox.checked = false;
+  checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+  mocks.emitTo.mockClear();
+  const refresh = document.querySelector('#recipients-refresh');
+  refresh.click();
+  refresh.click();
+  expect(document.querySelectorAll('.tf-confirm-overlay')).toHaveLength(1);
+  document.querySelector('.tf-confirm [data-act="cancel"]').click();
+  await vi.waitFor(() => expect(document.querySelector('.tf-confirm-overlay')).toBeNull());
+  expect(mocks.emitTo).not.toHaveBeenCalled();
+  expect(checkbox.checked).toBe(false);
+  refresh.click();
+  document.querySelector('.tf-confirm [data-act="ok"]').click();
+  await vi.waitFor(() =>
+    expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-recipients', { action: 'refresh' })
+  );
+});

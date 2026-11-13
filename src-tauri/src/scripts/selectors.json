@@ -25,6 +25,7 @@
     "marathon.progressValue": [".progress span"],
     "marathon.description": ["p"],
 
+    "news.checkHeading": ["#media_tabs > h2"],
     "news.article": [".js-mediator-article", "#content_body"],
     "news.publicArticle": [".js-mediator-article", "#content_body", "article", ".news-text", ".news_text", ".news-content", "#news-content"],
     "news.publicLinks": ["a[href*=\"article=\"]"],

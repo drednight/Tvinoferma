@@ -18,6 +18,32 @@
         margin: 0;
         background: transparent;
       }
+      .tf-confirm-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        background: rgba(0, 0, 0, 0.75);
+        display: grid;
+        place-items: center;
+        padding: 12px;
+      }
+      .tf-confirm {
+        width: min(100%, 400px);
+        padding: 16px;
+        border: 1px solid #626b87;
+        border-radius: 10px;
+        background: #171d2b;
+        color: #eef1ff;
+      }
+      .tf-confirm .modal-header h3 {
+        margin: 0 0 12px;
+      }
+      .tf-confirm .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 16px;
+      }
       [hidden] {
         display: none !important;
       }

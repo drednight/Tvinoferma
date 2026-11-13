@@ -103,7 +103,9 @@ fn is_duplicate_merge_backup(name: &str) -> bool {
         return false;
     };
     token.len() == 24
-        && token.bytes().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+        && token
+            .bytes()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
         && suffix.ends_with(".json")
 }
 
@@ -120,7 +122,10 @@ fn prune_backups(dir: &Path, max_count: usize, protected: &str) -> Result<(), St
     for (path, _, _) in files
         .into_iter()
         .filter(|(path, _, _)| {
-            let name = path.file_name().and_then(|name| name.to_str()).unwrap_or("");
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("");
             name != protected && !is_duplicate_merge_backup(name)
         })
         .skip(keep_others)

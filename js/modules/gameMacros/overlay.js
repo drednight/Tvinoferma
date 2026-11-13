@@ -1,4 +1,5 @@
 import { leaderSuggestion } from './recipients.js';
+import { confirmModal } from '../../core/ui.js';
 import { updateRepeatButton } from './repeatButton.js';
 import { copyJournal } from './journal.js';
 import { normalizeAppearance, TEXT_PRESETS, KEY_PRESETS, COMMAND_PRESETS } from './appearance.js';
@@ -121,9 +122,25 @@ async function init() {
       recipientNotice.textContent = 'Не удалось связаться с главным окном.';
     }
   }
-  document.getElementById('recipients-refresh').onclick = () => {
-    if (recipientDirty && !window.confirm('Обновить список и отменить несохранённые изменения?')) return;
-    void recipientRequest({ action: 'refresh' });
+  let refreshConfirmationOpen = false;
+  document.getElementById('recipients-refresh').onclick = async () => {
+    if (refreshConfirmationOpen || recipientsPending) return;
+    refreshConfirmationOpen = true;
+    try {
+      if (
+        recipientDirty &&
+        !(await confirmModal({
+          title: 'Обновить список?',
+          text: 'Несохранённые изменения будут отменены.',
+          okText: 'Обновить',
+          danger: true
+        }))
+      )
+        return;
+      void recipientRequest({ action: 'refresh' });
+    } finally {
+      refreshConfirmationOpen = false;
+    }
   };
   for (const [id, checked] of [
     ['recipients-all', true],

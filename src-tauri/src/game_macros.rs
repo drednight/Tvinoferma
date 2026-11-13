@@ -1905,6 +1905,7 @@ mod win {
             ComparisonTiming::default(),
         )
     }
+    #[allow(clippy::too_many_arguments)] // Window identity and timing are kept explicit for this native input path.
     fn activity_key_timed(
         raw: u64,
         pid: u32,
