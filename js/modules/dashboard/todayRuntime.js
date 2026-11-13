@@ -45,7 +45,18 @@ export function connectedTodayState(preview) {
         className: c.class,
         icon: (CLASS_ICON_MAP[c.class] || '').replace(/\.webp$/, ''),
         coins: c.ancientCoins,
-        auth: c.isLoggedIn ? 'online' : 'offline',
+        auth:
+          typeof c.lastLoginCheck === 'string' &&
+          c.lastLoginCheck.trim() &&
+          Number.isFinite(Date.parse(c.lastLoginCheck)) &&
+          typeof c.isLoggedIn === 'boolean'
+            ? c.isLoggedIn
+              ? 'online'
+              : 'offline'
+            : 'unknown',
+        lastLoginCheck: c.lastLoginCheck,
+        lastCoinUpdate: c.lastCoinUpdate,
+        coinsParserV: c.coinsParserV,
         party: c.mainPartyId
       })),
       parties: state.parties.map(p => ({ ...p, label: p.name })),

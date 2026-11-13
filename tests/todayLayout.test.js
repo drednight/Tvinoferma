@@ -29,12 +29,12 @@ beforeEach(() => {
   state.settings = mergeSettings({});
   vi.clearAllMocks();
 });
-function mount(clan = true) {
+function mount(clan = true, optional = false) {
   bindTodayLayoutPanel();
   const root = document.createElement('div');
   document.body.append(root);
   const draw = () => {
-    root.innerHTML = `<div class="rt-board"><div class="rt-left">${['news', 'today', 'promos'].map(id => `<section class="lg-panel rt-${id}"><h3>${id}</h3><button data-content-action>Action</button></section>`).join('')}</div><div class="rt-right">${['marathon', 'launch', 'information'].map(id => `<section class="lg-panel rt-${id}"><h3>${id}</h3></section>`).join('')}</div>${clan ? '<section class="lg-panel rt-clan"><h3>Clan</h3></section>' : ''}</div>`;
+    root.innerHTML = `<div class="rt-board"><div class="rt-left">${['news', 'today', 'promos'].map(id => `<section class="lg-panel rt-${id}"><h3>${id}</h3><button data-content-action>Action</button></section>`).join('')}</div><div class="rt-right">${['marathon', 'launch', 'information'].map(id => `<section class="lg-panel rt-${id}"><h3>${id}</h3></section>`).join('')}</div>${clan ? '<section class="lg-panel rt-clan"><h3>Clan</h3></section>' : ''}${optional ? ['characters', 'parties', 'finance', 'upcoming'].map(id => `<section class="lg-panel rt-${id}" hidden><h3>${id}</h3></section>`).join('') : ''}</div>`;
     renderTodayLayoutEditor(root);
   };
   window.addEventListener('tf-today-layout-changed', draw);
@@ -324,4 +324,61 @@ it('keeps the grid optional and snaps movement only while it is enabled', () => 
   pointer(window, 'pointerup', 17, 13);
   expect(root.querySelector('.rt-news').style.left).toBe('20px');
   expect(root.querySelector('.rt-news').style.top).toBe('20px');
+});
+
+it('groups optional widgets in the library and persists add, remove, restore and reset without affecting defaults', async () => {
+  const root = mount(true, true);
+  toggle();
+  expect(root.querySelector('.rt-characters').hidden).toBe(true);
+  root.querySelector('[data-widget-library-open]').click();
+  const library = document.querySelector('[data-widget-library]');
+  expect(library.textContent).toContain('Мои данные');
+  expect(library.querySelector('[data-widget-card="characters"] .rt-widget-preview .rt-characters')).not.toBeNull();
+  expect(library.querySelector('.rt-widget-preview .rt-characters').inert).toBe(true);
+  library.querySelector('[data-widget-insert="characters"]').click();
+  expect(root.querySelector('.rt-characters').hidden).toBe(false);
+  await save(root);
+  expect(state.settings.ui.todayCanvas.blocks.characters).toBeTruthy();
+  expect(root.querySelector('.rt-characters').hidden).toBe(false);
+  toggle();
+  root.querySelector('[data-widget-remove="characters"]').click();
+  await save(root);
+  expect(state.settings.ui.todayCanvas.hidden).toContain('characters');
+  expect(root.querySelector('.rt-characters').hidden).toBe(true);
+  toggle();
+  root.querySelector('[data-widget-library-open]').click();
+  document.querySelector('[data-widget-insert="characters"]').click();
+  await save(root);
+  expect(root.querySelector('.rt-characters').hidden).toBe(false);
+  toggle();
+  root.querySelector('[data-layout-reset]').click();
+  await save(root);
+  expect(state.settings.ui.todayCanvas).toBeNull();
+  expect(root.querySelector('.rt-characters').hidden).toBe(true);
+});
+
+it('does not save an optional widget when editing is cancelled', () => {
+  const root = mount(true, true);
+  toggle();
+  root.querySelector('[data-widget-library-open]').click();
+  document.querySelector('[data-widget-insert="finance"]').click();
+  expect(root.querySelector('.rt-finance').hidden).toBe(false);
+  root.querySelector('[data-layout-cancel]').click();
+  expect(root.querySelector('.rt-finance').hidden).toBe(true);
+  expect(state.settings.ui.todayCanvas).toBeNull();
+});
+
+it('does not execute card controls while editing but restores them on cancel', () => {
+  const root = mount();
+  const click = vi.fn();
+  toggle();
+  root.querySelector('[data-content-action]').onclick = click;
+  root.querySelector('[data-content-action]').click();
+  expect(click).not.toHaveBeenCalled();
+  root.querySelector('[data-widget-remove="news"]').click();
+  expect(root.querySelector('.rt-news').hidden).toBe(true);
+  root.querySelector('[data-layout-cancel]').click();
+  root.querySelector('[data-content-action]').onclick = click;
+  root.querySelector('[data-content-action]').click();
+  expect(click).toHaveBeenCalledOnce();
 });
