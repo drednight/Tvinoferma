@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-const SERVICE: &str = "com.tvinoferma.desktop";
+const SERVICE: &str = crate::profile::VAULT_SERVICE;
 // Не относится к пространству имён contacts:<id>: пробная запись не должна
 // перезаписать или удалить контакты персонажа с необычным ID.
 const PROBE_USER: &str = "vault-availability-probe";

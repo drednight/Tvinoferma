@@ -63,6 +63,8 @@ mod marathons;
 mod notify;
 mod parsers;
 mod pool;
+mod profile;
+#[cfg(not(feature = "acceptance"))]
 mod shortcut;
 mod stats_ocr;
 mod tray;
@@ -74,6 +76,29 @@ use tauri::{Emitter, Manager, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let context = tauri::generate_context!();
+    profile::validate_config_identifier(&context.config().identifier)
+        .expect("Incompatible Tauri build profile and identifier");
+    #[cfg(feature = "acceptance")]
+    if context.config().app.app_directories_override.is_some()
+        || context
+            .config()
+            .app
+            .windows
+            .iter()
+            .any(|window| window.data_directory.is_some())
+        || context.config().bundle.active
+    {
+        panic!("Acceptance build refuses custom data paths or installer configuration");
+    }
+    // WebView2 can ignore data_directory when this inherited override is present.
+    // Never accept it in a test build: it could point to a production profile.
+    #[cfg(all(windows, feature = "acceptance"))]
+    if std::env::var_os("WEBVIEW2_USER_DATA_FOLDER").is_some()
+        || std::env::var_os("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").is_some()
+    {
+        panic!("Acceptance build refuses WebView2 profile or browser argument overrides");
+    }
     // Запуск-помощник: подписать окна или закрыть клиенты от администратора и выйти.
     // Проверяем до сборки Tauri — помощнику ни окно, ни трей, ни журнал не нужны.
     if elevate::run_as_helper_if_requested() {
@@ -102,9 +127,11 @@ pub fn run() {
             notify::register_at_startup();
             // Ярлык установщик называет по productName («Tvinoferma»), поэтому переименовываем
             // в русское имя: иначе поиск Windows не находит приложение по слову «Твиноферма»
+            #[cfg(not(feature = "acceptance"))]
             shortcut::ensure_russian_shortcut();
             #[cfg(desktop)]
             {
+                #[cfg(not(feature = "acceptance"))]
                 app.handle()
                     .plugin(tauri_plugin_updater::Builder::new().build())?;
                 tray::setup(app)?;
@@ -324,8 +351,9 @@ pub fn run() {
             // системные уведомления Windows: регистрация приложения как источника и показ
             notify::tf_notify,
             notify::tf_notify_check,
+            profile::app_build_profile,
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building tauri application")
         .run(|_, event| {
             if matches!(event, tauri::RunEvent::Exit) {

@@ -2,7 +2,7 @@
 # as well as runner logs (which can be inaccessible from restricted networks).
 $ErrorActionPreference = 'Continue'
 $tail = [System.Collections.Generic.Queue[string]]::new()
-& npm run tauri -- build --no-bundle 2>&1 | ForEach-Object {
+& npm run tauri -- build --no-bundle --no-sign --config src-tauri/tauri.acceptance.conf.json --features acceptance -- --locked 2>&1 | ForEach-Object {
     $line = $_.ToString()
     Write-Host $line
     $tail.Enqueue($line)

@@ -71,7 +71,8 @@ try {
         throw 'Working tree has changes. Commit/review them first, or explicitly use -AllowDirty (source identity will be marked DIRTY). No files were reset.'
     }
     Write-Host "Source: $source ($branch); dirty=$dirty"
-    Write-Host 'Unsigned test build only. It shares the normal app profile/vault. Do not run it against production data.'
+    Write-Host 'Unsigned acceptance profile. Local profile/vault separation is NOT yet verified on Windows.'
+    Write-Host 'Use a separate Windows test user, test accounts and test GameCenter installation.'
     Write-Host 'No release, installer, updater signature, git checkout/pull or automatic application launch.'
     Write-Host 'Cloud OAuth integrations need your own documented build environment; no GitHub secrets are downloaded.'
 
@@ -80,7 +81,7 @@ try {
     foreach ($file in $dependencyFiles) {
         $dependencyHashes[$file] = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
     }
-    $env:CARGO_TARGET_DIR = Join-Path $root 'src-tauri\target'
+    $env:CARGO_TARGET_DIR = Join-Path $root 'src-tauri\target\acceptance'
     $env:CARGO_BUILD_TARGET = $target
     $env:CARGO_PROFILE_RELEASE_LTO = 'false'
     $env:CARGO_PROFILE_RELEASE_CODEGEN_UNITS = '16'
@@ -103,11 +104,11 @@ try {
     }
 
     # Tauri runs beforeBuildCommand (vite build). Extra runner args enforce Cargo.lock.
-    Invoke-Checked -Program 'npm.cmd' -Arguments @('run', 'tauri', '--', 'build', '--no-bundle', '--no-sign', '--target', $target, '--', '--locked')
+    Invoke-Checked -Program 'npm.cmd' -Arguments @('run', 'tauri', '--', 'build', '--no-bundle', '--no-sign', '--target', $target, '--config', 'src-tauri/tauri.acceptance.conf.json', '--features', 'acceptance', '--', '--locked')
     if ($Checks -eq 'Full') {
         Push-Location (Join-Path $root 'src-tauri')
         try {
-            Invoke-Checked -Program 'cargo' -Arguments @('test', '--locked', '--target', $target, '--lib')
+            Invoke-Checked -Program 'cargo' -Arguments @('test', '--locked', '--target', $target, '--features', 'acceptance', '--lib')
         } finally { Pop-Location }
     }
     foreach ($file in $dependencyFiles) {
@@ -133,7 +134,7 @@ try {
         source = $source; branch = $branch; dirty = $dirty; version = $version
         builtAt = [DateTime]::UtcNow.ToString('o'); target = $target; checks = $Checks
         dependencyInstallSkipped = [bool]$SkipInstall; sha256 = $hash
-        lto = $false; codegenUnits = 16; signed = $false; isolatedProfile = $false
+        lto = $false; codegenUnits = 16; signed = $false; profile = 'acceptance'; isolatedProfile = $false; isolationVerified = $false
     }
     $manifest | ConvertTo-Json | Set-Content -Encoding utf8 -LiteralPath (Join-Path $output 'BUILD-INFO.json')
     @"
@@ -146,8 +147,10 @@ Checks: $Checks; dependency install skipped: $SkipInstall
 
 Requires Microsoft Edge WebView2 Runtime.
 Use a SEPARATE Windows test user with no production Tvinoferma data.
-The profile and OS vault are NOT isolated by a special app identifier.
+A separate app identifier and OS vault namespace are configured, but NOT verified on Windows.
 Do NOT run alongside another version or against your working profile.
+GameCenter files, live game windows and cloud accounts are external shared resources;
+use only disposable test installations, accounts and windows. Updates are disabled.
 No installer, updater signature or release was produced. LTO is disabled.
 Quick/None are NOT a full CI pass. A successful build is NOT a game-input test.
 OAuth/cloud features may be unavailable without the appropriate build variables.

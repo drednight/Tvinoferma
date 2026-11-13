@@ -826,6 +826,14 @@ export function bindSettings() {
   });
 
   // Refresh Backups
+  document.getElementById('contact-file-export')?.addEventListener('click', async () => {
+    const { openContactFileExport } = await import('./contactFileUi.js');
+    openContactFileExport();
+  });
+  document.getElementById('contact-file-review')?.addEventListener('click', async () => {
+    const { openContactFileReview } = await import('./contactFileUi.js');
+    openContactFileReview();
+  });
   document.getElementById('refresh-backups-btn')?.addEventListener('click', refreshBackups);
   document.getElementById('all-backups-btn')?.addEventListener('click', openFullBackups);
 

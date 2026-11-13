@@ -201,6 +201,22 @@ describe('updater: проверка и установка', () => {
     expect(relaunchMock).toHaveBeenCalledTimes(1);
   });
 
+  it.each(['acceptance', 'unknown', null])(
+    'не проверяет и не устанавливает обновления для профиля %s',
+    async profile => {
+      vi.useFakeTimers();
+      mod.setUpdateBuildProfile(profile);
+      mod.startUpdateScheduler({ getMode: () => 'daily', getLastChecked: () => null });
+      await vi.advanceTimersByTimeAsync(86400000);
+      expect(checkMock).not.toHaveBeenCalled();
+      await mod.checkForUpdates();
+      expect(checkMock).not.toHaveBeenCalled();
+      expect(toastMock).toHaveBeenCalledWith(expect.stringContaining('отключено'), 'warning');
+      expect(await mod.installUpdate()).toBe(false);
+      expect(relaunchMock).not.toHaveBeenCalled();
+    }
+  );
+
   it('планировщик, режим startup: одна проверка через 5 с, дальше тишина', async () => {
     vi.useFakeTimers();
     checkMock.mockResolvedValue(null);
@@ -292,6 +308,13 @@ describe('updateUi: кнопка в шапке и окно', () => {
     checkMock.mockReset();
     relaunchMock.mockReset();
   }
+
+  it('в тестовой сборке явно отключает настройки обновлений', () => {
+    mod.setUpdateBuildProfile('acceptance');
+    ui.initUpdateUi();
+    expect(document.getElementById('check-updates-btn').disabled).toBe(true);
+    expect(document.getElementById('update-status').textContent).toContain('Обновления отключены');
+  });
 
   it('кнопка скрыта, пока обновления нет', () => {
     expect(document.getElementById('update-badge').hidden).toBe(true);

@@ -38,6 +38,10 @@ on:
       - 'js/modules/cloudSync/applyPublicSnapshot.js'
       - 'src-tauri/src/scripts/marathon*.js'
       - 'src-tauri/src/scripts/promo_news_public.js'
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/tauri.acceptance.conf.json'
+      - 'src-tauri/src/profile.rs'
+      - 'scripts/build-windows-local.ps1'
       - 'src-tauri/src/cloud_*.rs'
       - 'src-tauri/src/commands/cloud_*.rs'
 
@@ -56,6 +60,7 @@ jobs:
     env:
       CARGO_PROFILE_RELEASE_LTO: 'false'
       CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
+      CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/target/acceptance
     steps:
       - uses: actions/checkout@v7
         with:
@@ -78,7 +83,7 @@ jobs:
           git diff --exit-code -- package.json package-lock.json src-tauri/Cargo.toml src-tauri/Cargo.lock
           if ($LASTEXITCODE -ne 0) { throw 'Dependency files changed during packaging; commit the resolved locks first.' }
           New-Item -ItemType Directory acceptance | Out-Null
-          Copy-Item src-tauri/target/release/tvinoferma.exe acceptance/Tvinoferma.exe
+          Copy-Item src-tauri/target/acceptance/release/tvinoferma.exe acceptance/Tvinoferma.exe
           $source = git rev-parse HEAD
           $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
           @"
@@ -91,9 +96,11 @@ jobs:
           Нужен установленный Microsoft Edge WebView2 Runtime.
 
           Запускайте только в ОТДЕЛЬНЫХ ТЕСТОВЫХ УЧЁТНЫХ ЗАПИСЯХ WINDOWS без прежних
-          данных Твинофермы. Профиль и vault НЕ изолированы специальным identifier.
-          Не запускайте поверх рабочего профиля и не запускайте старую версию
-          одновременно с этой сборкой.
+          данных Твинофермы. Настроены отдельный identifier и vault namespace, но
+          изоляция ещё НЕ ПРОВЕРЕНА на Windows. Не запускайте поверх рабочего профиля
+          или одновременно с другой версией. Автообновление отключено.
+          GameCenter, игровые окна и облачные аккаунты — внешние общие ресурсы:
+          используйте только отдельные тестовые копии и аккаунты.
 
           Проверьте новости на «Сегодня», награды марафона, выбор предметов и список дел.
           При конфликте контактов нажмите «Сравнить контакты и выбрать источник».

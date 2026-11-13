@@ -10,6 +10,7 @@ const backupName = label => `state.backup-123-${label}-42-1.json`;
 
 beforeEach(async () => {
   vi.resetModules();
+  localStorage.clear();
   window.__TAURI_INTERNALS__ = {};
   ({ state } = await import('../js/core/state.js'));
   secrets = await import('../js/core/secrets.js');
@@ -71,6 +72,7 @@ beforeEach(async () => {
 });
 afterEach(() => {
   delete window.__TAURI_INTERNALS__;
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
@@ -209,6 +211,8 @@ it('completes the actual UI flow with a chosen conflicting password and preserve
   const saved = Object.entries(records).filter(([key]) => key.startsWith('duplicate-merge-'));
   expect(saved.some(([, value]) => value === originalRecords.a)).toBe(true);
   expect(saved.some(([, value]) => value.includes('PRIVATE-OTHER'))).toBe(true);
+  const journal = await import('../js/core/duplicateMergeJournal.js');
+  expect(journal.readDuplicateMergeJournal()).toEqual({ status: 'none' });
   ov.close();
 });
 
@@ -279,4 +283,104 @@ it('does not interpret protected contact content as markup when showing the back
   expect(ov.body.textContent).toContain('<img src=x onerror=alert(1)>');
   expect(ov.body.querySelector('img')).toBeNull();
   ov.close();
+});
+
+it('leaves a discoverable marker and blocks writes when the UI merge has an uncertain vault result', async () => {
+  const real = transport.invoke.getMockImplementation();
+  transport.invoke.mockImplementation(async (cmd, args) => {
+    if (cmd === 'secrets_set_many' && Object.hasOwn(args.items, 'a')) {
+      await real(cmd, args);
+      throw new Error('PRIVATE-LOST');
+    }
+    return real(cmd, args);
+  });
+  document.body.innerHTML = '<div id="modal-root"></div><div id="toast-root"></div>';
+  const { openDuplicateCharacters } = await import('../js/settings/duplicateCharacters.js');
+  const journal = await import('../js/core/duplicateMergeJournal.js');
+  const ov = openDuplicateCharacters();
+  ov.body.querySelector('[data-merge]').click();
+  await vi.waitFor(() => expect(document.querySelector('.tf-confirm-overlay')).not.toBeNull());
+  document.querySelector('.tf-confirm-overlay .btn.danger').click();
+  await vi.waitFor(() => expect(journal.readDuplicateMergeJournal().status).toBe('pending'));
+  await vi.waitFor(() => expect(document.getElementById('toast-root').textContent).toContain('не подтверждено'));
+  expect(journal.readDuplicateMergeJournal().name).toMatch(/^state\.backup-123-dup-[0-9a-f]{24}-42-1\.json$/);
+  await expect(storage.persist()).rejects.toThrow();
+  expect(Object.keys(records).filter(k => k.startsWith('duplicate-merge-'))).toHaveLength(3);
+  expect(localStorage.getItem('tf:duplicate-merge-pending-v1')).not.toContain('PRIVATE');
+  ov.close();
+});
+
+it('does not start a destructive UI merge if the interruption marker cannot be saved', async () => {
+  const originalSet = Storage.prototype.setItem;
+  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (key, value) {
+    if (key === 'tf:duplicate-merge-pending-v1') throw new Error('private storage error');
+    return originalSet.call(this, key, value);
+  });
+  document.body.innerHTML = '<div id="modal-root"></div><div id="toast-root"></div>';
+  const { openDuplicateCharacters } = await import('../js/settings/duplicateCharacters.js');
+  const ov = openDuplicateCharacters();
+  ov.body.querySelector('[data-merge]').click();
+  await vi.waitFor(() => expect(document.querySelector('.tf-confirm-overlay')).not.toBeNull());
+  document.querySelector('.tf-confirm-overlay .btn.danger').click();
+  await vi.waitFor(() => expect(document.getElementById('toast-root').textContent).toContain('отметку слияния'));
+  expect(state.characters).toHaveLength(2);
+  expect(records).toMatchObject(originalRecords);
+  expect(JSON.parse(disk).characters).toHaveLength(2);
+  expect(events).not.toContain('save_state_if_unchanged');
+  expect(document.getElementById('toast-root').textContent).not.toContain('private storage error');
+  ov.close();
+});
+
+it('blocks subsequent writes when the merge completed but its interruption marker could not be removed', async () => {
+  const originalRemove = Storage.prototype.removeItem;
+  vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(function (key) {
+    if (key === 'tf:duplicate-merge-pending-v1') return;
+    return originalRemove.call(this, key);
+  });
+  document.body.innerHTML = '<div id="modal-root"></div><div id="toast-root"></div>';
+  const { openDuplicateCharacters } = await import('../js/settings/duplicateCharacters.js');
+  const journal = await import('../js/core/duplicateMergeJournal.js');
+  const ov = openDuplicateCharacters();
+  ov.body.querySelector('[data-merge]').click();
+  await vi.waitFor(() => expect(document.querySelector('.tf-confirm-overlay')).not.toBeNull());
+  document.querySelector('.tf-confirm-overlay .btn.danger').click();
+  await vi.waitFor(() => expect(document.getElementById('toast-root').textContent).toContain('не подтверждено'));
+  expect(JSON.parse(disk).characters).toHaveLength(1);
+  expect(journal.readDuplicateMergeJournal().status).toBe('pending');
+  await expect(storage.persist()).rejects.toThrow();
+  ov.close();
+});
+
+it('refuses encrypted contact export when the protected source changed externally', async () => {
+  const { webcrypto } = await import('node:crypto');
+  vi.stubGlobal('crypto', webcrypto);
+  records.a = record({ email: 'a@example.test', password: 'EXTERNAL-EDIT' });
+  document.body.innerHTML = '<div id="modal-root"></div>';
+  const { openContactFileExport } = await import('../js/settings/contactFileUi.js');
+  const ov = openContactFileExport();
+  ov.body.querySelector('button').click();
+  await vi.waitFor(() => expect(ov.body.textContent).toContain('Подготовка остановлена'));
+  expect(ov.body.querySelector('input[type="text"]').value).toBe('');
+  expect(ov.foot.querySelector('button').disabled).toBe(true);
+  expect(ov.body.textContent).not.toContain('EXTERNAL-EDIT');
+  expect(records.a).toBe(record({ email: 'a@example.test', password: 'EXTERNAL-EDIT' }));
+  ov.close();
+  vi.unstubAllGlobals();
+});
+
+it('can prepare an encrypted contact export only after rechecking the actual vault records', async () => {
+  const { webcrypto } = await import('node:crypto');
+  vi.stubGlobal('crypto', webcrypto);
+  document.body.innerHTML = '<div id="modal-root"></div>';
+  const { openContactFileExport } = await import('../js/settings/contactFileUi.js');
+  const ov = openContactFileExport();
+  events.length = 0;
+  ov.body.querySelector('button').click();
+  await vi.waitFor(() => expect(ov.body.textContent).toContain('Подготовлено карточек: 2'));
+  expect(events.filter(command => command === 'secrets_get_many').length).toBeGreaterThanOrEqual(2);
+  expect(events).not.toContain('secrets_set_many');
+  expect(ov.body.textContent).not.toContain('PRIVATE-A');
+  expect(ov.body.querySelector('input[type="text"]').value).toMatch(/^TF1-/);
+  ov.close();
+  vi.unstubAllGlobals();
 });

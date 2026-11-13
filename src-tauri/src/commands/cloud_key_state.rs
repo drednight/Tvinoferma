@@ -112,7 +112,7 @@ mod windows_backend {
     use crate::cloud_key_state;
     use tauri::Manager;
 
-    const SERVICE: &str = "com.tvinoferma.desktop";
+    const SERVICE: &str = crate::profile::VAULT_SERVICE;
     struct NativeVault;
     fn entry(name: &str) -> Result<keyring::Entry, ()> {
         keyring::Entry::new(SERVICE, name).map_err(|_| ())

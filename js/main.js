@@ -16,13 +16,15 @@ import {
 import { migrateState, SCHEMA_VERSION } from './core/migrations.js';
 import { blockUnsafeVaultRead, hydrateSecrets, vaultConflictReview, vaultStatus } from './core/secrets.js';
 import { attachVaultConflictRecovery } from './settings/vaultConflictRecovery.js';
+import { readDuplicateMergeJournal } from './core/duplicateMergeJournal.js';
+import { attachDuplicateMergeRecovery } from './settings/duplicateMergeRecovery.js';
 import { hasSafeVaultCharacterMapping } from './core/vaultIdentity.js';
 import { initHotkeys, initDesktop } from './desktop/desktop.js';
 import { initNotifications } from './desktop/notifications.js';
 import { bindNotifyCenter } from './core/notifyCenter.js';
 import { initSound } from './desktop/sound.js';
 import { initGettingStarted } from './settings/gettingStarted.js';
-import { startUpdateScheduler } from './desktop/updater.js';
+import { startUpdateScheduler, setUpdateBuildProfile } from './desktop/updater.js';
 import { resolveUpdateMode } from './desktop/updateSchedule.js';
 import { subscribeUpdate, setUpdateState } from './desktop/updateState.js';
 import { initUpdateUi } from './desktop/updateUi.js';
@@ -123,6 +125,26 @@ window.addEventListener('tf-storage-uncertain', event => {
 export async function boot() {
   try {
     console.log('[BOOT] Starting Twinoferma...');
+    if (isTauri()) {
+      let profile = 'unknown';
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        profile = await invoke('app_build_profile');
+      } catch {
+        // Missing or malformed profile must not enable the updater.
+      }
+      setUpdateBuildProfile(profile);
+      if (profile !== 'stable') {
+        const banner = document.getElementById('build-profile-banner');
+        if (banner) {
+          banner.hidden = false;
+          banner.textContent =
+            profile === 'acceptance'
+              ? 'ТЕСТОВАЯ СБОРКА: используйте только тестовые аккаунты и данные. Обновления отключены. Изоляция на Windows ещё не проверена.'
+              : 'Не удалось определить профиль сборки. Обновления отключены; проверьте происхождение программы.';
+        }
+      }
+    }
 
     // 1. Загрузка данных из хранилища
     let raw = null;
@@ -139,6 +161,22 @@ export async function boot() {
       alert(
         `Не удалось прочитать данные: ${e?.message || e}\nСохранение остановлено, чтобы не перезаписать прежние данные. В настройках можно восстановить резервную копию. До восстановления или перезапуска новые изменения не сохранятся.`
       );
+    }
+    // A local read-back marker is best-effort and cannot prove that an absent
+    // marker means success. When present (or unreadable), never save on startup.
+    if (isTauri()) {
+      const journal = readDuplicateMergeJournal();
+      if (journal.status !== 'none') {
+        protectIncompatibleState();
+        startupReadOnly = true;
+        suppressAutomaticWelcome();
+        showStorageReadOnlyWarning(
+          journal.status === 'pending'
+            ? 'Возможно, слияние карточек было прервано. Изменения не сохраняются; проверьте файл состояния и отдельные копии контактов до продолжения.'
+            : 'Не удалось проверить отметку слияния в локальном профиле. Изменения не сохраняются; проверьте локальное хранилище и резервные копии.'
+        );
+        attachDuplicateMergeRecovery(journal);
+      }
     }
     let needsSave = false;
     let guardedMigration = false;
@@ -194,7 +232,7 @@ export async function boot() {
             console.warn('[BOOT] Backup of newer data failed:', e);
           }
         }
-      } else if (migration.applied.length) {
+      } else if (migration.applied.length && !startupReadOnly) {
         console.log(`[BOOT] Migrating state v${migration.from} → v${migration.to}`);
         try {
           // До переноса профилей или контактов нужна точная копия именно загруженного

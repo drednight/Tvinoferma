@@ -18,6 +18,10 @@ bench = false
 name = "tvinoferma_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# Explicit opt-in: only with tauri.acceptance.conf.json; runtime rejects mismatches.
+acceptance = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

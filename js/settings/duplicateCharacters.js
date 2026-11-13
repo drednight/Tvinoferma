@@ -1,5 +1,6 @@
 import { vaultStatus } from '../core/secrets.js';
 import { prepareDuplicateVaultMerge } from './duplicateVaultMerge.js';
+import { beginDuplicateMergeJournal, clearDuplicateMergeJournal } from '../core/duplicateMergeJournal.js';
 import { state, serializeState } from '../core/state.js';
 import { escapeHtml } from '../core/utils.js';
 import { openOverlay } from '../modules/marathons/overlay.js';
@@ -128,6 +129,7 @@ export function openDuplicateCharacters() {
         if (working) return;
         working = true;
         let mutated = false;
+        let journalStarted = false;
         try {
           const [primary, duplicate] = selected();
           const current = [...state.characters, ...state.archivedCharacters];
@@ -193,10 +195,15 @@ export function openDuplicateCharacters() {
               );
               backup = prepared.name;
               if (stateWitness() !== witness) throw new Error('Данные изменились во время проверки');
+              // Written and read back before any destructive vault/state change.
+              // This local marker is best-effort, not a durable transaction log.
+              const journal = beginDuplicateMergeJournal(backup);
+              journalStarted = true;
               applyMerge();
               const mergedWitness = stateWitness();
               await commit(prepared.raw);
               if (stateWitness() !== mergedWitness) throw new Error('Данные изменились во время сохранения');
+              clearDuplicateMergeJournal(journal);
             });
             await renderAfterPersist();
           } else {
@@ -215,9 +222,9 @@ export function openDuplicateCharacters() {
           );
           render();
         } catch (error) {
-          if (mutated) haltAfterPartialStateChange();
+          if (mutated || journalStarted) haltAfterPartialStateChange();
           toast(
-            mutated
+            mutated || journalStarted
               ? 'Сохранение слияния не подтверждено. Не продолжайте изменения; откройте Настройки → резервные копии и проверьте последнюю копию до слияния и её исходные контакты.'
               : `Слияние остановлено: ${error.message || 'не удалось сохранить данные'}. Данные не затираются.`,
             'warning',

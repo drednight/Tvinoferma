@@ -14,7 +14,7 @@ use std::path::Path;
 use std::process::Command;
 
 /// Имя значения в разделе `Run`
-const VALUE_NAME: &str = "Tvinoferma";
+const VALUE_NAME: &str = crate::profile::AUTOSTART_VALUE;
 /// Признак «запущено Windows при входе в систему»
 pub const ARG_AUTOSTART: &str = "--autostart";
 /// Признак «окно не показываем, приложение живёт в трее»
@@ -33,7 +33,7 @@ pub fn autostart_args(minimized: bool) -> String {
     }
 }
 /// Имя задания в Планировщике (латиницей: имя попадает в командную строку)
-const TASK_NAME: &str = "Tvinoferma autostart";
+const TASK_NAME: &str = crate::profile::AUTOSTART_TASK;
 /// Код «запрос прав администратора отменён» (так PowerShell сообщает об отказе в UAC)
 const EXIT_UAC_CANCELLED: i32 = 1223;
 
@@ -282,7 +282,7 @@ fn task_create(exe: &str, minimized: bool) -> Result<(), String> {
         std::env::var("USERNAME").unwrap_or_default()
     );
     let user = user.trim_matches('\\').to_string();
-    let file = std::env::temp_dir().join("tvinoferma-autostart-task.xml");
+    let file = std::env::temp_dir().join(crate::profile::AUTOSTART_XML);
     std::fs::write(&file, utf16le_with_bom(&task_xml(exe, minimized, &user)))
         .map_err(|e| format!("Не удалось подготовить задание: {}", e))?;
     let res = run_schtasks(&[
