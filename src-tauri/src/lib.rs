@@ -77,8 +77,11 @@ use tauri::{Emitter, Manager, WindowEvent};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let context = tauri::generate_context!();
-    profile::validate_config_identifier(&context.config().identifier)
-        .expect("Incompatible Tauri build profile and identifier");
+    profile::validate_config_identifier(
+        &context.config().identifier,
+        context.config().product_name.as_deref(),
+    )
+    .expect("Incompatible Tauri build profile and identifier");
     #[cfg(feature = "acceptance")]
     if context.config().app.app_directories_override.is_some()
         || context

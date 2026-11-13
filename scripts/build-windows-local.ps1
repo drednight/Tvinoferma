@@ -7,6 +7,9 @@ Build an unsigned local Windows acceptance executable. Never publishes or launch
 param(
     [ValidateSet('Quick', 'Full', 'None')]
     [string]$Checks = 'Quick',
+    [ValidateSet('Isolated', 'Shared')]
+    [string]$Profile = 'Isolated',
+    [switch]$SharedProfileConfirmed,
     [switch]$SkipInstall,
     [switch]$AllowDirty
 )
@@ -40,6 +43,9 @@ function Read-Git {
 
 Push-Location $root
 try {
+    if ($Profile -eq 'Shared' -and -not $SharedProfileConfirmed) {
+        throw 'Shared profile modifies production data and vault. Make backups and pass -SharedProfileConfirmed explicitly.'
+    }
     if ($env:OS -ne 'Windows_NT') { throw 'This script must run on Windows x64 with the MSVC Rust toolchain.' }
     foreach ($program in @('git', 'node', 'npm.cmd', 'cargo', 'rustc')) {
         if (-not (Get-Command $program -ErrorAction SilentlyContinue)) {
@@ -71,8 +77,12 @@ try {
         throw 'Working tree has changes. Commit/review them first, or explicitly use -AllowDirty (source identity will be marked DIRTY). No files were reset.'
     }
     Write-Host "Source: $source ($branch); dirty=$dirty"
-    Write-Host 'Unsigned acceptance profile. Local profile/vault separation is NOT yet verified on Windows.'
-    Write-Host 'Use a separate Windows test user, test accounts and test GameCenter installation.'
+    if ($Profile -eq 'Shared') {
+        Write-Warning 'SHARED PROFILE: this test executable reads and modifies production data, vault and cloud settings. Close stable and back up first.'
+    } else {
+        Write-Host 'Unsigned acceptance profile. Local profile/vault separation is NOT yet verified on Windows.'
+        Write-Host 'Use a separate Windows test user, test accounts and test GameCenter installation.'
+    }
     Write-Host 'No release, installer, updater signature, git checkout/pull or automatic application launch.'
     Write-Host 'Cloud OAuth integrations need your own documented build environment; no GitHub secrets are downloaded.'
 
@@ -82,6 +92,15 @@ try {
         $dependencyHashes[$file] = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
     }
     $env:CARGO_TARGET_DIR = Join-Path $root 'src-tauri\target\acceptance'
+    $config = 'src-tauri/tauri.acceptance.conf.json'
+    $feature = 'acceptance'
+    $exeName = 'Tvinoferma.exe'
+    if ($Profile -eq 'Shared') {
+        $env:CARGO_TARGET_DIR = Join-Path $root 'src-tauri\target\acceptance-shared'
+        $config = 'src-tauri/tauri.acceptance-shared.conf.json'
+        $feature = 'acceptance-shared'
+        $exeName = 'Tvinoferma-SHARED-TEST.exe'
+    }
     $env:CARGO_BUILD_TARGET = $target
     $env:CARGO_PROFILE_RELEASE_LTO = 'false'
     $env:CARGO_PROFILE_RELEASE_CODEGEN_UNITS = '16'
@@ -104,11 +123,11 @@ try {
     }
 
     # Tauri runs beforeBuildCommand (vite build). Extra runner args enforce Cargo.lock.
-    Invoke-Checked -Program 'npm.cmd' -Arguments @('run', 'tauri', '--', 'build', '--no-bundle', '--no-sign', '--target', $target, '--config', 'src-tauri/tauri.acceptance.conf.json', '--features', 'acceptance', '--', '--locked')
+    Invoke-Checked -Program 'npm.cmd' -Arguments @('run', 'tauri', '--', 'build', '--no-bundle', '--no-sign', '--target', $target, '--config', $config, '--features', $feature, '--', '--locked')
     if ($Checks -eq 'Full') {
         Push-Location (Join-Path $root 'src-tauri')
         try {
-            Invoke-Checked -Program 'cargo' -Arguments @('test', '--locked', '--target', $target, '--features', 'acceptance', '--lib')
+            Invoke-Checked -Program 'cargo' -Arguments @('test', '--locked', '--target', $target, '--features', $feature, '--lib')
         } finally { Pop-Location }
     }
     foreach ($file in $dependencyFiles) {
@@ -124,34 +143,47 @@ try {
     if (-not (Test-Path -LiteralPath $executable)) { throw "Build reported success but executable is missing: $executable" }
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $suffix = [guid]::NewGuid().ToString('N').Substring(0, 8)
-    $output = Join-Path $root "local-acceptance\$stamp-$($source.Substring(0, 8))-$suffix"
+    $output = Join-Path $root "local-acceptance\$($Profile.ToLowerInvariant())-$stamp-$($source.Substring(0, 8))-$suffix"
     $null = New-Item -ItemType Directory -Path $output
-    Copy-Item -LiteralPath $executable -Destination (Join-Path $output 'Tvinoferma.exe')
-    $hash = (Get-FileHash -LiteralPath (Join-Path $output 'Tvinoferma.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
-    "$hash  Tvinoferma.exe" | Set-Content -Encoding ascii -LiteralPath (Join-Path $output 'SHA256SUMS.txt')
+    Copy-Item -LiteralPath $executable -Destination (Join-Path $output $exeName)
+    $hash = (Get-FileHash -LiteralPath (Join-Path $output $exeName) -Algorithm SHA256).Hash.ToLowerInvariant()
+    "$hash  $exeName" | Set-Content -Encoding ascii -LiteralPath (Join-Path $output 'SHA256SUMS.txt')
     $version = (Get-Content -LiteralPath 'src-tauri/tauri.conf.json' -Raw | ConvertFrom-Json).version
     $manifest = [ordered]@{
         source = $source; branch = $branch; dirty = $dirty; version = $version
         builtAt = [DateTime]::UtcNow.ToString('o'); target = $target; checks = $Checks
         dependencyInstallSkipped = [bool]$SkipInstall; sha256 = $hash
-        lto = $false; codegenUnits = 16; signed = $false; profile = 'acceptance'; isolatedProfile = $false; isolationVerified = $false
+        lto = $false; codegenUnits = 16; signed = $false; profile = $feature; sharedProductionProfile = ($Profile -eq 'Shared'); isolatedProfile = $false; isolationVerified = $false
     }
     $manifest | ConvertTo-Json | Set-Content -Encoding utf8 -LiteralPath (Join-Path $output 'BUILD-INFO.json')
+    $profileWarning = if ($Profile -eq 'Shared') {
+        @"
+SHARED PRODUCTION PROFILE: the test build reads and WRITES the same data,
+Windows vault, browser profiles and cloud settings as the stable app.
+Close the stable version completely and back up data and vault before running.
+Changes, reset and synchronisation can affect production and other devices.
+Shared profile behavior and WebView sessions need verification on Windows.
+"@
+    } else {
+        @"
+Use a SEPARATE Windows test user with no production Tvinoferma data.
+A separate app identifier and OS vault namespace are configured, but NOT verified on Windows.
+Do NOT run alongside another version or against your working profile.
+"@
+    }
     @"
 UNSIGNED TEST BUILD - NOT A STABLE UPDATE
 Source: $source
 Branch: $branch
 Working tree dirty: $dirty (if true, commit alone does not identify the source)
 Embedded version: $version (does NOT distinguish this build from stable)
+Profile: $feature
 Checks: $Checks; dependency install skipped: $SkipInstall
 
 Requires Microsoft Edge WebView2 Runtime.
-Use a SEPARATE Windows test user with no production Tvinoferma data.
-A separate app identifier and OS vault namespace are configured, but NOT verified on Windows.
-Do NOT run alongside another version or against your working profile.
-GameCenter files, live game windows and cloud accounts are external shared resources;
-use only disposable test installations, accounts and windows. Updates are disabled.
-No installer, updater signature or release was produced. LTO is disabled.
+$profileWarning
+GameCenter files, live game windows and cloud accounts are external shared resources.
+Updates are disabled. No installer, updater signature or release was produced.
 Quick/None are NOT a full CI pass. A successful build is NOT a game-input test.
 OAuth/cloud features may be unavailable without the appropriate build variables.
 Keep passwords, tokens, cookies, backups and private environment values out of reports.

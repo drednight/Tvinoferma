@@ -201,7 +201,7 @@ describe('updater: проверка и установка', () => {
     expect(relaunchMock).toHaveBeenCalledTimes(1);
   });
 
-  it.each(['acceptance', 'unknown', null])(
+  it.each(['acceptance', 'acceptance-shared', 'unknown', null])(
     'не проверяет и не устанавливает обновления для профиля %s',
     async profile => {
       vi.useFakeTimers();

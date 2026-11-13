@@ -481,6 +481,9 @@ pub async fn autostart_status() -> Result<AutostartInfo, String> {
 }
 
 fn apply(enabled: bool, minimized: bool, admin: bool) -> Result<AutostartInfo, String> {
+    if cfg!(feature = "acceptance-shared") {
+        return Err("Автозапуск недоступен в тестовой сборке с общим профилем".into());
+    }
     let has_task = task_read().is_some();
     if enabled && admin {
         // создаём задание (Windows спросит разрешение), и только потом убираем обычную запись, чтобы не стартовало дважды
@@ -516,6 +519,13 @@ pub async fn autostart_set(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "acceptance-shared")]
+    #[test]
+    fn shared_test_cannot_change_autostart() {
+        assert!(apply(true, false, false).is_err());
+        assert!(apply(false, false, false).is_err());
+    }
 
     #[test]
     fn command_quotes_the_path_and_adds_flags() {

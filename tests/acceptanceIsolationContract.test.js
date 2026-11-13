@@ -66,3 +66,28 @@ it('local and CI scripts opt into both config and feature and keep artifacts sep
   expect(workflow).toContain('${{ github.workspace }}/src-tauri/target/acceptance');
   expect(local).toContain('isolationVerified = $false');
 });
+
+it('requires an explicitly selected shared build, matching stable data namespace and disabling updater', () => {
+  const stable = JSON.parse(read('src-tauri/tauri.conf.json'));
+  const shared = JSON.parse(read('src-tauri/tauri.acceptance-shared.conf.json'));
+  const cargo = read('src-tauri/Cargo.toml');
+  const profile = read('src-tauri/src/profile.rs');
+  const app = read('src-tauri/src/lib.rs');
+  const local = read('scripts/build-windows-local.ps1');
+  expect(shared.identifier).toBe(stable.identifier);
+  expect(shared.productName).toBe('Tvinoferma Shared Acceptance');
+  expect(shared.app.windows[0].title).toContain('ОБЩИЕ ДАННЫЕ');
+  expect(shared.bundle.active).toBe(false);
+  expect(cargo).toContain('acceptance-shared = ["acceptance"]');
+  expect(profile).toContain('product_name == Some(PRODUCT_NAME)');
+  expect(profile).toContain('pub const VAULT_SERVICE: &str = APP_ID');
+  expect(profile).toContain('com.tvinoferma.desktop.cloud.simple-key');
+  expect(app).toContain('context.config().product_name.as_deref()');
+  expect(local).toContain("[string]$Profile = 'Isolated'");
+  expect(local).toContain("$Profile -eq 'Shared' -and -not $SharedProfileConfirmed");
+  expect(local).toContain('tauri.acceptance-shared.conf.json');
+  expect(local).toContain('Tvinoferma-SHARED-TEST.exe');
+  expect(local).toContain('SHARED PRODUCTION PROFILE');
+  expect(read('src-tauri/src/notify.rs')).toContain('Do not overwrite the stable notification registration');
+  expect(read('src-tauri/src/autostart.rs')).toContain('Автозапуск недоступен в тестовой сборке с общим профилем');
+});

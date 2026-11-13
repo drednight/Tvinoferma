@@ -11,7 +11,8 @@
 //! 2) показываем уведомление и возвращаем причину отказа, если показ не удался.
 //!
 //! Идентификатор соответствует профилю сборки: тестовая и стабильная версии
-//! регистрируют разные источники уведомлений.
+//! регистрируют разные источники уведомлений. В тесте с общим профилем
+//! уведомления отключены, чтобы не менять стабильную регистрацию.
 
 use tauri::Runtime;
 
@@ -90,7 +91,7 @@ pub async fn tf_notify<R: Runtime>(
 
 /// Записать идентификатор приложения и его имя в `HKCU\Software\Classes\AppUserModelId`.
 /// Идемпотентно: повторный вызов просто перезаписывает те же значения.
-#[cfg(windows)]
+#[cfg(all(windows, not(feature = "acceptance-shared")))]
 fn registered() -> Result<(), String> {
     use windows::core::w;
     use windows::Win32::Foundation::ERROR_SUCCESS;
@@ -147,7 +148,7 @@ fn registered() -> Result<(), String> {
 }
 
 /// Путь к значку приложения: установленная версия или папка рядом с исполняемым файлом.
-#[cfg(windows)]
+#[cfg(all(windows, not(feature = "acceptance-shared")))]
 fn icon_uri() -> String {
     if let Ok(exe) = tauri::utils::platform::current_exe() {
         if let Some(dir) = exe.parent() {
@@ -162,6 +163,14 @@ fn icon_uri() -> String {
         }
     }
     String::new()
+}
+
+// Do not overwrite the stable notification registration from a test executable.
+// Fail explicitly instead of falsely reporting registration or letting the plugin
+// change OS notification state on behalf of the shared test build.
+#[cfg(all(windows, feature = "acceptance-shared"))]
+fn registered() -> Result<(), String> {
+    Err("Уведомления отключены в тестовой сборке с общим профилем".into())
 }
 
 #[cfg(not(windows))]
