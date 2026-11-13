@@ -2200,3 +2200,38 @@
     padding-inline: 14px;
   }
 }
+
+.gm-repeat-modal .gm-repeat-device {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+}
+.gm-repeat-modal .gm-repeat-device > p {
+  margin: 0;
+  color: var(--text-dim);
+}
+.gm-dialog .gm-composite-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 18px 0;
+  padding: 16px;
+  border: 2px solid var(--warning, #d9a441);
+  border-radius: 10px;
+  background: var(--panel-2);
+  line-height: 1.5;
+}
+.gm-composite-consent input {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin: 2px 0 0;
+}
+.gm-composite-consent small {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-dim);
+}
+.gm-dialog .gm-composite-consent[hidden] {
+  display: none;
+}

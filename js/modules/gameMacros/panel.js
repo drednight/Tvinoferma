@@ -70,7 +70,7 @@ const targetLabel = row =>
         row.target
       ];
 const repeatSettingsHtml = c =>
-  `<fieldset><legend>Повтор клавиатуры и мыши</legend><p>Общий источник для обоих режимов и модификаторы маршрутизации мыши. Кнопки включения находятся выше.</p><div class="gm-repeat-settings-grid"><label class="gm-field">Способ клавиатурного повтора<select data-gm-keyboard-method><option value="post" ${c.mirrorKeyboardMethod === 'post' ? 'selected' : ''}>PostMessage — обычный</option><option value="activity-notify" ${c.mirrorKeyboardMethod === 'activity-notify' ? 'selected' : ''}>Только activity-notify — эксперимент</option><option value="combined" ${c.mirrorKeyboardMethod === 'combined' ? 'selected' : ''}>PostMessage + activity-notify — эксперимент</option></select><small>Только повтор, не команды и не мышь. В совмещённом режиме две отправки могут вызвать двойное действие. Чат автоматически не определяется. Сначала проверяйте безопасные действия на одном твине.</small></label><label class="gm-field"><input type="checkbox" data-gm-hold-only ${c.mirrorHoldOnly ? 'checked' : ''}> Удержание без автоповтора клавиш<small>При удержании: один DOWN и один UP. Сочетания сохраняются; автоповторные DOWN не отправляются. Игра может не распознать удержание через оконные сообщения.</small></label><label class="gm-field">Источник только клавиатуры<select data-gm-keyboard-source>${[
+  `<p>Режимы включаются независимо. Смена настроек не гарантирует обработку игрой. Экстренная остановка: Ctrl+Alt+Pause.</p><div class="gm-repeat-settings-grid"><fieldset class="gm-repeat-device" data-repeat-keyboard><legend>⌨ Повтор клавиатуры</legend><p>Копирует клавиши; чат не распознаётся, включая ввод секретов.</p><label class="gm-field">Способ клавиатурного повтора<select data-gm-keyboard-method><option value="post" ${c.mirrorKeyboardMethod === 'post' ? 'selected' : ''}>PostMessage — обычный</option><option value="activity-notify" ${c.mirrorKeyboardMethod === 'activity-notify' ? 'selected' : ''}>Только activity-notify — эксперимент</option><option value="combined" ${c.mirrorKeyboardMethod === 'combined' ? 'selected' : ''}>PostMessage + activity-notify — эксперимент</option></select><small>Только повтор, не команды и не мышь. В совмещённом режиме две отправки могут вызвать двойное действие. Чат автоматически не определяется. Сначала проверяйте безопасные действия на одном твине.</small></label><label class="gm-field">Ожидание activity-notify<select data-gm-keyboard-timeout><option value="25" ${c.mirrorKeyboardTimeoutMs === 25 ? 'selected' : ''}>25 мс — по умолчанию</option><option value="100" ${c.mirrorKeyboardTimeoutMs === 100 ? 'selected' : ''}>100 мс — эксперимент</option></select><small>Только для activity-notify и совмещённого метода. При медленном клиенте может помочь, но повышает задержку и риск накопления событий; защита остановит повтор. Ошибка не доказывает, что клавиша не дошла. Не повторяйте расходное действие вслепую.</small></label><label class="gm-field"><input type="checkbox" data-gm-hold-only ${c.mirrorHoldOnly ? 'checked' : ''}> Удержание без автоповтора клавиш<small>При удержании: один DOWN и один UP. Сочетания сохраняются; автоповторные DOWN не отправляются. Игра может не распознать удержание через оконные сообщения.</small></label><label class="gm-field">Источник только клавиатуры<select data-gm-keyboard-source>${[
     ['shared', 'Как общий источник'],
     ['any', 'Любое распознанное игровое окно'],
     ['leader', 'Только ПЛ выбранной пати']
@@ -85,7 +85,7 @@ const repeatSettingsHtml = c =>
     .map(([value, label]) => option(value, label, c.mirrorKeyboardTargets))
     .join(
       ''
-    )}</select><small>Источник никогда не получает свою копию. Для ввода только ПЛ из окна твина выберите источник «Любое окно» и получателя «Только ПЛ». Настройки мыши не меняются.</small></label><label class="gm-field">Общий источник (мышь и клавиатура без переопределения)<select data-gm-mirror-source><option value="any" ${c.mirrorSource === 'any' ? 'selected' : ''}>Любое распознанное игровое окно</option><option value="leader" ${c.mirrorSource === 'leader' ? 'selected' : ''}>Только ПЛ выбранной пати</option></select><small>Получатели — все остальные проверенные клиенты. Изменение настроек обновляет повтор, не сбрасывая выбранные режимы.</small></label><label class="gm-field">ЛКМ только твинам — модификатор<select data-gm-twins-modifier>${[
+    )}</select><small>Источник никогда не получает свою копию. Для ввода только ПЛ из окна твина выберите источник «Любое окно» и получателя «Только ПЛ». Настройки мыши не меняются.</small></label></fieldset><fieldset class="gm-repeat-device" data-repeat-mouse><legend>🖱 Повтор мыши</legend><p>Координаты абсолютные: каждое окно-получатель должно содержать эту экранную точку. Возможен расход ресурсов.</p><label class="gm-field">Источник мыши (также источник клавиатуры при выборе «Как общий источник»)<select data-gm-mirror-source><option value="any" ${c.mirrorSource === 'any' ? 'selected' : ''}>Любое распознанное игровое окно</option><option value="leader" ${c.mirrorSource === 'leader' ? 'selected' : ''}>Только ПЛ выбранной пати</option></select><small>Получатели — все остальные проверенные клиенты. Изменение настроек обновляет повтор, не сбрасывая выбранные режимы.</small></label><label class="gm-field">ЛКМ только твинам — модификатор<select data-gm-twins-modifier>${[
     ['', 'Выключено'],
     ['CTRL', 'Ctrl'],
     ['ALT', 'Alt'],
@@ -117,7 +117,7 @@ const repeatSettingsHtml = c =>
     )
     .join(
       ''
-    )}</select><small>При включённом повторе мыши удерживайте ровно выбранные модификаторы: ЛКМ, ПКМ, средняя и боковые кнопки остаются только в активном игровом окне, без копирования остальным клиентам. Сам повтор остаётся включённым. Клавиатурный повтор не меняется. При совпадении с «ЛКМ только твинам» приоритет у активного окна. Модификаторы не удаляются из локального клика: игра получает обычный Ctrl/Shift/Alt + клик.</small></label></div><small>Клавиатура и мышь включаются независимо. Клавиатура: выбранный выше способ со scan-code источника; работа текста в чате не подтверждает игровые действия. Мышь: абсолютные экранные координаты, без масштабирования. Возможен расход ресурсов.</small></fieldset>`;
+    )}</select><small>При включённом повторе мыши удерживайте ровно выбранные модификаторы: ЛКМ, ПКМ, средняя и боковые кнопки остаются только в активном игровом окне, без копирования остальным клиентам. Сам повтор остаётся включённым. Клавиатурный повтор не меняется. При совпадении с «ЛКМ только твинам» приоритет у активного окна. Модификаторы не удаляются из локального клика: игра получает обычный Ctrl/Shift/Alt + клик.</small></label></fieldset></div>`;
 export function mountGameMacros(host) {
   if (!host) return;
   activeHost = host;
@@ -169,7 +169,7 @@ export function mountGameMacros(host) {
   <p class="gm-validation-summary">${validation.issues.filter(issue => issue.severity === 'error').length ? `Требует настройки: ${validation.issues.filter(issue => issue.severity === 'error').length} проблем. Откройте «Подробнее о команде» → «План и проверка».` : 'Окна и права проверяются перед запуском.'}</p>
   <dl class="gm-command-facts"><div><dt>Действие</dt><dd>${esc(commandLabels[selected.action])}</dd></div><div><dt>Сочетание</dt><dd><kbd>${esc(selected.hotkey || 'Не задано')}</kbd></dd></div>${['click', 'follow'].includes(selected.action) ? `<div><dt>Точка</dt><dd>${esc(point?.name || 'Нужно задать координаты')}</dd></div>` : ''}</dl>
   ${selected.action === 'sequence' ? `<pre class="gm-sequence">${esc(selected.sequence)}</pre>` : ''}
-  ${selected.delivery === 'background' ? '<p class="gm-safety-note">Фоновая доставка экспериментальна: игра может не обработать ввод.</p>' : ''}${['click', 'follow', 'composite'].includes(selected.action) ? `<button class="btn" data-gm-preview="${esc(selected.id)}">◎ Предпросмотр без клика</button><p class="muted">Перед первым кликом в этом сеансе проверьте точки предпросмотром.</p>` : ''}<details class="gm-routing-details" data-gm-details="routing"><summary>Подробнее о команде</summary><p>${selected.action === 'composite' ? 'Область задаётся в группах действий' : esc(targetLabel(selected))}. Общий выбор персонажей дополнительно ограничивает отправку.</p><button type="button" class="btn ghost" data-gm-plan>План и проверка — без запуска</button></details>`
+  ${selected.delivery === 'background' ? '<p class="gm-safety-note">Фоновая доставка экспериментальна: игра может не обработать ввод.</p>' : ''}${['click', 'follow', 'composite'].includes(selected.action) ? `<button class="btn" data-gm-preview="${esc(selected.id)}">◎ Предпросмотр без клика</button><p class="muted">Перед запуском точки проверяются автоматически. Предпросмотр остаётся доступен для ручной сверки UI.</p>` : ''}<details class="gm-routing-details" data-gm-details="routing"><summary>Подробнее о команде</summary><p>${selected.action === 'composite' ? 'Область задаётся в группах действий' : esc(targetLabel(selected))}. Общий выбор персонажей дополнительно ограничивает отправку.</p><button type="button" class="btn ghost" data-gm-plan>План и проверка — без запуска</button></details>`
       : '<div class="gm-command-empty"><strong>Создайте первую команду</strong><p>Добавьте действие и при желании назначьте сочетание для запуска.</p></div>'
   }${
     isBackgroundTest
@@ -272,6 +272,7 @@ export function mountGameMacros(host) {
   host.querySelector('[data-gm-repeat-config]').onclick = () => {
     const keys = [
       'mirrorKeyboardMethod',
+      'mirrorKeyboardTimeoutMs',
       'mirrorHoldOnly',
       'mirrorKeyboardSource',
       'mirrorKeyboardTargets',
@@ -301,6 +302,7 @@ export function mountGameMacros(host) {
         try {
           await save({
             mirrorKeyboardMethod: value('[data-gm-keyboard-method]'),
+            mirrorKeyboardTimeoutMs: Number(value('[data-gm-keyboard-timeout]')),
             mirrorHoldOnly: modal.querySelector('[data-gm-hold-only]').checked,
             mirrorKeyboardSource: value('[data-gm-keyboard-source]'),
             mirrorKeyboardTargets: value('[data-gm-keyboard-targets]'),

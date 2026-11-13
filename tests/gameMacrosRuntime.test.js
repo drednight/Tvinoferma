@@ -73,7 +73,7 @@ describe('single bounded executor', () => {
   });
 });
 
-describe('coordinate input is opt-in and previewed per session', () => {
+describe('coordinate input is opt-in and checked automatically', () => {
   const point = { id: 'point', name: 'test', uiScale: '100%', x: 10, y: 20, width: 800, height: 600, dpi: 96 };
   const setup = () => {
     state.settings.gameMacros.points = [point];
@@ -81,10 +81,15 @@ describe('coordinate input is opt-in and previewed per session', () => {
       { id: 'click', name: 'click', action: 'click', target: 'all', pointId: 'point', resourceAllowed: true }
     ];
   };
-  it('refuses clicks before preview in the current app session', async () => {
+  it('checks geometry before clicking without a manual preview', async () => {
     setup();
     await runtime.run('click');
-    expect(invoke.mock.calls.some(([, args]) => args?.action === 'click')).toBe(false);
+    expect(invoke.mock.calls.map(([, args]) => args?.action).filter(Boolean)).toEqual([
+      'preview',
+      'focus',
+      'click',
+      'focus'
+    ]);
   });
   it('previews without focus or input, then checks geometry again before clicking', async () => {
     setup();
@@ -362,14 +367,15 @@ describe('composition input and cancellation', () => {
     resourceAllowed: true,
     blocks: [{ partyId: 'p', target: 'all', delivery: 'background', steps }]
   });
-  it('requires screen preview and never focuses or sends global input in a background click', async () => {
+  it('checks screen coordinates automatically and never focuses in a background click', async () => {
     state.settings.gameMacros.commands = [
       plan([{ type: 'screen', x: 10, y: 20, button: 'right', count: 2, modifiers: ['CTRL'] }])
     ];
     await runtime.run('plan');
-    expect(invoke.mock.calls.some(([cmd]) => cmd === 'game_macro_pointer')).toBe(false);
-    await runtime.previewComposition('plan');
-    await runtime.run('plan');
+    const pointers = invoke.mock.calls.filter(([cmd]) => cmd === 'game_macro_pointer');
+    expect(pointers.length).toBeGreaterThanOrEqual(2);
+    expect(pointers[0][1].input.checkOnly).toBe(true);
+    expect(pointers.at(-1)[1].input.checkOnly).toBe(false);
     expect(
       invoke.mock.calls.some(
         ([cmd, args]) =>
@@ -377,6 +383,35 @@ describe('composition input and cancellation', () => {
       )
     ).toBe(true);
     expect(invoke.mock.calls.some(([cmd]) => cmd === 'game_macro_action')).toBe(false);
+  });
+  it('refuses a screen click if the fresh check after resize fails', async () => {
+    state.settings.gameMacros.commands = [
+      plan([
+        { type: 'resize', width: 800, height: 600 },
+        { type: 'screen', x: 10, y: 20, button: 'left' }
+      ])
+    ];
+    invoke.mockImplementation(async (name, args) => {
+      if (name === 'launcher_running_details') return [client];
+      if (name === 'game_macro_pointer' && args.input.checkOnly) throw new Error('window changed');
+      return null;
+    });
+    await runtime.run('plan');
+    expect(
+      invoke.mock.calls.some(([name, args]) => name === 'game_macro_action' && args.action === 'client-layout')
+    ).toBe(true);
+    expect(invoke.mock.calls.some(([name, args]) => name === 'game_macro_pointer' && !args.input.checkOnly)).toBe(
+      false
+    );
+  });
+  it('does not send screen input without explicit composition consent', async () => {
+    state.settings.gameMacros.commands = [
+      { ...plan([{ type: 'screen', x: 10, y: 20, button: 'left' }]), resourceAllowed: false }
+    ];
+    await runtime.run('plan');
+    expect(invoke.mock.calls.some(([name, args]) => name === 'game_macro_pointer' && !args.input.checkOnly)).toBe(
+      false
+    );
   });
   it('cancels a paused composition, clears its paused state, and never starts the next key', async () => {
     state.settings.gameMacros.commands = [plan([{ type: 'pause' }, { type: 'keys', value: 'F8' }])];

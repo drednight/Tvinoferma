@@ -522,7 +522,7 @@ fn message(key: Key, up: bool, repeat: bool) -> (u32, u32, u32) {
     };
     (msg, vk, flags)
 }
-// Keep all blocking calls off the input hook. Each key delivery is bounded at 25 ms.
+// Keep blocking calls off the input hook. Each activity delivery has a bounded timeout.
 #[link(name = "user32")]
 unsafe extern "system" {
     #[link_name = "SendNotifyMessageW"]
@@ -577,6 +577,7 @@ unsafe fn combined_key(
     msg: u32,
     vk: u32,
     flags: u32,
+    timeout_ms: u32,
 ) -> Result<(), u8> {
     let raw = hwnd as *mut std::ffi::c_void;
     let original = GetForegroundWindow();
@@ -595,7 +596,7 @@ unsafe fn combined_key(
             vk as usize,
             flags as isize,
             0x0002 | 0x0020,
-            25,
+            timeout_ms,
             &mut result,
         ) != 0;
     // Restore notification state even on failure; never call SetFocus/SetForegroundWindow.
@@ -634,12 +635,15 @@ unsafe fn post(
     up: bool,
     repeat: bool,
     method: KeyboardMethod,
+    timeout_ms: u32,
 ) -> Result<(), u8> {
     if key.mouse.is_some() {
-        return post_unchecked(hwnd, key, up, repeat, method);
+        return post_unchecked(hwnd, key, up, repeat, method, timeout_ms);
     }
-    crate::input_arbiter::dispatch(up, || post_unchecked(hwnd, key, up, repeat, method))
-        .unwrap_or(Err(10))
+    crate::input_arbiter::dispatch(up, || {
+        post_unchecked(hwnd, key, up, repeat, method, timeout_ms)
+    })
+    .unwrap_or(Err(10))
 }
 unsafe fn post_unchecked(
     hwnd: usize,
@@ -647,6 +651,7 @@ unsafe fn post_unchecked(
     up: bool,
     repeat: bool,
     method: KeyboardMethod,
+    timeout_ms: u32,
 ) -> Result<(), u8> {
     if let Some(m) = key.mouse {
         return super::win::mouse_message(
@@ -680,7 +685,7 @@ unsafe fn post_unchecked(
     };
     // Never skip either release transport when the other fails. No retry/fallback.
     let activity = if method.activity() {
-        combined_key(hwnd, key.source, msg, vk, flags)
+        combined_key(hwnd, key.source, msg, vk, flags, timeout_ms)
     } else {
         Ok(())
     };
@@ -691,6 +696,7 @@ fn release(
     clients: &[Client],
     held: &mut HashMap<usize, HashMap<u32, (Key, Instant)>>,
     method: KeyboardMethod,
+    timeout_ms: u32,
 ) {
     for (hwnd, keys) in held.drain() {
         if clients.iter().any(|c| c.hwnd == hwnd && verify(c)) {
@@ -699,7 +705,7 @@ fn release(
             releases.sort_by_key(|(key, _)| modifier_release_order(key.vk));
             for (key, _) in releases {
                 unsafe {
-                    let _ = post(hwnd, key, true, false, method);
+                    let _ = post(hwnd, key, true, false, method, timeout_ms);
                 }
             }
         }
@@ -764,6 +770,7 @@ impl TraceLog {
 }
 struct KeyboardRouting {
     method: KeyboardMethod,
+    timeout_ms: u32,
     hold_only: bool,
     targets: Option<Vec<usize>>,
 }
@@ -780,6 +787,7 @@ fn forward(
 ) {
     let KeyboardRouting {
         method,
+        timeout_ms,
         hold_only,
         targets: keyboard_targets,
     } = routing;
@@ -811,7 +819,7 @@ fn forward(
         }
         let foreground = unsafe { GetForegroundWindow().0 as usize };
         if foreground != previous {
-            release(&clients, &mut held, method);
+            release(&clients, &mut held, method, timeout_ms);
             previous = foreground;
         }
         let Ok(key) = rx.recv_timeout(Duration::from_millis(10)) else {
@@ -824,11 +832,11 @@ fn forward(
             break;
         }
         if key.vk == 0 {
-            release(&clients, &mut held, method);
+            release(&clients, &mut held, method, timeout_ms);
             continue;
         }
         if key.source != unsafe { GetForegroundWindow().0 as usize } {
-            release(&clients, &mut held, method);
+            release(&clients, &mut held, method, timeout_ms);
             continue;
         }
         if !clients.iter().any(|c| c.hwnd == key.source && verify(c)) {
@@ -847,7 +855,7 @@ fn forward(
             if control.stop.load(Ordering::SeqCst)
                 || key.source != unsafe { GetForegroundWindow().0 as usize }
             {
-                release(&clients, &mut held, method);
+                release(&clients, &mut held, method, timeout_ms);
                 break;
             }
             if now().saturating_sub(key.at) > 250 {
@@ -875,7 +883,9 @@ fn forward(
             if !key.up {
                 keys.insert(key.vk, (key, Instant::now()));
             }
-            if let Err(reason) = unsafe { post(client.hwnd, key, key.up, repeat, method) } {
+            if let Err(reason) =
+                unsafe { post(client.hwnd, key, key.up, repeat, method, timeout_ms) }
+            {
                 failed_input(&control, key);
                 halt(&control, reason);
                 break;
@@ -888,7 +898,7 @@ fn forward(
         trace.record(key, delivered);
     }
     trace.flush(true);
-    release(&clients, &mut held, method);
+    release(&clients, &mut held, method, timeout_ms);
 }
 pub fn stop(id: &str) -> Result<bool, String> {
     let mut guard = SESSION.lock().map_err(|_| "Mirror lock failed")?;
@@ -915,6 +925,7 @@ pub struct Options {
     pub mouse: bool,
     pub keyboard: bool,
     pub method: KeyboardMethod,
+    pub timeout_ms: u32,
     pub hold_only: bool,
     pub keyboard_source: Option<Target>,
     pub keyboard_targets: Option<Vec<Target>>,
@@ -934,6 +945,7 @@ pub fn start(
         mouse,
         keyboard,
         method,
+        timeout_ms,
         hold_only,
         keyboard_source,
         keyboard_targets,
@@ -948,6 +960,7 @@ pub fn start(
         || !(2..=30).contains(&targets.len())
         || shortcuts.len() > 65
         || (!mouse && !keyboard)
+        || ![25, 100].contains(&timeout_ms)
     {
         return Err("Invalid mirror configuration".into());
     }
@@ -1102,6 +1115,7 @@ pub fn start(
                         worker_id,
                         KeyboardRouting {
                             method,
+                            timeout_ms,
                             hold_only,
                             targets: keyboard_target_hwnds,
                         },

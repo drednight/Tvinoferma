@@ -48,6 +48,7 @@ let mirroring = false,
   mirrorPending = false,
   mirrorEpoch = 0,
   mirrorSession = '',
+  mirrorTimeoutMs = 25,
   mirrorTimer,
   mirrorInit;
 let paused = false,
@@ -64,7 +65,6 @@ let activeCommandName = '',
 let executionState = 'idle';
 let overlayOpenRequest = '',
   overlayOpenTimer;
-const reviewedPoints = new Set();
 export const config = () => normalizeGameMacros(state.settings.gameMacros);
 const native = async (command, args) => {
   if (!window.__TAURI_INTERNALS__) throw new Error('Нужна настольная версия Windows.');
@@ -1409,7 +1409,6 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
   } else if (command.action === 'follow') {
     const point = commandPoint(c, command),
       menu = commandPoint(c, { ...command, pointId: command.menuPointId });
-    if (![point, menu].every(p => reviewedPoints.has(JSON.stringify(p)))) throw new Error('preview required');
     for (const row of rows)
       for (const p of [point, menu]) {
         if (cancelled) throw new Error('cancel');
@@ -1433,7 +1432,7 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
       log(`Следование: ввод отправлен для ${row.nick}; результат в игре не проверялся.`);
     }
   } else if (command.action === 'click') {
-    const plan = await pointPlan(c, command, rows, true);
+    const plan = await pointPlan(c, command, rows);
     for (const { row, point } of plan) {
       if (cancelled) throw new Error('cancel');
       await act(row, 'preview', { point });
@@ -1454,6 +1453,10 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
       log(`Клик отправлен: ${index + 1}/${rows.length}. Игровой результат не проверялся.`);
     }
   } else if (command.action === 'screen') {
+    for (const row of rows) {
+      await checkpoint();
+      await pointer(row, command, null, true);
+    }
     for (const row of rows) {
       await checkpoint();
       if (command.delivery !== 'background') await act(row, 'focus');
@@ -1558,7 +1561,7 @@ export async function previewCommand(id) {
     const rows = await commandTargets(command, c);
     const plan =
       command.action === 'click'
-        ? await pointPlan(c, command, rows, false, false)
+        ? await pointPlan(c, command, rows, false)
         : rows.flatMap(row =>
             [point, commandPoint(c, { ...command, pointId: command.menuPointId }, false)].map(point => ({ row, point }))
           );
@@ -1566,7 +1569,6 @@ export async function previewCommand(id) {
       await wait(50);
       await act(row, 'preview', { point });
     }
-    for (const { point } of plan) reviewedPoints.add(JSON.stringify(point));
     log(
       `Проверены профили: ${[...new Set(plan.map(({ point }) => `${point.name} (${point.width}×${point.height}, DPI ${point.dpi}, UI ${point.uiScale})`))].join('; ')}. Без кликов.`
     );
@@ -1723,7 +1725,7 @@ export function commandReady(c, command) {
   return true;
 }
 
-async function pointPlan(c, command, rows, requireReview, authorize = true) {
+async function pointPlan(c, command, rows, authorize = true) {
   const primary = commandPoint(c, command, authorize);
   const candidates = [
     primary,
@@ -1743,7 +1745,6 @@ async function pointPlan(c, command, rows, requireReview, authorize = true) {
       if (matches.length !== 1) throw new Error('Ambiguous/missing calibration for client size and DPI');
       point = matches[0];
     }
-    if (requireReview && !reviewedPoints.has(JSON.stringify(point))) throw new Error('preview required');
     plan.push({ row, point });
   }
   return plan;
@@ -1931,7 +1932,7 @@ function ensureMirror() {
         3: 'Игровое окно изменилось: повтор остановлен.',
         4: 'PostMessage не принят: повтор остановлен.',
         7: 'Не принято уведомление активности: повтор остановлен.',
-        8: 'Отправка клавиши через SendMessageTimeout не завершилась за 25 мс или вернула ошибку: повтор остановлен.',
+        8: `Отправка клавиши через SendMessageTimeout не завершилась за ${mirrorTimeoutMs} мс или вернула ошибку: повтор остановлен. Состояние на части окон неизвестно; не повторяйте действие вслепую.`,
         9: 'Не принято восстановление уведомлений активности: повтор остановлен.',
         10: 'Активное окно изменилось при отправке: повтор остановлен.',
         5: 'Клавиша удерживалась более 60 секунд без повтора: режим выключен защитой.',
@@ -1958,6 +1959,7 @@ function mirrorFingerprint() {
     enabled: c.enabled,
     source: c.mirrorSource,
     keyboardMethod: c.mirrorKeyboardMethod,
+    keyboardTimeoutMs: c.mirrorKeyboardTimeoutMs,
     holdOnly: c.mirrorHoldOnly,
     keyboardSource: c.mirrorKeyboardSource,
     keyboardTargets: c.mirrorKeyboardTargets,
@@ -2100,6 +2102,7 @@ async function applyMirrorToggle(kind = 'keyboard', commandName = '', refreshMod
     )
       throw new Error('Для ЛКМ только твинам назначьте ПЛ выбранной пати и проверьте его окно.');
     mirrorSession = id;
+    mirrorTimeoutMs = c.mirrorKeyboardTimeoutMs;
     const active = await native(
       'game_macro_mirror',
       mirrorArgs('start', id, {
@@ -2112,6 +2115,7 @@ async function applyMirrorToggle(kind = 'keyboard', commandName = '', refreshMod
         keyboard: desiredKeys,
         combined: desiredKeys && c.mirrorKeyboardMethod === 'combined',
         keyboardMethod: c.mirrorKeyboardMethod,
+        keyboardTimeoutMs: c.mirrorKeyboardTimeoutMs,
         holdOnly: desiredKeys && c.mirrorHoldOnly,
         keyboardSource: keyboardSourceRow
           ? { pid: keyboardSourceRow.pid, startedAt: keyboardSourceRow.startedAt, hwnd: keyboardSourceRow.hwnd }
@@ -2171,6 +2175,10 @@ async function applyMirrorToggle(kind = 'keyboard', commandName = '', refreshMod
     if (desiredKeys)
       log(
         `Клавиатура: источник ${keyboardSourceRow ? 'ПЛ выбранной пати' : 'любое распознанное окно'}; получатели ${c.mirrorKeyboardTargets}: ${keyboardRows.map(row => state.characters.find(char => char.id === row.charId)?.nick || row.charId).join(', ')}. Исходное окно исключается.`
+      );
+    if (desiredKeys && c.mirrorKeyboardMethod !== 'post')
+      log(
+        `Activity-notify: ожидание одного сообщения до ${c.mirrorKeyboardTimeoutMs} мс; автоматического повтора после ошибки нет.`
       );
     if (desiredKeys && c.mirrorHoldOnly)
       log('Удержание без автоповтора: один DOWN и один UP; сочетания передаются по событиям.');
@@ -2237,12 +2245,10 @@ async function pointer(row, command, point, checkOnly) {
 export async function recorderCursor() {
   return native('game_macro_cursor');
 }
-const screenReview = cmd => JSON.stringify({ screen: true, x: cmd.x, y: cmd.y });
 async function preflightComposition(plan, c, preview) {
   const actions = compositionActions(plan),
     launched = new Set(),
-    changed = new Set(),
-    reviewed = [];
+    changed = new Set();
   for (const cmd of actions) validateActivityCommand(cmd, true);
   for (const cmd of actions) {
     await checkpoint();
@@ -2269,15 +2275,11 @@ async function preflightComposition(plan, c, preview) {
       ];
       if (cmd.action === 'follow') points.push(commandPoint(scoped, { ...cmd, pointId: cmd.menuPointId }, false));
       if (!cmd.resourceAllowed) throw new Error('Разрешите координатные действия.');
-      if (!preview && points.some(p => !reviewedPoints.has(JSON.stringify(p)))) throw new Error('preview required');
-      reviewed.push(...points.map(p => JSON.stringify(p)));
     }
     if (cmd.action === 'screen') {
       if (!cmd.resourceAllowed) throw new Error('Разрешите действия мышью.');
       if (cmd.delivery === 'background' && cmd.modifiers?.includes('ALT'))
         throw new Error('Alt+клик: выберите обычный режим блока.');
-      if (!preview && !reviewedPoints.has(screenReview(cmd))) throw new Error('preview required');
-      reviewed.push(screenReview(cmd));
     }
     let rows;
     try {
@@ -2303,9 +2305,15 @@ async function preflightComposition(plan, c, preview) {
       continue;
     }
     if (cmd.action === 'screen') for (const row of rows) await pointer(row, cmd, null, true);
-    for (const row of rows) for (const point of points) await act(row, 'preview', { point });
+    if (cmd.action === 'click') {
+      const plan = await pointPlan(scoped, cmd, rows, false);
+      for (const { row, point } of plan) await act(row, 'preview', { point });
+    } else {
+      for (const row of rows) for (const point of points) await act(row, 'preview', { point });
+    }
   }
-  if (preview) for (const id of reviewed) reviewedPoints.add(id);
+  if (!preview && actions.some(cmd => ['screen', 'click', 'follow'].includes(cmd.action)))
+    log('Автоматическая проверка доступных точек выполнена без кликов. Значение игровых кнопок не распознаётся.');
 }
 export async function previewComposition(id) {
   if (busy) throw new Error('Сначала остановите команду.');

@@ -150,6 +150,7 @@ export function normalizeGameMacros(input = {}) {
     mirrorKeyboardMethod: ['combined', 'activity-notify'].includes(input.mirrorKeyboardMethod)
       ? input.mirrorKeyboardMethod
       : 'post',
+    mirrorKeyboardTimeoutMs: Number(input.mirrorKeyboardTimeoutMs) === 100 ? 100 : 25,
     mirrorHoldOnly: input.mirrorHoldOnly === true,
     mirrorKeyboardSource: ['any', 'leader'].includes(input.mirrorKeyboardSource)
       ? input.mirrorKeyboardSource

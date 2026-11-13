@@ -138,7 +138,11 @@ export function reviewCommand(command, c, state, path = []) {
           add('error', field, 'Неизвестное действие.');
       }
       if (['point', 'screen'].includes(step.type)) {
-        add('warning', field, 'Клик может потратить ресурсы; перед вводом нужен предпросмотр координат.');
+        add(
+          'warning',
+          field,
+          'Клик может потратить ресурсы; программа автоматически проверит доступную геометрию перед выполнением, но не распознаёт назначение кнопок.'
+        );
         if (!command.resourceAllowed)
           add('error', 'resourceAllowed', 'Для кликов подтвердите разрешение координатных действий.');
       }

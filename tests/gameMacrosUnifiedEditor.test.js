@@ -110,6 +110,22 @@ it('starts with a simple empty plan and keeps advanced command settings optional
   expect(document.querySelector('.gm-block-advanced').tagName).toBe('SECTION');
 });
 
+it('shows automatic configuration review and prominently requires consent when a mouse step is added', async () => {
+  openCommandEditor(config, save);
+  const form = document.querySelector('[data-gm-form]');
+  expect(form.querySelector('.gm-editor-checks').open).toBe(true);
+  const consent = form.querySelector('[name="compositeConsent"]');
+  expect(consent.closest('label').hidden).toBe(true);
+  form.elements.namedItem('name').value = 'Мышь';
+  form.querySelector('[data-add-type="screen"]').click();
+  expect(consent.closest('label').hidden).toBe(false);
+  expect(consent.closest('label').textContent).toContain('возможный расход');
+  expect(consent.checked).toBe(false);
+  submit();
+  await vi.waitFor(() => expect(document.querySelector('[data-gm-form-error]').hidden).toBe(false));
+  expect(save).not.toHaveBeenCalled();
+});
+
 it('saves and reopens an existing managed key command changed from all to except PL', async () => {
   const source = normalizeGameMacros({
     commands: [

@@ -357,9 +357,21 @@ it('groups execution controls together and separates repeat configuration in a n
   ]);
   document.querySelector('[data-gm-repeat-config]').click();
   const group = document.querySelector('.gm-repeat-modal');
-  expect(group.querySelector('legend').textContent).toContain('Повтор клавиатуры и мыши');
+  expect(group.querySelector('[data-repeat-keyboard] legend').textContent).toContain('Повтор клавиатуры');
+  expect(group.querySelector('[data-repeat-mouse] legend').textContent).toContain('Повтор мыши');
+  expect(group.querySelector('[data-repeat-keyboard] [data-gm-keyboard-method]')).not.toBeNull();
+  expect(group.querySelector('[data-repeat-mouse] [data-gm-mirror-source]')).not.toBeNull();
   expect(group.contains(document.querySelector('[data-gm-mirror-source]'))).toBe(true);
   expect(group.contains(document.querySelector('[data-gm-twins-modifier]'))).toBe(true);
+});
+
+it('persists a bounded experimental keyboard timeout independently of mouse settings', async () => {
+  document.querySelector('[data-gm-repeat-config]').click();
+  const timeout = document.querySelector('[data-gm-keyboard-timeout]');
+  expect(timeout.value).toBe('25');
+  timeout.value = '100';
+  document.querySelector('.modal-footer .primary').click();
+  await vi.waitFor(() => expect(state.settings.gameMacros.mirrorKeyboardTimeoutMs).toBe(100));
 });
 
 it('filters commands without executing them', () => {
