@@ -185,7 +185,7 @@ pub fn setup(app: &App) -> tauri::Result<()> {
     let menu = build_menu(app, &[], &[])?;
 
     let mut builder = TrayIconBuilder::with_id("main-tray")
-        .tooltip("Твиноферма")
+        .tooltip(crate::profile::TRAY_LABEL)
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {

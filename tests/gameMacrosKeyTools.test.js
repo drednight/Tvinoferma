@@ -21,7 +21,7 @@ it('inserts a pause as a separate sequence step', () => {
 });
 it('explains every offered action', () => {
   expect(Object.keys(actionHelp)).toHaveLength(15);
-  expect(actionHelp.click).toContain('предпросмотр');
+  expect(actionHelp.click).toContain('геометрия проверяется');
 });
 
 it('reports the actual blocker in Russian and does not include arbitrary native error details', async () => {

@@ -4,8 +4,8 @@ import { openDuplicateCharacters } from '../js/settings/duplicateCharacters.js';
 it('returns from a real character profile to the same duplicate list and selected primary card', async () => {
   document.body.innerHTML = '<div id="modal-root"></div><div id="toast-root"></div>';
   state.characters = [
-    { id: 'a', nick: 'Same', class: 'Воин' },
-    { id: 'b', nick: 'same', class: 'Маг' }
+    { id: 'a', nick: 'Same', contacts: { email: 'same@example.test' }, class: 'Воин' },
+    { id: 'b', nick: 'same', contacts: { email: 'same@example.test' }, class: 'Маг' }
   ];
   state.archivedCharacters = [];
   state.parties = [];

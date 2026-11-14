@@ -73,7 +73,7 @@ export function reviewCommand(command, c, state, path = []) {
       `Группа ${index + 1}: ${block.scope === 'managed' && block.target === 'all' ? 'все распознанные окна (включая другие пати)' : selected.map(char => char.nick || char.id).join(' → ') || 'получатели ещё не определены'}. ${block.parallel ? 'Одновременно с предыдущей группой. ' : ''}Повторений: ${block.repeat ?? 1}. ${block.perWindow ? 'Все шаги в одном окне, затем следующее.' : 'Каждый шаг всем получателям, затем следующий шаг.'}`
     );
     lines.push(
-      `Доставка: ${block.delivery === 'background' ? BACKGROUND_METHODS[block.backgroundMethod || 'post'] || 'неизвестный способ' : 'с активацией окна'}.`
+      `Доставка: ${block.delivery === 'background' ? (block.backgroundMethod === 'hybrid-party' ? 'гибридный из активного ПЛ' : BACKGROUND_METHODS[block.backgroundMethod || 'post'] || 'неизвестный способ') : 'с активацией окна'}.`
     );
     for (const [stepIndex, step] of (block.steps || []).entries()) {
       const field = `block:${index}:step:${stepIndex}`;
@@ -138,7 +138,11 @@ export function reviewCommand(command, c, state, path = []) {
           add('error', field, 'Неизвестное действие.');
       }
       if (['point', 'screen'].includes(step.type)) {
-        add('warning', field, 'Клик может потратить ресурсы; перед вводом нужен предпросмотр координат.');
+        add(
+          'warning',
+          field,
+          'Клик может потратить ресурсы; программа автоматически проверит доступную геометрию перед выполнением, но не распознаёт назначение кнопок.'
+        );
         if (!command.resourceAllowed)
           add('error', 'resourceAllowed', 'Для кликов подтвердите разрешение координатных действий.');
       }
@@ -166,7 +170,7 @@ export function reviewCommand(command, c, state, path = []) {
     add(
       'warning',
       'targets',
-      'Старая клавиатурная команда допускает резерв на все проверенные игровые окна при ошибке определения пати.'
+      'Эта команда использует прежние ограничения пати. Общий выбор персонажей дополнительно ограничивает получателей; при ошибке отправка не расширяется.'
     );
   lines.push(
     command.returnTo === 'leader'

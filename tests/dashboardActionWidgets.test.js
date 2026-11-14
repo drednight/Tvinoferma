@@ -104,3 +104,37 @@ it('disables controls in layout editing and unsubscribes after removal', async (
   await Promise.resolve();
   expect(m.unsubscribe).toHaveBeenCalled();
 });
+
+it('does not present malformed saved timestamps as verified auth or balance', () => {
+  const characters = [
+    {
+      id: 'a',
+      nick: 'Alpha',
+      lastLoginCheck: 'not-a-date',
+      isLoggedIn: true,
+      lastCoinUpdate: 'invalid',
+      ancientCoins: 400
+    }
+  ];
+  const auth = actionWidgetData('check-auth', { characters });
+  expect(auth.summary).toContain('0/1');
+  expect(auth.summary).toContain('не проверено: 1');
+  expect(auth.rows[0].detail).toBe('Не проверено');
+  const balance = actionWidgetData('update-balance', { characters });
+  expect(balance.summary).toContain('проверено 0/1');
+  expect(balance.summary).not.toContain('400');
+  expect(balance.rows[0].detail).toBe('Баланс не проверен');
+});
+
+it('only reports a strictly confirmed login and consistent valid freshness', () => {
+  const data = actionWidgetData('check-auth', {
+    characters: [
+      { id: 'a', nick: 'Alpha', lastLoginCheck: '2026-11-05T12:00:00Z', isLoggedIn: 'true' },
+      { id: 'b', nick: 'Beta', lastLoginCheck: 0, isLoggedIn: true }
+    ]
+  });
+  expect(data.summary).toContain('0/2');
+  expect(data.rows[0].detail).toContain('Вход не подтверждён');
+  expect(data.rows[1].detail).toBe('Не проверено');
+  expect(data.note).toContain('часть данных не проверена');
+});

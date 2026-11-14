@@ -1,3 +1,5 @@
+import { leaderSuggestion } from './recipients.js';
+import { confirmModal } from '../../core/ui.js';
 import { updateRepeatButton } from './repeatButton.js';
 import { copyJournal } from './journal.js';
 import { normalizeAppearance, TEXT_PRESETS, KEY_PRESETS, COMMAND_PRESETS } from './appearance.js';
@@ -88,12 +90,86 @@ async function init() {
       copyButton.disabled = false;
     }
   };
-  document.getElementById('background-journal-open').onclick = () =>
-    invoke('game_macro_navigate', { action: 'background-logs', partyId: null }).catch(() => {
-      document.getElementById('status').textContent = 'Откройте журнал фонового ввода в главном приложении.';
-    });
   let acknowledgedOpen = '';
   let windowSignature = '';
+  let recipientRevision = '',
+    recipientDirty = false,
+    recipientsPending = false;
+  const recipientNotice = document.getElementById('recipients-notice');
+  const recipientList = document.getElementById('recipient-list');
+  const recipientLeader = document.getElementById('recipient-leader');
+  let recipientOptions = [];
+  const updateLeaderHint = () => {
+    const selected = new Set([...recipientList.querySelectorAll('input:checked')].map(input => input.value));
+    const { suggestion, tie } = leaderSuggestion(recipientOptions, selected);
+    document.getElementById('recipient-leader-hint').textContent =
+      (suggestion
+        ? `Подсказка: ${suggestion.name} — ${suggestion.count} выбранных окон. `
+        : tie
+          ? 'В нескольких пати поровну окон — выберите ПЛ вручную. '
+          : '') +
+      'ПЛ используется только в специальных командах. Выбор меняет управляющую пати, но не лидерство в игре. Обычные команды не требуют ПЛ.';
+  };
+  async function recipientRequest(payload) {
+    if (recipientsPending) return;
+    recipientsPending = true;
+    recipientNotice.textContent = 'Ожидаем главное окно…';
+    document.getElementById('recipients-save').disabled = true;
+    try {
+      await emitTo('main', 'game-overlay-recipients', payload);
+    } catch {
+      recipientsPending = false;
+      recipientNotice.textContent = 'Не удалось связаться с главным окном.';
+    }
+  }
+  let refreshConfirmationOpen = false;
+  document.getElementById('recipients-refresh').onclick = async () => {
+    if (refreshConfirmationOpen || recipientsPending) return;
+    refreshConfirmationOpen = true;
+    try {
+      if (
+        recipientDirty &&
+        !(await confirmModal({
+          title: 'Обновить список?',
+          text: 'Несохранённые изменения будут отменены.',
+          okText: 'Обновить',
+          danger: true
+        }))
+      )
+        return;
+      void recipientRequest({ action: 'refresh' });
+    } finally {
+      refreshConfirmationOpen = false;
+    }
+  };
+  for (const [id, checked] of [
+    ['recipients-all', true],
+    ['recipients-none', false]
+  ])
+    document.getElementById(id).onclick = () => {
+      recipientList.querySelectorAll('input').forEach(input => {
+        input.checked = checked;
+      });
+      recipientDirty = true;
+      updateLeaderHint();
+    };
+  recipientList.onchange = () => {
+    recipientDirty = true;
+    updateLeaderHint();
+  };
+  recipientLeader.onchange = () => {
+    recipientDirty = true;
+  };
+  document.getElementById('recipients-save').onclick = () => {
+    const option = recipientLeader.selectedOptions[0];
+    const leader = option?.dataset.partyId ? { partyId: option.dataset.partyId, charId: option.dataset.charId } : null;
+    void recipientRequest({
+      action: 'save',
+      revision: recipientRevision,
+      selected: [...recipientList.querySelectorAll('input:checked')].map(input => input.value),
+      leader
+    });
+  };
 
   await listen('game-macro-snapshot', event => {
     if (event.payload == null) return;
@@ -125,6 +201,47 @@ async function init() {
       journal.querySelector('[data-gm-journal-copy-fallback]')?.remove();
       copyStatus.textContent = '';
     }
+    if (!data.busy) recipientsPending = false;
+    if (data.recipientNotice) recipientNotice.textContent = data.recipientNotice;
+    const recipients = data.recipients;
+    if ((recipients?.revision || '') !== recipientRevision) {
+      recipientRevision = recipients?.revision || '';
+      recipientDirty = false;
+      recipientList.replaceChildren(
+        ...(recipients?.rows || []).map(row => {
+          const li = document.createElement('li'),
+            label = document.createElement('label');
+          const input = document.createElement('input'),
+            text = document.createElement('span');
+          input.type = 'checkbox';
+          input.value = row.charId;
+          input.checked = row.selected;
+          text.textContent = row.nick + (row.valid ? '' : ' · проверьте окно и права');
+          label.append(input, text);
+          li.append(label);
+          return li;
+        })
+      );
+      const current = recipients?.currentLeader;
+      recipientLeader.replaceChildren(
+        new Option(current ? `Не менять: ${current.nick} — ${current.partyName}` : 'Не назначать ПЛ', '')
+      );
+      for (const [index, choice] of (recipients?.options || []).entries()) {
+        const option = new Option(
+          `${choice.nick} — ${choice.partyName}${choice.current ? ' · ПЛ пати' : ''}`,
+          String(index + 1)
+        );
+        option.dataset.partyId = choice.partyId;
+        option.dataset.charId = choice.charId;
+        recipientLeader.add(option);
+      }
+      recipientOptions = recipients?.options || [];
+      updateLeaderHint();
+    }
+    for (const id of ['recipients-save', 'recipients-all', 'recipients-none'])
+      document.getElementById(id).disabled = !!data.busy || recipientsPending || !recipientRevision;
+    document.getElementById('recipients-refresh').disabled = !!data.busy || recipientsPending;
+    recipientLeader.disabled = !!data.busy || recipientsPending || !recipientRevision;
     const partySelect = document.getElementById('party-select'),
       selected = partySelect.value || data.partyId;
     partySelect.replaceChildren(
@@ -275,9 +392,10 @@ async function init() {
     }
   });
   const showView = view => {
-    for (const id of ['shortcuts', 'journal', 'party', 'appearance'])
+    for (const id of ['shortcuts', 'journal', 'party', 'appearance', 'recipients'])
       document.getElementById(`${id}-screen`).hidden = id !== view;
     if (view === 'party') void partyRequest('party-refresh');
+    if (view === 'recipients' && !recipientRevision) void recipientRequest({ action: 'refresh' });
     document.querySelectorAll('[data-view]').forEach(button => {
       if (button.dataset.view === view) button.setAttribute('aria-current', 'page');
       else button.removeAttribute('aria-current');

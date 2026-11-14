@@ -1,9 +1,10 @@
 import { formatCoins } from '../../core/coins.js';
 import { marathonPhase, computeCell } from '../marathons/model.js';
 import { mskDate, mskStamp } from '../../core/msk.js';
-const stamp = value => (Number.isFinite(Date.parse(value)) ? mskStamp(new Date(value)) : 'не проверялось');
+const isChecked = value => typeof value === 'string' && value.trim() !== '' && Number.isFinite(Date.parse(value));
+const stamp = value => (isChecked(value) ? mskStamp(new Date(value)) : 'не проверялось');
 const freshness = values => {
-  const dates = values.map(Date.parse).filter(Number.isFinite);
+  const dates = values.filter(isChecked).map(value => Date.parse(value));
   if (!dates.length) return 'Нет сохранённых проверок';
   return `⚠ последнее обновление: ${stamp(new Date(Math.min(...dates)).toISOString())}${dates.length < values.length ? '; часть данных не проверена' : ''}`;
 };
@@ -15,7 +16,7 @@ export function actionWidgetData(
   const rows = [],
     result = { rows, note: 'Сохранённые данные, не проверка сайта в реальном времени.' };
   if (action === 'check-auth') {
-    const known = characters.filter(c => c.lastLoginCheck),
+    const known = characters.filter(c => isChecked(c.lastLoginCheck)),
       online = known.filter(c => c.isLoggedIn === true);
     result.summary = `Вход подтверждён: ${online.length}/${characters.length}; не проверено: ${characters.length - known.length}`;
     result.note = freshness(characters.map(c => c.lastLoginCheck));
@@ -25,20 +26,20 @@ export function actionWidgetData(
         detail:
           checking[c.id] === 'checking'
             ? 'Проверка…'
-            : !c.lastLoginCheck
+            : !isChecked(c.lastLoginCheck)
               ? 'Не проверено'
-              : `${c.isLoggedIn ? 'Вход подтверждён' : 'Вход не подтверждён'} · ${stamp(c.lastLoginCheck)}`
+              : `${c.isLoggedIn === true ? 'Вход подтверждён' : 'Вход не подтверждён'} · ${stamp(c.lastLoginCheck)}`
       }))
     );
   } else if (action === 'update-balance') {
-    const checked = characters.filter(c => c.lastCoinUpdate),
+    const checked = characters.filter(c => isChecked(c.lastCoinUpdate)),
       total = checked.reduce((n, c) => n + (Number(c.ancientCoins) || 0), 0);
     result.summary = `${formatCoins(total)} монет по карточкам · проверено ${checked.length}/${characters.length}`;
     result.note = freshness(characters.map(c => c.lastCoinUpdate));
     rows.push(
       ...characters.map(c => ({
         name: c.nick,
-        detail: c.lastCoinUpdate
+        detail: isChecked(c.lastCoinUpdate)
           ? `${formatCoins(c.ancientCoins || 0)} · ${stamp(c.lastCoinUpdate)}`
           : 'Баланс не проверен'
       }))

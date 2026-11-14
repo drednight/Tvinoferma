@@ -143,7 +143,10 @@ export function persist() {
  */
 export async function forceRenderAndPersist() {
   await persist();
+  await renderAfterPersist();
+}
 
+export async function renderAfterPersist() {
   // Динамические импорты, чтобы избежать циклических зависимостей при старте
   const { renderCharacters } = await import('../modules/characters/list.js');
   const { renderParties } = await import('../modules/parties/index.js');
@@ -292,6 +295,55 @@ export function abortGuardedMigration() {
   if (migration.phase === 'ready') {
     forgetLoadedState(migration.snapshot);
     migration = null;
+  }
+}
+
+/**
+ * Исключительный доступ этого JS-контекста к сохранению во время слияния.
+ * Не является межпроцессной блокировкой: закройте другие экземпляры приложения.
+ */
+export async function withExclusiveDuplicateMerge(operation) {
+  if (outcomeUncertain || restoring || resetting || loading || protectedState || migration || backupsInProgress)
+    throw blockedWriteError();
+  const session = {
+    snapshot: null,
+    adapter: getAdapter(),
+    phase: /** @type {'backing-up'|'ready'|'writing'} */ ('ready')
+  };
+  migration = session;
+  let committed = false;
+  try {
+    await writeChain;
+    if (outcomeUncertain || protectedState || migration !== session) throw blockedWriteError();
+    return await operation(async expectedRaw => {
+      if (committed || migration !== session || outcomeUncertain || protectedState || typeof expectedRaw !== 'string')
+        throw blockedWriteError();
+      committed = true;
+      session.phase = 'writing';
+      let data;
+      try {
+        const snapshot = JSON.parse(JSON.stringify(serializeState()));
+        data = await prepareForDisk(snapshot);
+        if (outcomeUncertain || protectedState || migration !== session) throw blockedWriteError();
+        const result = await session.adapter.saveStateIfRawUnchanged(expectedRaw, data);
+        if (result !== true) throw uncertainStateWriteError();
+        notifyPersisted();
+      } catch (error) {
+        if (isVaultWriteGuardError(error) || wasVaultUpdated(data)) {
+          blockUncertainWrites('vault');
+          throw vaultWriteGuardError();
+        }
+        if (isUncertainStateWrite(error)) blockUncertainWrites();
+        throw error;
+      }
+    });
+  } catch (error) {
+    // Do not release the exclusive guard before blocking new writes after a
+    // possibly partial merge, even if the caller has not processed the error yet.
+    if (committed) blockUncertainWrites('state');
+    throw error;
+  } finally {
+    if (migration === session) migration = null;
   }
 }
 

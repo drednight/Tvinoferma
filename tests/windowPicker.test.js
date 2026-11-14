@@ -297,3 +297,40 @@ it('uses the themed attachment menu, disables characters occupied by other windo
   document.querySelector('.tf-close').click();
   expect(document.querySelector('.winp-attach-menu')).toBeNull();
 });
+
+it('distinguishes duplicate nicknames by safe local ID, class and party and allows manual attachment', async () => {
+  window.localStorage.clear();
+  state.parties.push({ id: 'p2', name: '<Пати 2>' });
+  state.characters = [
+    {
+      id: 'a',
+      nick: 'Одинаковый',
+      class: 'Маг',
+      partyIds: ['p1'],
+      contacts: { email: 'SECRET-LOGIN', password: 'SECRET-PASSWORD' }
+    },
+    { id: 'b', nick: 'Одинаковый', class: 'Маг', partyIds: ['p2'] }
+  ];
+  const started = Date.now() - 60000;
+  mocks.details.mockResolvedValue([
+    { pid: 101, startedAt: started, title: 'Одинаковый — Маг', elevated: false },
+    { pid: 102, startedAt: started, title: 'Одинаковый — Маг', elevated: false }
+  ]);
+  document.querySelector('[data-act="refresh"]').click();
+  await vi.waitFor(() => expect(document.querySelector('[data-attach-open="101"]')).not.toBeNull());
+  expect(rows().every(row => row.textContent.includes('Ник неоднозначен'))).toBe(true);
+  document.querySelector('[data-attach-open="101"]').click();
+  const menu = document.querySelector('.winp-attach-menu');
+  expect(menu.textContent).toContain('ID: a');
+  expect(menu.textContent).toContain('ID: b');
+  expect(menu.textContent).toContain('Основа');
+  expect(menu.textContent).toContain('<Пати 2>');
+  expect(menu.querySelector('пати')).toBeNull();
+  expect(menu.textContent).not.toContain('SECRET-');
+  menu.querySelector('[data-id="a"]').click();
+  await vi.waitFor(() => expect(document.querySelector('[data-detach="101"]')).not.toBeNull());
+  document.querySelector('[data-attach-open="102"]').click();
+  document.querySelector('.winp-attach-menu [data-id="b"]').click();
+  await vi.waitFor(() => expect(document.querySelector('[data-detach="102"]')).not.toBeNull());
+  window.localStorage.clear();
+});

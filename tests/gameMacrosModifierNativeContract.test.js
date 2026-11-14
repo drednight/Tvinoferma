@@ -54,3 +54,18 @@ it('party mode requires a separately verified leader and never uses focus activa
   expect(protocol).toContain('else if method == ModifierExperiment::Activate');
   expect(protocol).toContain('method == ModifierExperiment::HybridParty && original != hwnd');
 });
+
+it('allows only the read-only foreground action to bypass the input lease while keeping identity and access checks', () => {
+  const command = source.slice(
+    source.indexOf('pub async fn game_macro_action('),
+    source.indexOf('// Explicit, bounded diagnostics.')
+  );
+  expect(command).toContain('if action == "foreground"');
+  expect(command).toContain('Some(crate::input_arbiter::INPUT.acquire("command", epoch)?)');
+  expect(command).toContain('macro_client_at(target.pid, target.started_at, target.hwnd)');
+  expect(command).toContain('compatible_integrity');
+  const action = source.slice(source.indexOf('    pub fn action('), source.indexOf('    pub fn action(') + 1800);
+  const foreground = action.slice(action.indexOf('"foreground" =>'), action.indexOf('"focus" =>'));
+  expect(foreground).toContain('GetForegroundWindow() != hwnd');
+  expect(foreground).not.toMatch(/SetForegroundWindow|SendInput|dispatch\(/);
+});

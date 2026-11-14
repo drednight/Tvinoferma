@@ -29,7 +29,7 @@ it('documents real Windows prerequisites, clean source and test-only limitations
     '-Checks Full',
     '-SkipInstall',
     '-AllowDirty',
-    'НЕ изолированы',
+    'НЕ проверены на Windows',
     'Linux'
   ])
     expect(doc).toContain(term);

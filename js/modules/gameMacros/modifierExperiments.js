@@ -1,7 +1,7 @@
 import { chord } from './keySyntax.js';
 import { openOverlay } from '../marathons/overlay.js';
 import { keyboardButton } from './keyboardPicker.js';
-import { appendBackgroundJournal, openBackgroundJournal } from './backgroundJournal.js';
+import { appendBackgroundJournal } from './backgroundJournal.js';
 import { escapeHtml } from '../../core/utils.js';
 import { trialOutcome } from './multiInputTrial.js';
 export const MODIFIER_EXPERIMENTS = {
@@ -137,9 +137,7 @@ export function openModifierExperiments({ state, run, stop }) {
     });
     q('status').textContent = 'Ручное наблюдение добавлено в журнал.';
   };
-  ov.foot.innerHTML =
-    '<button type="button" class="btn" data-log>Журнал</button><button type="button" class="btn" data-close>Закрыть</button>';
-  ov.foot.querySelector('[data-log]').onclick = openBackgroundJournal;
+  ov.foot.innerHTML = '<button type="button" class="btn" data-close>Закрыть</button>';
   ov.foot.querySelector('[data-close]').onclick = () => ov.close();
   return ov;
 }
