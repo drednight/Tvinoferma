@@ -76,3 +76,38 @@ it('защита восстановления блокирует и старую
   expect(mocks.read).not.toHaveBeenCalled();
   expect(mocks.persist).not.toHaveBeenCalled();
 });
+it('выделяет ПЛ золотой рамкой и показывает каноническую иконку стрелка по названию класса', () => {
+  state.settings.guild.parties = [
+    {
+      name: 'Test',
+      members: [
+        { nick: 'Alpha', cls: 'gun', title: 'Стрелок', leader: true },
+        { nick: 'Beta', cls: 'wrong-file', title: 'Стрелок' }
+      ]
+    }
+  ];
+  state.settings.guild.selfNick = 'Alpha';
+  page.renderGuildToday();
+  const members = document.querySelectorAll('.guild-member');
+  expect(members[0].classList.contains('is-leader')).toBe(true);
+  expect(members[0].classList.contains('is-self')).toBe(true);
+  expect(members[0].querySelector('.guild-leader-label').textContent).toBe('ПЛ');
+  expect(members[1].classList.contains('is-leader')).toBe(false);
+  for (const member of members)
+    expect(member.querySelector('img').getAttribute('src')).toBe('assets/icons/classes/gan.webp');
+});
+
+it('offers per-party display leader fallback without guessing self or first member', () => {
+  state.settings.guild.parties = [{ name: 'Party', members: [{ nick: 'Alpha' }, { nick: 'Beta' }] }];
+  state.settings.guild.selfNick = 'Alpha';
+  page.renderGuildToday();
+  expect(document.querySelector('.is-leader')).toBeNull();
+  expect(document.querySelector('[data-guild-leader]').options.length).toBe(3);
+  state.settings.guild.leaderOverrides = [{ party: 'Party', nick: 'Beta' }];
+  page.renderGuildToday();
+  expect(document.querySelector('.is-leader').textContent).toContain('Beta');
+  expect(document.querySelector('.is-leader').title).toContain('вручную');
+  state.settings.guild.parties[0].members.pop();
+  page.renderGuildToday();
+  expect(document.querySelector('.is-leader')).toBeNull();
+});

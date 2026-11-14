@@ -18,7 +18,7 @@ use std::fs;
 use tauri::{AppHandle, Manager};
 
 /// Служба хранилища учётных данных ОС (та же, что у контактов персонажей).
-const SERVICE: &str = "com.tvinoferma.desktop";
+const SERVICE: &str = crate::profile::VAULT_SERVICE;
 /// Записи контактов и входов лаунчера находятся в разных пространствах имён.
 const CONTACTS_PREFIX: &str = "contacts";
 const ACCOUNT_PREFIX: &str = "gc-magic";

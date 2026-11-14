@@ -41,7 +41,7 @@ mod storage {
     use super::*;
     use crate::cloud_credential_store::CredentialVault;
     use tauri::Manager;
-    const SERVICE: &str = "com.tvinoferma.desktop";
+    const SERVICE: &str = crate::profile::VAULT_SERVICE;
     struct Vault;
     impl CredentialVault for Vault {
         fn read(&mut self, name: &str) -> Result<Option<String>, ()> {

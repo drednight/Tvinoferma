@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   rememberLaunched,
+  rememberExistingWindow,
   forgetLaunched,
   recalledOwnership,
   pruneLaunched
@@ -95,5 +96,53 @@ describe('список окон узнаёт потерявшие заголов
     const [row] = windowRows([win({ title: 'Дракон — Жнец' })], chars, { now: NOW, recalled: { 100: 'c2' } });
     expect(row.charId).toBe('c1');
     expect(row.nick).toBe('Дракон');
+  });
+});
+
+it('attaches a long-running external client using its real start and survives rereading', () => {
+  const started = NOW - 48 * 60 * 60 * 1000;
+  rememberExistingWindow(300, 'c2', started);
+  const recalled = recalledOwnership([{ pid: 300, uptimeMs: NOW - started }], NOW);
+  expect(recalled).toEqual({ 300: 'c2' });
+  expect(
+    windowRows([win({ pid: 300, startedAt: started, title: 'Perfect World' })], chars, { recalled })[0]
+  ).toMatchObject({ known: true, charId: 'c2' });
+  expect(recalledOwnership([{ pid: 300, uptimeMs: 60_000 }], NOW)).toEqual({});
+});
+it('refuses attachment without a verified process start', () => {
+  expect(() => rememberExistingWindow(300, 'c2', null)).toThrow();
+  expect(() => rememberExistingWindow(300, 'c2', NOW + 1)).toThrow();
+});
+it('keeps an explicit attachment after a day while the same process is alive', () => {
+  const started = NOW - 100000;
+  rememberExistingWindow(300, 'c2', started);
+  const later = NOW + 2 * 24 * 60 * 60 * 1000;
+  vi.setSystemTime(later);
+  expect(recalledOwnership([{ pid: 300, uptimeMs: later - started }], later)).toEqual({ 300: 'c2' });
+});
+
+it('manual override wins over title, can be changed, and detaching restores automatic recognition', async () => {
+  const { windowOwnershipOptions, forgetManualWindow } = await import('../js/modules/launcher/launchedWindows.js');
+  const clients = [win({ title: 'Дракон — Жнец' })];
+  const row = () => windowRows(clients, chars, windowOwnershipOptions(clients, NOW))[0];
+  expect(row()).toMatchObject({ charId: 'c1', ownershipSource: 'title' });
+  rememberExistingWindow(100, 'c2', clients[0].startedAt);
+  expect(row()).toMatchObject({ charId: 'c2', ownershipSource: 'manual' });
+  rememberExistingWindow(100, 'c1', clients[0].startedAt);
+  expect(row()).toMatchObject({ charId: 'c1', ownershipSource: 'manual' });
+  forgetManualWindow(100, clients[0].startedAt);
+  expect(row()).toMatchObject({ charId: 'c1', ownershipSource: 'title' });
+});
+it('detaching an override restores the original launcher memory without a title', async () => {
+  const { windowOwnershipOptions, forgetManualWindow } = await import('../js/modules/launcher/launchedWindows.js');
+  const clients = [win()];
+  rememberLaunched(100, 'c1');
+  rememberExistingWindow(100, 'c2', clients[0].startedAt);
+  forgetManualWindow(100, clients[0].startedAt + 5000);
+  expect(windowOwnershipOptions(clients, NOW).manual).toEqual({ 100: 'c2' });
+  forgetManualWindow(100, clients[0].startedAt);
+  expect(windowRows(clients, chars, windowOwnershipOptions(clients, NOW))[0]).toMatchObject({
+    charId: 'c1',
+    ownershipSource: 'launcher'
   });
 });

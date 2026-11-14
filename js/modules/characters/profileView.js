@@ -1,3 +1,4 @@
+import { openGameCenterSitePilot } from './gameCenterSite.js';
 // js/modules/characters/profileView.js
 
 import { state, NOTES_MAX_LENGTH } from '../../core/state.js';
@@ -62,7 +63,7 @@ function contactRowHtml(type, label, value) {
     </div>`;
 }
 
-export function openCharacterProfile(char) {
+export function openCharacterProfile(char, { onClose = () => {} } = {}) {
   const isArchived = state.archivedCharacters.some(item => item.id === char.id);
   const archivedPartyLinks = isArchived
     ? state.archivedParties.flatMap(party =>
@@ -182,6 +183,7 @@ export function openCharacterProfile(char) {
                 Контактные данные
                 <button type="button" class="btn ghost pf-contacts-all" id="pf-contacts-toggle-all" title="Показать или скрыть сразу все контакты">Показать все</button>
               </summary>
+              <p class="muted">Способ входа на сайт: ${char.siteLogin?.mode === 'gamecenter' ? 'GameCenter (эксперимент)' : 'обычный'}</p>
               <div class="pf-contacts">
                 ${contactRowHtml('email', 'Email', contacts.email)}
                 ${contactRowHtml('password', 'Пароль', contacts.password)}
@@ -295,6 +297,7 @@ export function openCharacterProfile(char) {
                Играть
             </button>
             <button id="btn-open-sync-helper-footer" class="btn secondary" type="button" ${!isArchived && state.ui?.authCheck?.[char.id] === 'checking' ? 'disabled' : ''} title="${!isArchived && state.ui?.authCheck?.[char.id] === 'checking' ? 'Идёт проверка входа — дождитесь окончания' : 'Открыть браузер для входа'}">🌐 Сайт</button>
+              ${char.siteLogin?.mode === 'gamecenter' ? '<button type="button" class="btn secondary pf-gamecenter-site" id="pf-gamecenter-site" title="Проверить вход на сайт через GameCenter (эксперимент)">🔐 GameCenter</button>' : ''}
             <button id="btn-coin-history-footer" class="btn secondary" type="button" title="История изменений баланса Древних монет"><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> История</button>
             ${
               isArchived
@@ -325,7 +328,7 @@ export function openCharacterProfile(char) {
     submitText: null,
     cancelText: null,
     onSubmit: () => true,
-    onClose: () => {}
+    onClose
   });
 
   // Привязка событий после рендера
@@ -357,6 +360,7 @@ export function openCharacterProfile(char) {
     });
 
     // «Показать все» / «Скрыть все»: один глаз на все контакты вместо четырёх кликов
+    document.getElementById('pf-gamecenter-site')?.addEventListener('click', () => openGameCenterSitePilot(char));
     const toggleAll = document.getElementById('pf-contacts-toggle-all');
     toggleAll?.addEventListener('click', e => {
       e.stopPropagation();

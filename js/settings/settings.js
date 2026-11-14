@@ -1,3 +1,4 @@
+import { bindTodayLayoutPanel } from './todayLayoutPanel.js';
 import { linkProfileOptions } from '../core/linkBrowser.js';
 import { openLegacyCloudRecovery } from '../modules/cloudSync/ui/legacyRecoveryPanel.js';
 // js/settings/settings.js
@@ -29,7 +30,7 @@ import { applySections } from '../core/sections.js';
 import { runNotificationTest, NOTIFY_KINDS } from '../desktop/notifications.js';
 import { SOUND_TONES, previewNotificationSound, soundSettings, soundDiagnostics } from '../desktop/sound.js';
 import { RECURRING_EVENTS, recurringEventScheduleText } from '../modules/dashboard/recurringEvents.js';
-import { toast, confirmModal } from '../core/ui.js';
+import { toast, confirmModal, showModal } from '../core/ui.js';
 import { showInApp } from '../core/notifyCenter.js';
 import { DANGER_ACTIONS, clearParties, clearMarathons, clearCharacters } from './dangerZone.js';
 import { balanceSettingsColumns } from './columns.js';
@@ -54,6 +55,7 @@ import { bindInitialCloudPanel } from '../modules/cloudSync/ui/initialCloudPanel
 import { bindCloudActivityPanel } from '../modules/cloudSync/ui/cloudActivityPanel.js';
 import { bindCloudPublicationPanel } from '../modules/cloudSync/ui/cloudPublicationPanel.js';
 import { bindPrivateTransferPanel } from '../modules/cloudSync/ui/privateTransferPanel.js';
+import { duplicateBackupToken, openDuplicateContactBackup } from './duplicateContactBackup.js';
 import '../modules/automation/promoLogView.js'; // виды логов «Промокоды», «Передачи» и «Подарки»
 import '../modules/automation/transferLogView.js';
 import '../modules/automation/shopLogView.js'; // вид логов «Подарки» (покупка за Древние монеты)
@@ -80,6 +82,7 @@ function backupRowsHtml(backups) {
               ${createdAt ? `<small class="muted">${escapeHtml(name)}${size ? ` · ${Math.round(size / 1024)} КБ` : ''}</small>` : ''}
             </div>
             <div class="row gap">
+              ${duplicateBackupToken(name) ? `<button class="btn" data-duplicate-contact-backup="${escapeHtml(name)}">Исходные контакты</button>` : ''}
               <button class="btn" data-backup-restore="${escapeHtml(name)}">Восстановить</button>
               <button class="btn danger" data-backup-delete="${escapeHtml(name)}">Удалить</button>
             </div>
@@ -232,6 +235,48 @@ export async function renderSettings() {
             : v.error
               ? `⚠️ Хранилище ОС недоступно (${v.error}) — контакты сохраняются в state.json.`
               : '⚠️ Хранилище ОС ещё не проверено в этом сеансе. Контакты пока остаются в state.json; после перезапуска они будут проверены перед переносом.';
+    if (v.diagnosticCode)
+      vaultEl.textContent += ` Код диагностики: ${v.diagnosticCode}. Не удаляйте записи хранилища ОС; сообщите код, версию приложения и источник сборки.`;
+  }
+
+  if (vaultEl && !document.getElementById('vault-safe-diagnostic')) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.id = 'vault-safe-diagnostic';
+    button.className = 'btn ghost';
+    button.textContent = 'Диагностика сохранения (без контактов)';
+    button.onclick = async () => {
+      const v = vaultStatus();
+      let elevated = null,
+        version = 'не определена';
+      if (isTauri()) {
+        try {
+          elevated = await (await import('@tauri-apps/api/core')).invoke('launcher_self_elevated');
+          version = await (await import('@tauri-apps/api/app')).getVersion();
+        } catch {
+          /* report stays read-only */
+        }
+      }
+      const report = {
+        version,
+        native: isTauri(),
+        applicationElevated: elevated,
+        vault: {
+          ready: v.ready,
+          checked: v.checked,
+          blocked: v.blocked,
+          diagnosticCode: v.diagnosticCode || 'not_reported',
+          knownRecords: v.count
+        }
+      };
+      showModal({
+        title: 'Диагностика сохранения',
+        content: `<p>Отчёт не содержит email, паролей, телефонов и содержимого записей. Скопируйте его и передайте разработчику. Не удаляйте записи хранилища ОС и не отключайте защиту сохранения.</p><textarea class="input" readonly rows="12">${escapeHtml(JSON.stringify(report, null, 2))}</textarea>`,
+        submitText: 'Закрыть',
+        onSubmit: () => {}
+      });
+    };
+    vaultEl.after(button);
   }
 
   // Версия
@@ -249,7 +294,11 @@ export async function renderSettings() {
   // Значения настроек
   document.querySelectorAll('[data-setting]').forEach(el => {
     const value = getSetting(el.dataset.setting);
-    if (el.type === 'checkbox') el.checked = value !== false && value !== undefined;
+    if (el.type === 'checkbox')
+      el.checked =
+        el.dataset.setting === 'browser.marathonFollowCheckLinks'
+          ? value !== false
+          : value !== false && value !== undefined;
     else if (el.dataset.setting === 'updates.mode') el.value = resolveUpdateMode(state.settings);
     else el.value = value ?? '';
   });
@@ -589,6 +638,7 @@ function bindSettingInputs() {
 }
 
 export function bindSettings() {
+  bindTodayLayoutPanel();
   const cloudEnabled = !document.getElementById('cloud-registration-panel')?.hidden;
   if (cloudEnabled) {
     bindCloudRegistrationCheck({ desktop: isTauri() });
@@ -628,6 +678,50 @@ export function bindSettings() {
     bindCloudDiagnosticsPanel({ desktop: isTauri(), check: standaloneFiles && (() => standaloneFiles.check(true)) });
   }
   bindGuides();
+  document.getElementById('marathon-site-html')?.addEventListener('change', async event => {
+    const input = event.target;
+    const file = input.files?.[0];
+    if (!file) return;
+    const status = document.getElementById('marathon-site-import-status');
+    input.disabled = true;
+    status.textContent = 'Читаю сохранённую страницу…';
+    try {
+      const { parseCheckPageHtml, readSavedSiteHtml } = await import('../modules/marathons/checkPageParser.js');
+      const html = await readSavedSiteHtml(file);
+      let parsed;
+      if (new DOMParser().parseFromString(html, 'text/html').querySelector('.season_marathon'))
+        parsed = parseCheckPageHtml(html);
+      else {
+        const { parseNewsHtml } = await import('../modules/marathons/newsParser.js');
+        parsed = parseNewsHtml(html, { title: file.name.replace(/\.html?$/i, '') });
+        if (!parsed.quests.length && parsed.sourceUrl && state.settings.browser?.marathonFollowCheckLinks !== false) {
+          const { parseMarathonPage } = await import('../modules/marathons/siteSync.js');
+          const result = await parseMarathonPage(parsed.sourceUrl);
+          result.task?.finish(
+            result.error ? 'Страница сверки не прочитана' : 'Страница сверки прочитана',
+            result.error ? 'error' : 'done'
+          );
+          if (result.marathon)
+            parsed = {
+              ...result.marathon,
+              name: parsed.name,
+              sourceUrl: parsed.sourceUrl,
+              description: [parsed.description, result.marathon.description].filter(Boolean).join('\n\n')
+            };
+        }
+      }
+      if (!parsed.quests.length)
+        throw new Error('Задания не найдены. Загрузите также сохранённую страницу сверки или проверьте вход на сайт.');
+      const { openMarathonWizard } = await import('../modules/marathons/wizard.js');
+      openMarathonWizard({ source: 'site', parsedSite: parsed });
+      status.textContent = `Извлечено заданий: ${parsed.quests.length}. Проверьте данные в мастере; марафон ещё не сохранён.`;
+    } catch (error) {
+      status.textContent = error.message || 'Не удалось прочитать HTML.';
+    } finally {
+      input.disabled = false;
+      input.value = '';
+    }
+  });
   bindFeedback();
   balanceSettingsColumns();
   bindSettingInputs();
@@ -732,11 +826,31 @@ export function bindSettings() {
   });
 
   // Refresh Backups
+  document.getElementById('contact-file-export')?.addEventListener('click', async () => {
+    const { openContactFileExport } = await import('./contactFileUi.js');
+    openContactFileExport();
+  });
+  document.getElementById('contact-file-review')?.addEventListener('click', async () => {
+    const { openContactFileReview } = await import('./contactFileUi.js');
+    openContactFileReview();
+  });
   document.getElementById('refresh-backups-btn')?.addEventListener('click', refreshBackups);
   document.getElementById('all-backups-btn')?.addEventListener('click', openFullBackups);
 
   // Backup Actions (Delegate)
   document.addEventListener('click', async e => {
+    const contactsBtn = e.target.closest?.('[data-duplicate-contact-backup]');
+    if (contactsBtn) {
+      contactsBtn.disabled = true;
+      try {
+        await openDuplicateContactBackup(contactsBtn.dataset.duplicateContactBackup);
+      } catch {
+        toast('Не удалось прочитать отдельную копию контактов в хранилище ОС.', 'warning', 8000);
+      } finally {
+        contactsBtn.disabled = false;
+      }
+      return;
+    }
     const restoreBtn = e.target.closest?.('[data-backup-restore]');
     const deleteBtn = e.target.closest?.('[data-backup-delete]');
     if (!restoreBtn && !deleteBtn) return;
@@ -770,7 +884,7 @@ export function bindSettings() {
         }
         const ok = await confirmModal({
           title: 'Восстановить файл состояния?',
-          text: `Выбрана копия «${name}». ${reviewDescription(inspection)}`,
+          text: `Выбрана копия «${name}». ${reviewDescription(inspection)}${duplicateBackupToken(name) ? ' Восстановление не вернёт автоматически контакты до слияния: до или после восстановления откройте «Исходные контакты» рядом с этой копией и при необходимости внесите значения вручную.' : ''}`,
           okText: 'Восстановить состояние',
           danger: true
         });
@@ -805,7 +919,7 @@ export function bindSettings() {
       const name = deleteBtn.dataset.backupDelete;
       const ok = await confirmModal({
         title: 'Удалить резервную копию?',
-        text: `Копия «${name}» будет удалена безвозвратно. Восстановить из неё данные больше не получится.`,
+        text: `Копия «${name}» будет удалена безвозвратно. Восстановить из неё данные больше не получится.${duplicateBackupToken(name) ? ' Она также содержит идентификатор отдельных защищённых копий контактов до слияния; сохраните имя, если они могут понадобиться.' : ''}`,
         okText: 'Удалить копию',
         danger: true
       });
@@ -884,6 +998,12 @@ export function bindSettings() {
 
   // Только одно подтверждение/удаление за раз в этом UI. Другие окна и прямые IPC
   // не участвуют в этой блокировке.
+  document.getElementById('review-duplicates-btn')?.addEventListener('click', () =>
+    runExclusiveDanger(async () => {
+      const { openDuplicateCharacters } = await import('./duplicateCharacters.js');
+      openDuplicateCharacters();
+    })
+  );
   let dangerBusy = false;
   const runExclusiveDanger = async operation => {
     if (dangerBusy) {

@@ -58,6 +58,12 @@ const full = () => ({
 describe('карточка персонажа: состав', () => {
   let state, renderCharacters, bindCharacters, card;
 
+  it('places archive in the upper-right header, not among launch actions', () => {
+    expect(card.querySelector('.card-head-side .archive-character-action')).not.toBeNull();
+    expect(card.querySelector('.card-footer .archive-character-action')).toBeNull();
+    expect(card.querySelectorAll('.archive-character-action')).toHaveLength(1);
+  });
+
   beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
@@ -151,7 +157,7 @@ describe('карточка персонажа: состав', () => {
   it('кнопки: игра, сайт, архив — и клик по карточке ведёт в профиль', () => {
     expect(card.querySelector('.card-actions .play')).not.toBeNull();
     expect(card.querySelector('.card-actions [aria-label="Открыть сайт"]')).not.toBeNull();
-    expect(card.querySelector('.card-actions .archive-character-action')).not.toBeNull();
+    expect(card.querySelector('.card-head-side .archive-character-action')).not.toBeNull();
     expect(card.querySelector('.card-actions .restore-character-action')).toBeNull();
     card.querySelector('.card-header').click();
     expect(mocks.openCharacterProfile).toHaveBeenCalledWith(state.characters[0]);

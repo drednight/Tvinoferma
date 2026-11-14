@@ -247,3 +247,26 @@ describe('локальное намерение не подменяет свод
     expect(getClassIconSrcByStem('../prist')).toBeNull();
   });
 });
+it('сопоставляет внешние имена иконки стрелка с локальным gan.webp', () => {
+  for (const stem of ['gun', 'Gun', 'gunner', 'gan'])
+    expect(getClassIconSrcByStem(stem)).toBe('assets/icons/classes/gan.webp');
+});
+
+it('keeps manual display leader separate from site metadata across refresh and normalization', async () => {
+  const { setGuildLeaderOverride } = await import('../js/modules/guild/state.js');
+  state.settings.guild = {
+    enabled: true,
+    parties: [{ name: 'Party', members: [{ nick: 'Alpha' }, { nick: 'Beta' }] }]
+  };
+  await setGuildLeaderOverride('Party', 'Beta');
+  expect(readGuildData().leaderOverrides).toEqual([{ party: 'Party', nick: 'Beta' }]);
+  expect(readGuildData().parties[0].members.every(m => !m.leader)).toBe(true);
+  await writeGuildData({ parties: [{ name: 'Party', members: [{ nick: 'Alpha', leader: true }, { nick: 'Beta' }] }] });
+  expect(readGuildData().leaderOverrides).toEqual([{ party: 'Party', nick: 'Beta' }]);
+  expect(normalizeState({ settings: { guild: state.settings.guild } }).settings.guild.leaderOverrides).toEqual([
+    { party: 'Party', nick: 'Beta' }
+  ]);
+  await expect(setGuildLeaderOverride('Party', 'Missing')).rejects.toThrow();
+  await setGuildLeaderOverride('Party', '');
+  expect(readGuildData().leaderOverrides).toEqual([]);
+});

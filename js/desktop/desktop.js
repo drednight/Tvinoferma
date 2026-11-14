@@ -47,6 +47,10 @@ let backgroundTimer = null;
 let backgroundChecking = false;
 
 async function runScript(action) {
+  if (action === 'game-macro-overlay') {
+    const { openOverlay } = await import('../modules/gameMacros/runtime.js');
+    return openOverlay();
+  }
   if (typeof action === 'string' && action.startsWith('launch-favorite:')) {
     const id = action.slice('launch-favorite:'.length);
     const character = state.characters.find(c => String(c.id) === id);
@@ -222,7 +226,11 @@ export async function syncTrayParties() {
 export async function initDesktop() {
   if (!window.__TAURI_INTERNALS__) return;
   const { listen } = await import('@tauri-apps/api/event');
-  await listen('tray-action', e => runScript(e.payload));
+  await listen('tray-action', e => {
+    void runScript(e.payload).catch(() => toast('Не удалось открыть действие трея.', 'error'));
+  });
+  const { initGameMacros } = await import('../modules/gameMacros/runtime.js');
+  await initGameMacros();
   // «🛑 Закрыть все окна игры» в трее закрывает окна в Rust и присылает отчёт
   await listen('game-closed', async e => {
     const { showCloseReport } = await import('../modules/launcher/partyLaunch.js');

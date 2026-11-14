@@ -1,6 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { partitionRegistration } from './partitionRegistration.js';
+import { beforeEach, describe, expect, it as baseIt, vi } from 'vitest';
 import { createHash, webcrypto } from 'node:crypto';
 
+const it = baseIt;
 const STORAGE_KEY = 'tvinoferma_state_v1';
 const clientIds = {
   google: '123456789-fake_client.apps.googleusercontent.com',
@@ -1921,8 +1923,9 @@ async function corruptFakeQueue(f, provider, mutate) {
   saved.sha256 = digest(saved.record);
 }
 
-export function registerSetupSuite6(providers) {
+export function registerSetupSuite6(providers, part = 0, count = 1) {
   describe.each(providers)('%s: безопасное объединение существующих записей через fake IPC', provider => {
+    const it = partitionRegistration(baseIt, part, count);
     it('сохраняет независимые локальные и облачные поля, резервные копии и затем отправляет объединённый потомок', async () => {
       const f = await publicationFixture(provider);
       const { parseDatasetBindingRecord } = await import('../../js/modules/cloudSync/datasetBindingRecord.js');
@@ -5051,8 +5054,9 @@ async function partyArchiveFixture(provider, restoring = false) {
   });
 }
 
-export function registerSetupSuite21(providers) {
+export function registerSetupSuite21(providers, part = 0, count = 1) {
   describe.each(providers)('%s: архив и восстановление пати через очередь и backup', provider => {
+    const it = partitionRegistration(baseIt, part, count);
     for (const restoring of [false, true])
       for (const side of ['local', 'cloud'])
         for (const privateCarry of [false, true])
@@ -5195,8 +5199,9 @@ export function registerSetupSuite21(providers) {
   });
 }
 
-export function registerSetupSuite22(providers) {
+export function registerSetupSuite22(providers, part = 0, count = 1) {
   describe.each(providers)('%s: обмен полным файлом вместо объединения', provider => {
+    const it = partitionRegistration(baseIt, part, count);
     async function api(f) {
       return {
         opts: { provider, invoke: f.fake.invoke, cryptoSource: webcrypto, openSession: f.cloud.openSession },

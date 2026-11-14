@@ -21,8 +21,9 @@ it('promotes split layout and separate draft picker; cancel keeps the actual pla
   expect(picker).toBeTruthy();
   picker.querySelector('[data-picker-id=a]').click();
   picker.querySelector('[data-picker-cancel]').click();
-  expect(dlg.body.querySelector('[data-script-picker]').textContent).toContain('(0)');
+  expect(dlg.body.querySelector('[data-script-picker]').textContent).toContain('(1)');
   dlg.body.querySelector('[data-script-picker]').click();
+  document.querySelector('[data-picker-id=a]').click();
   document.querySelector('[data-picker-id=b]').click();
   document.querySelector('[data-picker-save]').click();
   expect(dlg.body.querySelector('[data-script-picker]').textContent).toContain('(1)');
@@ -55,4 +56,20 @@ it('renders the actual demo B matrix, class icons and login stripes, recalculati
   expect(dlg.body.querySelector('[data-script-summary]').textContent).toContain('2');
   expect(dlg.body.querySelector('.promo-dot')).toBeNull();
   dlg.close();
+});
+
+it('defaults to online characters immediately, does not broaden after rerender and preserves explicit offline presets', () => {
+  const dlg = openPromoDialog();
+  expect(dlg.body.querySelector('.sp-radio input[value=logged]').checked).toBe(true);
+  expect(dlg.body.querySelector('#promo-list input[data-id=a]').checked).toBe(true);
+  expect(dlg.body.querySelector('#promo-list input[data-id=b]').checked).toBe(false);
+  const code = dlg.body.querySelector('#promo-code');
+  code.value = 'CODE';
+  code.dispatchEvent(new Event('input', { bubbles: true }));
+  expect(dlg.body.querySelector('[data-script-summary]').textContent).toContain('1');
+  dlg.close();
+  const preset = openPromoDialog({ ids: ['b'] });
+  expect(preset.body.querySelector('.sp-radio input[value=manual]').checked).toBe(true);
+  expect(preset.body.querySelector('#promo-list input[data-id=b]').checked).toBe(true);
+  preset.close();
 });

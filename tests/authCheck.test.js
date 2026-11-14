@@ -455,3 +455,19 @@ describe('закрытие окна браузера', () => {
     expect(mocks.calls).toEqual([]);
   });
 });
+
+it('restarts progress from zero for the recheck subset and advances it per character', async () => {
+  state.characters = [mk('ok'), mk('bad')];
+  const { onTaskChange } = await import('../js/core/taskLog.js');
+  const seen = [];
+  const unsub = onTaskChange(task => {
+    if (task) seen.push({ done: task.done, total: task.total, step: task.step });
+  });
+  try {
+    await sync.runAuthChecks(state.characters);
+  } finally {
+    unsub();
+  }
+  expect(seen.some(s => s.done === 0 && s.total === 1 && s.step === 'Перепроверка входа')).toBe(true);
+  expect(seen.some(s => s.done === 1 && s.total === 1 && s.step === 'Перепроверка: bad')).toBe(true);
+});

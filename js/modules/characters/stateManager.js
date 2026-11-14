@@ -48,7 +48,16 @@ export function createEmptyCharacter() {
     level: 1,
     sky: { name: null, level: null },
     contacts: { email: '', password: '', recoveryEmail: '', phone: '' },
-    launch: { gcPath: '', gcNick: '', gcAccount: false, gcIds: [], gcAccounts: {} },
+    siteLogin: { mode: 'standard' },
+    launch: {
+      gcPath: '',
+      gcNick: '',
+      gcAccount: false,
+      gcIds: [],
+      gcAccounts: {},
+      gcGameAccounts: {},
+      gcGameAccount: null
+    },
     dungeonPasses: { weapon: 0, armor: 0, relic: 0 },
     ancientCoins: 0,
     lastCoinUpdate: null,

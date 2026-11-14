@@ -83,7 +83,7 @@ beforeEach(async () => {
   ({ setRoster, loadPrefs, loadTransferLog } = await import('../js/modules/automation/transferStore.js'));
 });
 
-const openConfirmation = async () => {
+const openConfirmation = async ({ selectAll = true } = {}) => {
   if (!$('[data-preview-send]')) {
     const previous = mocks.invoke.getMockImplementation();
     const { loadRosters } = await import('../js/modules/automation/transferStore.js');
@@ -96,12 +96,14 @@ const openConfirmation = async () => {
       });
     });
     $('#tr-plan-btn').click();
+    await vi.waitFor(() => expect($('[data-items-all]')).not.toBeNull());
+    if (selectAll) $('[data-items-all]').click();
   }
   await vi.waitFor(() => expect($('[data-preview-send]').disabled).toBe(false));
   $('[data-preview-send]').click();
 };
-const confirmTransfer = async () => {
-  await openConfirmation();
+const confirmTransfer = async options => {
+  await openConfirmation(options);
   await vi.waitFor(() => expect($('.tr-confirm-dialog')).not.toBeNull());
   $('#tr-ack').click();
   $('[data-confirm-transfer]').click();
@@ -182,7 +184,7 @@ describe('форма', () => {
     preload();
     openTransferDialog({ ids: ['a', 'b'] });
     pickRow('b', '5');
-    expect($('#tr-summary').textContent).toContain('Будет передано с аккаунтов: 1 из 2');
+    expect($('#tr-summary').textContent).toContain('Будет передано с аккаунтов: 0 из 2');
     mocks.invoke.mockImplementation(async (command, args) => {
       if (command === 'read_transfer_page') {
         const { loadRosters } = await import('../js/modules/automation/transferStore.js');
@@ -244,8 +246,22 @@ describe('форма', () => {
     expect(mocks.invoke.mock.calls.map(c => c[0])).toEqual(['read_server_status']);
     expect(mocks.invoke.mock.calls[0][1]).toEqual({ timeoutSeconds: 20 }); // без charId: страница открыта всем
     expect(mocks.toast).not.toHaveBeenCalled();
-    expect(document.querySelector('[data-task-card]')).toBeNull(); // задачи в журнале нет
-    expect(JSON.parse(window.localStorage.getItem('tf_task_journal_v1') || '[]')).toEqual([]);
+    expect(document.querySelector('[data-task-card]')).toBeNull(); // фоновая запись не занимает док
+    await vi.waitFor(() => {
+      const journal = JSON.parse(window.localStorage.getItem('tf_task_journal_v1') || '[]');
+      const checks = journal.filter(task => task.title === 'Фоновая задача: Проверка серверов');
+      expect(checks).toHaveLength(1);
+      expect(checks[0]).toMatchObject({
+        status: 'done',
+        dock: false,
+        waiting: false,
+        summary: 'Статус серверов обновлён.'
+      });
+      expect(checks[0].entries.map(entry => entry.message)).toEqual([
+        'Начато: Фоновая задача: Проверка серверов',
+        'Статус серверов обновлён.'
+      ]);
+    });
     const names = [...document.querySelectorAll('.tr-top .srv')].map(li => li.textContent);
     expect(names).toEqual(['Центавр', 'Фенрир', 'Мицар', 'Капелла']); // как на странице сайта
     expect(document.querySelector('.tr-top .srv.is-off').textContent).toBe('Мицар');
@@ -261,6 +277,7 @@ describe('форма', () => {
   it('«Обновить информацию по всем персонажам» — читает ВСЕХ, даже если никто не отмечен; серверы тоже', async () => {
     mocks.invoke.mockImplementation(async (cmd, a) => answer(cmd, a));
     openTransferDialog({ ids: [] });
+    $('[data-q="none"]').click();
     $('[data-act="refresh-all"]').click();
     await wait(900);
     const reads = mocks.invoke.mock.calls
@@ -390,8 +407,8 @@ describe('форма', () => {
     // на «Фенрире» два персонажа и получатель не выбран → некому передавать
     expect($('#tr-summary').textContent).toContain('Будет передано с аккаунтов: 0 из 1');
     pick('[data-pick="a"]', K(3, 2));
-    expect($('#tr-summary').textContent).toContain('Будет передано с аккаунтов: 1 из 1');
-    expect($('[data-act="dry"]').disabled).toBe(false);
+    expect($('#tr-summary').textContent).toContain('Будет передано с аккаунтов: 0 из 1');
+    expect($('[data-act="dry"]').disabled).toBe(true);
     expect($('#tr-plan-btn').disabled).toBe(false);
     expect($('#tr-ack')).toBeNull();
   });
@@ -414,7 +431,7 @@ describe('форма', () => {
     $('#tr-plan-btn').click();
     await vi.waitFor(() => expect($('.tr-preview-dialog .tf-dialog-body').textContent).not.toContain('Читаю сайт…'));
     expect($('.tr-preview-dialog .tf-dialog-body').textContent).toContain('единственный на сервере');
-    expect($('[data-act="dry"]').disabled).toBe(false);
+    expect($('[data-act="dry"]').disabled).toBe(true);
   });
 
   it('«Что будет передано»: после выбора персонажей, раскрывает ПОЛНЫЙ список предметов (без «ещё N»), список браузеров остаётся', async () => {
@@ -480,7 +497,7 @@ describe('форма', () => {
     openTransferDialog({ ids: ['a', 'b'] });
     pickRow('a', '5');
     pickRow('b', '5');
-    expect($('#tr-summary').textContent).toContain('Будет передано с аккаунтов: 1 из 2');
+    expect($('#tr-summary').textContent).toContain('Будет передано с аккаунтов: 0 из 2');
   });
 });
 
@@ -503,6 +520,18 @@ describe('запуск', () => {
       items: [{ name: 'Метеорит', qty: 100 }]
     }));
     open();
+    const previous = mocks.invoke.getMockImplementation();
+    mocks.invoke.mockImplementation(async (cmd, args) => {
+      if (cmd !== 'read_transfer_page') return previous(cmd, args);
+      const { loadRosters } = await import('../js/modules/automation/transferStore.js');
+      const roster = loadRosters()[args.charId];
+      return { status: 'ok', roster: { ...roster, items: roster.pending.items } };
+    });
+    $('#tr-plan-btn').click();
+    await vi.waitFor(() => expect($('[data-items-all]')).not.toBeNull());
+    $('[data-items-all]').click();
+    $('.tr-preview-dialog [data-preview-close]').click();
+    mocks.invoke.mockClear();
     $('[data-act="dry"]').click();
     await wait(400);
     expect(mocks.invoke).toHaveBeenCalledTimes(2);
@@ -613,6 +642,26 @@ describe('запуск', () => {
       items: []
     }));
     $('[data-act="back"]').click();
+    expect($('[data-act="dry"]').disabled).toBe(true);
+    mocks.invoke.mockImplementation(async (cmd, args) =>
+      cmd === 'read_transfer_page'
+        ? {
+            status: 'ok',
+            roster: rosterOf('77', {
+              items: [
+                { id: '11', name: 'Метеорит', qty: 100, source: MIC },
+                { id: '12', name: 'Коробочка', qty: 1, source: SUB }
+              ]
+            })
+          }
+        : { charId: args.charId, status: 'dry_run', clicked: false, count: 1, items: [] }
+    );
+    $('#tr-plan-btn').click();
+    await vi.waitFor(() => expect($('[data-items-all]')).not.toBeNull());
+    expect($('[data-transfer-total]').textContent).toContain('0 наборов');
+    $('[data-items-all]').click();
+    $('.tr-preview-dialog [data-preview-close]').click();
+    mocks.invoke.mockClear();
     $('[data-act="dry"]').click();
     await wait(300);
     expect(mocks.invoke).toHaveBeenCalledTimes(1);
@@ -675,11 +724,12 @@ it('fresh preview omits empty characters, shows available packet quantities and 
     [...document.querySelectorAll('.tr-preview-dialog h4')].map(el => el.textContent.trim().endsWith('Аа'))
   ).toEqual([true]);
   expect($('.tr-preview-dialog').textContent).toContain('×5');
+  $('[data-group-max]').click();
   const unchecked = $('[data-item-group="1"]');
   unchecked.value = '0';
   unchecked.dispatchEvent(new Event('change', { bubbles: true }));
   $('.tr-preview-dialog [data-preview-close]').click();
-  await confirmTransfer();
+  await confirmTransfer({ selectAll: false });
   await vi.waitFor(() => expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'transfer_items')).toBe(true));
   const calls = mocks.invoke.mock.calls.filter(([cmd]) => cmd === 'transfer_items');
   expect(calls).toHaveLength(1);
@@ -734,7 +784,7 @@ it('groups five identical packets into one row, rejects fractional counts and se
   expect($('.tr-preview-dialog [data-selected-quantity]').textContent).toBe('Выбрано: 2 набора (100 шт.)');
   $('.tr-preview-dialog [data-preview-close]').click();
   expect($('#tr-plan-btn').disabled).toBe(false);
-  await confirmTransfer();
+  await confirmTransfer({ selectAll: false });
   await vi.waitFor(() => expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'transfer_items')).toBe(true));
   const args = mocks.invoke.mock.calls.find(([cmd]) => cmd === 'transfer_items')[1];
   expect(args.itemSelection.map(item => item.id)).toEqual(['11', '12']);
@@ -780,7 +830,7 @@ it('merges categories/deadlines, chooses earliest exact packets, supports All an
   expect(count.closest('tr').hidden).toBe(true);
   expect($('[data-transfer-total]').textContent).toBe('Выбрано: 50 шт. (1 набор)');
   $('.tr-preview-dialog [data-preview-close]').click();
-  await confirmTransfer();
+  await confirmTransfer({ selectAll: false });
   await vi.waitFor(() => expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'transfer_items')).toBe(true));
   expect(mocks.invoke.mock.calls.find(([cmd]) => cmd === 'transfer_items')[1].itemSelection).toEqual([
     { id: 'early', name: 'Набор', qty: 50, source: 'Акция C', until: '08:00 04.11.2026' }
@@ -827,7 +877,7 @@ it('selects 20 out of 21 real sets of 25, not fractional items, and preserves ex
   input.dispatchEvent(new Event('change', { bubbles: true }));
   expect(input.closest('tr').textContent).toContain('20 наборов (500 шт.)');
   $('.tr-preview-dialog [data-preview-close]').click();
-  await confirmTransfer();
+  await confirmTransfer({ selectAll: false });
   await vi.waitFor(() => expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'transfer_items')).toBe(true));
   const selection = mocks.invoke.mock.calls.find(([cmd]) => cmd === 'transfer_items')[1].itemSelection;
   expect(selection).toEqual(items.slice(0, 20));
@@ -921,4 +971,136 @@ it('footer places Next to the right of Dry Run', async () => {
   await wait();
   const foot = $('.tf-dialog-foot');
   expect(foot.querySelector('[data-act="dry"]').nextElementSibling).toBe($('#tr-plan-btn'));
+});
+
+it('starts empty, filters multiple item names without changing selection, and max applies only to visible rows of one character', async () => {
+  const a = [
+    { id: '1', name: 'Аметист', qty: 5 },
+    { id: '2', name: 'Аметист', qty: 5 },
+    { id: '3', name: 'Бриллиант', qty: 1 },
+    { id: '4', name: 'Зелье <тест>', qty: 1 }
+  ];
+  const b = [
+    { id: '5', name: 'Аметист', qty: 5 },
+    { id: '6', name: 'Зелье <тест>', qty: 1 }
+  ];
+  setRoster('a', rosterOf('77', { items: a }));
+  setRoster('b', rosterOf('88', { items: b }));
+  mocks.invoke.mockImplementation(async (cmd, args) => {
+    if (cmd !== 'read_transfer_page') return sent(args);
+    return {
+      status: 'ok',
+      roster: rosterOf(args.charId === 'a' ? '77' : '88', { items: args.charId === 'a' ? a : b })
+    };
+  });
+  const dlg = openTransferDialog({ ids: ['a', 'b'] });
+  pickRow('a', '5');
+  pickRow('b', '5');
+  $('#tr-plan-btn').click();
+  await vi.waitFor(() => expect(document.querySelectorAll('[data-item-group]')).toHaveLength(5));
+  expect([...document.querySelectorAll('[data-item-group]')].every(el => el.value === '0')).toBe(true);
+  expect($('[data-transfer-total]').textContent).toContain('0 наборов');
+  expect($('[data-preview-send]').disabled).toBe(true);
+  expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'transfer_items')).toBe(false);
+  const labels = [...document.querySelectorAll('[data-item-filter]')].map(el => el.closest('label'));
+  expect(labels.map(label => label.textContent)).toEqual(['Аметист', 'Бриллиант', 'Зелье <тест>']);
+  labels[0].querySelector('input').click();
+  labels[2].querySelector('input').click();
+  const sections = [...document.querySelectorAll('[data-transfer-section]')];
+  sections[0].querySelector('[data-char-max]').click();
+  const values = section => [...section.querySelectorAll('[data-item-group]')].map(input => input.value);
+  expect(values(sections[0])).toEqual(['2', '0', '1']);
+  expect(values(sections[1])).toEqual(['0', '0']);
+  expect($('[data-transfer-total]').textContent).toContain('3 набора');
+  labels[0].querySelector('input').click();
+  labels[2].querySelector('input').click();
+  labels[1].querySelector('input').click();
+  expect(sections[1].hidden).toBe(true);
+  expect($('[data-transfer-total]').textContent).toContain('3 набора');
+  sections[0].querySelector('[data-char-max]').click();
+  expect(values(sections[0])).toEqual(['2', '1', '1']);
+  $('[data-item-filter-clear]').click();
+  expect(sections[1].hidden).toBe(false);
+  sections[1].querySelector('[data-char-max]').click();
+  expect(values(sections[1])).toEqual(['1', '1']);
+  $('[data-items-clear]').click();
+  expect([...document.querySelectorAll('[data-item-group]')].every(el => el.value === '0')).toBe(true);
+  expect($('[data-preview-send]').disabled).toBe(true);
+  dlg.close();
+  openTransferDialog({ ids: ['a'] });
+  $('#tr-plan-btn').click();
+  await vi.waitFor(() => expect($('[data-item-group]')).not.toBeNull());
+  expect($('[data-transfer-total]').textContent).toContain('0 наборов');
+  expect($('[data-preview-send]').disabled).toBe(true);
+});
+
+it('does not retain a selection if a refreshed site reuses an ID for a different item', async () => {
+  let items = [{ id: '1', name: 'Старый', qty: 1, source: 'Одна акция' }];
+  setRoster('a', rosterOf('77', { items }));
+  mocks.invoke.mockImplementation(async (cmd, args) =>
+    cmd === 'read_transfer_page' ? { status: 'ok', roster: rosterOf('77', { items }) } : sent(args)
+  );
+  openTransferDialog({ ids: ['a'] });
+  pickRow('a', '5');
+  $('#tr-plan-btn').click();
+  await vi.waitFor(() => expect($('[data-group-max]')).not.toBeNull());
+  $('[data-group-max]').click();
+  $('.tr-preview-dialog [data-preview-close]').click();
+  items = [{ id: '1', name: 'Другой', qty: 10, source: 'Другая акция' }];
+  $('#tr-plan-btn').click();
+  await vi.waitFor(() => expect($('.tr-preview-dialog').textContent).toContain('Другой'));
+  expect($('[data-item-group]').value).toBe('0');
+  expect($('[data-preview-send]').disabled).toBe(true);
+  expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'transfer_items')).toBe(false);
+});
+
+it('does not send previously selected items for an account whose latest preview scan fails', async () => {
+  preload();
+  let failB = false;
+  mocks.invoke.mockImplementation(async (cmd, args) => {
+    if (cmd !== 'read_transfer_page') return sent(args);
+    if (args.charId === 'b' && failB) return { status: 'error', error: 'load_failed' };
+    return { status: 'ok', roster: rosterOf(args.charId === 'a' ? '77' : '88') };
+  });
+  openTransferDialog({ ids: ['a', 'b'] });
+  pickRow('a', '5');
+  pickRow('b', '5');
+  $('#tr-plan-btn').click();
+  await vi.waitFor(() => expect(document.querySelectorAll('[data-item-group]')).toHaveLength(2));
+  $('[data-items-all]').click();
+  $('.tr-preview-dialog [data-preview-close]').click();
+  failB = true;
+  $('#tr-plan-btn').click();
+  await vi.waitFor(() => expect(document.querySelectorAll('[data-item-group]')).toHaveLength(1));
+  expect($('[data-transfer-total]').textContent).toContain('1 набор');
+  $('[data-preview-send]').click();
+  await vi.waitFor(() => expect($('.tr-confirm-dialog')).not.toBeNull());
+  expect($('[data-confirm-summary]').textContent).toContain('Аккаунтов: 1. Наборов: 1.');
+  $('#tr-ack').click();
+  $('[data-confirm-transfer]').click();
+  await vi.waitFor(() => expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'transfer_items')).toBe(true));
+  expect(mocks.invoke.mock.calls.filter(([cmd]) => cmd === 'transfer_items').map(([, args]) => args.charId)).toEqual([
+    'a'
+  ]);
+});
+
+it('clears old selection when a manual refresh occurs between two previews', async () => {
+  let items = [{ id: '1', name: 'Старый', qty: 1 }];
+  setRoster('a', rosterOf('77', { items }));
+  mocks.invoke.mockImplementation(async (cmd, args) =>
+    cmd === 'read_transfer_page' ? { status: 'ok', roster: rosterOf('77', { items }) } : sent(args)
+  );
+  openTransferDialog({ ids: ['a'] });
+  pickRow('a', '5');
+  $('#tr-plan-btn').click();
+  await vi.waitFor(() => expect($('[data-group-max]')).not.toBeNull());
+  $('[data-group-max]').click();
+  $('.tr-preview-dialog [data-preview-close]').click();
+  items = [{ id: '1', name: 'Новый', qty: 1 }];
+  $('[data-act="refresh-one"][data-char="a"]').click();
+  await vi.waitFor(() => expect($('#tr-plan-btn')).not.toBeNull());
+  $('#tr-plan-btn').click();
+  await vi.waitFor(() => expect($('.tr-preview-dialog').textContent).toContain('Новый'));
+  expect($('[data-item-group]').value).toBe('0');
+  expect($('[data-preview-send]').disabled).toBe(true);
 });

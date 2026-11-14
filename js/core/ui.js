@@ -6,7 +6,7 @@ import { registerModal, closeModalRoot, isTopModal } from './modalLifecycle.js';
 /**
  * Универсальная функция показа модального окна
  * @param {{ title: string, content: string, submitText?: string, cancelText?: string,
- *           onSubmit?: (data: any) => any, onClose?: () => void, hideCloseButton?: boolean }} opts
+ *           onSubmit?: (data: any) => any, onClose?: () => void, beforeClose?: () => boolean, hideCloseButton?: boolean }} opts
  */
 export function showModal({
   title,
@@ -15,6 +15,7 @@ export function showModal({
   cancelText = 'Cancel',
   onSubmit,
   onClose,
+  beforeClose,
   wide = false,
   hideCloseButton = false // Игнорируется, крестик удален
 }) {
@@ -23,6 +24,7 @@ export function showModal({
 
   // ОЧИСТКА ПРЕДЫДУЩЕЙ МОДАЛКИ
   closeModal();
+  if (root.querySelector('[data-modal-close-blocked]')) return;
 
   // Создаем оверлей
   const overlay = document.createElement('div');
@@ -128,6 +130,11 @@ export function showModal({
   };
   const close = () => {
     if (closed) return;
+    if (typeof beforeClose === 'function' && beforeClose() === false) {
+      overlay.dataset.modalCloseBlocked = '';
+      return;
+    }
+    delete overlay.dataset.modalCloseBlocked;
     closed = true;
     unregister();
     document.removeEventListener('keydown', handleEsc);
@@ -136,6 +143,7 @@ export function showModal({
   };
   const unregister = registerModal(overlay, close);
   document.addEventListener('keydown', handleEsc);
+  return overlay;
 }
 
 export function closeModal() {
@@ -149,7 +157,15 @@ export function toast(message, type = 'info', durationMs = 3000) {
 
   const el = document.createElement('div');
   el.className = `toast toast-${type}`;
-  el.textContent = message;
+  const text = document.createElement('span');
+  text.textContent = message;
+  const dismiss = document.createElement('button');
+  dismiss.type = 'button';
+  dismiss.className = 'icon-btn';
+  dismiss.textContent = '×';
+  dismiss.setAttribute('aria-label', 'Закрыть уведомление');
+  dismiss.onclick = () => el.remove();
+  el.append(text, dismiss);
 
   root.appendChild(el);
 
@@ -209,6 +225,8 @@ export function confirmModal({ title, text, okText = 'OK', cancelText = 'Отм�
   });
 }
 
+let closeCurrentActionMenu;
+
 /**
  * Меню действий рядом с кнопкой.
  *
@@ -221,14 +239,17 @@ export function confirmModal({ title, text, okText = 'OK', cancelText = 'Отм�
  *
  * @param {HTMLElement} anchor элемент-источник: меню появится под ним
  * @param {Array<{ id: string, label: string, icon?: string, hint?: string, disabled?: boolean, danger?: boolean, onSelect?: () => void }>} items
+ * @param {{ portal?: HTMLElement, className?: string }} [options] portal keeps menus outside scroll-clipping containers
  * @returns {() => void} закрыть меню
  */
-export function openActionMenu(anchor, items) {
+export function openActionMenu(anchor, items, { portal, className = '' } = {}) {
   // Одно меню на страницу: второе открытие должно заменить первое, а не положить его
+  closeCurrentActionMenu?.();
   document.querySelector('.dropdown-menu[data-open]')?.remove();
 
   const wrap = document.createElement('div');
-  wrap.className = 'dropdown-menu';
+  wrap.className = `dropdown-menu ${className}`.trim();
+  anchor.setAttribute('aria-expanded', 'true');
   wrap.dataset.open = '1';
   wrap.setAttribute('role', 'menu');
   wrap.innerHTML = items
@@ -245,16 +266,43 @@ export function openActionMenu(anchor, items) {
     .join('');
 
   const close = () => {
+    if (closeCurrentActionMenu === close) closeCurrentActionMenu = undefined;
+    anchor.setAttribute('aria-expanded', 'false');
+    window.removeEventListener('resize', close);
+    document.removeEventListener('scroll', onScroll, true);
     document.removeEventListener('keydown', onKey, true);
     document.removeEventListener('mousedown', onOutside, true);
     wrap.remove();
   };
   const onKey = e => {
-    if (e.key !== 'Escape') return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      close();
+      anchor.focus();
+      return;
+    }
+    if (e.key === 'Tab') {
+      close();
+      return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
     e.preventDefault();
     e.stopPropagation();
-    close();
+    const buttons = [...wrap.querySelectorAll('button:not(:disabled)')];
+    const current = buttons.indexOf(document.activeElement);
+    const index =
+      e.key === 'Home'
+        ? 0
+        : e.key === 'End'
+          ? buttons.length - 1
+          : (current + (e.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+    buttons[index]?.focus();
   };
+  const onScroll = e => {
+    if (!wrap.contains(e.target)) close();
+  };
+
   const onOutside = e => {
     if (wrap.contains(/** @type {Node} */ (e.target)) || anchor.contains(/** @type {Node} */ (e.target))) return;
     close();
@@ -270,7 +318,29 @@ export function openActionMenu(anchor, items) {
   // Обёртка с position: relative — иначе меню уехало бы к краю окна
   const holder = anchor.parentElement;
   if (holder && getComputedStyle(holder).position === 'static') holder.style.position = 'relative';
-  (holder || document.body).appendChild(wrap);
+  (portal || holder || document.body).appendChild(wrap);
+  if (portal) {
+    const rect = anchor.getBoundingClientRect();
+    const width = Math.min(320, Math.max(160, window.innerWidth - 32));
+    const maxHeight = Math.max(80, Math.min(280, window.innerHeight - 32));
+    Object.assign(wrap.style, {
+      position: 'fixed',
+      right: 'auto',
+      bottom: 'auto',
+      animation: 'none',
+      width: `${width}px`,
+      minWidth: '0',
+      maxHeight: `${maxHeight}px`,
+      overflowY: 'auto',
+      left: `${Math.max(16, Math.min(rect.left, window.innerWidth - width - 16))}px`,
+      top: `${Math.max(16, Math.min(rect.bottom + 6, window.innerHeight - maxHeight - 16))}px`
+    });
+    window.addEventListener('resize', close);
+    document.addEventListener('scroll', onScroll, true);
+  }
+  closeCurrentActionMenu = close;
+  wrap.querySelector('button:not(:disabled)')?.focus();
+
   document.addEventListener('keydown', onKey, true);
   document.addEventListener('mousedown', onOutside, true);
   return close;

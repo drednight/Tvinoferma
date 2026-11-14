@@ -78,6 +78,26 @@ describe('карточки персонажей в архиве', () => {
     document.getElementById('show-archived-characters').click();
   });
 
+  it('keeps archive scope while filtering by search, class, tag and archived party', async () => {
+    state.archivedParties = [{ id: 'old', name: 'Старая пати', memberLinks: [{ characterId: 'archived' }] }];
+    document.getElementById('show-archived-characters').click();
+    expect(document.getElementById('class-filter').textContent).toContain('Маг');
+    expect(document.getElementById('tag-filter').textContent).toContain('архив');
+    const search = document.getElementById('search-input');
+    search.value = 'нет такого';
+    search.dispatchEvent(new Event('input'));
+    await vi.waitFor(() => expect(document.querySelector('.archived-character-card')).toBeNull());
+    expect(document.getElementById('show-archived-characters').classList.contains('secondary')).toBe(true);
+    search.value = 'Архивный';
+    search.dispatchEvent(new Event('input'));
+    await vi.waitFor(() => expect(document.querySelector('.archived-character-card')).not.toBeNull());
+    const party = document.getElementById('party-filter');
+    party.value = 'old';
+    party.dispatchEvent(new Event('change'));
+    expect(document.querySelector('.archived-character-card')).not.toBeNull();
+    expect(document.querySelector('[data-char-id="active"]')).toBeNull();
+  });
+
   it('использует ту же полноценную карточку с показателями, проходками и действиями', () => {
     const card = document.querySelector('.archived-character-card');
     expect(card).not.toBeNull();

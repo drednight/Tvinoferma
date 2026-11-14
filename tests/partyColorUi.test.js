@@ -210,3 +210,53 @@ describe('цвет доезжает до интерфейса', () => {
     expect(badge.getAttribute('style')).toContain('--party-c:hsl(139 86% 65%)');
   });
 });
+
+describe('ПЛ выбирается только из отмеченного состава', () => {
+  it('shows a class icon in the member list and just the nickname in leader options', () => {
+    const modal = openSettings();
+    const row = modal.querySelector('[data-char-id="a"]').closest('label');
+    expect(row.querySelector('.char-class-ico')).not.toBeNull();
+    expect(row.textContent).not.toContain('Воин');
+    const options = [...modal.querySelector('#party-macro-leader').options];
+    expect(options.map(o => o.value)).toEqual(['', 'a']);
+    expect(options[1].textContent).toBe('Аа');
+  });
+  it('updates immediately with checkboxes and never automatically replaces a removed PL', () => {
+    state.settings.gameMacros = { leaders: { p1: 'a' } };
+    const modal = openSettings(),
+      select = modal.querySelector('#party-macro-leader');
+    expect(select.value).toBe('a');
+    const extra = modal.querySelector('[data-char-id="c"]');
+    extra.checked = true;
+    extra.dispatchEvent(new Event('change'));
+    expect([...select.options].map(o => o.value)).toEqual(['', 'a', 'c']);
+    expect(select.value).toBe('a');
+    const leader = modal.querySelector('[data-char-id="a"]');
+    leader.checked = false;
+    leader.dispatchEvent(new Event('change'));
+    expect([...select.options].map(o => o.value)).toEqual(['', 'c']);
+    expect(select.value).toBe('');
+    extra.checked = false;
+    extra.dispatchEvent(new Event('change'));
+    expect(select.options.length).toBe(1);
+    expect(select.disabled).toBe(true);
+    expect(state.settings.gameMacros.leaders.p1).toBe('a'); // still a draft until Save
+  });
+});
+
+it('filters composition without clearing hidden membership or the assigned leader', () => {
+  const modal = openSettings(),
+    filter = modal.querySelector('[data-party-class]');
+  filter.value = 'Лучник';
+  filter.dispatchEvent(new Event('input'));
+  expect(modal.querySelector('[data-member-id="a"]').hidden).toBe(true);
+  expect(modal.querySelector('[data-char-id="a"]').checked).toBe(true);
+  expect(modal.querySelector('[data-member-id="c"]').hidden).toBe(false);
+  filter.value = '';
+  filter.dispatchEvent(new Event('input'));
+  const membership = modal.querySelector('[data-party-membership]');
+  membership.value = 'free';
+  membership.dispatchEvent(new Event('input'));
+  expect(modal.querySelector('[data-member-id="a"]').hidden).toBe(true);
+  expect([...modal.querySelector('#party-macro-leader').options].map(o => o.value)).toEqual(['', 'a']);
+});

@@ -829,8 +829,8 @@ function coinsSection(m, t) {
     bonusStatus(m, cid)
       .map(b =>
         b.reached
-          ? `<span class="mr-green" title="${escapeHtml(b.bonus.text)}">✅ ${escapeHtml(b.bonus.text || 'бонус')}</span>`
-          : `<span class="muted" title="${escapeHtml(b.bonus.text)}">${b.done}/${b.need}</span>`
+          ? `<span class="mr-green" title="Бонус выполнен" aria-label="Бонус выполнен">✅</span>`
+          : `<span class="muted" title="Бонус не выполнен" aria-label="Бонус не выполнен">❌</span>`
       )
       .join('<br/>');
   const taskRows = m.tasks.map(task => ({ task, ...t.perTask[task.id] }));

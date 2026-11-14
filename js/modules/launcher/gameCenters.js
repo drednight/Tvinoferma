@@ -7,6 +7,7 @@
 //  - settings.launcher.preferredGcId — какой GameCenter запускать в первую очередь ('' — первый из списка персонажа);
 //  - character.launch.gcIds — id прикреплённых к персонажу GameCenter (первый — «основной»);
 //  - character.launch.gcAccounts[gcId] — запомненный вход этого персонажа в этом GameCenter ({ nick }); токен лежит в хранилище ОС.
+//  - character.launch.gcGameAccounts[gcId] — игровой аккаунт (персонаж) для окна «Выбор игрового аккаунта» ({ id, name }).
 //  - character.launch.gcPath — «свой путь» из карточки (старый способ). Используется, только если GameCenter из списка не прикреплены.
 //
 // Выбор GameCenter при запуске (resolveGameCenter): если у персонажа есть предпочитаемый GameCenter — берётся он,
@@ -15,8 +16,9 @@
 
 /**
  * @typedef {{ id: string, name: string, path: string, kind?: 'gamecenter' | 'astrum' }} GameCenter
+ * @typedef {{ id: string, name: string }} GameAccount
  * @typedef {{ gameCenters?: GameCenter[], preferredId?: string }} GcContext
- * @typedef {{ path: string, key: string, nick: string, saved: boolean, gc: GameCenter | null, kind: string }} ResolvedGc
+ * @typedef {{ path: string, key: string, nick: string, saved: boolean, gc: GameCenter | null, kind: string, gameAccount: GameAccount | null }} ResolvedGc
  */
 
 /** Максимум GameCenter в списке (защита от мусора в state.json). */
@@ -134,6 +136,18 @@ export function accountKey(char, gcId) {
 }
 
 /**
+ * Игровой аккаунт в виде, который ждёт Rust (`{ id, name }`), или null.
+ * state.json могут править руками; пустой/битый объект не должен ломать разбор команды запуска.
+ * @param {any} value
+ * @returns {GameAccount | null}
+ */
+function cleanGameAccount(value) {
+  const id = String(value?.id || '').trim();
+  const name = String(value?.name || '').trim();
+  return id && name ? { id, name } : null;
+}
+
+/**
  * Какой GameCenter, под каким ключом входа и ником запускать персонажа. null — запускать нечем.
  * @param {any} char
  * @param {GcContext} [ctx]
@@ -150,7 +164,8 @@ export function resolveGameCenter(char, ctx = {}) {
       nick: acc?.nick || '',
       saved: !!acc,
       gc,
-      kind: launcherKind(gc)
+      kind: launcherKind(gc),
+      gameAccount: cleanGameAccount(char.launch?.gcGameAccounts?.[gc.id])
     };
   }
   const own = String(char?.launch?.gcPath || '').trim();
@@ -163,7 +178,8 @@ export function resolveGameCenter(char, ctx = {}) {
       gc: null,
       // У «своего пути» тип нигде не сохранён: узнаём по имени файла, иначе Rust
       // открыл бы GameCenter.ini рядом с AstrumPlay.exe
-      kind: kindForPath(own)
+      kind: kindForPath(own),
+      gameAccount: cleanGameAccount(char.launch?.gcGameAccount)
     };
   }
   return null;
@@ -200,7 +216,8 @@ function launchOf(char) {
   return {
     ...l,
     gcIds: Array.isArray(l.gcIds) ? [...l.gcIds] : [],
-    gcAccounts: { ...(l.gcAccounts || {}) }
+    gcAccounts: { ...(l.gcAccounts || {}) },
+    gcGameAccounts: { ...(l.gcGameAccounts || {}) }
   };
 }
 
@@ -217,6 +234,7 @@ export function detachGc(char, gcId) {
   const l = launchOf(char);
   l.gcIds = l.gcIds.filter(id => id !== gcId);
   delete l.gcAccounts[gcId];
+  delete l.gcGameAccounts[gcId];
   char.launch = l;
   return char;
 }
@@ -226,6 +244,7 @@ export function replaceGc(char, index, gcId) {
   const l = launchOf(char);
   if (index < 0 || index >= l.gcIds.length || !gcId || l.gcIds.includes(gcId)) return char;
   delete l.gcAccounts[l.gcIds[index]];
+  delete l.gcGameAccounts[l.gcIds[index]];
   l.gcIds[index] = gcId;
   char.launch = l;
   return char;
@@ -236,6 +255,25 @@ export function setGcAccount(char, gcId, nick, legacy = false) {
   const l = launchOf(char);
   if (nick === null) delete l.gcAccounts[gcId];
   else l.gcAccounts[gcId] = legacy ? { nick: String(nick || ''), legacy: true } : { nick: String(nick || '') };
+  char.launch = l;
+  return char;
+}
+
+/**
+ * Записать игровой аккаунт (персонажа) для окна «Выбор игрового аккаунта».
+ * `gcId` пустой — для «своего пути» из карточки. `account = null` — не выбирать автоматически.
+ */
+export function setGcGameAccount(char, gcId, account) {
+  const l = launchOf(char);
+  const id = String(account?.id || '').trim();
+  const name = String(account?.name || '').trim();
+  const value = id && name ? { id, name } : null;
+  if (gcId) {
+    if (value) l.gcGameAccounts[gcId] = value;
+    else delete l.gcGameAccounts[gcId];
+  } else {
+    l.gcGameAccount = value;
+  }
   char.launch = l;
   return char;
 }

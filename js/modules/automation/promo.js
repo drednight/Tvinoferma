@@ -75,7 +75,11 @@ export function openPromoDialog({ ids = [] } = {}) {
     toast('Сначала добавьте персонажей', 'info');
     return;
   }
-  const selected = new Set(ids.filter(id => state.characters.some(c => c.id === id)));
+  const selected = new Set(
+    (ids.length ? ids : state.characters.filter(c => c.isLoggedIn === true).map(c => c.id)).filter(id =>
+      state.characters.some(c => c.id === id)
+    )
+  );
   let search = '';
   let codesRaw = '';
   let running = null; // { cancelled } пока идёт запуск
@@ -168,41 +172,45 @@ export function openPromoDialog({ ids = [] } = {}) {
     updateCount();
     updateCodesInfo();
 
-    layoutScriptWorkspace(dlg, {
-      plan() {
-        const codes = parseCodes(codesRaw).codes,
-          chars = selectedChars(),
-          plans = planRun(loadLog(), codes, chars),
-          byKey = new Map();
-        let todo = 0,
-          skipped = 0;
-        for (const plan of plans) {
-          for (const c of plan.todo) {
-            todo++;
-            byKey.set(`${c.id}|${codeKey(plan.code)}`, { planned: true });
+    layoutScriptWorkspace(
+      dlg,
+      {
+        plan() {
+          const codes = parseCodes(codesRaw).codes,
+            chars = selectedChars(),
+            plans = planRun(loadLog(), codes, chars),
+            byKey = new Map();
+          let todo = 0,
+            skipped = 0;
+          for (const plan of plans) {
+            for (const c of plan.todo) {
+              todo++;
+              byKey.set(`${c.id}|${codeKey(plan.code)}`, { planned: true });
+            }
+            for (const c of plan.done) {
+              skipped++;
+              byKey.set(`${c.id}|${codeKey(plan.code)}`, { status: 'already_used', skipped: true });
+            }
           }
-          for (const c of plan.done) {
-            skipped++;
-            byKey.set(`${c.id}|${codeKey(plan.code)}`, { status: 'already_used', skipped: true });
-          }
+          return {
+            todo,
+            skipped,
+            characters: chars.length,
+            total: todo + skipped,
+            html: codes.length
+              ? tableHtml(codes, chars, byKey)
+              : '<p class="muted">Введите коды слева — здесь появится план: кто получит каждый код.</p>'
+          };
+        },
+        selected: selected,
+        apply(ids) {
+          selected.clear();
+          ids.forEach(id => selected.add(id));
+          renderForm();
         }
-        return {
-          todo,
-          skipped,
-          characters: chars.length,
-          total: todo + skipped,
-          html: codes.length
-            ? tableHtml(codes, chars, byKey)
-            : '<p class="muted">Введите коды слева — здесь появится план: кто получит каждый код.</p>'
-        };
       },
-      selected: selected,
-      apply(ids) {
-        selected.clear();
-        ids.forEach(id => selected.add(id));
-        renderForm();
-      }
-    });
+      { initialMode: ids.length ? 'manual' : 'logged' }
+    );
     renderPromoSuggestions(dlg);
   }
 

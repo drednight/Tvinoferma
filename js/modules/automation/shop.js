@@ -69,8 +69,11 @@ export function openShopDialog({ ids = [] } = {}) {
   }
 
   const preset = new Set(ids.filter(id => state.characters.some(c => c.id === id)));
-  const accSel = new Set(preset); // отмеченные персонажи; аккаунт отмечен, если отмечен любой его персонаж
-  let visibleScope = new Set(preset.size ? preset : state.characters.map(c => c.id));
+  const initialScope = preset.size
+    ? preset
+    : new Set(state.characters.filter(c => c.isLoggedIn === true).map(c => c.id));
+  const accSel = new Set(initialScope); // отмеченные персонажи; аккаунт отмечен, если отмечен любой его персонаж
+  let visibleScope = new Set(initialScope);
   const picked = new Set(); // выбранные предметы (ключи SHOP_ITEMS)
   const qtyMap = new Map(); // `${id персонажа}|${ключ предмета}` → количество (запоминается для всех персонажей аккаунта)
   const scanInfo = new Map(); // id персонажа → { status: pending|ok|nologin|challenge|error, error }
@@ -148,6 +151,9 @@ export function openShopDialog({ ids = [] } = {}) {
       String(b.lastCoinUpdate || '').localeCompare(String(a.lastCoinUpdate || ''))
     )[0];
     const shown = rep || g.members[0];
+    const sharedMembers =
+      groupAccounts(state.characters, charSiteMap()).find(account => account.siteKey === g.siteKey)?.members ||
+      g.members;
     return {
       ...g,
       rep,
@@ -156,7 +162,7 @@ export function openShopDialog({ ids = [] } = {}) {
       fresh,
       error: info?.error || null,
       nick: shown.nick,
-      others: g.members.filter(m => m !== shown).map(m => m.nick),
+      others: sharedMembers.filter(m => m.id !== shown.id).map(m => m.nick),
       account: acct?.account || '',
       items: acct?.items || {},
       tracks: acct?.tracks || {},
@@ -554,7 +560,7 @@ export function openShopDialog({ ids = [] } = {}) {
           renderPick();
         }
       },
-      { initialMode: preset.size ? 'manual' : 'all' }
+      { initialMode: preset.size ? 'manual' : 'logged' }
     );
   }
 
@@ -845,7 +851,9 @@ export function openShopDialog({ ids = [] } = {}) {
           return;
         }
         const bal = roundCoins(rep.ancientCoins || 0);
-        a.members.forEach(m => {
+        const sharedMembers =
+          groupAccounts(state.characters, charSiteMap()).find(g => g.siteKey === a.siteKey)?.members || a.members;
+        sharedMembers.forEach(m => {
           const c = state.characters.find(x => x.id === m.id);
           if (c && c !== rep) {
             applyCoinBalance(c, bal, { note: 'Баланс аккаунта после покупки за Древние монеты' });

@@ -17,9 +17,11 @@ const UNSAFE_WRITE = 'Хранилище учётных данных измен�
 
 const vault = {
   ready: false,
+  reading: false,
   checked: false,
   blocked: false, // остановка до перезапуска в этом JS-контексте, не устойчивый карантин
   error: null,
+  diagnosticCode: null,
   // charId -> точная строка и её нормализованное содержимое; не выводить в журнал.
   known: new Map(),
   conflictReview: null
@@ -34,12 +36,14 @@ async function invoke(cmd, args) {
 /** Для тестов: подменить транспорт к Rust. */
 export function __setInvoke(fn) {
   invokeImpl = fn;
+  vault.reading = false;
   vault.ready = false;
   vault.checked = false;
   vault.blocked = false;
   vault.known.clear();
   vault.conflictReview = null;
   vault.error = null;
+  vault.diagnosticCode = null;
 }
 
 // Private in-memory review; never serialize to state, diagnostics, logs or cloud.
@@ -53,6 +57,7 @@ export function vaultStatus() {
     checked: vault.checked,
     blocked: vault.blocked,
     error: vault.error,
+    diagnosticCode: vault.diagnosticCode,
     count: vault.known.size
   };
 }
@@ -176,9 +181,14 @@ function blockVault(message) {
 }
 
 /** Не позволяет обойти обнаруженную небезопасную ссылку на vault отключением настройки. */
-export function blockUnsafeVaultRead() {
+export function blockUnsafeVaultRead(code = 'vault_reference_invalid') {
   vault.checked = true;
-  if (!vault.blocked) blockVault(DAMAGED);
+  if (!vault.blocked) {
+    blockVault(DAMAGED);
+    vault.diagnosticCode = ['vault_marker_invalid', 'vault_identity_mapping_invalid'].includes(code)
+      ? code
+      : 'vault_reference_invalid';
+  }
 }
 
 /**
@@ -189,23 +199,41 @@ export function blockUnsafeVaultRead() {
  */
 export async function hydrateSecrets(
   characters,
-  { tauri = true, aliases = {}, requiresVault = false, plaintextIds = new Set() } = {}
+  { tauri = true, aliases = {}, requiresVault = false, plaintextIds = new Set(), startupRetry = false } = {}
 ) {
   vault.checked = true;
-  if (vault.blocked) return { migrated: 0, error: vault.error, blocked: true };
+  if (vault.blocked || vault.reading) return { migrated: 0, error: vault.error || UNAVAILABLE, blocked: true };
   // Даже при выключенной настройке нужно прочитать vault, если файл ссылается
   // на него: иначе следующее сохранение запишет вместо контактов пустые значения.
   if (!tauri || (!useVault() && !requiresVault)) {
     vault.ready = false;
     if (requiresVault) {
       blockVault(UNAVAILABLE);
+      vault.diagnosticCode = 'vault_runtime_unavailable';
       return { migrated: 0, error: vault.error, blocked: true };
     }
     return { migrated: 0 };
   }
+  // Startup only: retry transient access failures before validating or applying data.
+  // Never retry missing/invalid records, migrations, writes, or conflict resolution.
+  const read = async (command, args) => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const result = await invoke(command, args);
+        if (command === 'secrets_available' && result !== true) throw new Error(UNAVAILABLE);
+        return result;
+      } catch (error) {
+        if (!startupRetry || attempt >= 3) throw error;
+        await new Promise(resolve => setTimeout(resolve, 1000 * 2 ** attempt));
+      }
+    }
+  };
+  vault.reading = true;
+  let phase = 'vault_probe_unavailable';
   try {
-    const available = await invoke('secrets_available');
+    const available = await read('secrets_available');
     if (available !== true) throw new Error(UNAVAILABLE);
+    phase = 'vault_identity_mapping_invalid';
     if (!Array.isArray(characters) || !(plaintextIds instanceof Set)) throw invalidData();
     const ids = new Set();
     const owners = new Map();
@@ -235,10 +263,14 @@ export async function hydrateSecrets(
         keys.add(old);
       }
     }
-    const records = readRecords(await invoke('secrets_get_many', { keys: [...keys] }), keys);
+    phase = 'vault_read_failed';
+    const response = await read('secrets_get_many', { keys: [...keys] });
+    phase = 'vault_records_invalid';
+    const records = readRecords(response, keys);
     const parsed = new Map();
     for (const [id, raw] of records) parsed.set(id, parseStoredContacts(raw));
 
+    phase = 'vault_sources_inconsistent';
     // Формируем весь план до изменения персонажей или vault.known.
     const known = new Map();
     const usedSources = new Set();
@@ -279,11 +311,13 @@ export async function hydrateSecrets(
     vault.known = known;
     vault.ready = true;
     vault.error = null;
+    vault.diagnosticCode = null;
     return { migrated };
   } catch (error) {
     if (!(error instanceof VaultConflictError)) vault.conflictReview = null;
     vault.ready = false;
     vault.known.clear();
+    vault.diagnosticCode = error instanceof VaultConflictError ? 'vault_contacts_conflict' : phase;
     vault.error =
       error instanceof VaultConflictError ? CONFLICT : error instanceof VaultDataError ? DAMAGED : UNAVAILABLE;
     if (error instanceof VaultDataError || requiresVault) vault.blocked = true;
@@ -295,6 +329,8 @@ export async function hydrateSecrets(
       ...(vault.blocked ? { blocked: true } : {}),
       ...(error instanceof VaultConflictError ? { conflict: true } : {})
     };
+  } finally {
+    vault.reading = false;
   }
 }
 
@@ -305,7 +341,7 @@ export async function hydrateSecrets(
  * контексте запрещён. Проверка не является межпроцессным CAS или fsync.
  */
 export async function prepareForDisk(snapshot) {
-  if (vault.blocked) throw vaultWriteGuardError();
+  if (vault.blocked || vault.reading) throw vaultWriteGuardError();
   if (!vault.ready || !useVault()) return snapshot;
   if (
     !snapshot ||
@@ -389,7 +425,8 @@ export async function verifyContactsSource(snapshot) {
     const characters = [...snapshot.characters, ...snapshot.archivedCharacters];
     const keys = new Set(characters.map(char => char.id));
     if (keys.size !== characters.length) return false;
-    const records = readRecords(await invoke('secrets_get_many', { keys: [...keys] }), keys);
+    const response = await invoke('secrets_get_many', { keys: [...keys] });
+    const records = readRecords(response, keys);
     for (const char of characters) {
       if ((records.get(char.id) ?? null) !== (vault.known.get(char.id)?.raw ?? null)) {
         blockVault(CONFLICT);
@@ -401,5 +438,87 @@ export async function verifyContactsSource(snapshot) {
     return true;
   } catch {
     return false;
+  }
+}
+
+// Protected copies for duplicate merging use new random keys. They are deliberately
+// not part of vault.known: ordinary saves and character deletion must not remove them.
+// The token is also embedded in the associated state backup filename for discovery.
+const MERGE_TOKEN = /^[0-9a-f]{24}$/;
+const mergeKey = (token, suffix) => `duplicate-merge-${token}-${suffix}`;
+
+export async function backupDuplicateContacts(snapshot, ids, token) {
+  const fail = () => new Error('Не удалось подтвердить защищённую копию контактов; слияние остановлено');
+  if (
+    !MERGE_TOKEN.test(token) ||
+    !Array.isArray(ids) ||
+    ids.length !== 2 ||
+    ids.some(id => typeof id !== 'string' || !id.trim()) ||
+    ids[0].toLowerCase() === ids[1].toLowerCase() ||
+    vault.blocked ||
+    !vault.checked ||
+    !vault.ready ||
+    !useVault() ||
+    snapshot.settings?.security?.useVault === false
+  )
+    throw fail();
+  try {
+    const characters = [...snapshot.characters, ...snapshot.archivedCharacters];
+    if (ids.some(id => characters.filter(c => c.id === id).length !== 1)) throw fail();
+    const currentIds = new Set(characters.map(c => c.id));
+    if ([...vault.known.keys()].some(id => !currentIds.has(id))) throw fail();
+    if (!(await verifyContactsSource(snapshot))) throw fail();
+    const keys = [mergeKey(token, '0'), mergeKey(token, '1'), mergeKey(token, 'manifest')];
+    const occupied = new Set([...characters.map(c => c.id), ...vault.known.keys()].map(id => id.toLowerCase()));
+    if (keys.some(key => occupied.has(key.toLowerCase()))) throw fail();
+    const originals = ids.map(id => vault.known.get(id)?.raw ?? null);
+    const manifest = JSON.stringify({ version: 1, ids, present: originals.map(value => value !== null) });
+    const copies = Object.create(null);
+    originals.forEach((value, index) => {
+      if (value !== null) copies[keys[index]] = value;
+    });
+    copies[keys[2]] = manifest;
+    const existing = readRecords(await invoke('secrets_get_many', { keys }), new Set(keys));
+    if (existing.size) throw fail();
+    const response = await invoke('secrets_set_many', { items: copies });
+    if (response !== null && response !== undefined) throw fail();
+    const check = readRecords(await invoke('secrets_get_many', { keys }), new Set(keys));
+    if (
+      check.size !== Object.keys(copies).length ||
+      Object.entries(copies).some(([key, value]) => check.get(key) !== value)
+    )
+      throw fail();
+    if (!(await verifyContactsSource(snapshot))) throw fail();
+  } catch {
+    // A failed IPC may have created copies; never overwrite/retry those keys and never expose IPC errors.
+    throw fail();
+  }
+}
+
+/** Read-only recovery review; values are returned only to the local, explicitly opened UI. */
+export async function readDuplicateContactBackup(token) {
+  if (!MERGE_TOKEN.test(token)) throw new Error('Не удалось прочитать защищённую копию контактов');
+  try {
+    const keys = [mergeKey(token, '0'), mergeKey(token, '1'), mergeKey(token, 'manifest')];
+    const records = readRecords(await invoke('secrets_get_many', { keys }), new Set(keys));
+    const manifest = JSON.parse(records.get(keys[2]));
+    if (
+      !manifest ||
+      manifest.version !== 1 ||
+      !Array.isArray(manifest.ids) ||
+      manifest.ids.length !== 2 ||
+      manifest.ids.some(id => typeof id !== 'string' || !id.trim()) ||
+      !Array.isArray(manifest.present) ||
+      manifest.present.length !== 2 ||
+      manifest.present.some(value => typeof value !== 'boolean')
+    )
+      throw invalidData();
+    return manifest.ids.map((id, index) => {
+      const raw = records.get(keys[index]);
+      if (manifest.present[index] !== (raw !== undefined)) throw invalidData();
+      return { id, contacts: raw === undefined ? null : parseStoredContacts(raw) };
+    });
+  } catch {
+    throw new Error('Не удалось прочитать защищённую копию контактов');
   }
 }

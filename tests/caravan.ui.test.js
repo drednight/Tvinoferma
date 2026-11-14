@@ -51,13 +51,16 @@ beforeEach(async () => {
 });
 
 describe('форма «Сундук караванщика»', () => {
-  it('заголовок, объяснение, две кнопки; без выбора кнопки заблокированы', () => {
+  it('заголовок, объяснение, онлайн выбраны; без выбора кнопки заблокированы', () => {
     openCaravanDialog();
     expect($('.tf-dialog-title').textContent).toContain('Сундук караванщика');
     expect($('.tf-dialog').textContent).toContain('«Сундуки караванщика»');
     expect($('[data-act="start"]').textContent).toContain('Открыть сундуки');
     expect($('[data-act="dry"]').textContent).toContain('Проверить сайт');
     expect($('[data-act="start"]').disabled).toBe(true);
+    expect($('.script-target input[value="logged"]').checked).toBe(true);
+    expect($('[data-act="dry"]').disabled).toBe(false);
+    $('[data-q="none"]').click();
     expect($('[data-act="dry"]').disabled).toBe(true);
   });
 

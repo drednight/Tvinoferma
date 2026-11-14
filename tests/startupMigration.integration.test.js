@@ -54,6 +54,14 @@ beforeEach(() => {
   mode = 'success';
   ipc = vi.fn(async (cmd, args = {}) => {
     switch (cmd) {
+      case 'app_build_profile':
+        return mode === 'acceptance-profile'
+          ? 'acceptance'
+          : mode === 'shared-profile'
+            ? 'acceptance-shared'
+            : mode === 'unknown-profile'
+              ? null
+              : 'stable';
       case 'load_state_raw':
         return disk.file;
       case 'create_migration_backup':
@@ -225,15 +233,21 @@ describe('реальный порядок старта с имитацией nat
     });
     disk.file = initialRaw;
     mode = 'vault-unavailable';
-    await boot();
+    const pending = boot();
+    await vi.waitFor(() => expect(calls('secrets_available')).toHaveLength(1));
+    await vi.advanceTimersByTimeAsync(7000);
+    await pending;
+    expect(calls('secrets_available')).toHaveLength(4);
     expect(disk.file).toBe(initialRaw);
     expect(calls('save_state')).toHaveLength(0);
     expect(calls('save_state_if_unchanged')).toHaveLength(0);
     expect(calls('secrets_set_many')).toHaveLength(0);
     expect(document.getElementById('storage-readonly-banner').textContent).toContain('Учётные данные');
+    expect(document.getElementById('storage-readonly-banner').textContent).toContain('vault_probe_unavailable');
     const { renderSettings } = await import('../js/settings/settings.js');
     await renderSettings();
     expect(document.getElementById('vault-status').textContent).toContain('Сохранение остановлено');
+    expect(document.getElementById('vault-status').textContent).toContain('vault_probe_unavailable');
     expect(document.getElementById('vault-status').textContent).not.toContain('контакты сохраняются в state.json');
     const { persist } = await import('../js/core/storage.js');
     await expect(persist()).rejects.toThrow('Запись остановлена');
@@ -255,6 +269,7 @@ describe('реальный порядок старта с имитацией nat
     expect(disk.file).toBe(initialRaw);
     expect(ipc.mock.calls.some(([cmd]) => cmd === 'secrets_get_many' || cmd === 'save_state')).toBe(false);
     expect(document.getElementById('storage-readonly-banner').textContent).toContain('Учётные данные');
+    expect(document.getElementById('storage-readonly-banner').textContent).toContain('vault_identity_mapping_invalid');
   });
 
   it('останавливает цепочку переноса старых ключей до чтения vault и профилей', async () => {
@@ -276,6 +291,7 @@ describe('реальный порядок старта с имитацией nat
       )
     ).toBe(false);
     expect(document.getElementById('storage-readonly-banner').textContent).toContain('Учётные данные');
+    expect(document.getElementById('storage-readonly-banner').textContent).toContain('vault_identity_mapping_invalid');
   });
 
   it.each([
@@ -404,4 +420,58 @@ describe('реальный порядок старта с имитацией nat
     expect(document.getElementById('storage-readonly-banner').hidden).toBe(false);
     expect(JSON.stringify(alertMock.mock.calls)).not.toContain('PRIVATE-MARKER');
   });
+});
+
+it('starts read-only after a possible interrupted duplicate merge and does not migrate or write vault', async () => {
+  const { beginDuplicateMergeJournal } = await import('../js/core/duplicateMergeJournal.js');
+  const entry = beginDuplicateMergeJournal('state.backup-123-dup-0123456789abcdef01234567-42-1.json');
+  await boot();
+  const banner = document.getElementById('storage-readonly-banner');
+  expect(banner.hidden).toBe(false);
+  expect(banner.textContent).toContain('слияние карточек');
+  expect(banner.querySelector('button').textContent).toContain('Проверить слияние');
+  expect(disk.file).toBe(OLD);
+  expect(calls('create_migration_backup')).toHaveLength(0);
+  expect(calls('rename_char_profiles')).toHaveLength(0);
+  expect(ipc.mock.calls.some(([cmd]) => cmd.startsWith('secrets_'))).toBe(false);
+  const { persist } = await import('../js/core/storage.js');
+  await expect(persist()).rejects.toThrow('Запись остановлена');
+  expect(JSON.parse(localStorage.getItem('tf:duplicate-merge-pending-v1'))).toEqual(entry);
+});
+
+it('fails closed at startup when the interruption marker is malformed', async () => {
+  localStorage.setItem('tf:duplicate-merge-pending-v1', '{');
+  await boot();
+  expect(document.getElementById('storage-readonly-banner').textContent).toContain('Не удалось проверить отметку');
+  expect(calls('create_migration_backup')).toHaveLength(0);
+  expect(ipc.mock.calls.some(([cmd]) => cmd.startsWith('secrets_'))).toBe(false);
+  const { persist } = await import('../js/core/storage.js');
+  await expect(persist()).rejects.toThrow('Запись остановлена');
+});
+
+it('shows an unmistakable test-build banner after native profile detection', async () => {
+  mode = 'acceptance-profile';
+  await boot();
+  const banner = document.getElementById('build-profile-banner');
+  expect(banner.hidden).toBe(false);
+  expect(banner.textContent).toContain('ТЕСТОВАЯ СБОРКА');
+  expect(banner.textContent).toContain('не проверена');
+});
+
+it('warns and disables updates when native profile cannot be determined', async () => {
+  mode = 'unknown-profile';
+  await boot();
+  const banner = document.getElementById('build-profile-banner');
+  expect(banner.hidden).toBe(false);
+  expect(banner.textContent).toContain('Обновления отключены');
+});
+
+it('warns prominently that the test build changes the stable shared profile', async () => {
+  mode = 'shared-profile';
+  await boot();
+  const banner = document.getElementById('build-profile-banner');
+  expect(banner.hidden).toBe(false);
+  expect(banner.textContent).toContain('ОБЩИЙ ПРОФИЛЬ');
+  expect(banner.textContent).toContain('затрагивают данные основной версии');
+  expect(banner.textContent).toContain('Автообновление отключено');
 });

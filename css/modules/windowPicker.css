@@ -159,3 +159,64 @@
     justify-self: start;
   }
 }
+
+/* Recognition and binding are separate rows, not extra columns squeezed into the window title. */
+.winp-row > .winp-pick-main {
+  grid-row: 1;
+  grid-column: 1;
+}
+.winp-row > .winp-meta,
+.winp-row > .winp-flag,
+.winp-row > .winp-style {
+  grid-row: 1;
+}
+.winp-row > .winp-source {
+  grid-row: 2;
+  grid-column: 1;
+  font-size: 11px;
+}
+.winp-row > [data-detach] {
+  grid-row: 2;
+  grid-column: 2 / -1;
+  justify-self: end;
+}
+.winp-row > .winp-attach {
+  grid-row: 3;
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  min-width: 0;
+}
+.winp-attach select {
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+}
+@media (max-width: 700px) {
+  .winp-row > .winp-pick-main,
+  .winp-row > .winp-meta,
+  .winp-row > .winp-flag,
+  .winp-row > .winp-style,
+  .winp-row > .winp-source,
+  .winp-row > [data-detach],
+  .winp-row > .winp-attach {
+    grid-row: auto;
+    grid-column: 1;
+    justify-self: stretch;
+  }
+  .winp-row > .winp-attach {
+    flex-wrap: wrap;
+  }
+}
+
+.winp-attach [data-attach-open] {
+  flex: 1;
+  text-align: left;
+}
+.winp-attach-menu {
+  max-height: 280px;
+  overflow-y: auto;
+  z-index: 1100;
+}

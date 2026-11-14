@@ -17,7 +17,7 @@ import { normalizeState } from '../js/core/state.js';
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
 
 const html = readFileSync('index.html', 'utf8');
-const NAV = ['today', 'characters', 'parties', 'marathons', 'runes', 'finance', 'tools'];
+const NAV = ['today', 'characters', 'parties', 'marathons', 'runes', 'finance', 'tools', 'game-macros'];
 
 /** Настройка разделов из сырых значений — так, как её приносит state.json. */
 const withSections = sections => normalizeState({ settings: { ui: { sections } } }).settings;
@@ -90,7 +90,9 @@ describe('разделы: что можно выключить', () => {
   });
 
   it('последний видимый раздел убрать нельзя', () => {
-    const s = withSections({ hidden: ['characters', 'parties', 'marathons', 'runes', 'finance', 'tools'] });
+    const s = withSections({
+      hidden: ['characters', 'parties', 'marathons', 'runes', 'finance', 'tools', 'game-macros']
+    });
     // остались today и settings; settings прибит, значит единственный убираемый видимый — сегодня
     expect(visibleSections(s).map(x => x.id)).toEqual(['today', 'settings']);
     expect(canHideSection('settings', s)).toBe(false);
@@ -163,6 +165,7 @@ describe('разделы: переход в выключенный раздел'
       'characters',
       'finance',
       'tools',
+      'game-macros',
       'settings'
     ]);
   });
@@ -247,8 +250,8 @@ describe('разделы: панель настроек', () => {
   it('крайние разделы не двигаются: кнопки выключены', async () => {
     await (await import('../js/settings/sectionsPanel.js')).bindSectionsPanel({ settings, persist });
     const box = document.getElementById('sections-list');
-    // Крайние среди переставляемых: «Инструменты» — последний, «Персонажи» — не край
-    expect(box.querySelector('button[data-sections-move="down"][data-sections-id="tools"]').disabled).toBe(true);
+    // Крайние среди переставляемых: «Управление пати и макросами» — последний, «Персонажи» — не край
+    expect(box.querySelector('button[data-sections-move="down"][data-sections-id="game-macros"]').disabled).toBe(true);
     expect(box.querySelector('button[data-sections-move="down"][data-sections-id="characters"]').disabled).toBe(false);
     // У закреплённых стрелок нет вовсе — вместо них подпись о месте
     expect(box.querySelector('button[data-sections-move][data-sections-id="today"]')).toBeNull();
@@ -279,7 +282,7 @@ describe('разделы: перестановка', () => {
     const down = moveSection('characters', 'down', settings);
     expect(down.order.slice(0, 3)).toEqual(['today', 'parties', 'characters']);
     expect(moveSection('characters', 'up', settings)).toBeNull(); // уже первый переставляемый
-    expect(moveSection('tools', 'down', settings)).toBeNull(); // уже последний переставляемый
+    expect(moveSection('game-macros', 'down', settings)).toBeNull(); // уже последний переставляемый
     // Закреплённые не двигаются вовсе: у них нет стрелок, а moveSection отказывает
     expect(moveSection('today', 'down', settings)).toBeNull(); // закреплён сверху
     expect(moveSection('settings', 'up', settings)).toBeNull(); // закреплён снизу
@@ -326,7 +329,15 @@ describe('закреплённые разделы', () => {
     });
     expect(out.order[0]).toBe('today');
     expect(out.order[out.order.length - 1]).toBe('settings');
-    expect(out.order.slice(1, -1)).toEqual(['runes', 'characters', 'tools', 'parties', 'marathons', 'finance']);
+    expect(out.order.slice(1, -1)).toEqual([
+      'runes',
+      'characters',
+      'tools',
+      'game-macros',
+      'parties',
+      'marathons',
+      'finance'
+    ]);
   });
 
   it('перестановка стрелками не трогает закреплённые', () => {
@@ -348,8 +359,8 @@ describe('панель показывает сохранённый порядо�
   // Список строился по SECTIONS (порядок по умолчанию), а стрелки считали позицию по
   // сохранённому. Выглядело это так: нажал «выше» — ничего не произошло.
   const orderOf = html =>
-    (html.match(/data-sections-id="([a-z]+)"/g) || [])
-      .map(m => m.replace(/.*"([a-z]+)".*/, '$1'))
+    (html.match(/data-sections-id="([a-z-]+)"/g) || [])
+      .map(m => m.replace(/.*"([a-z-]+)".*/, '$1'))
       .filter((id, i, arr) => arr.indexOf(id) === i);
 
   it('строки идут в том же порядке, что сохранён', () => {
@@ -365,4 +376,11 @@ describe('панель показывает сохранённый порядо�
     const ids = orderOf(html);
     expect(ids.indexOf('parties')).toBeLessThan(ids.indexOf('characters'));
   });
+});
+
+it('inserts the macros page after Tools in legacy order while preserving existing custom order', () => {
+  const result = normalizeSectionsSettings({ order: ['today', 'tools', 'runes', 'parties', 'settings'] });
+  expect(result.order.slice(0, 5)).toEqual(['today', 'tools', 'game-macros', 'runes', 'parties']);
+  const custom = normalizeSectionsSettings({ order: ['today', 'game-macros', 'tools', 'settings'] });
+  expect(custom.order.slice(0, 3)).toEqual(['today', 'game-macros', 'tools']);
 });

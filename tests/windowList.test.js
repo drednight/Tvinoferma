@@ -123,3 +123,33 @@ describe('итог закрытия выбранных окон', () => {
     expect(closeSelectedText({ error: 'нет доступа' })).toContain('нет доступа');
   });
 });
+
+describe('неоднозначные ники', () => {
+  const characters = [
+    { id: 'a', nick: 'Same', class: 'Маг', partyIds: ['p1'] },
+    { id: 'b', nick: 'same', class: 'Воин', partyIds: ['p2'] }
+  ];
+  const clients = [
+    { pid: 101, title: 'Same — Маг', startedAt: at(1) },
+    { pid: 102, title: 'same — Воин', startedAt: at(1) }
+  ];
+  it('does not guess from nick, class or old launch memory', () => {
+    const rows = windowRows(clients, characters, { now: NOW, recalled: { 101: 'a', 102: 'b' } });
+    expect(rows.every(row => !row.known && row.ownershipSource === 'ambiguous' && row.charId === null)).toBe(true);
+  });
+  it('does not trust a launch memory for a duplicate nickname when the title disappears', () => {
+    const [row] = windowRows([{ pid: 101, title: 'Perfect World', startedAt: at(1) }], characters, {
+      now: NOW,
+      recalled: { 101: 'a' }
+    });
+    expect(row).toMatchObject({ known: false, ownershipSource: 'ambiguous', charId: null });
+  });
+  it('does not remove ambiguity by filtering to one party', () => {
+    expect(windowRows(clients, characters, { now: NOW, partyIds: ['p1'] }).every(row => !row.known)).toBe(true);
+  });
+  it('honors explicit verified ownership for each window', () => {
+    const rows = windowRows(clients, characters, { now: NOW, manual: { 101: 'a', 102: 'b' } });
+    expect(rows.find(row => row.pid === 101)).toMatchObject({ charId: 'a', known: true, ownershipSource: 'manual' });
+    expect(rows.find(row => row.pid === 102)).toMatchObject({ charId: 'b', known: true, ownershipSource: 'manual' });
+  });
+});

@@ -28,7 +28,7 @@ const SHARED = [
   'createdAt',
   'updatedAt'
 ];
-const LOCAL = ['id', 'contacts', 'launch', 'isLoggedIn', 'lastLoginCheck', 'lastLoginReason'];
+const LOCAL = ['id', 'contacts', 'siteLogin', 'launch', 'isLoggedIn', 'lastLoginCheck', 'lastLoginReason'];
 const STATS = Object.keys(DEFAULT_STATS);
 // Реальные поля старых DEFAULT_STATS (bb141ee…8f7c318). Удалены из
 // редактора в 54058f8/69c8245, но normalizeStats сохраняет их в базе/истории.

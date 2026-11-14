@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
 
 const invokeMock = vi.fn();
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (...a) => invokeMock(...a) }));
@@ -37,7 +38,18 @@ beforeEach(() => {
   invokeMock.mockReset();
   persistMock.mockClear();
   invokeMock.mockImplementation(async cmd => {
-    if (cmd === 'launcher_gc_info') return { exe: 'x', nick: 'Twin', loggedIn: true };
+    if (cmd === 'launcher_gc_info')
+      return {
+        exe: 'x',
+        nick: 'Twin',
+        loggedIn: true,
+        login: 'dissolute77@mail.ru',
+        gameAccounts: [
+          { id: '49635696', name: 'WheeIman' },
+          { id: '59424880', name: 'hotdevilcom' }
+        ],
+        selectedGameAccount: '59424880'
+      };
     if (cmd === 'launcher_pick_gamecenter') return 'D:\\GC3\\GameCenter.exe';
     if (cmd === 'launcher_capture_account') return { ok: true, nick: 'Twin', steps: ['Готово: вход запомнен'] };
     return null;
@@ -51,6 +63,27 @@ beforeEach(() => {
 });
 
 describe('окно «GameCenter и персонажи»', () => {
+  it('keeps long launcher names, paths and account status in separate named grid areas', async () => {
+    const name = 'Тестовый GameCenter с длинным названием';
+    const path = `C:\\${'Очень длинная папка\\'.repeat(15)}GameCenter.exe`;
+    state.settings.launcher.gameCenters = [{ ...GC1, name, path }];
+    invokeMock.mockImplementation(async () => ({ nick: 'Длинное имя аккаунта '.repeat(10), loggedIn: true }));
+    openGameCentersModal();
+    await tick();
+    expect(document.querySelector('.gcm-gc-name').value).toBe(name);
+    expect(document.querySelector('.gcm-gc-path').getAttribute('title')).toBe(path);
+    await until(() => document.querySelector('.gcm-gc-who')?.getAttribute('title')?.includes('Длинное имя аккаунта'));
+    expect(document.querySelector('.gcm-gc-who').getAttribute('title')).toContain('Длинное имя аккаунта');
+    const css = readFileSync('css/modules/launcher.css', 'utf8');
+    expect(css).toContain("'icon kind name actions'");
+    expect(css).toContain("'. path path path'");
+    expect(css).toContain("'. account account account'");
+    expect(css).toContain("'name name'");
+    for (const area of ['icon', 'kind', 'name', 'path', 'account', 'actions']) {
+      expect(css).toContain(`grid-area: ${area};`);
+    }
+  });
+
   it('показывает GameCenter, персонажей и подсказку про перенос путей из карточек', async () => {
     openGameCentersModal();
     await tick();
@@ -78,6 +111,28 @@ describe('окно «GameCenter и персонажи»', () => {
     await tick();
     expect(state.characters[0].launch.gcIds).toEqual(['gc-2', 'gc-1']);
     expect(document.querySelector('[data-char="a"] .gcm-badge').textContent).toBe('основной');
+  });
+
+  it('выбор игрового аккаунта окна «Выбор игрового аккаунта» сохраняется', async () => {
+    state.characters[0].launch.gcIds = ['gc-1'];
+    openGameCentersModal();
+    await until(() => document.querySelector('[data-char="a"] select[data-act="game-acc"]'));
+    const sel = document.querySelector('[data-char="a"] select[data-act="game-acc"]');
+    // Пока список не пришёл из launcher_gc_info, выбора нет; после ответа — оба аккаунта
+    expect([...sel.options].map(o => o.value)).toEqual(['', '49635696', '59424880']);
+    expect([...sel.options].map(o => o.textContent)).toEqual(['не выбирать автоматически', 'WheeIman', 'hotdevilcom']);
+    sel.value = '59424880';
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    await tick();
+    expect(state.characters[0].launch.gcGameAccounts).toEqual({ 'gc-1': { id: '59424880', name: 'hotdevilcom' } });
+    expect(persistMock).toHaveBeenCalled();
+    // Пустое значение — снова «не выбирать автоматически»
+    const sel2 = document.querySelector('[data-char="a"] select[data-act="game-acc"]');
+    expect(sel2.value).toBe('59424880');
+    sel2.value = '';
+    sel2.dispatchEvent(new Event('change', { bubbles: true }));
+    await tick();
+    expect(state.characters[0].launch.gcGameAccounts).toEqual({});
   });
 
   it('«Запомнить вход» привязывает аккаунт к выбранному GameCenter персонажа', async () => {

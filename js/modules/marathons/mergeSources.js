@@ -145,6 +145,7 @@ export function mergeSiteAndNews({ news = null, site = null } = {}) {
     raw: {
       origin: 'merged',
       name: siteName || news.name || 'Марафон',
+      description: [news.description, site.description].filter(Boolean).join('\n\n'),
       sourceUrl: site.sourceUrl || news.sourceUrl || null,
       newsUrl: news.newsUrl || null,
       stages,

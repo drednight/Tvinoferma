@@ -580,3 +580,68 @@ textarea#char-notes {
   margin-top: 4px;
   color: var(--text-faint);
 }
+
+.pf-gamecenter-site {
+  margin: 0;
+}
+.character-login-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  cursor: pointer;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface-1);
+  font-size: 0.9rem;
+}
+.character-login-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.character-login-switch i {
+  flex: 0 0 34px;
+  height: 20px;
+  border-radius: 20px;
+  background: var(--muted);
+  position: relative;
+  transition: background 0.15s;
+}
+.character-login-switch i::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--bg);
+  transition: transform 0.15s;
+}
+.character-login-switch input:checked + i {
+  background: var(--accent);
+}
+.character-login-switch input:checked + i::after {
+  transform: translateX(14px);
+}
+.character-login-switch input:focus-visible + i {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.gc-site-login-wait {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.gc-site-login-wait label {
+  display: grid;
+  gap: 6px;
+}
+.gc-site-login-wait select {
+  max-width: 100%;
+}

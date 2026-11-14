@@ -188,6 +188,23 @@ describe('страница марафона (marathon_detail.js) и новост
     expect(runPageScript('marathon_detail.js', CHALLENGE_TITLE, 'TF_DETAIL_V4_').error).toBe('challenge');
   });
 
+  it('проверочная страница марафона читается через настраиваемые селекторы без бокового блока', () => {
+    const html =
+      '<div id="media_tabs"><h2>Проверка</h2><div class="status_legend">Легенда</div><div class="season_marathon"><div>Задание</div><script>bad()</script></div></div><aside>Личные данные</aside>';
+    const r = runPageScript('marathon_news.js', html, 'TF_NEWS_V1_');
+    expect(r.error).toBeNull();
+    expect(r.data.title).toBe('Проверка');
+    expect(r.data.html).toContain('Задание');
+    expect(r.data.html).not.toContain('Личные данные');
+    expect(r.data.html).not.toContain('<script');
+    const changed = html.replace('season_marathon', 'new_check');
+    expect(
+      runPageScript('marathon_news.js', changed, 'TF_NEWS_V1_', cfg => {
+        cfg.selectors['marathon.container'] = ['.new_check'];
+      }).data.html
+    ).toContain('Задание');
+  });
+
   it('новость → заголовок, дата и очищенный HTML, который разбирается в 15 заданий', () => {
     const { data, error } = news('site-news-summer.html');
     expect(error).toBeNull();
