@@ -566,11 +566,12 @@ impl KeyboardMethod {
     fn posts(self) -> bool {
         self != Self::ActivityNotify
     }
+    // The notify/timeout protocol of the combined method belongs to the activity
+    // variants only. The hybrid candidate owns its own activation window and its own
+    // global injection, so it never enters this path.
     fn activity(self) -> bool {
-        self != Self::Post
+        matches!(self, Self::ActivityNotify | Self::Combined)
     }
-    // The hybrid candidate owns its own activation window and its own global injection.
-    // It never uses the notify/timeout protocol of the combined method.
     fn cache_hybrid(self) -> bool {
         self == Self::CacheHybrid
     }
