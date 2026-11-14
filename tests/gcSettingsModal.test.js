@@ -38,7 +38,18 @@ beforeEach(() => {
   invokeMock.mockReset();
   persistMock.mockClear();
   invokeMock.mockImplementation(async cmd => {
-    if (cmd === 'launcher_gc_info') return { exe: 'x', nick: 'Twin', loggedIn: true };
+    if (cmd === 'launcher_gc_info')
+      return {
+        exe: 'x',
+        nick: 'Twin',
+        loggedIn: true,
+        login: 'dissolute77@mail.ru',
+        gameAccounts: [
+          { id: '49635696', name: 'WheeIman' },
+          { id: '59424880', name: 'hotdevilcom' }
+        ],
+        selectedGameAccount: '59424880'
+      };
     if (cmd === 'launcher_pick_gamecenter') return 'D:\\GC3\\GameCenter.exe';
     if (cmd === 'launcher_capture_account') return { ok: true, nick: 'Twin', steps: ['Готово: вход запомнен'] };
     return null;
@@ -100,6 +111,28 @@ describe('окно «GameCenter и персонажи»', () => {
     await tick();
     expect(state.characters[0].launch.gcIds).toEqual(['gc-2', 'gc-1']);
     expect(document.querySelector('[data-char="a"] .gcm-badge').textContent).toBe('основной');
+  });
+
+  it('выбор игрового аккаунта окна «Выбор игрового аккаунта» сохраняется', async () => {
+    state.characters[0].launch.gcIds = ['gc-1'];
+    openGameCentersModal();
+    await until(() => document.querySelector('[data-char="a"] select[data-act="game-acc"]'));
+    const sel = document.querySelector('[data-char="a"] select[data-act="game-acc"]');
+    // Пока список не пришёл из launcher_gc_info, выбора нет; после ответа — оба аккаунта
+    expect([...sel.options].map(o => o.value)).toEqual(['', '49635696', '59424880']);
+    expect([...sel.options].map(o => o.textContent)).toEqual(['не выбирать автоматически', 'WheeIman', 'hotdevilcom']);
+    sel.value = '59424880';
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    await tick();
+    expect(state.characters[0].launch.gcGameAccounts).toEqual({ 'gc-1': { id: '59424880', name: 'hotdevilcom' } });
+    expect(persistMock).toHaveBeenCalled();
+    // Пустое значение — снова «не выбирать автоматически»
+    const sel2 = document.querySelector('[data-char="a"] select[data-act="game-acc"]');
+    expect(sel2.value).toBe('59424880');
+    sel2.value = '';
+    sel2.dispatchEvent(new Event('change', { bubbles: true }));
+    await tick();
+    expect(state.characters[0].launch.gcGameAccounts).toEqual({});
   });
 
   it('«Запомнить вход» привязывает аккаунт к выбранному GameCenter персонажа', async () => {

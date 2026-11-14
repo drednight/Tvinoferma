@@ -40,10 +40,20 @@ const GAMECENTER_EXE: &str = "GameCenter.exe";
 const CLIENT_PREFIX: &str = "elementclient";
 /// Perfect World в VK Play (id проекта 0.61)
 const DEFAULT_URL: &str = "vkplay://play/0.61";
+/// Id проекта Perfect World в ключах `GameCenter.ini` (`0.61_pl_`, `0.61_sel_`)
+const DEFAULT_PROJECT: &str = "0.61";
 /// Класс окон-вопросов GameCenter
 const DIALOG_CLASS: &str = "TYesNoForm";
 /// Заголовок окна вопроса «Клиент игры уже запущен» («VK Play Игровой центр»)
 const DIALOG_TITLE: &str = "VK Play";
+/// Класс окна выбора игрового аккаунта (персонажа) VK Play
+const PICKER_CLASS: &str = "TPersSelectForm";
+/// Заголовок окна выбора игрового аккаунта
+const PICKER_TITLE: &str = "Выбор игрового аккаунта";
+/// Класс строки аккаунта внутри окна выбора (по нему UI Automation и находит элементы)
+const PICKER_ITEM_CLASS: &str = "TPersSelectForm.TPersInfoItem";
+/// Секция `GameCenter.ini` со списком игровых аккаунтов (`_pl_`, `_sel_`)
+const PERS_SECTION: &str = "GamePersIds";
 /// Сколько ждать это окно после старта GameCenter, если клиент уже был запущен
 const DIALOG_WAIT: Duration = Duration::from_secs(30);
 /// Как часто опрашивать процессы, ожидая новый клиент игры.
@@ -92,6 +102,8 @@ pub struct LaunchInfo {
     pid: u32,
     /// Было ли окно «Клиент игры уже запущен» и мы в нём подтвердили запуск новой копии
     dialog_clicked: bool,
+    /// Был ли выбран игровой аккаунт в окне «Выбор игрового аккаунта»
+    game_account_clicked: bool,
     /// Был ли перед запуском подставлен сохранённый вход аккаунта в GameCenter.ini
     switched: bool,
     /// PID нового клиента игры (0 — не определён)
@@ -921,6 +933,171 @@ mod win {
     }
 }
 
+/// Выбор игрового аккаунта в окне «Выбор игрового аккаунта» через UI Automation.
+///
+/// Окно нарисовано самой VCL: дочерних HWND у строк нет, поэтому нажать строку можно
+/// только через UI Automation. У каждой строки (`TPersSelectForm.TPersInfoItem`) есть
+/// вложенная подпись `TLabel` с именем аккаунта; `Invoke` на строке — то же действие,
+/// что клик по ней: окно закрывается, GameCenter запускает клиент игры.
+#[cfg(windows)]
+mod picker_ui {
+    use super::PICKER_ITEM_CLASS;
+    use std::ffi::c_void;
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER,
+        COINIT_MULTITHREADED,
+    };
+    use windows::Win32::UI::Accessibility::{
+        CUIAutomation, IUIAutomation, IUIAutomationCondition, IUIAutomationElement,
+        IUIAutomationInvokePattern, IUIAutomationTogglePattern, ToggleState_On, TreeScope_Children,
+        TreeScope_Descendants, UIA_InvokePatternId, UIA_TogglePatternId,
+    };
+
+    /// Итог попытки выбрать аккаунт. `NoItems` — список ещё не наполнился (нужен повтор),
+    /// `NoMatch` — список есть, но нужного имени в нём нет.
+    pub(super) enum PickOutcome {
+        Invoked,
+        NoItems,
+        NoMatch,
+    }
+
+    /// Парная инициализация COM: `CoUninitialize` нужен ровно тогда, когда `CoInitializeEx`
+    /// завершился успешно. `RPC_E_CHANGED_MODE` значит, что поток уже в другом апартаменте, —
+    /// трогать его счётчик нельзя.
+    struct Com(bool);
+    impl Com {
+        fn init() -> Self {
+            let hr = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+            Self(hr.is_ok())
+        }
+    }
+    impl Drop for Com {
+        fn drop(&mut self) {
+            if self.0 {
+                unsafe { CoUninitialize() };
+            }
+        }
+    }
+
+    fn class_of(element: &IUIAutomationElement) -> String {
+        unsafe { element.CurrentClassName() }
+            .map(|name| name.to_string())
+            .unwrap_or_default()
+    }
+
+    /// Подпись строки: имя игрового аккаунта из вложенного `TLabel`.
+    fn label_of(item: &IUIAutomationElement, condition: &IUIAutomationCondition) -> Option<String> {
+        let children = unsafe { item.FindAll(TreeScope_Children, condition) }.ok()?;
+        let len = unsafe { children.Length() }.ok()?;
+        for i in 0..len {
+            let child = unsafe { children.GetElement(i) }.ok()?;
+            if !class_of(&child).ends_with("TLabel") {
+                continue;
+            }
+            let name = unsafe { child.CurrentName() }
+                .map(|name| name.to_string())
+                .unwrap_or_default();
+            let name = name.trim();
+            if !name.is_empty() {
+                return Some(name.to_string());
+            }
+        }
+        None
+    }
+
+    fn is_toggled_on(item: &IUIAutomationElement) -> bool {
+        let Ok(pattern) = (unsafe {
+            item.GetCurrentPatternAs::<IUIAutomationTogglePattern>(UIA_TogglePatternId)
+        }) else {
+            return false;
+        };
+        unsafe { pattern.CurrentToggleState() }
+            .map(|state| state == ToggleState_On)
+            .unwrap_or(false)
+    }
+
+    fn invoke(item: &IUIAutomationElement) -> bool {
+        let Ok(pattern) = (unsafe {
+            item.GetCurrentPatternAs::<IUIAutomationInvokePattern>(UIA_InvokePatternId)
+        }) else {
+            return false;
+        };
+        unsafe { pattern.Invoke() }.is_ok()
+    }
+
+    pub(super) fn pick(hwnd: usize, name: &str) -> PickOutcome {
+        let _com = Com::init();
+        let automation: IUIAutomation =
+            match unsafe { CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) } {
+                Ok(automation) => automation,
+                Err(_) => return PickOutcome::NoItems,
+            };
+        let root = match unsafe { automation.ElementFromHandle(HWND(hwnd as *mut c_void)) } {
+            Ok(root) => root,
+            Err(_) => return PickOutcome::NoItems,
+        };
+        let condition = match unsafe { automation.CreateTrueCondition() } {
+            Ok(condition) => condition,
+            Err(_) => return PickOutcome::NoItems,
+        };
+        let all = match unsafe { root.FindAll(TreeScope_Descendants, &condition) } {
+            Ok(all) => all,
+            Err(_) => return PickOutcome::NoItems,
+        };
+        let len = unsafe { all.Length() }.unwrap_or(0);
+        let mut items: Vec<(String, IUIAutomationElement)> = Vec::new();
+        for i in 0..len {
+            let Ok(element) = (unsafe { all.GetElement(i) }) else {
+                continue;
+            };
+            if !class_of(&element).ends_with(PICKER_ITEM_CLASS) {
+                continue;
+            }
+            if let Some(label) = label_of(&element, &condition) {
+                items.push((label, element));
+            }
+        }
+        if items.is_empty() {
+            return PickOutcome::NoItems;
+        }
+        let needle = name.trim();
+        let matches: Vec<&(String, IUIAutomationElement)> = items
+            .iter()
+            .filter(|(label, _)| label.eq_ignore_ascii_case(needle))
+            .collect();
+        let chosen = match matches.len() {
+            1 => matches[0],
+            0 => return PickOutcome::NoMatch,
+            // Одинаковые имена у разных игровых аккаунтов: `_sel_` уже подсветил нужный,
+            // поэтому берём включённую строку среди совпавших.
+            _ => match matches.iter().find(|(_, item)| is_toggled_on(item)) {
+                Some(item) => *item,
+                None => return PickOutcome::NoMatch,
+            },
+        };
+        if invoke(&chosen.1) {
+            PickOutcome::Invoked
+        } else {
+            PickOutcome::NoMatch
+        }
+    }
+}
+
+#[cfg(not(windows))]
+mod picker_ui {
+    #[allow(dead_code)]
+    pub(super) enum PickOutcome {
+        Invoked,
+        NoItems,
+        NoMatch,
+    }
+
+    pub(super) fn pick(_hwnd: usize, _name: &str) -> PickOutcome {
+        PickOutcome::NoItems
+    }
+}
+
 /// Принимает папку GameCenter или путь к `GameCenter.exe`, возвращает путь к exe.
 fn resolve_gamecenter_exe(input: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(input.trim().trim_matches('"'));
@@ -992,9 +1169,21 @@ fn is_gc_dialog(class: &str, title: &str, visible: bool) -> bool {
         && !title.to_lowercase().contains("авториз")
 }
 
+/// Окно «Выбор игрового аккаунта»: у одного входа VK Play несколько персонажей,
+/// и GameCenter спрашивает, каким из них запускать игру.
+fn is_gc_picker(class: &str, title: &str, visible: bool) -> bool {
+    visible && class.ends_with(PICKER_CLASS) && title.contains(PICKER_TITLE)
+}
+
 // Only the selected executable may own the dialog. Unknown paths fail closed.
 fn owned_gc_dialog(w: &win::WinInfo, owner_path: Option<&str>, selected_path: &str) -> bool {
     is_gc_dialog(&w.class, &w.title, w.visible)
+        && owner_path.is_some_and(|path| path.eq_ignore_ascii_case(selected_path))
+}
+
+/// Окно выбора аккаунта принадлежит тому же GameCenter, вход в который мы подставили.
+fn owned_gc_picker(w: &win::WinInfo, owner_path: Option<&str>, selected_path: &str) -> bool {
+    is_gc_picker(&w.class, &w.title, w.visible)
         && owner_path.is_some_and(|path| path.eq_ignore_ascii_case(selected_path))
 }
 
@@ -1009,27 +1198,56 @@ fn fresh_launch_dialog(
     Some(dialogs[0])
 }
 
-/// Check for a new client BEFORE touching dialogs. Confirm one owned dialog once.
+/// Итог ожидания нового клиента игры.
+#[derive(Debug, Default)]
+struct ClientWait {
+    /// PID нового клиента
+    pid: u32,
+    /// Подтверждали ли окно «Клиент игры уже запущен»
+    dialog_clicked: bool,
+    /// Выбрали ли мы в нём игровой аккаунт сами
+    game_account_clicked: bool,
+}
+
+/// Почему клиент не появился: для окна выбора нужна отдельная подсказка.
+#[derive(Debug, Default)]
+struct WaitTimeout {
+    picker_seen: bool,
+}
+
+/// Check for a new client BEFORE touching dialogs or the account picker. Confirm one owned
+/// dialog once and, when a game account is configured, choose it in the picker.
 fn await_new_client(
     before: &HashSet<u32>,
     wait: Duration,
     expect_dialog: bool,
     exe: &Path,
-) -> Option<(u32, bool)> {
+    game_account: Option<&GameAccount>,
+) -> Result<ClientWait, WaitTimeout> {
     let dialog_deadline = Instant::now() + DIALOG_WAIT;
     let client_deadline = Instant::now() + wait;
     let selected_path = plain_path(exe);
     let mut pressed = HashSet::new();
+    let mut picker_seen = false;
+    let mut game_account_clicked = false;
+    // Список аккаунтов в окне выбора рисуется не сразу: пока он пуст, повторяем чаще,
+    // а если нужного имени всё нет — реже, чтобы не перебирать дерево UI Automation зря.
+    let mut next_pick = Instant::now();
     loop {
         if let Some(pid) = new_client_pid(before, &client_pids().unwrap_or_default()) {
-            return Some((pid, !pressed.is_empty()));
+            return Ok(ClientWait {
+                pid,
+                dialog_clicked: !pressed.is_empty(),
+                game_account_clicked,
+            });
         }
         if Instant::now() >= client_deadline {
-            return None;
+            return Err(WaitTimeout { picker_seen });
         }
+        let windows = win::all_windows();
         if expect_dialog && Instant::now() < dialog_deadline {
-            let dialogs: Vec<_> = win::all_windows()
-                .into_iter()
+            let dialogs: Vec<_> = windows
+                .iter()
                 .filter(|w| is_gc_dialog(&w.class, &w.title, w.visible))
                 .filter(|w| owned_gc_dialog(w, gamecenter_path(w.pid).as_deref(), &selected_path))
                 .map(|w| (w.pid, w.hwnd))
@@ -1037,11 +1255,15 @@ fn await_new_client(
             if let Some(candidate) = fresh_launch_dialog(&dialogs, &pressed) {
                 // Recheck both the client and ownership immediately before posting input.
                 if let Some(pid) = new_client_pid(before, &client_pids().unwrap_or_default()) {
-                    return Some((pid, !pressed.is_empty()));
+                    return Ok(ClientWait {
+                        pid,
+                        dialog_clicked: !pressed.is_empty(),
+                        game_account_clicked,
+                    });
                 }
-                let still_owned = win::all_windows().into_iter().any(|w| {
+                let still_owned = windows.iter().any(|w| {
                     (w.pid, w.hwnd) == candidate
-                        && owned_gc_dialog(&w, gamecenter_path(w.pid).as_deref(), &selected_path)
+                        && owned_gc_dialog(w, gamecenter_path(w.pid).as_deref(), &selected_path)
                 });
                 if still_owned {
                     pressed.insert(candidate);
@@ -1049,8 +1271,62 @@ fn await_new_client(
                 }
             }
         }
+        // Окно выбора аккаунта: подставляем выбранный персонаж, иначе GameCenter ждёт клика
+        // и клиент игры не появится, сколько ни жди.
+        let picker = windows
+            .iter()
+            .find(|w| owned_gc_picker(w, gamecenter_path(w.pid).as_deref(), &selected_path));
+        if let Some(picker) = picker {
+            picker_seen = true;
+            if let Some(account) = game_account {
+                if !game_account_clicked && Instant::now() >= next_pick {
+                    let retry = match picker_ui::pick(picker.hwnd, &account.name) {
+                        picker_ui::PickOutcome::Invoked => {
+                            game_account_clicked = true;
+                            None
+                        }
+                        picker_ui::PickOutcome::NoItems => Some(Duration::from_millis(300)),
+                        picker_ui::PickOutcome::NoMatch => Some(Duration::from_secs(1)),
+                    };
+                    if let Some(retry) = retry {
+                        next_pick = Instant::now() + retry;
+                    }
+                }
+            }
+        }
         sleep(CLIENT_POLL_STEP);
     }
+}
+
+/// Почему клиент игры не появился — с подсказкой, если помешало окно выбора аккаунта.
+fn client_wait_error(
+    timeout: &WaitTimeout,
+    game_account: Option<&GameAccount>,
+    wait: Duration,
+    exe: &Path,
+) -> String {
+    if timeout.picker_seen {
+        if let Some((_, name)) = game_account.and_then(GameAccount::clean) {
+            return format!(
+                "GameCenter показал окно «Выбор игрового аккаунта», но аккаунт «{}» в нём не \
+                 найден за {} с. Проверьте игровой аккаунт: «Инструменты» → «Окна игры» → \
+                 «🎮 GameCenter и персонажи»",
+                name,
+                wait.as_secs()
+            );
+        }
+        return format!(
+            "GameCenter показал окно «Выбор игрового аккаунта» и ждёт выбора, поэтому клиент \
+             игры не запустился за {} с. Укажите игровой аккаунт персонажа: «Инструменты» → \
+             «Окна игры» → «🎮 GameCenter и персонажи»",
+            wait.as_secs()
+        );
+    }
+    format!(
+        "Клиент игры не запустился за {} с (GameCenter: {})",
+        wait.as_secs(),
+        exe.display()
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -1512,6 +1788,178 @@ fn ini_set(text: &str, key: &str, value: &str) -> String {
     lines.concat()
 }
 
+/// Записывает значение ключа в указанную секцию: заменяет существующую строку, иначе добавляет
+/// в конец секции `section` (перед следующей секцией). Остальные строки не меняются.
+///
+/// `ini_set` добавляет новые ключи сразу после `[Main]`, но ключи `[GamePersIds]` там не работают:
+/// GameCenter читает игровые аккаунты только из своей секции.
+fn ini_set_in_section(text: &str, key: &str, value: &str, section: &str) -> String {
+    let eol = if text.contains("\r\n") { "\r\n" } else { "\n" };
+    let mut lines: Vec<String> = text.split_inclusive('\n').map(str::to_string).collect();
+    let is_key = |line: &str| {
+        line.trim_start()
+            .split_once('=')
+            .map(|(k, _)| k.trim().eq_ignore_ascii_case(key))
+            .unwrap_or(false)
+    };
+    if let Some(i) = lines.iter().position(|l| is_key(l.as_str())) {
+        let ending = if lines[i].ends_with("\r\n") {
+            "\r\n"
+        } else if lines[i].ends_with('\n') {
+            "\n"
+        } else {
+            ""
+        };
+        lines[i] = format!("{}={}{}", key, value, ending);
+        return lines.concat();
+    }
+    let header = format!("[{}]", section);
+    if let Some(i) = lines
+        .iter()
+        .position(|l| l.trim().eq_ignore_ascii_case(&header))
+    {
+        // Конец секции — следующая секция или конец файла; вставляем после последней
+        // непустой строки, чтобы не отрывать ключ от его секции пустой строкой.
+        let end = lines
+            .iter()
+            .enumerate()
+            .skip(i + 1)
+            .find(|(_, l)| l.trim_start().starts_with('['))
+            .map(|(j, _)| j)
+            .unwrap_or(lines.len());
+        let mut at = end;
+        while at > i + 1 && lines[at - 1].trim().is_empty() {
+            at -= 1;
+        }
+        if at > 0 && !lines[at - 1].ends_with('\n') {
+            lines[at - 1].push_str(eol);
+        }
+        lines.insert(at, format!("{}={}{}", key, value, eol));
+    } else {
+        if let Some(last) = lines.last_mut() {
+            if !last.ends_with('\n') {
+                last.push_str(eol);
+            }
+        }
+        lines.push(format!("{}={}{}", key, value, eol));
+    }
+    lines.concat()
+}
+
+/// Игровой аккаунт (персонаж) внутри одного входа VK Play.
+///
+/// `id` — идентификатор из `[GamePersIds]` (`0.61_pl_<login>`); он же пишется в `_sel_` и
+/// однозначно задаёт строку в окне выбора. `name` — подпись из того же списка: по ней
+/// UI Automation находит строку в окне «Выбор игрового аккаунта».
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GameAccount {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    name: String,
+}
+
+impl GameAccount {
+    fn clean(&self) -> Option<(String, String)> {
+        let id = self.id.trim();
+        let name = self.name.trim();
+        if id.is_empty() || name.is_empty() {
+            None
+        } else {
+            Some((id.to_string(), name.to_string()))
+        }
+    }
+}
+
+/// Список игровых аккаунтов входа из `_pl_<login>`: `id:имя;id:имя`.
+fn parse_person_list(value: &str) -> Vec<GameAccount> {
+    value
+        .split(';')
+        .filter_map(|part| {
+            let (id, name) = part.split_once(':')?;
+            let (id, name) = (id.trim(), name.trim());
+            (!id.is_empty() && !name.is_empty()).then(|| GameAccount {
+                id: id.to_string(),
+                name: name.to_string(),
+            })
+        })
+        .collect()
+}
+
+/// Префикс проекта (`0.61`) у ключей `_pl_<login>`: по нему же строится `_sel_<login>`.
+///
+/// В ini бывают аккаунты разных проектов; для Perfect World ключи начинаются с `0.61`.
+fn account_project_prefix(text: &str, login: &str) -> Option<String> {
+    let suffix = format!("_pl_{}", login);
+    let mut prefixes: Vec<String> = text
+        .lines()
+        .filter_map(|line| line.trim_start().split_once('=').map(|(k, _)| k.trim()))
+        .filter(|k| {
+            k.len() > suffix.len()
+                && k.get(k.len() - suffix.len()..)
+                    .is_some_and(|tail| tail.eq_ignore_ascii_case(&suffix))
+        })
+        .filter_map(|k| k.get(..k.len() - suffix.len()).map(str::to_string))
+        .collect();
+    prefixes.sort();
+    prefixes.dedup();
+    prefixes
+        .iter()
+        .find(|p| p.eq_ignore_ascii_case(DEFAULT_PROJECT))
+        .cloned()
+        .or_else(|| prefixes.first().cloned())
+}
+
+/// Игровые аккаунты входа из ini (подписи — как в окне выбора).
+fn read_game_accounts(text: &str, login: &str) -> Vec<GameAccount> {
+    let Some(prefix) = account_project_prefix(text, login) else {
+        return Vec::new();
+    };
+    let key = format!("{}_pl_{}", prefix, login);
+    ini_get(text, &key)
+        .map(|value| parse_person_list(&value))
+        .unwrap_or_default()
+}
+
+/// Выбранный в GameCenter игровой аккаунт (`_sel_`).
+fn selected_game_account(text: &str, login: &str) -> String {
+    let Some(prefix) = account_project_prefix(text, login) else {
+        return String::new();
+    };
+    ini_get(text, &format!("{}_sel_{}", prefix, login)).unwrap_or_default()
+}
+
+/// Записывает выбранный игровой аккаунт в `_sel_<login>` той же секции `[GamePersIds]`.
+///
+/// `_sel_` не отменяет окно выбора (проверено на живом GameCenter), но заранее подсвечивает
+/// нужную строку: по ней же `await_new_client` находит аккаунт в окне и выбирает его.
+/// `Ok(false)` — писать нечего: вход или список аккаунтов ещё не появился в ini.
+fn write_game_account_selection(ini: &Path, account: &GameAccount) -> Result<bool, String> {
+    let Some((id, _)) = account.clean() else {
+        return Ok(false);
+    };
+    let bytes = std::fs::read(ini).map_err(|e| format!("{}: {}", ini.display(), e))?;
+    let (mut text, enc) = decode_ini(&bytes);
+    let Some(login) = ini_get(&text, "MyComUserLogin").filter(|v| !v.trim().is_empty()) else {
+        return Ok(false);
+    };
+    let login = login.trim().to_string();
+    let Some(prefix) = account_project_prefix(&text, &login) else {
+        return Ok(false);
+    };
+    if !read_game_accounts(&text, &login).iter().any(|a| a.id == id) {
+        return Ok(false);
+    }
+    if !writable_ini_value(&id, &enc) {
+        return Err("Идентификатор игрового аккаунта нельзя записать в GameCenter.ini".to_string());
+    }
+    let key = format!("{}_sel_{}", prefix, login);
+    text = ini_set_in_section(&text, &key, &id, PERS_SECTION);
+    write_atomic(ini, &encode_ini(&text, &enc))?;
+    Ok(true)
+}
+
 /// Токен и ник, которые можно безопасно записать в ini (одна строка, печатные ASCII).
 /// Для записи в ini не используется: сохранение проверяет `writable_ini_value` по кодировке файла.
 #[allow(dead_code)]
@@ -1812,6 +2260,12 @@ pub struct GcInfo {
     exe: String,
     nick: String,
     logged_in: bool,
+    /// Логин VK Play, под которым выполнен вход (`MyComUserLogin`)
+    login: String,
+    /// Игровые аккаунты (персонажи) этого входа — как в окне «Выбор игрового аккаунта»
+    game_accounts: Vec<GameAccount>,
+    /// Игровой аккаунт, выбранный в GameCenter сейчас (`_sel_`)
+    selected_game_account: String,
 }
 
 /// Читает из `GameCenter.ini` ник и признак входа. Токен наружу не отдаётся.
@@ -1823,10 +2277,18 @@ fn read_gc_info(exe: &Path) -> Result<GcInfo, String> {
     let nick = ini_get(&text, "CurrentUserNick")
         .map(|v| display_value(&v))
         .unwrap_or_default();
+    let login = ini_get(&text, "MyComUserLogin")
+        .map(|v| v.trim().to_string())
+        .unwrap_or_default();
+    let game_accounts = read_game_accounts(&text, &login);
+    let selected = selected_game_account(&text, &login);
     Ok(GcInfo {
         exe: exe.display().to_string(),
         nick,
         logged_in,
+        login,
+        game_accounts,
+        selected_game_account: selected,
     })
 }
 
@@ -2162,6 +2624,7 @@ pub async fn launcher_start(
     icon_big: Option<Vec<u8>>,
     kind: Option<String>,
     login_saved: Option<bool>,
+    game_account: Option<GameAccount>,
 ) -> Result<LaunchInfo, String> {
     if kind.as_deref() == Some("astrum") {
         return astrum::start(
@@ -2187,6 +2650,8 @@ pub async fn launcher_start(
         .map(Path::to_path_buf)
         .ok_or_else(|| "Не удалось определить папку GameCenter".to_string())?;
     let wait = Duration::from_secs(wait_secs.unwrap_or(DEFAULT_CLIENT_WAIT_SECS).clamp(5, 600));
+    let game_account =
+        game_account.and_then(|a| a.clean().map(|(id, name)| GameAccount { id, name }));
 
     tauri::async_runtime::spawn_blocking(move || {
         let id = char_id.as_deref().map(str::trim).filter(|s| !s.is_empty());
@@ -2227,6 +2692,12 @@ pub async fn launcher_start(
             }
             None => false,
         };
+        // Выбранный игровой аккаунт нужен, когда у входа несколько персонажей и GameCenter
+        // показывает окно выбора. `_sel_` подсвечивает нужную строку, сам выбор — в
+        // `await_new_client` через UI Automation.
+        if let Some(account) = &game_account {
+            write_game_account_selection(&gc_ini_path(&exe)?, account)?;
+        }
         let ms_account = t_ini.elapsed().as_millis() as u64;
 
         let t_client = Instant::now();
@@ -2238,31 +2709,33 @@ pub async fn launcher_start(
             .map_err(|e| format!("{}: {}", exe.display(), e))?;
         let pid = child.id();
 
-        // Окно вопроса «Запустить новую копию клиента» и появление нового клиента ждём одним
-        // циклом: раньше сначала полностью ждалось окно вопроса, и только потом начинался
-        // поиск процесса клиента — на каждый аккаунт это лишние секунды ожидания.
-        let (client_pid, dialog_clicked) =
-            await_new_client(&before, wait, !before.is_empty(), &exe).ok_or_else(|| {
-                format!(
-                    "Клиент игры не запустился за {} с (GameCenter: {})",
-                    wait.as_secs(),
-                    exe.display()
-                )
-            })?;
+        // Окно вопроса «Запустить новую копию клиента», окно выбора игрового аккаунта и
+        // появление нового клиента ждём одним циклом: раньше сначала полностью ждалось окно
+        // вопроса, и только потом начинался поиск процесса клиента — на каждый аккаунт это
+        // лишние секунды ожидания.
+        let waited = await_new_client(
+            &before,
+            wait,
+            !before.is_empty(),
+            &exe,
+            game_account.as_ref(),
+        )
+        .map_err(|timeout| client_wait_error(&timeout, game_account.as_ref(), wait, &exe))?;
         let ms_client = t_client.elapsed().as_millis() as u64;
 
         // Название «Ник — Класс» и значок: окно появится не сразу, поэтому работаем в фоне, запуск следующего аккаунта не ждёт.
         // Следит один общий наблюдатель окон — отдельный поток с полным перебором окон на каждый
         // аккаунт превращался при десяти клиентах в десять переборов вместо одного.
         if let Some(title) = window_title.as_deref().and_then(clean_title) {
-            watch_client(&app, client_pid, title, icon_small, icon_big);
+            watch_client(&app, waited.pid, title, icon_small, icon_big);
         }
 
         Ok::<LaunchInfo, String>(LaunchInfo {
             pid,
-            dialog_clicked,
+            dialog_clicked: waited.dialog_clicked,
+            game_account_clicked: waited.game_account_clicked,
             switched,
-            client_pid,
+            client_pid: waited.pid,
             closed_other_gc: closed.others,
             gc_close_failed: closed.failed,
             ms_gc_close,
@@ -3785,6 +4258,121 @@ mod tests {
         assert!(!is_gc_dialog("TYesNoForm", "VK Play Игровой центр", false)); // скрытое окно
         assert!(!is_gc_dialog("TMainForm", "VK Play Игровой центр", true));
         assert!(!is_gc_dialog("TYesNoForm", "", true));
+    }
+
+    #[test]
+    fn recognises_the_game_account_picker() {
+        assert!(is_gc_picker(
+            "GameCenter.TPersSelectForm",
+            "Выбор игрового аккаунта",
+            true
+        ));
+        assert!(!is_gc_picker(
+            "GameCenter.TPersSelectForm",
+            "Выбор игрового аккаунта",
+            false
+        ));
+        assert!(!is_gc_picker(
+            "GameCenter.TMainForm",
+            "Выбор игрового аккаунта",
+            true
+        ));
+        assert!(!is_gc_picker("TPersSelectForm", "VK Play", true));
+    }
+
+    const GAME_PERS_INI: &str = "[Main]\r\nMyComUserLogin=dissolute77@mail.ru\r\nCurrentUserNick=вар2\r\nMyComUserMagic2=TOKEN\r\n\r\n[GamePersIds]\r\n0.61_dissolute77@mail.ru=6133471\r\n0.61_pl_dissolute77@mail.ru=49635696:WheeIman;59424880:hotdevilcom\r\n0.61_pltime_dissolute77@mail.ru=1794673373\r\n\r\n[BigUp]\r\nx=1\r\n";
+
+    #[test]
+    fn reads_game_accounts_of_the_current_login() {
+        let accounts = read_game_accounts(GAME_PERS_INI, "dissolute77@mail.ru");
+        assert_eq!(
+            accounts,
+            vec![
+                GameAccount {
+                    id: "49635696".into(),
+                    name: "WheeIman".into()
+                },
+                GameAccount {
+                    id: "59424880".into(),
+                    name: "hotdevilcom".into()
+                }
+            ]
+        );
+        assert_eq!(
+            selected_game_account(GAME_PERS_INI, "dissolute77@mail.ru"),
+            ""
+        );
+        // Чужой вход не подмешивается, даже если имя похоже
+        assert!(read_game_accounts(GAME_PERS_INI, "other@mail.ru").is_empty());
+        // Мусор в списке не ломает разбор
+        assert_eq!(
+            parse_person_list(" ; 1:One; bad;2:Two;3: "),
+            vec![
+                GameAccount {
+                    id: "1".into(),
+                    name: "One".into()
+                },
+                GameAccount {
+                    id: "2".into(),
+                    name: "Two".into()
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn selection_key_goes_into_game_pers_ids_not_after_main() {
+        let key = "0.61_sel_dissolute77@mail.ru";
+        let out = ini_set_in_section(GAME_PERS_INI, key, "59424880", PERS_SECTION);
+        assert_eq!(ini_get(&out, key).as_deref(), Some("59424880"));
+        assert_eq!(
+            out,
+            GAME_PERS_INI.replace(
+                "0.61_pltime_dissolute77@mail.ru=1794673373\r\n",
+                "0.61_pltime_dissolute77@mail.ru=1794673373\r\n0.61_sel_dissolute77@mail.ru=59424880\r\n"
+            ),
+            "ключ должен остаться в секции [GamePersIds]"
+        );
+        // Существующий ключ заменяется на месте
+        let replaced = ini_set_in_section(&out, key, "49635696", PERS_SECTION);
+        assert_eq!(replaced.matches("0.61_sel_dissolute77@mail.ru=").count(), 1);
+        assert_eq!(ini_get(&replaced, key).as_deref(), Some("49635696"));
+        // Нет секции — ключ не теряется, уходит в конец
+        let appended = ini_set_in_section("[Main]\r\nA=1\r\n", key, "1", PERS_SECTION);
+        assert_eq!(ini_get(&appended, key).as_deref(), Some("1"));
+    }
+
+    #[test]
+    fn writes_game_account_selection_next_to_the_login() {
+        let dir = std::env::temp_dir().join(format!("tf-gc-pers-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let exe = dir.join(GAMECENTER_EXE);
+        std::fs::write(&exe, b"").unwrap();
+        let ini = dir.join(INI_NAME);
+        std::fs::write(&ini, GAME_PERS_INI).unwrap();
+        let account = GameAccount {
+            id: "59424880".into(),
+            name: "hotdevilcom".into(),
+        };
+        assert!(write_game_account_selection(&ini, &account).unwrap());
+        let after = std::fs::read_to_string(&ini).unwrap();
+        assert_eq!(
+            ini_get(&after, "0.61_sel_dissolute77@mail.ru").as_deref(),
+            Some("59424880")
+        );
+        // Аккаунт не из списка этого входа не пишется: иначе окно подсветит чужую строку
+        std::fs::write(&ini, GAME_PERS_INI).unwrap();
+        let alien = GameAccount {
+            id: "999".into(),
+            name: "Чужой".into(),
+        };
+        assert!(!write_game_account_selection(&ini, &alien).unwrap());
+        assert_eq!(
+            std::fs::read_to_string(&ini).unwrap(),
+            GAME_PERS_INI,
+            "ini не должен меняться"
+        );
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     const INI: &str = "[UMS]\r\ngamecenter4=1916\r\n\r\n[Main]\r\nLang=ru\r\nMyComUserLogin=old@example.com\r\nMyComUserUid=111\r\nCurrentUserNick=Dred\r\nMyComUserMagic2=OLDTOKEN\r\nForm_State=0\r\n\r\n[Chrome]\r\nCacheVersion=2\r\n";

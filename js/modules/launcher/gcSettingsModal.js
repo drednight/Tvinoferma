@@ -18,6 +18,7 @@ import {
   attachGc,
   detachGc,
   replaceGc,
+  setGcGameAccount,
   accountKey,
   newGcId,
   suggestGcName,
@@ -88,7 +89,7 @@ async function forgetKey(key) {
  *   `onlyNoLogin` — сразу включить фильтр «Только без запомненного входа».
  */
 export function openGameCentersModal(opts = {}) {
-  /** @type {Map<string, { status: 'loading' | 'ok' | 'error', nick?: string, loggedIn?: boolean, error?: string }>} */
+  /** @type {Map<string, { status: 'loading' | 'ok' | 'error', nick?: string, loggedIn?: boolean, accounts?: Array<{id: string, name: string}>, selected?: string, error?: string }>} */
   const info = new Map();
   let filter = '';
   /** Фильтр по пати: '' — все, NO_PARTY — без пати, иначе id пати. */
@@ -209,11 +210,32 @@ export function openGameCentersModal(opts = {}) {
       .map((g, i) => {
         const acc = c.launch?.gcAccounts?.[g.id];
         const others = gcs().filter(x => x.id === g.id || !attached.some(a => a.id === x.id));
+        const accounts = info.get(g.id)?.accounts || [];
+        const current = c.launch?.gcGameAccounts?.[g.id] || null;
+        // Окно выбора появляется только у входа с несколькими игровыми аккаунтами.
+        // Показываем выбор, когда их действительно несколько (или выбор уже сохранён).
+        const gameAcc =
+          accounts.length > 1 || current
+            ? `<label class="gcm-gameacc" title="Если у входа несколько персонажей, GameCenter спрашивает, каким запускать. Выберите нужного — Твиноферма выберет его в окне сама.">
+          <span>Игровой аккаунт:</span>
+          <select class="select" data-act="game-acc" aria-label="Игровой аккаунт в окне выбора">
+            <option value=""${current ? '' : ' selected'}>не выбирать автоматически</option>
+            ${accounts
+              .map(
+                a =>
+                  `<option value="${escapeHtml(a.id)}"${current?.id === a.id ? ' selected' : ''}>${escapeHtml(a.name)}</option>`
+              )
+              .join('')}
+            ${current && !accounts.some(a => a.id === current.id) ? `<option value="${escapeHtml(current.id)}" selected>${escapeHtml(current.name)} (нет в списке)</option>` : ''}
+          </select>
+        </label>`
+            : '';
         return `
         <div class="gcm-bind" data-gc="${escapeHtml(g.id)}" data-i="${i}">
           <select class="select" data-act="swap" aria-label="GameCenter персонажа">${optionsHtml(others, g.id)}</select>
           ${i === 0 && attached.length > 1 ? '<span class="gcm-badge" title="Первый в списке: запускается, если не выбран другой">основной</span>' : ''}
           <span class="gcm-acc ${acc ? 'is-saved' : 'muted'}">${acc ? `🔑 Вход запомнен${acc.nick ? `: ${escapeHtml(acc.nick)}` : ''}` : 'Вход не запомнен'}</span>
+          ${gameAcc}
           <button type="button" class="btn secondary" data-act="cap" title="Сначала войдите в аккаунт этого персонажа в выбранном GameCenter, затем нажмите: токен сохранится в хранилище ОС">🔑 Запомнить вход</button>
           ${acc ? '<button type="button" class="btn ghost" data-act="forget">Забыть</button>' : ''}
           <button type="button" class="btn ghost" data-act="detach" title="Открепить этот GameCenter от персонажа">✕</button>
@@ -318,7 +340,7 @@ export function openGameCentersModal(opts = {}) {
     </section>
     <section class="gcm-sec">
       <h4>3. Персонажи <small id="gcm-summary" class="muted"></small></h4>
-      <p class="muted">К каждому персонажу можно прикрепить несколько GameCenter. «🔑 Запомнить вход» привязывает к выбранному GameCenter аккаунт, под которым вы в нём сейчас вошли: сначала войдите в нужный аккаунт в самом GameCenter.</p>
+      <p class="muted">К каждому персонажу можно прикрепить несколько GameCenter. «🔑 Запомнить вход» привязывает к выбранному GameCenter аккаунт, под которым вы в нём сейчас вошли: сначала войдите в нужный аккаунт в самом GameCenter. Если у входа несколько игровых персонажей, GameCenter показывает окно «Выбор игрового аккаунта» — выберите нужного в списке «Игровой аккаунт», и Твиноферма выберет его при запуске.</p>
       <div class="gcm-filters">
         <input id="gcm-filter" class="input" type="search" placeholder="Найти по нику или классу…" aria-label="Найти персонажа" />
         <select id="gcm-party" class="select" aria-label="Фильтр по пати">${partyOptionsHtml()}</select>
@@ -347,11 +369,19 @@ export function openGameCentersModal(opts = {}) {
     setText();
     try {
       const r = await gameCenterInfo(gc.path, { kind: launcherKind(gc) });
-      info.set(gc.id, { status: 'ok', nick: r?.nick || '', loggedIn: !!r?.loggedIn });
+      info.set(gc.id, {
+        status: 'ok',
+        nick: r?.nick || '',
+        loggedIn: !!r?.loggedIn,
+        accounts: Array.isArray(r?.gameAccounts) ? r.gameAccounts : [],
+        selected: r?.selectedGameAccount || ''
+      });
     } catch (e) {
       info.set(gc.id, { status: 'error', error: errText(e) });
     }
     setText();
+    // Список игровых аккаунтов пришёл — обновляем выбор в привязках персонажей
+    renderChars();
   };
   const loadAllInfo = async () => {
     for (const gc of gcs()) await loadInfo(gc);
@@ -495,6 +525,18 @@ export function openGameCentersModal(opts = {}) {
     }
     const c = findChar(el);
     if (!c) return;
+    if (act === 'game-acc' && gc) {
+      // Пустое значение — не выбирать автоматически: окно выбора останется за пользователем.
+      const id = el.value;
+      const account =
+        (info.get(gc.id)?.accounts || []).find(a => a.id === id) ||
+        (c.launch?.gcGameAccounts?.[gc.id]?.id === id ? c.launch.gcGameAccounts[gc.id] : null);
+      setGcGameAccount(c, gc.id, account);
+      touch(c);
+      await save();
+      renderChars();
+      return;
+    }
     if (act === 'attach' && el.value) {
       attachGc(c, el.value);
       touch(c);

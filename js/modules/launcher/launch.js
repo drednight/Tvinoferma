@@ -542,7 +542,7 @@ export function closeAllClientsElevated(deps = {}) {
 
 /**
  * Ответ Rust на запуск (`launcher_start`).
- * @typedef {{ pid?: number, dialogClicked?: boolean, switched?: boolean, clientPid?: number, closedOtherGc?: number, gcCloseFailed?: number }} LaunchInfo
+ * @typedef {{ pid?: number, dialogClicked?: boolean, gameAccountClicked?: boolean, switched?: boolean, clientPid?: number, closedOtherGc?: number, gcCloseFailed?: number }} LaunchInfo
  */
 
 /**
@@ -651,6 +651,9 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
           // если вход помечен, а в хранилище его нет, Rust откажется запускать — иначе он бы
           // молча открыл игру под тем аккаунтом, что уже выбран в лаунчере.
           loginSaved: !!target?.saved,
+          // Игровой аккаунт для окна «Выбор игрового аккаунта»: Rust пишет его id в `_sel_`,
+          // а затем сам выбирает строку с этим именем через UI Automation.
+          gameAccount: target?.gameAccount || null,
           url: url || null,
           waitSecs: waitSecs ?? null,
           kind: launcherKindArg(target?.kind),

@@ -85,6 +85,7 @@ describe('launcher', () => {
           path: 'one',
           charId: 'a',
           loginSaved: true,
+          gameAccount: null,
           url: 'vkplay://play/0.61',
           waitSecs: 30,
           windowTitle: 'a',
@@ -99,6 +100,7 @@ describe('launcher', () => {
       path: 'two',
       charId: 'b',
       loginSaved: false,
+      gameAccount: null,
       url: null,
       waitSecs: null,
       windowTitle: 'b',
@@ -155,14 +157,24 @@ describe('launcher', () => {
       nick: 'X',
       launch: { gcPath: '  D:\\GC1  ', gcNick: ' Twin ', gcAccount: true, gcMagic: 'SECRET' }
     });
-    expect(c.launch).toEqual({ gcPath: 'D:\\GC1', gcNick: 'Twin', gcAccount: true, gcIds: [], gcAccounts: {} });
+    expect(c.launch).toEqual({
+      gcPath: 'D:\\GC1',
+      gcNick: 'Twin',
+      gcAccount: true,
+      gcIds: [],
+      gcAccounts: {},
+      gcGameAccounts: {},
+      gcGameAccount: null
+    });
     expect(JSON.stringify(c)).not.toContain('SECRET');
     expect(normalizeCharacter({ nick: 'X' }).launch).toEqual({
       gcPath: '',
       gcNick: '',
       gcAccount: false,
       gcIds: [],
-      gcAccounts: {}
+      gcAccounts: {},
+      gcGameAccounts: {},
+      gcGameAccount: null
     });
   });
 });
