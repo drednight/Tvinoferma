@@ -10,7 +10,10 @@ use std::sync::{
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 use tauri::Emitter;
-use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
+use windows::Win32::Graphics::Gdi::{
+    GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTOPRIMARY,
+};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
@@ -522,7 +525,7 @@ fn message(key: Key, up: bool, repeat: bool) -> (u32, u32, u32) {
     };
     (msg, vk, flags)
 }
-// Keep all blocking calls off the input hook. Each key delivery is bounded at 25 ms.
+// Keep blocking calls off the input hook. Each activity delivery has a bounded timeout.
 #[link(name = "user32")]
 unsafe extern "system" {
     #[link_name = "SendNotifyMessageW"]
@@ -543,6 +546,7 @@ pub enum KeyboardMethod {
     Post,
     ActivityNotify,
     Combined,
+    CacheHybrid,
 }
 impl KeyboardMethod {
     pub fn parse(value: Option<&str>, legacy_combined: bool) -> Result<Self, String> {
@@ -550,6 +554,7 @@ impl KeyboardMethod {
             Some("post") => Ok(Self::Post),
             Some("activity-notify") => Ok(Self::ActivityNotify),
             Some("combined") => Ok(Self::Combined),
+            Some("cache-hybrid") => Ok(Self::CacheHybrid),
             None => Ok(if legacy_combined {
                 Self::Combined
             } else {
@@ -564,6 +569,11 @@ impl KeyboardMethod {
     fn activity(self) -> bool {
         self != Self::Post
     }
+    // The hybrid candidate owns its own activation window and its own global injection.
+    // It never uses the notify/timeout protocol of the combined method.
+    fn cache_hybrid(self) -> bool {
+        self == Self::CacheHybrid
+    }
 }
 fn modifier_release_order(vk: u32) -> bool {
     matches!(vk, 0x10..=0x12 | 0xa0..=0xa5)
@@ -577,6 +587,7 @@ unsafe fn combined_key(
     msg: u32,
     vk: u32,
     flags: u32,
+    timeout_ms: u32,
 ) -> Result<(), u8> {
     let raw = hwnd as *mut std::ffi::c_void;
     let original = GetForegroundWindow();
@@ -595,7 +606,7 @@ unsafe fn combined_key(
             vk as usize,
             flags as isize,
             0x0002 | 0x0020,
-            25,
+            timeout_ms,
             &mut result,
         ) != 0;
     // Restore notification state even on failure; never call SetFocus/SetForegroundWindow.
@@ -628,18 +639,334 @@ unsafe fn combined_key(
         Ok(())
     }
 }
+// Experimental candidate for the PW key-cache hypothesis. The game fills its own key
+// cache from the WM_KEYDOWN handler of its window, but the frame update clears keys
+// whose global async state is not set. Neither channel alone satisfies both conditions:
+// PostMessage fills the cache but leaves GetAsyncKeyState clear, SendInput sets the
+// global state but reaches the focused window instead of the recipient.
+// Order: WM_ACTIVATEAPP(TRUE) -> held SendInput(down) -> PostMessage(down) -> hold ->
+// SendInput(up) -> PostMessage(up) -> WM_ACTIVATEAPP(FALSE) for a windowed client only.
+// The global injection is real system input: it lands in the focused window and can
+// repeat the action in the source client. It stays an explicit opt-in experiment.
+const HYBRID_HOLD_MS: u64 = 250;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WindowMode {
+    Windowed,
+    Borderless,
+    Fullscreen,
+    Unknown,
+}
+impl WindowMode {
+    // A borderless or fullscreen client is genuinely active: telling the game that the
+    // application was deactivated would change its own state, so the activation flag
+    // is left as it is. Only a windowed client returns to the deactivated state.
+    fn restores_activity(self) -> bool {
+        self == Self::Windowed
+    }
+}
+unsafe fn window_mode(hwnd: usize) -> WindowMode {
+    let handle = HWND(hwnd as *mut _);
+    let style = GetWindowLongPtrW(handle, GWL_STYLE) as u32;
+    let mut rect = RECT::default();
+    if GetWindowRect(handle, &mut rect).is_err() {
+        return WindowMode::Unknown;
+    }
+    if style & WS_CAPTION.0 != 0 {
+        return WindowMode::Windowed;
+    }
+    let mut info = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    let monitor = MonitorFromWindow(handle, MONITOR_DEFAULTTOPRIMARY);
+    if GetMonitorInfoW(monitor, &mut info).as_bool()
+        && info.rcMonitor.left == rect.left
+        && info.rcMonitor.top == rect.top
+        && info.rcMonitor.right == rect.right
+        && info.rcMonitor.bottom == rect.bottom
+    {
+        return WindowMode::Fullscreen;
+    }
+    WindowMode::Borderless
+}
+struct HybridKey {
+    key: Key,
+    // The key stays pressed until the source releases it and the hold window is over.
+    deadline: Instant,
+    released: bool,
+}
+struct HybridClient {
+    active: bool,
+    mode: WindowMode,
+    keys: HashMap<u32, HybridKey>,
+}
+struct HybridState {
+    clients: HashMap<usize, HybridClient>,
+}
+impl HybridState {
+    fn new() -> Self {
+        Self {
+            clients: HashMap::new(),
+        }
+    }
+    unsafe fn activate(&mut self, hwnd: usize) -> Result<(), u8> {
+        let client = self.clients.entry(hwnd).or_insert(HybridClient {
+            active: false,
+            mode: WindowMode::Unknown,
+            keys: HashMap::new(),
+        });
+        if client.active {
+            return Ok(());
+        }
+        let thread = GetWindowThreadProcessId(HWND(hwnd as *mut _), None);
+        if mirror_notify(
+            hwnd as *mut std::ffi::c_void,
+            WM_ACTIVATEAPP,
+            1,
+            thread as isize,
+        ) == 0
+        {
+            return Err(7);
+        }
+        client.active = true;
+        client.mode = window_mode(hwnd);
+        Ok(())
+    }
+    unsafe fn press(&mut self, hwnd: usize, key: Key, repeat: bool) -> Result<(), u8> {
+        self.activate(hwnd)?;
+        let client = self.clients.get_mut(&hwnd).ok_or(7)?;
+        let state = client.keys.get(&key.vk).map(|item| item.released);
+        match state {
+            // The key is already held in both channels: only the window cache is refreshed.
+            Some(false) => {
+                hybrid_post(hwnd, key, false, true)?;
+                Ok(())
+            }
+            // The source pressed the key again before the hold window ended.
+            Some(true) => {
+                hybrid_post(hwnd, key, false, false)?;
+                if let Some(item) = client.keys.get_mut(&key.vk) {
+                    item.released = false;
+                    item.deadline = Instant::now() + Duration::from_millis(HYBRID_HOLD_MS);
+                }
+                Ok(())
+            }
+            None => {
+                // Fixed order of the candidate: the global key first, then the window message.
+                if !hybrid_inject(key, false) {
+                    return Err(11);
+                }
+                if let Err(reason) = hybrid_post(hwnd, key, false, repeat) {
+                    // Never leave a global key pressed after a rejected window message.
+                    let _ = hybrid_inject(key, true);
+                    return Err(reason);
+                }
+                client.keys.insert(
+                    key.vk,
+                    HybridKey {
+                        key,
+                        deadline: Instant::now() + Duration::from_millis(HYBRID_HOLD_MS),
+                        released: false,
+                    },
+                );
+                Ok(())
+            }
+        }
+    }
+    unsafe fn logical_release(&mut self, hwnd: usize, vk: u32) -> Result<(), u8> {
+        let now = Instant::now();
+        let Some(client) = self.clients.get_mut(&hwnd) else {
+            return Ok(());
+        };
+        let due = match client.keys.get_mut(&vk) {
+            Some(item) => {
+                item.released = true;
+                now >= item.deadline
+            }
+            None => return Ok(()),
+        };
+        if due {
+            let item = client.keys.remove(&vk).expect("checked key");
+            if let Err(reason) = hybrid_release_key(hwnd, &item.key, true) {
+                // Keep the key for the emergency cleanup of a possibly stuck global key.
+                client.keys.insert(vk, item);
+                return Err(reason);
+            }
+        }
+        self.finish_episode(hwnd)
+    }
+    // Releases the keys whose hold window is over and restores the activation state
+    // of a windowed client once no mirrored key is held any more.
+    unsafe fn tick(&mut self, clients: &[Client], now: Instant) -> Result<(), u8> {
+        let hwnds: Vec<usize> = self.clients.keys().copied().collect();
+        for hwnd in hwnds {
+            let client = self.clients.get_mut(&hwnd).expect("known client");
+            let mut ready: Vec<(u32, Key)> = client
+                .keys
+                .iter()
+                .filter(|(_, item)| item.released && now >= item.deadline)
+                .map(|(vk, item)| (*vk, item.key))
+                .collect();
+            // Release ordinary keys before their modifiers.
+            ready.sort_by_key(|(_, key)| modifier_release_order(key.vk));
+            if ready.is_empty() {
+                continue;
+            }
+            let verified = clients
+                .iter()
+                .any(|client| client.hwnd == hwnd && verify(client));
+            for (vk, key) in ready {
+                if let Err(reason) = hybrid_release_key(hwnd, &key, verified) {
+                    // Keep the key for the emergency cleanup of a possibly stuck global key.
+                    client.keys.insert(
+                        vk,
+                        HybridKey {
+                            key,
+                            deadline: now,
+                            released: true,
+                        },
+                    );
+                    return Err(reason);
+                }
+                client.keys.remove(&vk);
+            }
+        }
+        for hwnd in self.clients.keys().copied().collect::<Vec<_>>() {
+            self.finish_episode(hwnd)?;
+        }
+        Ok(())
+    }
+    unsafe fn finish_episode(&mut self, hwnd: usize) -> Result<(), u8> {
+        let Some(client) = self.clients.get_mut(&hwnd) else {
+            return Ok(());
+        };
+        if !client.keys.is_empty() || !client.active {
+            return Ok(());
+        }
+        let mode = client.mode;
+        client.active = false;
+        if mode.restores_activity() {
+            let thread = GetWindowThreadProcessId(HWND(hwnd as *mut _), None);
+            if mirror_notify(
+                hwnd as *mut std::ffi::c_void,
+                WM_ACTIVATEAPP,
+                0,
+                thread as isize,
+            ) == 0
+            {
+                return Err(9);
+            }
+        }
+        Ok(())
+    }
+    // Emergency cleanup: the global key is always released, the window message only
+    // when the recipient is still the verified client.
+    unsafe fn release_all(&mut self, clients: &[Client]) -> Result<(), u8> {
+        let mut failure = Ok(());
+        for hwnd in self.clients.keys().copied().collect::<Vec<_>>() {
+            let client = self.clients.get_mut(&hwnd).expect("known client");
+            let mut items: Vec<Key> = client.keys.values().map(|item| item.key).collect();
+            items.sort_by_key(|key| modifier_release_order(key.vk));
+            client.keys.clear();
+            let verified = clients
+                .iter()
+                .any(|client| client.hwnd == hwnd && verify(client));
+            for key in items {
+                if let Err(reason) = hybrid_release_key(hwnd, &key, verified) {
+                    failure = Err(reason);
+                }
+            }
+            if client.active {
+                let mode = client.mode;
+                client.active = false;
+                if mode.restores_activity() {
+                    let thread = GetWindowThreadProcessId(HWND(hwnd as *mut _), None);
+                    if mirror_notify(
+                        hwnd as *mut std::ffi::c_void,
+                        WM_ACTIVATEAPP,
+                        0,
+                        thread as isize,
+                    ) == 0
+                    {
+                        failure = Err(9);
+                    }
+                }
+            }
+        }
+        self.clients.clear();
+        failure
+    }
+}
+// Global injection of one key. It reaches the focused window, never a chosen recipient.
+unsafe fn hybrid_inject(key: Key, up: bool) -> bool {
+    let mut flags = KEYBD_EVENT_FLAGS(0);
+    if key.flags & LLKHF_EXTENDED.0 != 0 || matches!(key.vk, 0xa3 | 0xa5) {
+        flags |= KEYEVENTF_EXTENDEDKEY;
+    }
+    if up {
+        flags |= KEYEVENTF_KEYUP;
+    }
+    let event = INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: VIRTUAL_KEY(key.vk as u16),
+                wScan: 0,
+                dwFlags: flags,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    };
+    crate::input_arbiter::dispatch(up, || {
+        SendInput(&[event], std::mem::size_of::<INPUT>() as i32)
+    })
+    .unwrap_or(0)
+        == 1
+}
+unsafe fn hybrid_release_key(hwnd: usize, key: &Key, post: bool) -> Result<(), u8> {
+    // The global key is released first: a stuck global modifier is worse than a
+    // missing window message.
+    if !hybrid_inject(*key, true) {
+        return Err(11);
+    }
+    if !post {
+        return Ok(());
+    }
+    hybrid_post(hwnd, *key, true, false)
+}
+// The addressable window message of the candidate. It goes through the same input
+// arbiter as the ordinary protocol: a cancelled operation refuses the delivery.
+unsafe fn hybrid_post(hwnd: usize, key: Key, up: bool, repeat: bool) -> Result<(), u8> {
+    let (msg, vk, flags) = message(key, up, repeat);
+    crate::input_arbiter::dispatch(up, || {
+        PostMessageW(
+            Some(HWND(hwnd as *mut _)),
+            msg,
+            WPARAM(vk as usize),
+            LPARAM(flags as isize),
+        )
+        .is_ok()
+    })
+    .unwrap_or(false)
+    .then_some(())
+    .ok_or(4)
+}
 unsafe fn post(
     hwnd: usize,
     key: Key,
     up: bool,
     repeat: bool,
     method: KeyboardMethod,
+    timeout_ms: u32,
 ) -> Result<(), u8> {
     if key.mouse.is_some() {
-        return post_unchecked(hwnd, key, up, repeat, method);
+        return post_unchecked(hwnd, key, up, repeat, method, timeout_ms);
     }
-    crate::input_arbiter::dispatch(up, || post_unchecked(hwnd, key, up, repeat, method))
-        .unwrap_or(Err(10))
+    crate::input_arbiter::dispatch(up, || {
+        post_unchecked(hwnd, key, up, repeat, method, timeout_ms)
+    })
+    .unwrap_or(Err(10))
 }
 unsafe fn post_unchecked(
     hwnd: usize,
@@ -647,6 +974,7 @@ unsafe fn post_unchecked(
     up: bool,
     repeat: bool,
     method: KeyboardMethod,
+    timeout_ms: u32,
 ) -> Result<(), u8> {
     if let Some(m) = key.mouse {
         return super::win::mouse_message(
@@ -666,6 +994,11 @@ unsafe fn post_unchecked(
             }
         });
     }
+    // The hybrid candidate owns the whole press cycle: a single message without the
+    // matching global press would leave the game cache and the async state apart.
+    if method.cache_hybrid() {
+        return Err(12);
+    }
     let (msg, vk, flags) = message(key, up, repeat);
     let posted = if method.posts() {
         PostMessageW(
@@ -680,7 +1013,7 @@ unsafe fn post_unchecked(
     };
     // Never skip either release transport when the other fails. No retry/fallback.
     let activity = if method.activity() {
-        combined_key(hwnd, key.source, msg, vk, flags)
+        combined_key(hwnd, key.source, msg, vk, flags, timeout_ms)
     } else {
         Ok(())
     };
@@ -690,8 +1023,19 @@ unsafe fn post_unchecked(
 fn release(
     clients: &[Client],
     held: &mut HashMap<usize, HashMap<u32, (Key, Instant)>>,
+    hybrid: &mut HybridState,
     method: KeyboardMethod,
+    timeout_ms: u32,
 ) {
+    if method.cache_hybrid() {
+        // The global key of the candidate is released by its own state, not by the
+        // addressable window messages of the ordinary protocol.
+        held.clear();
+        unsafe {
+            let _ = hybrid.release_all(clients);
+        }
+        return;
+    }
     for (hwnd, keys) in held.drain() {
         if clients.iter().any(|c| c.hwnd == hwnd && verify(c)) {
             let mut releases: Vec<_> = keys.into_values().collect();
@@ -699,7 +1043,7 @@ fn release(
             releases.sort_by_key(|(key, _)| modifier_release_order(key.vk));
             for (key, _) in releases {
                 unsafe {
-                    let _ = post(hwnd, key, true, false, method);
+                    let _ = post(hwnd, key, true, false, method, timeout_ms);
                 }
             }
         }
@@ -764,6 +1108,7 @@ impl TraceLog {
 }
 struct KeyboardRouting {
     method: KeyboardMethod,
+    timeout_ms: u32,
     hold_only: bool,
     targets: Option<Vec<usize>>,
 }
@@ -780,6 +1125,7 @@ fn forward(
 ) {
     let KeyboardRouting {
         method,
+        timeout_ms,
         hold_only,
         targets: keyboard_targets,
     } = routing;
@@ -791,6 +1137,7 @@ fn forward(
         omitted: 0,
     };
     let mut held: HashMap<usize, HashMap<u32, (Key, Instant)>> = HashMap::new();
+    let mut hybrid = HybridState::new();
     let mut previous = 0;
     while !control.stop.load(Ordering::SeqCst) {
         if crate::input_arbiter::cancelled() {
@@ -811,8 +1158,16 @@ fn forward(
         }
         let foreground = unsafe { GetForegroundWindow().0 as usize };
         if foreground != previous {
-            release(&clients, &mut held, method);
+            release(&clients, &mut held, &mut hybrid, method, timeout_ms);
             previous = foreground;
+        }
+        if method.cache_hybrid() {
+            // The candidate holds the key after the source released it: the hold window
+            // is closed here, not in the key event itself.
+            if let Err(reason) = unsafe { hybrid.tick(&clients, Instant::now()) } {
+                halt(&control, reason);
+                break;
+            }
         }
         let Ok(key) = rx.recv_timeout(Duration::from_millis(10)) else {
             continue;
@@ -824,11 +1179,11 @@ fn forward(
             break;
         }
         if key.vk == 0 {
-            release(&clients, &mut held, method);
+            release(&clients, &mut held, &mut hybrid, method, timeout_ms);
             continue;
         }
         if key.source != unsafe { GetForegroundWindow().0 as usize } {
-            release(&clients, &mut held, method);
+            release(&clients, &mut held, &mut hybrid, method, timeout_ms);
             continue;
         }
         if !clients.iter().any(|c| c.hwnd == key.source && verify(c)) {
@@ -847,7 +1202,7 @@ fn forward(
             if control.stop.load(Ordering::SeqCst)
                 || key.source != unsafe { GetForegroundWindow().0 as usize }
             {
-                release(&clients, &mut held, method);
+                release(&clients, &mut held, &mut hybrid, method, timeout_ms);
                 break;
             }
             if now().saturating_sub(key.at) > 250 {
@@ -875,7 +1230,20 @@ fn forward(
             if !key.up {
                 keys.insert(key.vk, (key, Instant::now()));
             }
-            if let Err(reason) = unsafe { post(client.hwnd, key, key.up, repeat, method) } {
+            let result = if method.cache_hybrid() && key.mouse.is_none() {
+                // The candidate sends the press and the release itself: the global key is
+                // held for one frame window before it is released.
+                unsafe {
+                    if key.up {
+                        hybrid.logical_release(client.hwnd, key.vk)
+                    } else {
+                        hybrid.press(client.hwnd, key, repeat)
+                    }
+                }
+            } else {
+                unsafe { post(client.hwnd, key, key.up, repeat, method, timeout_ms) }
+            };
+            if let Err(reason) = result {
                 failed_input(&control, key);
                 halt(&control, reason);
                 break;
@@ -888,7 +1256,7 @@ fn forward(
         trace.record(key, delivered);
     }
     trace.flush(true);
-    release(&clients, &mut held, method);
+    release(&clients, &mut held, &mut hybrid, method, timeout_ms);
 }
 pub fn stop(id: &str) -> Result<bool, String> {
     let mut guard = SESSION.lock().map_err(|_| "Mirror lock failed")?;
@@ -915,6 +1283,7 @@ pub struct Options {
     pub mouse: bool,
     pub keyboard: bool,
     pub method: KeyboardMethod,
+    pub timeout_ms: u32,
     pub hold_only: bool,
     pub keyboard_source: Option<Target>,
     pub keyboard_targets: Option<Vec<Target>>,
@@ -934,6 +1303,7 @@ pub fn start(
         mouse,
         keyboard,
         method,
+        timeout_ms,
         hold_only,
         keyboard_source,
         keyboard_targets,
@@ -948,6 +1318,7 @@ pub fn start(
         || !(2..=30).contains(&targets.len())
         || shortcuts.len() > 65
         || (!mouse && !keyboard)
+        || ![25, 100].contains(&timeout_ms)
     {
         return Err("Invalid mirror configuration".into());
     }
@@ -1102,6 +1473,7 @@ pub fn start(
                         worker_id,
                         KeyboardRouting {
                             method,
+                            timeout_ms,
                             hold_only,
                             targets: keyboard_target_hwnds,
                         },
@@ -1192,6 +1564,33 @@ mod tests {
         assert!(KeyboardMethod::Combined.activity());
         assert!(!KeyboardMethod::Post.activity());
         assert!(KeyboardMethod::parse(Some("unknown"), false).is_err());
+    }
+    #[test]
+    fn cache_hybrid_is_explicit_and_keeps_its_own_activation_protocol() {
+        let hybrid = KeyboardMethod::parse(Some("cache-hybrid"), false).unwrap();
+        // The candidate posts the window message itself, but it never uses the notify
+        // and timeout protocol of the combined method.
+        assert!(hybrid.posts());
+        assert!(!hybrid.activity());
+        assert!(hybrid.cache_hybrid());
+        assert!(!KeyboardMethod::Post.cache_hybrid());
+        assert!(!KeyboardMethod::Combined.cache_hybrid());
+        assert!(!KeyboardMethod::ActivityNotify.cache_hybrid());
+        assert_eq!(
+            KeyboardMethod::parse(Some("cache-hybrid"), true).unwrap(),
+            KeyboardMethod::CacheHybrid
+        );
+    }
+    #[test]
+    fn only_a_windowed_client_restores_the_activation_state() {
+        assert!(WindowMode::Windowed.restores_activity());
+        assert!(!WindowMode::Borderless.restores_activity());
+        assert!(!WindowMode::Fullscreen.restores_activity());
+        assert!(!WindowMode::Unknown.restores_activity());
+    }
+    #[test]
+    fn hybrid_hold_window_stays_inside_the_tested_range() {
+        assert!((200..=300).contains(&HYBRID_HOLD_MS));
     }
     #[test]
     fn hold_only_suppresses_only_repeated_keyboard_downs() {

@@ -40,6 +40,13 @@ it('stores a separate manual mirror observation with conditions, never a fabrica
   expect(() => mirrorObservation({ charId: 'missing', key: 'B', verdict: 'failed' }, c, state)).toThrow();
   expect(() => mirrorObservation({ charId: 'a', key: 'B\nF8', verdict: 'failed' }, c, state)).toThrow();
 });
+it('records the global-input candidate as a separate manual observation method', () => {
+  const hybrid = normalizeGameMacros({ partyId: 'p', mirrorKeyboardMethod: 'cache-hybrid' });
+  const row = mirrorObservation({ charId: 'a', key: 'B', verdict: 'failed' }, hybrid, state);
+  expect(row.method).toBe('mirror-cache-hybrid');
+  expect(normalizeTrials([row])[0]).toMatchObject({ method: 'mirror-cache-hybrid', verdict: 'failed' });
+});
+
 it('manual observation requires confirmation, saves once and does not switch input modes', async () => {
   const save = vi.fn(async patch => {
     c = normalizeGameMacros({ ...c, ...patch });

@@ -6,7 +6,15 @@ const mocks = vi.hoisted(() => ({
   showSize: vi.fn(),
   openOverlay: vi.fn(),
   run: vi.fn(),
-  pickPoint: vi.fn()
+  pickPoint: vi.fn(),
+  listMacroWindows: vi.fn(async () => []),
+  saveProfile: vi.fn(async name => {
+    state.settings.gameMacros.profiles = [
+      ...(state.settings.gameMacros.profiles || []),
+      { id: 'new-profile', name, windows: [] }
+    ];
+    state.settings.gameMacros.profileId = 'new-profile';
+  })
 }));
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}) }));
 vi.mock('../js/modules/gameMacros/runtime.js', async () => {
@@ -14,6 +22,7 @@ vi.mock('../js/modules/gameMacros/runtime.js', async () => {
   const { state } = await import('../js/core/state.js');
   return {
     diagnoseBackground: mocks.diagnoseBackground,
+    listMacroWindows: mocks.listMacroWindows,
     clearLogs: vi.fn(async () => {}),
     config: () => normalizeGameMacros(state.settings.gameMacros),
     toggleKeyboardMirror: vi.fn(async () => {}),
@@ -28,7 +37,7 @@ vi.mock('../js/modules/gameMacros/runtime.js', async () => {
     run: mocks.run,
     stop: vi.fn(),
     togglePause: vi.fn(),
-    saveProfile: vi.fn(),
+    saveProfile: mocks.saveProfile,
     pickPoint: mocks.pickPoint,
     previewCommand: vi.fn(),
     showSize: mocks.showSize,
@@ -37,6 +46,7 @@ vi.mock('../js/modules/gameMacros/runtime.js', async () => {
 });
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.removeItem('tf-gm-points-collapsed');
   state.parties = [{ id: 'p', name: 'Пати' }];
   state.characters = [{ id: 'a', nick: 'Alpha', class: 'Воин', partyIds: ['p'] }];
   state.settings.gameMacros = {
@@ -55,6 +65,65 @@ describe('party command workspace', () => {
     expect(document.querySelector('.gm-command-choice kbd').textContent).toBe('CTRL+ALT+F8');
     expect(document.body.textContent).not.toContain('Глобальные хоткеи');
     expect(document.body.textContent).not.toContain('Перед массовыми');
+  });
+  it('keeps everyday controls visible and technical tools collapsed below the command list', () => {
+    const host = document.querySelector('#host');
+    const advanced = host.querySelector('.gm-advanced-tools');
+    expect(host.querySelector('.gm-page-heading h3').textContent).toBe('Команды');
+    expect(advanced.open).toBe(false);
+    for (const selector of [
+      '[data-gm-recipients]',
+      '[data-gm-overlay]',
+      '[data-gm-enabled]',
+      '[data-gm-mirror]',
+      '[data-gm-mirror-mouse]',
+      '[data-gm-pause]',
+      '[data-gm-stop]',
+      '[data-gm-create]',
+      '[data-gm-run]',
+      '[data-gm-edit]'
+    ]) {
+      expect(host.querySelector(selector).closest('.gm-advanced-tools')).toBeNull();
+    }
+    for (const selector of [
+      '[data-gm-diagnostics]',
+      '[data-gm-background-probe]',
+      '[data-gm-multi-trial]',
+      '[data-gm-logs]',
+      '[data-gm-transfer]',
+      '[data-gm-party]'
+    ]) {
+      expect(advanced.querySelector(selector)).not.toBeNull();
+    }
+    expect(
+      host.querySelector('.gm-command-workbench').compareDocumentPosition(advanced) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(host.querySelector('[data-gm-execution-status]').hidden).toBe(true);
+  });
+  it('preserves expanded sections and search on remount without running a command', () => {
+    const host = document.querySelector('#host');
+    host.querySelector('.gm-advanced-tools').open = true;
+    host.querySelector('.gm-points-section').open = true;
+    const search = host.querySelector('[data-gm-search]');
+    search.value = 'unsafe';
+    search.dispatchEvent(new Event('input'));
+    host.querySelector('[data-gm-select]').click();
+    expect(host.querySelector('.gm-advanced-tools').open).toBe(true);
+    expect(host.querySelector('.gm-points-section').open).toBe(true);
+    expect(host.querySelector('[data-gm-search]').value).toBe('unsafe');
+    expect(mocks.run).not.toHaveBeenCalled();
+  });
+  it('runs a saved command only from its explicit run button', () => {
+    document.querySelector('[data-gm-run]').click();
+    expect(mocks.run).toHaveBeenCalledWith('next');
+  });
+  it('keeps saved pause commands available during execution', () => {
+    state.settings.gameMacros.commands = [{ id: 'pause', name: 'Пауза', action: 'pause' }];
+    mountGameMacros(document.querySelector('#host'));
+    const button = document.querySelector('[data-gm-run]');
+    expect(button.hasAttribute('data-gm-pause')).toBe(true);
+    button.click();
+    expect(mocks.run).toHaveBeenCalledWith('pause');
   });
   it('opens a clean creation modal and can cancel without creating a command', () => {
     expect(document.querySelector('[data-gm-form]')).toBeNull();
@@ -86,7 +155,7 @@ describe('party command workspace', () => {
       name: 'Моя команда',
       action: 'composite',
       scope: 'party',
-      blocks: [expect.objectContaining({ steps: [{ type: 'keys', value: 'F7' }] })]
+      blocks: [expect.objectContaining({ scope: 'managed', target: 'all', steps: [{ type: 'keys', value: 'F7' }] })]
     });
   });
   it('opens overlay preferences and session logs only on request', () => {
@@ -153,6 +222,7 @@ it('keeps the master switch in the standalone page header', () => {
   toggle.closest('label').dispatchEvent(click);
   expect(details.querySelector(':scope > summary')).toBeNull();
   expect(toggle.checked).toBe(true);
+  document.querySelector('[data-gm-repeat-config]').click();
   expect(document.querySelector('[data-gm-mirror-source]').value).toBe('any');
 });
 it('converts key steps to a composition without legacy add-command controls or losing steps', () => {
@@ -165,22 +235,9 @@ it('converts key steps to a composition without legacy add-command controls or l
   expect([...form.querySelectorAll('[data-step] [data-field="value"]')].map(e => e.value)).toEqual(['CTRL+F9', 'F8']);
   expect(form.querySelector('[data-field="ms"]').value).toBe('200');
 });
-it('creates three background test commands from the editor without running them', async () => {
+it('does not offer bulk creation of experimental variants in the normal editor', () => {
   document.querySelector('[data-gm-edit]').click();
-  const form = document.querySelector('[data-gm-form]');
-  form.querySelector('[name="action"][value="sequence"]').checked = true;
-  form.elements.namedItem('sequence').value = 'CTRL+F9';
-  form.elements.namedItem('delivery').value = 'background';
-  form.dispatchEvent(new Event('change', { bubbles: true }));
-  expect(form.querySelector('[data-gm-background-method]').hidden).toBe(false);
-  form.querySelector('[data-gm-background-variants]').click();
-  await vi.waitFor(() => expect(state.settings.gameMacros.commands).toHaveLength(4));
-  expect(state.settings.gameMacros.commands.slice(1).map(c => c.backgroundMethod)).toEqual([
-    'post',
-    'send-timeout',
-    'notify'
-  ]);
-  expect(state.settings.gameMacros.commands.slice(1).every(c => c.hotkey === '')).toBe(true);
+  expect(document.querySelector('[data-gm-background-variants]')).toBeNull();
   expect(mocks.run).not.toHaveBeenCalled();
 });
 
@@ -244,10 +301,10 @@ it('requires explicit opt-in before the one-key activity experiment', async () =
 });
 it('does not render the command execution notice below the repeat source', () => {
   expect(document.querySelector('[data-gm-runtime]')).toBeNull();
-  expect(document.querySelector('[data-gm-mirror-source]')).not.toBeNull();
+  expect(document.querySelector('[data-gm-repeat-config]')).not.toBeNull();
   expect(document.querySelector('[data-gm-logs]')).not.toBeNull();
 });
-it('hides size/profile settings and commands without deleting saved data', () => {
+it('keeps saved profiles available while hiding obsolete size and layout commands', () => {
   state.settings.gameMacros.commands.push(
     { id: 'size', action: 'resize', name: 'Old size' },
     { id: 'layout', action: 'layout', name: 'Old layout' }
@@ -255,7 +312,8 @@ it('hides size/profile settings and commands without deleting saved data', () =>
   state.settings.gameMacros.profiles = [{ id: 'saved', name: 'Saved profile', windows: [] }];
   mountGameMacros(document.getElementById('host'));
   expect(document.querySelector('[data-gm-hidden-sizes]').hidden).toBe(true);
-  expect(document.querySelector('[data-gm-hidden-profiles]').hidden).toBe(true);
+  expect(document.querySelector('.gm-profiles-section').open).toBe(false);
+  expect(document.querySelector('[data-gm-profile] option[value="saved"]').textContent).toBe('Saved profile');
   expect(document.querySelector('[data-gm-select="size"]')).toBeNull();
   expect(document.querySelector('[data-gm-select="layout"]')).toBeNull();
   expect(state.settings.gameMacros.commands.some(row => row.id === 'size')).toBe(true);
@@ -266,6 +324,7 @@ it('hides size/profile settings and commands without deleting saved data', () =>
 });
 
 it('lets the user choose or disable a twins-only click modifier without automatically enabling mouse repeat', async () => {
+  document.querySelector('[data-gm-repeat-config]').click();
   const field = document.querySelector('[data-gm-twins-modifier]');
   expect(field.value).toBe('');
   expect([...field.options].map(o => o.value)).toEqual([
@@ -280,6 +339,7 @@ it('lets the user choose or disable a twins-only click modifier without automati
   ]);
   field.value = 'ALT+SHIFT';
   field.dispatchEvent(new Event('change', { bubbles: true }));
+  document.querySelector('.modal-footer .primary').click();
   await vi.waitFor(() => expect(state.settings.gameMacros.mirrorTwinsModifier).toBe('ALT+SHIFT'));
   const runtime = await import('../js/modules/gameMacros/runtime.js');
   expect(runtime.toggleKeyboardMirror).not.toHaveBeenCalled();
@@ -291,52 +351,205 @@ it('groups execution controls together and separates repeat configuration in a n
   expect([...buttons.querySelectorAll('button')].map(b => b.textContent)).toEqual([
     '⌨ ВЫКЛ',
     '🖱 ВЫКЛ',
+    '⚙ Настройки повтора',
     'Ⅱ Пауза',
     '■ Остановить'
   ]);
-  const group = document.querySelector('.gm-repeat-settings');
-  expect(group.querySelector('legend').textContent).toContain('Повтор клавиатуры и мыши');
+  document.querySelector('[data-gm-repeat-config]').click();
+  const group = document.querySelector('.gm-repeat-modal');
+  expect(group.querySelector('[data-repeat-keyboard] legend').textContent).toContain('Повтор клавиатуры');
+  expect(group.querySelector('[data-repeat-mouse] legend').textContent).toContain('Повтор мыши');
+  expect(group.querySelector('[data-repeat-keyboard] [data-gm-keyboard-method]')).not.toBeNull();
+  expect(group.querySelector('[data-repeat-mouse] [data-gm-mirror-source]')).not.toBeNull();
   expect(group.contains(document.querySelector('[data-gm-mirror-source]'))).toBe(true);
   expect(group.contains(document.querySelector('[data-gm-twins-modifier]'))).toBe(true);
 });
 
-it('filters commands without executing them and prepares background test commands without sending input', async () => {
+it('persists a bounded experimental keyboard timeout independently of mouse settings', async () => {
+  document.querySelector('[data-gm-repeat-config]').click();
+  const timeout = document.querySelector('[data-gm-keyboard-timeout]');
+  expect(timeout.value).toBe('25');
+  timeout.value = '100';
+  document.querySelector('.modal-footer .primary').click();
+  await vi.waitFor(() => expect(state.settings.gameMacros.mirrorKeyboardTimeoutMs).toBe(100));
+});
+
+it('warns about the global input leak and requires an explicit consent for the candidate', async () => {
+  document.querySelector('[data-gm-repeat-config]').click();
+  const method = document.querySelector('[data-gm-keyboard-method]');
+  const warning = document.querySelector('[data-gm-hybrid-warning]');
+  const consent = document.querySelector('[data-gm-hybrid-consent]');
+  expect(consent.tagName).toBe('INPUT');
+  expect([...method.options].map(option => option.value)).toContain('cache-hybrid');
+  expect(warning.hidden).toBe(true);
+  method.value = 'cache-hybrid';
+  method.dispatchEvent(new Event('change'));
+  expect(warning.hidden).toBe(false);
+  expect(warning.textContent).toContain('активное окно');
+  document.querySelector('.modal-footer .primary').click();
+  await vi.waitFor(() => expect(state.settings.gameMacros.mirrorKeyboardMethod).not.toBe('cache-hybrid'));
+  expect(state.settings.gameMacros.mirrorKeyboardMethod).toBeUndefined();
+  consent.checked = true;
+  document.querySelector('.modal-footer .primary').click();
+  await vi.waitFor(() => expect(state.settings.gameMacros.mirrorKeyboardMethod).toBe('cache-hybrid'));
+});
+
+it('filters commands without executing them', () => {
   const search = document.querySelector('[data-gm-search]');
   search.value = 'нет такой';
   search.dispatchEvent(new Event('input', { bubbles: true }));
   expect(document.querySelector('[data-gm-select]').hidden).toBe(true);
   expect(document.querySelector('[data-gm-no-matches]').hidden).toBe(false);
-  search.value = '';
-  search.dispatchEvent(new Event('input', { bubbles: true }));
-  state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['p'] });
-  state.settings.gameMacros.leaders = { p: 'a' };
-  document.querySelector('[data-gm-background-lab]').click();
-  const form = document.querySelector('.gm-background-lab');
-  form.elements.charId.value = 'b';
-  form.elements.key.value = 'B';
-  document.querySelector('.modal-footer .primary').click();
-  await vi.waitFor(() => expect(state.settings.gameMacros.commands).toHaveLength(6));
-  expect(
-    state.settings.gameMacros.commands.slice(1).every(c => c.strictTargets && c.charIds[0] === 'b' && !c.hotkey)
-  ).toBe(true);
   expect(mocks.run).not.toHaveBeenCalled();
 });
 it('offers independent active-window-only mouse modifier, disabled by default and persisted', async () => {
+  document.querySelector('[data-gm-repeat-config]').click();
   const input = document.querySelector('[data-gm-active-modifier]');
   expect(input).not.toBeNull();
   expect(input.value).toBe('');
   input.value = 'SHIFT';
   input.dispatchEvent(new Event('change'));
+  document.querySelector('.modal-footer .primary').click();
   await vi.waitFor(() => expect(state.settings.gameMacros.mirrorActiveModifier).toBe('SHIFT'));
   expect(state.settings.gameMacros.mirrorTwinsModifier).toBe('');
 });
 
-it('keeps current comparison and journal outside collapsed legacy diagnostics', () => {
-  const legacy = document.querySelector('[data-gm-legacy-checks]');
-  expect(legacy.open).toBe(false);
-  expect(document.querySelector('[data-gm-input-comparison]').closest('[data-gm-legacy-checks]')).toBeNull();
-  expect(document.querySelector('[data-gm-background-journal]').closest('[data-gm-legacy-checks]')).toBeNull();
-  for (const selector of ['trial-wizard', 'receiver', 'mirror-observation', 'trial-table', 'background-lab']) {
-    expect(document.querySelector(`[data-gm-${selector}]`).closest('[data-gm-legacy-checks]')).toBe(legacy);
+it('removes obsolete background test shortcuts and the separate journal while retaining E and hybrid checks', () => {
+  for (const selector of [
+    'trial-wizard',
+    'receiver',
+    'mirror-observation',
+    'trial-table',
+    'background-lab',
+    'background-journal',
+    'input-comparison'
+  ]) {
+    expect(document.querySelector(`[data-gm-${selector}]`)).toBeNull();
   }
+  for (const selector of ['multi-trial', 'modifier-batch', 'modifier-experiments']) {
+    expect(document.querySelector(`[data-gm-${selector}]`)).not.toBeNull();
+  }
+});
+
+it('allows excluding only currently recognized characters and preserves absent exclusions', async () => {
+  state.settings.gameMacros.excludedCommandCharacters = ['offline'];
+  mocks.listMacroWindows.mockResolvedValue([
+    { charId: 'a', known: true, nick: 'Alpha', pid: 10, hwnd: 100, startedAt: 1, elevated: false },
+    { known: false, pid: 30 }
+  ]);
+  document.querySelector('[data-gm-recipients]').click();
+  await vi.waitFor(() => expect(document.querySelector('.gm-recipient-picker')).not.toBeNull());
+  const checkbox = document.querySelector('[name="character"]');
+  expect(checkbox.checked).toBe(true);
+  expect(document.querySelectorAll('[name="character"]')).toHaveLength(1);
+  checkbox.checked = false;
+  document.querySelector('.modal-footer .primary').click();
+  await vi.waitFor(() => expect(state.settings.gameMacros.excludedCommandCharacters).toEqual(['offline', 'a']));
+});
+
+it('assigns an explicitly chosen checked running leader to its party', async () => {
+  mocks.listMacroWindows.mockResolvedValue([
+    { charId: 'a', known: true, nick: 'Alpha', pid: 10, hwnd: 100, startedAt: 1, elevated: false }
+  ]);
+  document.querySelector('[data-gm-recipients]').click();
+  await vi.waitFor(() => expect(document.querySelector('[name="leaderChoice"]')).not.toBeNull());
+  document.querySelector('[name="leaderChoice"]').value = JSON.stringify(['p', 'a']);
+  document.querySelector('.modal-footer .primary').click();
+  await vi.waitFor(() => expect(state.settings.gameMacros.leaders.p).toBe('a'));
+  expect(state.settings.gameMacros.partyId).toBe('p');
+});
+it('refuses stale main-window choices if the overlay changed the settings', async () => {
+  mocks.listMacroWindows.mockResolvedValue([
+    { charId: 'a', known: true, nick: 'Alpha', pid: 10, hwnd: 100, startedAt: 1, elevated: false }
+  ]);
+  document.querySelector('[data-gm-recipients]').click();
+  await vi.waitFor(() => expect(document.querySelector('[name="character"]')).not.toBeNull());
+  state.settings.gameMacros.excludedCommandCharacters = ['a'];
+  document.querySelector('.modal-footer .primary').click();
+  await vi.waitFor(() => expect(document.querySelector('#toast-root').textContent).toContain('Настройки изменились'));
+  expect(state.settings.gameMacros.excludedCommandCharacters).toEqual(['a']);
+});
+
+it('assigns and clears the leader of the explicitly selected party from settings', async () => {
+  const leader = document.querySelector('[data-gm-leader]');
+  expect(leader.value).toBe('');
+  leader.value = 'a';
+  leader.dispatchEvent(new Event('change'));
+  await vi.waitFor(() => expect(state.settings.gameMacros.leaders.p).toBe('a'));
+  document.querySelector('[data-gm-leader]').value = '';
+  document.querySelector('[data-gm-leader]').dispatchEvent(new Event('change'));
+  await vi.waitFor(() => expect(state.settings.gameMacros.leaders.p).toBeUndefined());
+});
+
+it('shows coordinates directly under commands and remembers the user collapsing the card', async () => {
+  const host = document.querySelector('#host');
+  const points = host.querySelector('.gm-points-section');
+  expect(points.open).toBe(true);
+  expect(points.closest('.gm-advanced-tools')).toBeNull();
+  expect(
+    host.querySelector('.gm-command-workbench').compareDocumentPosition(points) & Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy();
+  points.open = false;
+  await vi.waitFor(() => expect(localStorage.getItem('tf-gm-points-collapsed')).toBe('yes'));
+  mountGameMacros(host);
+  expect(host.querySelector('.gm-points-section').open).toBe(false);
+  host.innerHTML = '';
+  mountGameMacros(host);
+  expect(host.querySelector('.gm-points-section').open).toBe(false);
+});
+
+it('does not apply repeat settings when the modal is cancelled', () => {
+  document.querySelector('[data-gm-repeat-config]').click();
+  document.querySelector('[data-gm-active-modifier]').value = 'SHIFT';
+  document.querySelector('.modal-footer .ghost').click();
+  expect(state.settings.gameMacros.mirrorActiveModifier).toBeUndefined();
+  expect(document.querySelector('.gm-repeat-modal')).toBeNull();
+});
+
+it('refuses to overwrite repeat settings changed after opening the dialog', async () => {
+  document.querySelector('[data-gm-repeat-config]').click();
+  document.querySelector('[data-gm-mirror-source]').value = 'leader';
+  state.settings.gameMacros.mirrorSource = 'leader';
+  state.settings.gameMacros.mirrorActiveModifier = 'CTRL';
+  document.querySelector('.modal-footer .primary').click();
+  await vi.waitFor(() => expect(document.querySelector('#toast-root').textContent).toContain('изменились'));
+  expect(state.settings.gameMacros.mirrorActiveModifier).toBe('CTRL');
+  expect(document.querySelector('.gm-repeat-modal')).not.toBeNull();
+});
+
+it('keeps the repeat dialog open and restores previous settings if persistence fails', async () => {
+  const { persist } = await import('../js/core/storage.js');
+  persist.mockRejectedValueOnce(new Error('Ошибка сохранения'));
+  document.querySelector('[data-gm-repeat-config]').click();
+  document.querySelector('[data-gm-active-modifier]').value = 'SHIFT';
+  document.querySelector('.modal-footer .primary').click();
+  await vi.waitFor(() => expect(document.querySelector('#toast-root').textContent).toContain('Ошибка сохранения'));
+  expect(state.settings.gameMacros.mirrorActiveModifier).toBeUndefined();
+  expect(document.querySelector('.gm-repeat-modal')).not.toBeNull();
+});
+
+it('puts collapsed window profiles immediately below coordinates and saves, selects and deletes profiles', async () => {
+  const host = document.querySelector('#host');
+  const points = host.querySelector('.gm-points-section');
+  const profiles = host.querySelector('.gm-profiles-section');
+  expect(points.nextElementSibling).toBe(profiles);
+  expect(profiles.open).toBe(false);
+  expect(profiles.closest('.gm-advanced-tools')).toBeNull();
+  profiles.open = true;
+  profiles.querySelector('[data-gm-profile-name]').value = 'Моё расположение';
+  profiles.querySelector('[data-gm-save-profile]').click();
+  await vi.waitFor(() => expect(mocks.saveProfile).toHaveBeenCalledWith('Моё расположение'));
+  await vi.waitFor(() => expect(host.querySelector('[data-gm-profile]').value).toBe('new-profile'));
+  expect(host.querySelector('.gm-profiles-section').open).toBe(true);
+  expect(state.settings.gameMacros.profiles[0].name).toBe('Моё расположение');
+  const select = host.querySelector('[data-gm-profile]');
+  select.value = '';
+  select.dispatchEvent(new Event('change'));
+  await vi.waitFor(() => expect(state.settings.gameMacros.profileId).toBe(''));
+  host.querySelector('[data-gm-profile]').value = 'new-profile';
+  host.querySelector('[data-gm-profile]').dispatchEvent(new Event('change'));
+  await vi.waitFor(() => expect(state.settings.gameMacros.profileId).toBe('new-profile'));
+  host.querySelector('[data-gm-delete-profile]').click();
+  await vi.waitFor(() => expect(state.settings.gameMacros.profiles).toEqual([]));
+  expect(state.settings.gameMacros.profileId).toBe('');
 });

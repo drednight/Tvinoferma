@@ -138,11 +138,19 @@ export function normalizeGameMacros(input = {}) {
       )
         ? { x: input.overlayPosition.x, y: input.overlayPosition.y }
         : null,
+    excludedCommandCharacters: [
+      ...new Set(
+        (Array.isArray(input.excludedCommandCharacters) ? input.excludedCommandCharacters : []).filter(
+          id => typeof id === 'string' && id.length <= 200
+        )
+      )
+    ].slice(0, 200),
     enabled: input.enabled === true,
     mirrorMouse: input.mirrorMouse === true,
-    mirrorKeyboardMethod: ['combined', 'activity-notify'].includes(input.mirrorKeyboardMethod)
+    mirrorKeyboardMethod: ['combined', 'activity-notify', 'cache-hybrid'].includes(input.mirrorKeyboardMethod)
       ? input.mirrorKeyboardMethod
       : 'post',
+    mirrorKeyboardTimeoutMs: Number(input.mirrorKeyboardTimeoutMs) === 100 ? 100 : 25,
     mirrorHoldOnly: input.mirrorHoldOnly === true,
     mirrorKeyboardSource: ['any', 'leader'].includes(input.mirrorKeyboardSource)
       ? input.mirrorKeyboardSource
@@ -201,7 +209,7 @@ export function normalizeGameMacros(input = {}) {
 export function partyMembers(state, partyId) {
   return charactersInPartyOrdered(state.characters, partyId);
 }
-export function resolveTargets(state, config, command, rows) {
+export function resolveTargets(state, config, command, rows, excluded = new Set()) {
   if (!['all', 'others', 'leader', 'subset'].includes(command.target)) throw new Error('Укажите получателей явно.');
   const members = partyMembers(state, config.partyId);
   if (!members.length) throw new Error('Выберите непустую пати.');
@@ -226,6 +234,7 @@ export function resolveTargets(state, config, command, rows) {
             ? command.charIds.includes(c.id)
             : true
     )
+    .filter(c => !excluded.has(c.id))
     .map(c => {
       const candidates = rows.filter(r => r.known && r.charId === c.id);
       const matches = candidates.filter(
@@ -245,7 +254,7 @@ export function resolveTargets(state, config, command, rows) {
             `Не удалось проверить процесс окна «${c.nick}» (права, время запуска или дескриптор окна). Перезапустите клиент обычным способом.`
           );
         throw new Error(
-          `Окно «${c.nick}» не распознано. Откройте список игровых окон и проверьте название «Ник — Класс», либо запустите этого персонажа через Твиноферму. При одинаковых никах управление недоступно.`
+          `Окно «${c.nick}» не распознано. Откройте список игровых окон и проверьте название «Ник — Класс». При одинаковых никах определите нужное окно и привяжите его к персонажу вручную.`
         );
       }
       return { ...matches[0], nick: c.nick, charId: c.id };

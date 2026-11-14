@@ -29,3 +29,8 @@ it('supports activity-only repeat and opt-in hold-only independently', () => {
   });
   expect(normalizeGameMacros({}).mirrorHoldOnly).toBe(false);
 });
+
+it('keeps the global-input candidate opt-in and rejects unknown keyboard methods', () => {
+  expect(normalizeGameMacros({ mirrorKeyboardMethod: 'cache-hybrid' }).mirrorKeyboardMethod).toBe('cache-hybrid');
+  expect(normalizeGameMacros({ mirrorKeyboardMethod: 'cache' }).mirrorKeyboardMethod).toBe('post');
+});
