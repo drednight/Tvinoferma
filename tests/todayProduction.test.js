@@ -1,8 +1,14 @@
+import { createMarathon } from '../js/modules/marathons/model.js';
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { parseLatestNews, refreshSiteFeed, siteFeedSnapshot } from '../js/modules/dashboard/siteFeed.js';
 import { mskDate, mskAddDays } from '../js/core/msk.js';
 import { state } from '../js/core/state.js';
-import { connectedTodayState, runTodayAction, taskMaxReward } from '../js/modules/dashboard/todayRuntime.js';
+import {
+  connectedTodayState,
+  runTodayAction,
+  taskMaxReward,
+  marathonCompletion
+} from '../js/modules/dashboard/todayRuntime.js';
 import { createLabState } from '../demo/design-lab/model.js';
 const calls = vi.hoisted(() => ({ launch: vi.fn(), windows: vi.fn(), persist: vi.fn() }));
 vi.mock('../js/modules/launcher/partyLaunch.js', () => ({ launchPartyByName: calls.launch }));
@@ -236,4 +242,52 @@ it('calendar agenda has clear time/title rows and all three actions in the left 
   expect(footer.querySelector('[data-connected-dialog-close]')).not.toBeNull();
   footer.querySelector('[data-today-action="calendar-today"]').click();
   expect(footer.querySelectorAll('[data-today-action="event-add"]')).toHaveLength(1);
+});
+
+it('uses partial check completion across the full marathon instead of fully finished participants or today', () => {
+  const today = mskDate();
+  state.marathons = [
+    createMarathon({
+      id: 'm',
+      title: 'Марафон',
+      startDate: mskAddDays(today, -2),
+      endDate: mskAddDays(today, 20),
+      participantIds: ['real-char'],
+      tasks: [{ id: 't', targetChecks: 10 }],
+      assignments: { 'real-char': ['t'] },
+      progress: {
+        'real-char': { t: { site: null, marks: [mskAddDays(today, -2), mskAddDays(today, -1), today], adjust: 0 } }
+      }
+    })
+  ];
+  const result = connectedTodayState({ ...createLabState(), production: true });
+  expect(result.day.marathon).toMatchObject({ percent: 30, doneChecks: 3, totalChecks: 10 });
+});
+it('weights checks by assigned goals, caps over-completion, and does not add site and manual counts twice', () => {
+  const m = createMarathon({
+    id: 'm',
+    startDate: '2026-11-01',
+    endDate: '2026-11-30',
+    participantIds: ['a', 'b'],
+    tasks: [
+      { id: 'x', targetChecks: 10 },
+      { id: 'y', targetChecks: 30 }
+    ],
+    assignments: { a: ['x', 'y'], b: ['x'] },
+    progress: {
+      a: {
+        x: { site: 20, marks: ['2026-11-01'], adjust: 0 },
+        y: { site: 5, marks: ['2026-11-01', '2026-11-02'], adjust: 0 }
+      },
+      b: { x: { site: 0, marks: [], adjust: 0 }, y: { site: 99, marks: [], adjust: 0 } }
+    }
+  });
+  expect(marathonCompletion(m)).toEqual({ doneChecks: 15, totalChecks: 50, percent: 30 });
+  m.progress.a.y.adjust = -10;
+  expect(marathonCompletion(m).doneChecks).toBe(10);
+  expect(marathonCompletion(createMarathon({ participantIds: [], tasks: [] }))).toEqual({
+    doneChecks: 0,
+    totalChecks: 0,
+    percent: 0
+  });
 });

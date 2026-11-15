@@ -19,7 +19,11 @@ vi.mock('../js/modules/launcher/launch.js', () => ({
   closeAllClients: mocks.closeAll
 }));
 vi.mock('../js/core/storage.js', () => ({ isTauri: () => true, persist: vi.fn(async () => {}) }));
-vi.mock('../js/core/ui.js', () => ({ toast: mocks.toast, confirmModal: mocks.confirm }));
+vi.mock('../js/core/ui.js', async importOriginal => ({
+  ...(await importOriginal()),
+  toast: mocks.toast,
+  confirmModal: mocks.confirm
+}));
 vi.mock('../js/modules/launcher/partyLaunch.js', () => ({ showCloseReport: vi.fn() }));
 
 let state, openWindowPicker;
@@ -221,4 +225,112 @@ it('keeps decoration progress visible across redraws and prevents repeated click
   finish();
   await vi.waitFor(() => expect(document.querySelector('[data-act="redecorate"]').disabled).toBe(false));
   expect(document.querySelector('[data-decoration-progress]').textContent).toContain('100%');
+});
+
+it('attaches an external client to a free character and recognizes it after reload', async () => {
+  state.characters.push({ id: 'c', nick: 'Вв', class: 'Маг', partyIds: ['p1'] });
+  const startedAt = Date.now() - 3600000;
+  mocks.details.mockResolvedValue(clients().map(c => (c.pid === 300 ? { ...c, startedAt } : c)));
+  document.querySelector('[data-act="refresh"]').click();
+  await vi.waitFor(() => expect(document.querySelector('[data-attach="300"] option[value="c"]')).not.toBeNull());
+  await vi.waitFor(() => expect(document.querySelector('[data-attach="300"]').disabled).toBe(false));
+  const select = document.querySelector('[data-attach="300"]');
+  const option = document.createElement('option');
+  option.value = 'c';
+  select.append(option);
+  select.value = 'c';
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+  await vi.waitFor(() => expect(document.querySelector('[data-detach="300"]')).not.toBeNull());
+  expect(rows().find(r => r.textContent.includes('PID 300')).textContent).toContain('Вв');
+  expect(
+    rows()
+      .find(r => r.textContent.includes('PID 300'))
+      .classList.contains('is-unknown')
+  ).toBe(false);
+  window.localStorage.clear();
+});
+it('does not attach a character already recognized in another running window', async () => {
+  window.localStorage.clear();
+  const select = document.querySelector('[data-attach="300"]');
+  select.value = 'a';
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+  await vi.waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('уже привязан'), 'error'));
+  expect(document.querySelector('[data-attach="300"]')).not.toBeNull();
+});
+
+it('can override a recognized window and remove only its manual binding', async () => {
+  window.localStorage.clear();
+  state.characters.push({ id: 'c', nick: 'Вв', class: 'Маг', partyIds: ['p1'] });
+  const live = clients();
+  mocks.details.mockResolvedValue(live);
+  document.querySelector('[data-act="refresh"]').click();
+  await vi.waitFor(() => expect(document.querySelector('[data-attach="100"] option[value="c"]')).not.toBeNull());
+  const select = document.querySelector('[data-attach="100"]');
+  select.value = 'c';
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+  await vi.waitFor(() => expect(document.querySelector('[data-detach="100"]')).not.toBeNull());
+  expect(
+    document.querySelector('[data-attach="100"]').closest('.winp-row').querySelector('.winp-who b').textContent
+  ).toBe('Вв');
+  expect(
+    document.querySelector('[data-attach="100"]').closest('.winp-row').querySelector('.winp-source').textContent
+  ).toContain('Ручная');
+  document.querySelector('[data-detach="100"]').click();
+  await vi.waitFor(() => expect(document.querySelector('[data-detach="100"]')).toBeNull());
+  expect(
+    document.querySelector('[data-attach="100"]').closest('.winp-row').querySelector('.winp-who b').textContent
+  ).toBe('Аа');
+  expect(
+    document.querySelector('[data-attach="100"]').closest('.winp-row').querySelector('.winp-source').textContent
+  ).toContain('заголовка');
+});
+
+it('uses the themed attachment menu, disables characters occupied by other windows and closes with the dialog', () => {
+  const button = document.querySelector('[data-attach-open="100"]');
+  expect(document.querySelector('select[data-attach="100"]').hidden).toBe(true);
+  button.click();
+  const menu = document.querySelector('.winp-attach-menu');
+  expect(menu.getAttribute('role')).toBe('menu');
+  expect(menu.querySelector('[data-id="b"]').disabled).toBe(true);
+  expect(menu.querySelector('[data-id="a"]').disabled).toBe(false);
+  expect(menu.closest('.tf-overlay')).toBeTruthy();
+  document.querySelector('.tf-close').click();
+  expect(document.querySelector('.winp-attach-menu')).toBeNull();
+});
+
+it('distinguishes duplicate nicknames by safe local ID, class and party and allows manual attachment', async () => {
+  window.localStorage.clear();
+  state.parties.push({ id: 'p2', name: '<Пати 2>' });
+  state.characters = [
+    {
+      id: 'a',
+      nick: 'Одинаковый',
+      class: 'Маг',
+      partyIds: ['p1'],
+      contacts: { email: 'SECRET-LOGIN', password: 'SECRET-PASSWORD' }
+    },
+    { id: 'b', nick: 'Одинаковый', class: 'Маг', partyIds: ['p2'] }
+  ];
+  const started = Date.now() - 60000;
+  mocks.details.mockResolvedValue([
+    { pid: 101, startedAt: started, title: 'Одинаковый — Маг', elevated: false },
+    { pid: 102, startedAt: started, title: 'Одинаковый — Маг', elevated: false }
+  ]);
+  document.querySelector('[data-act="refresh"]').click();
+  await vi.waitFor(() => expect(document.querySelector('[data-attach-open="101"]')).not.toBeNull());
+  expect(rows().every(row => row.textContent.includes('Ник неоднозначен'))).toBe(true);
+  document.querySelector('[data-attach-open="101"]').click();
+  const menu = document.querySelector('.winp-attach-menu');
+  expect(menu.textContent).toContain('ID: a');
+  expect(menu.textContent).toContain('ID: b');
+  expect(menu.textContent).toContain('Основа');
+  expect(menu.textContent).toContain('<Пати 2>');
+  expect(menu.querySelector('пати')).toBeNull();
+  expect(menu.textContent).not.toContain('SECRET-');
+  menu.querySelector('[data-id="a"]').click();
+  await vi.waitFor(() => expect(document.querySelector('[data-detach="101"]')).not.toBeNull());
+  document.querySelector('[data-attach-open="102"]').click();
+  document.querySelector('.winp-attach-menu [data-id="b"]').click();
+  await vi.waitFor(() => expect(document.querySelector('[data-detach="102"]')).not.toBeNull());
+  window.localStorage.clear();
 });

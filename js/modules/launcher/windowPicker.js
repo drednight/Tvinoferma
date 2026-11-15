@@ -7,7 +7,7 @@
 
 import { state } from '../../core/state.js';
 import { isTauri } from '../../core/storage.js';
-import { toast, confirmModal } from '../../core/ui.js';
+import { toast, confirmModal, openActionMenu } from '../../core/ui.js';
 import { escapeHtml } from '../../core/utils.js';
 import { openOverlay } from '../marathons/overlay.js';
 import { getClassIconSrc, CLASSES } from '../../core/constants.js';
@@ -20,9 +20,15 @@ import {
 } from './launch.js';
 import { windowRows, rowLabel, formatUptime, closeSelectedText } from './windowList.js';
 import { showCloseReport } from './partyLaunch.js';
-import { recalledOwnership } from './launchedWindows.js';
+import { windowOwnershipOptions, rememberExistingWindow, forgetManualWindow } from './launchedWindows.js';
 
 const errText = e => String(e?.message || e || 'неизвестная ошибка');
+
+// Use local identity and party names only; never expose account contacts or notes.
+function attachmentLabel(char) {
+  const names = (char.partyIds || []).map(id => state.parties.find(party => party.id === id)?.name).filter(Boolean);
+  return `${char.nick || 'Без имени'} — ${char.class || 'Класс не выбран'} · ${names.length ? names.join(', ') : 'Без пати'} · ID: ${char.id}`;
+}
 
 /**
  * Открывает окно со списком запущенных клиентов игры.
@@ -34,7 +40,15 @@ export async function openWindowPicker(opts = {}) {
     return null;
   }
 
-  const ov = openOverlay({ title: '🎮 Запущенные окна игры', wide: true, onClose: () => opts.onClosed?.(null) });
+  let closeAttachMenu = () => {};
+  const ov = openOverlay({
+    title: '🎮 Запущенные окна игры',
+    wide: true,
+    onClose: () => {
+      closeAttachMenu();
+      opts.onClosed?.(null);
+    }
+  });
   /** @type {Set<number>} */
   const selected = new Set();
   /** @type {Array<any>} */
@@ -43,6 +57,7 @@ export async function openWindowPicker(opts = {}) {
   let decoration = '';
 
   const draw = () => {
+    closeAttachMenu();
     const known = rows.filter(r => r.known).length;
     ov.sub.innerHTML = `<span class="muted">Окон запущено: <b>${rows.length}</b>${known ? ` · из них с ником: ${known}` : ''}</span>
       <button type="button" class="btn ghost small" data-act="refresh">🔄 Обновить список</button>
@@ -106,12 +121,15 @@ export async function openWindowPicker(opts = {}) {
           <span class="winp-ava">${icon ? `<img src="${escapeHtml(icon)}" alt="" />` : row.known && row.nick ? escapeHtml(row.nick[0]) : '?'}</span>
           <span class="winp-who">
             <b>${escapeHtml(row.nick || `PID ${row.pid}`)}</b>
-            ${row.cls ? `<small class="muted">${escapeHtml(row.cls)}</small>` : '<small class="muted">окно запущено не из Твинофермы</small>'}
+            ${row.ownershipSource === 'ambiguous' ? '<small class="muted">Неоднозначный ник — привяжите вручную</small>' : row.cls ? `<small class="muted">${escapeHtml(row.cls)}</small>` : '<small class="muted">окно запущено не из Твинофермы</small>'}
           </span>
         </label>
+        <span class="winp-source muted">${{ manual: 'Ручная привязка', title: 'Из заголовка', launcher: 'Запуск Твинофермой', ambiguous: 'Ник неоднозначен', unknown: 'Не распознано' }[row.ownershipSource]}</span>
+        ${row.ownershipSource === 'manual' ? `<button type="button" class="btn ghost small" data-detach="${row.pid}">Снять ручную привязку</button>` : ''}
         <span class="winp-meta muted" title="Идентификатор процесса">PID ${row.pid}</span>
         <span class="winp-meta muted" title="Сколько работает окно">${uptime}</span>
         ${row.elevated ? '<span class="winp-flag" title="Игра запущена от имени администратора">админ</span>' : ''}
+        ${`<label class="winp-attach">${row.known ? 'Сменить персонажа' : 'Прикрепить к персонажу'}<button type="button" class="btn ghost small" data-attach-open="${row.pid}" aria-haspopup="menu">Выбрать персонажа ▾</button><select data-attach="${row.pid}" hidden aria-hidden="true" tabindex="-1"><option value="">${row.known ? 'Выбрать другого…' : 'Выберите персонажа…'}</option>${state.characters.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(attachmentLabel(c))}</option>`).join('')}</select></label>`}
         <button type="button" class="btn ghost small winp-style" data-style="${row.pid}"
                 title="Задать своё название окна и поставить значок класса">✏️ Вид…</button>
       </div>`;
@@ -123,14 +141,7 @@ export async function openWindowPicker(opts = {}) {
     const scrollTop = oldList ? oldList.scrollTop : 0;
     try {
       const clients = await runningClientDetails();
-      rows = windowRows(clients, state.characters, {
-        recalled: recalledOwnership(
-          clients.map(c => ({
-            pid: Number(c?.pid) || 0,
-            uptimeMs: c?.startedAt ? Math.max(0, Date.now() - Number(c.startedAt)) : null
-          }))
-        )
-      });
+      rows = windowRows(clients, state.characters, windowOwnershipOptions(clients));
       const live = new Set(rows.map(r => r.pid));
       [...selected].forEach(pid => {
         if (!live.has(pid)) selected.delete(pid);
@@ -206,6 +217,47 @@ export async function openWindowPicker(opts = {}) {
   };
 
   ov.body.addEventListener('click', async e => {
+    const detach = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('[data-detach]'));
+    if (detach) {
+      if (busy) return;
+      busy = true;
+      try {
+        const clients = await runningClientDetails();
+        const client = clients.find(c => Number(c.pid) === Number(detach.dataset.detach));
+        const previous = rows.find(r => r.pid === Number(detach.dataset.detach));
+        if (!client || !previous || !client.startedAt || Math.abs(previous.startedAt - client.startedAt) > 1000)
+          throw new Error('Окно изменилось. Обновите список.');
+        forgetManualWindow(client.pid, client.startedAt);
+        toast('Ручная привязка снята. Автоматическое распознавание сохранено.', 'success');
+      } catch (error) {
+        toast(errText(error), 'error');
+      } finally {
+        busy = false;
+        await reload();
+      }
+      return;
+    }
+    const attachButton = e.target.closest('[data-attach-open]');
+    if (attachButton) {
+      if (busy) return;
+      const pid = Number(attachButton.dataset.attachOpen);
+      const select = ov.body.querySelector(`select[data-attach="${pid}"]`);
+      closeAttachMenu();
+      closeAttachMenu = openActionMenu(
+        attachButton,
+        state.characters.map(char => ({
+          id: char.id,
+          label: attachmentLabel(char),
+          disabled: rows.some(row => row.charId === char.id && row.pid !== pid),
+          onSelect: () => {
+            select.value = char.id;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        })),
+        { portal: ov.el, className: 'winp-attach-menu' }
+      );
+      return;
+    }
     // Кнопка «Вид…»: своё название окна и значок класса для конкретного окна
     const styleBtn = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('[data-style]'));
     if (!styleBtn) return;
@@ -215,7 +267,33 @@ export async function openWindowPicker(opts = {}) {
     if (row) await openStyleDialog(row, reload);
   });
 
-  ov.body.addEventListener('change', e => {
+  ov.body.addEventListener('change', async e => {
+    const select = /** @type {HTMLSelectElement} */ (e.target);
+    if (select.matches('[data-attach]')) {
+      if (busy || !select.value) return;
+      busy = true;
+      select.disabled = true;
+      try {
+        const char = state.characters.find(c => c.id === select.value);
+        const clients = await runningClientDetails();
+        const client = clients.find(c => Number(c.pid) === Number(select.dataset.attach));
+        const currentRows = windowRows(clients, state.characters, windowOwnershipOptions(clients));
+        if (!char || !client || currentRows.some(r => r.charId === char.id && r.pid !== client.pid))
+          throw new Error('Персонаж уже привязан к другому окну или окно закрыто. Обновите список.');
+        const previous = rows.find(r => r.pid === client.pid);
+        if (!previous || !client.startedAt || Math.abs(previous.startedAt - client.startedAt) > 1000)
+          throw new Error('Окно изменилось. Обновите список.');
+        rememberExistingWindow(client.pid, char.id, client.startedAt);
+        toast(`Окно прикреплено: ${char.nick}`, 'success');
+      } catch (error) {
+        toast(errText(error), 'error');
+      } finally {
+        busy = false;
+        await reload();
+      }
+      return;
+    }
+
     const box = /** @type {HTMLInputElement} */ (e.target);
     if (box?.type !== 'checkbox') return;
     const pid = Number(box.dataset.pid);
@@ -304,7 +382,7 @@ export async function openWindowPicker(opts = {}) {
  * @param {any} row строка списка окон
  * @param {() => Promise<void>} after вызывается после успешного применения
  */
-async function openStyleDialog(row, after) {
+export async function openStyleDialog(row, after) {
   const suggested = row.nick ? (row.cls ? `${row.nick} — ${row.cls}` : row.nick) : `PID ${row.pid}`;
   const ov = openOverlay({ title: `✏️ Вид окна: ${rowLabel(row)}`, wide: false });
   const classOptions = CLASSES.map(

@@ -38,9 +38,9 @@ export function readGuildData() {
  * от прежней схемы обновления не должны в нём копиться.
  */
 export async function writeGuildData(data) {
-  const { enabled, pendingResponses } = guildSettings();
+  const { enabled, pendingResponses, leaderOverrides } = guildSettings();
   state.settings.guild = {
-    ...normalizeGuildData(data),
+    ...normalizeGuildData({ ...data, leaderOverrides: leaderOverrides || [] }),
     pendingResponses: pendingResponses || [],
     syncedAt: Date.now(),
     ...(enabled !== undefined ? { enabled } : {})
@@ -70,4 +70,22 @@ export function readPendingResponses() {
 export async function writePendingResponses(pendingResponses) {
   state.settings.guild = { ...guildSettings(), pendingResponses };
   await persist();
+}
+
+/** Display-only local leader choice; never changes the clan website or game leadership. */
+export async function setGuildLeaderOverride(partyName, nick) {
+  const current = readGuildData();
+  const matches = current.parties.filter(party => party.name === partyName);
+  if (matches.length !== 1 || (nick && !matches[0].members.some(member => member.nick === nick)))
+    throw new Error('Пати или участник изменились. Обновите список.');
+  const leaderOverrides = current.leaderOverrides.filter(row => row.party !== partyName);
+  if (nick) leaderOverrides.push({ party: partyName, nick });
+  const previous = state.settings.guild;
+  state.settings.guild = { ...previous, leaderOverrides };
+  try {
+    await persist();
+  } catch (error) {
+    state.settings.guild = previous;
+    throw error;
+  }
 }

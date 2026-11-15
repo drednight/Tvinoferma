@@ -1,0 +1,22 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Tvinoferma Acceptance",
+  "identifier": "com.tvinoferma.desktop.acceptance",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Твиноферма — ТЕСТОВАЯ СБОРКА",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 700,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true,
+        "dragDropEnabled": false
+      }
+    ]
+  },
+  "bundle": { "active": false }
+}

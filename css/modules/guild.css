@@ -268,3 +268,38 @@
   border-color: var(--accent-line, #6e8ef8);
   background: var(--accent-soft, rgba(110, 142, 248, 0.14));
 }
+
+/* The site explicitly marks party leaders; keep this independent of self highlighting. */
+.guild-member.is-leader {
+  background: rgba(213, 165, 43, 0.22);
+  color: #ffe7a3;
+  border: 2px solid #d5a52b;
+  box-shadow:
+    0 0 0 1px #8c651c,
+    0 0 8px rgba(235, 183, 52, 0.4);
+}
+.guild-leader-label {
+  color: #8a5b00;
+  background: #ffe49b;
+  border-radius: 5px;
+  padding: 0 4px;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.guild-leader-settings {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.guild-leader-settings summary {
+  cursor: pointer;
+}
+.guild-leader-settings label {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0;
+}
+.guild-leader-settings select {
+  max-width: 100%;
+}

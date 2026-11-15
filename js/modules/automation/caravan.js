@@ -52,7 +52,11 @@ export function openCaravanDialog({ ids = [] } = {}) {
     toast('Сначала добавьте персонажей', 'info');
     return null;
   }
-  const selected = new Set(ids.filter(id => state.characters.some(c => c.id === id)));
+  const selected = new Set(
+    (ids.length ? ids : state.characters.filter(c => c.isLoggedIn === true).map(c => c.id)).filter(id =>
+      state.characters.some(c => c.id === id)
+    )
+  );
   let search = '';
   let running = null; // { cancelled } пока идёт запуск
   let openAll = true;
@@ -145,29 +149,33 @@ export function openCaravanDialog({ ids = [] } = {}) {
     updateCount();
     dlg.foot.querySelector('[data-act=start]').disabled = true;
 
-    layoutScriptWorkspace(dlg, {
-      selected: selected,
-      preview(ids) {
-        const rows = new Map(lastRows.map(row => [row.charId, row]));
-        const chars = state.characters.filter(char => ids.has(char.id)).sort(byNick);
-        if (!chars.length) return '<p class="muted">Выберите персонажей слева.</p>';
-        return `<p class="promo-muted">Количество — по последней проверке сайта в этом окне. До проверки оно неизвестно; у персонажей одного аккаунта инвентарь общий.</p><div data-caravan-progress></div><div class="promo-scroll"><table class="promo-table caravan-plan-table"><thead><tr><th>Персонаж</th><th>Сундуки караванщика</th><th>Состояние</th><th data-caravan-quantity-head hidden>Перевести / открыть, шт.</th></tr></thead><tbody>${chars
-          .map(char => {
-            const row = rows.get(char.id);
-            const count =
-              row && ['dry_run', 'nothing', 'success', 'partial'].includes(row.status)
-                ? Math.max(0, Number(row.found || 0) - Number(row.opened || 0))
-                : null;
-            return `<tr class="${stripeCls(char)}"><td><b>${classIconHtml(char)} ${escapeHtml(char.nick)}</b></td><td data-chest-count="${escapeHtml(char.id)}">${count === null ? 'Не проверено — нажмите «Проверить сайт»' : `<b>${count}</b> шт.`}</td><td data-cell="${escapeHtml(char.id)}">${row ? cellHtml(row) : 'Не проверено'}</td><td data-caravan-quantity="${escapeHtml(char.id)}" hidden></td></tr>`;
-          })
-          .join('')}</tbody></table></div>`;
+    layoutScriptWorkspace(
+      dlg,
+      {
+        selected: selected,
+        preview(ids) {
+          const rows = new Map(lastRows.map(row => [row.charId, row]));
+          const chars = state.characters.filter(char => ids.has(char.id)).sort(byNick);
+          if (!chars.length) return '<p class="muted">Выберите персонажей слева.</p>';
+          return `<p class="promo-muted">Количество — по последней проверке сайта в этом окне. До проверки оно неизвестно; у персонажей одного аккаунта инвентарь общий.</p><div data-caravan-progress></div><div class="promo-scroll"><table class="promo-table caravan-plan-table"><thead><tr><th>Персонаж</th><th>Сундуки караванщика</th><th>Состояние</th><th data-caravan-quantity-head hidden>Перевести / открыть, шт.</th></tr></thead><tbody>${chars
+            .map(char => {
+              const row = rows.get(char.id);
+              const count =
+                row && ['dry_run', 'nothing', 'success', 'partial'].includes(row.status)
+                  ? Math.max(0, Number(row.found || 0) - Number(row.opened || 0))
+                  : null;
+              return `<tr class="${stripeCls(char)}"><td><b>${classIconHtml(char)} ${escapeHtml(char.nick)}</b></td><td data-chest-count="${escapeHtml(char.id)}">${count === null ? 'Не проверено — нажмите «Проверить сайт»' : `<b>${count}</b> шт.`}</td><td data-cell="${escapeHtml(char.id)}">${row ? cellHtml(row) : 'Не проверено'}</td><td data-caravan-quantity="${escapeHtml(char.id)}" hidden></td></tr>`;
+            })
+            .join('')}</tbody></table></div>`;
+        },
+        apply(ids) {
+          selected.clear();
+          ids.forEach(id => selected.add(id));
+          renderForm();
+        }
       },
-      apply(ids) {
-        selected.clear();
-        ids.forEach(id => selected.add(id));
-        renderForm();
-      }
-    });
+      { initialMode: ids.length ? 'manual' : 'logged' }
+    );
   }
 
   function quickSelect(kind) {

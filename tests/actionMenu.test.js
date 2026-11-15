@@ -95,3 +95,23 @@ describe('меню действий', () => {
     expect(anchor.parentElement.contains(menu())).toBe(true);
   });
 });
+
+it('portals a scroll-safe themed menu, navigates enabled items and returns focus on Escape', () => {
+  const anchor = mountAnchor();
+  const portal = document.createElement('div');
+  document.body.append(portal);
+  openActionMenu(anchor, [{ id: 'busy', label: 'Занят', disabled: true }, ...items()], {
+    portal,
+    className: 'winp-attach-menu'
+  });
+  expect(menu().parentElement).toBe(portal);
+  expect(menu().style.position).toBe('fixed');
+  expect(anchor.getAttribute('aria-expanded')).toBe('true');
+  expect(document.activeElement.dataset.id).toBe('save');
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  expect(document.activeElement.dataset.id).toBe('delete');
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  expect(menu()).toBeNull();
+  expect(document.activeElement).toBe(anchor);
+  expect(anchor.getAttribute('aria-expanded')).toBe('false');
+});

@@ -480,8 +480,12 @@ describe('ход выполнения в полном логе', () => {
     openTaskLog(task.id);
     expect(document.querySelector('.tf-dialog-sub').textContent).toContain('25%');
     expect(document.querySelector('.tf-dialog-sub [data-task-log]')).toBeNull();
+    document.querySelector('.tf-dialog-body').scrollTop = 180;
+    document.querySelector('.tl-full').scrollTop = 70;
     task.progress(2, 4);
     await vi.waitFor(() => expect(document.querySelector('.tf-dialog-sub').textContent).toContain('50%'));
+    expect(document.querySelector('.tf-dialog-body').scrollTop).toBe(180);
+    expect(document.querySelector('.tl-full').scrollTop).toBe(70);
     document.querySelector('.tf-dialog-sub [data-task-cancel]').click();
     expect(task.cancelled).toBe(true);
     const { closeModal } = await import('../js/core/ui.js');
@@ -521,4 +525,18 @@ describe('частота перерисовки полного журнала', 
       vi.useRealTimers();
     }
   });
+});
+
+it('shows a summary-only task in character statistics, including after journal reload', async () => {
+  localStorage.clear();
+  vi.resetModules();
+  let log = await import('../js/core/taskLog.js');
+  const task = log.startTask('Проверка авторизации');
+  task.summaryTable([{ name: 'Тест', status: 'Авторизован', tone: 'ok', note: '' }], { title: 'Итоги проверки входа' });
+  task.finish('Готово');
+  vi.resetModules();
+  log = await import('../js/core/taskLog.js');
+  log.openTaskStatistics();
+  expect(document.body.textContent).toContain('Авторизован');
+  expect(document.body.textContent).toContain('Тест');
 });

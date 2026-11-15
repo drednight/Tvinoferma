@@ -1,3 +1,4 @@
+import { backgroundTask } from '../../core/backgroundTask.js';
 // Shared public feed: the same allowlisted reader as promo discovery, no credentials.
 import { createPublicNewsReader } from '../automation/publicNewsReader.js';
 import { articleId } from '../automation/promoNewsParser.js';
@@ -48,6 +49,7 @@ function notify() {
 }
 export function refreshSiteFeed({ invokeFn, now = () => new Date() } = {}) {
   if (flight) return flight;
+  const journal = backgroundTask('Проверка новостей');
   current = { ...current, status: 'checking' };
   notify();
   flight = (async () => {
@@ -60,8 +62,10 @@ export function refreshSiteFeed({ invokeFn, now = () => new Date() } = {}) {
       try {
         globalThis.localStorage?.setItem(KEY, JSON.stringify({ version: 2, ...current }));
       } catch {}
+      journal.finish(`Новости обновлены: ${articles.length}.`);
       return siteFeedSnapshot();
     } catch {
+      journal.finish('Новости сейчас недоступны.', 'warn');
       current = { ...current, status: 'unavailable' };
       return siteFeedSnapshot();
     } finally {

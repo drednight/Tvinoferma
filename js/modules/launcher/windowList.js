@@ -41,24 +41,32 @@ export function parseWindowTitle(title) {
  *
  * @param {Array<{pid: number, image?: string, startedAt?: number|null, title?: string, hwnd?: number|null, elevated?: boolean|null}>} clients ответ `launcher_running_details`
  * @param {Array<any>} characters персонажи приложения
- * @param {{ now?: number, partyIds?: string[] | null, recalled?: Record<string, string> }} [opts]
+ * @param {{ now?: number, partyIds?: string[] | null, recalled?: Record<string, string>, manual?: Record<string, string> }} [opts]
  *   `partyIds` — ограничить список участниками этих пати;
  *   `recalled` — `{ pid: charId }` из памяти запусков: подпись окна слетает вместе со
  *   значком, и без заголовка персонажа не с кем сопоставить (см. launchedWindows.js)
- * @returns {Array<{ pid: number, image: string, nick: string, cls: string, known: boolean, charId: string|null, uptimeMs: number|null, elevated: boolean|null, title: string, partyIds: string[] }>}
+ * @returns {Array<{ pid: number, image: string, nick: string, cls: string, known: boolean, ownershipSource: string, charId: string|null, uptimeMs: number|null, startedAt: number|null, elevated: boolean|null, title: string, partyIds: string[] }>}
  */
 export function windowRows(clients, characters, opts = {}) {
   const now = opts.now ?? Date.now();
   const only = opts.partyIds && opts.partyIds.length ? new Set(opts.partyIds) : null;
   const list = (characters || []).filter(c => !only || (c.partyIds || []).some(id => only.has(id)));
 
-  // Персонаж узнаётся по нику из заголовка; класс уточняется по карточке
+  // A party filter must not hide another owner of the same nickname: otherwise
+  // a guessed title could make a destructive operation target the wrong account.
   const byNick = new Map();
+  const nickCounts = new Map();
+  for (const c of characters || []) {
+    const key = String(c.nick || '')
+      .trim()
+      .toLowerCase();
+    if (key) nickCounts.set(key, (nickCounts.get(key) || 0) + 1);
+  }
   for (const c of list) {
     const key = String(c.nick || '')
       .trim()
       .toLowerCase();
-    if (key && !byNick.has(key)) byNick.set(key, c);
+    if (key && nickCounts.get(key) === 1) byNick.set(key, c);
   }
   // Кто окно запускал: подпись могла слететь, а мы всё равно знаем, чьё это окно
   const byPid = new Map();
@@ -71,10 +79,22 @@ export function windowRows(clients, characters, opts = {}) {
     .map(client => {
       const parsed = parseWindowTitle(client?.title);
       const pid = Number(client?.pid) || 0;
+      const manualChar = list.find(c => String(c.id) === String(opts.manual?.[String(pid)]));
+      const nickKey = parsed?.nick.toLowerCase();
+      const recalledChar = byPid.get(String(pid));
+      const recalledNick = String(recalledChar?.nick || '')
+        .trim()
+        .toLowerCase();
+      const ambiguous =
+        (!!nickKey && nickCounts.get(nickKey) > 1) ||
+        (!!recalledNick && nickCounts.get(recalledNick) > 1 && !byNick.get(nickKey));
+      const titleChar = nickKey ? byNick.get(nickKey) : null;
       const char =
-        (parsed ? byNick.get(parsed.nick.toLowerCase()) : null) ||
-        // Заголовок бесполезен — берём персонажа из памяти запусков
-        byPid.get(String(pid)) ||
+        manualChar ||
+        titleChar ||
+        // A duplicate title needs an explicit manual binding, even if an old
+        // launcher memory happens to exist for this PID.
+        (!ambiguous ? recalledChar : null) ||
         null;
       const row = {
         pid,
@@ -83,7 +103,17 @@ export function windowRows(clients, characters, opts = {}) {
         nick: char ? String(char.nick) : parsed?.nick || '',
         cls: char ? String(char.class || '') : parsed?.cls || '',
         known: !!char,
+        ownershipSource: manualChar
+          ? 'manual'
+          : titleChar
+            ? 'title'
+            : char
+              ? 'launcher'
+              : ambiguous
+                ? 'ambiguous'
+                : 'unknown',
         charId: char ? char.id : null,
+        startedAt: client?.startedAt || null,
         uptimeMs: client?.startedAt ? Math.max(0, now - Number(client.startedAt)) : null,
         elevated: client?.elevated ?? null,
         title: String(client?.title || ''),

@@ -85,7 +85,7 @@ export function openMarathonWizard(opts = {}) {
       loading: false,
       task: null,
       error: null,
-      verify: true,
+      verify: state.settings.browser?.marathonFollowCheckLinks !== false,
       search: { loading: false, items: null, all: false, task: null, error: null }
     },
     parsed: { news: null, site: null }, // сырые результаты разбора; в W.site.raw лежит их объединение
@@ -695,6 +695,7 @@ export function openMarathonWizard(opts = {}) {
       W.drafts = [
         createMarathon({
           title: raw.name,
+          description: raw.description || '',
           startDate: sorted[0]?.startDate,
           endDate: sorted[sorted.length - 1]?.endDate,
           tasks: raw.quests.map(toTask),
@@ -707,6 +708,7 @@ export function openMarathonWizard(opts = {}) {
     W.drafts = selected.map(st =>
       createMarathon({
         title: `${raw.name} — ${st.name}`,
+        description: raw.description || '',
         startDate: st.startDate,
         endDate: st.endDate,
         tasks: raw.quests.filter(q => q.stageKey === st.key || !q.stageKey).map(toTask),
@@ -1512,6 +1514,10 @@ export function openMarathonWizard(opts = {}) {
     onSavedCallback?.(openId);
   }
 
+  if (opts.parsedSite) {
+    W.parsed.site = normalizeParsed(opts.parsedSite, null);
+    applyMerged();
+  }
   render();
   if (opts.autoScan && W.source === 'site') doScan();
 }

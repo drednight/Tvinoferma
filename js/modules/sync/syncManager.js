@@ -306,6 +306,8 @@ async function recheckProblems(task, checked, { baseTimeout, closeAfter }) {
   if (!bad.length) return 0;
   task.log(`Перепроверяем тех, кто без входа или с ошибкой: ${bad.length}. Может занять минуту.`, 'step');
   const fixed = [];
+  task.progress(0, bad.length, 'Перепроверка входа');
+  let rechecked = 0;
   for (const char of bad) {
     const scope = `char:${char.id}`;
     try {
@@ -321,6 +323,7 @@ async function recheckProblems(task, checked, { baseTimeout, closeAfter }) {
       task.log(`${char.nick}: перепроверка не удалась — ${errorText(e)}`, 'warn', scope);
     } finally {
       setAuthChecking(char.id, false);
+      task.progress(++rechecked, bad.length, `Перепроверка: ${char.nick}`);
     }
   }
   task.log(
