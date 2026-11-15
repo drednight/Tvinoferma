@@ -151,6 +151,8 @@ describe('GameCenter: какой запускать', () => {
     const hot = { id: '59424880', name: 'hotdevilcom' };
     setGcGameAccount(c, 'gc-2', hot);
     expect(c.launch.gcGameAccounts).toEqual({ 'gc-2': hot });
+    expect(resolveGameCenter(c, ctx('gc-2')).gameAccount).toBeNull(); // без сохранённого входа старый выбор не применяется
+    setGcAccount(c, 'gc-2', 'Twin');
     expect(resolveGameCenter(c, ctx('gc-2')).gameAccount).toEqual(hot);
     expect(resolveGameCenter(c, ctx('gc-1')).gameAccount).toBeNull();
     // У «своего пути» — отдельное поле
@@ -288,8 +290,12 @@ describe('GameCenter: запуск', () => {
       return {};
     };
     const hot = { id: '59424880', name: 'hotdevilcom' };
-    const a = ch('a', { gcIds: ['gc-1', 'gc-2'], gcGameAccounts: { 'gc-2': hot } });
-    const b = ch('b', { gcIds: ['gc-2'] });
+    const a = ch('a', {
+      gcIds: ['gc-1', 'gc-2'],
+      gcAccounts: { 'gc-2': { nick: 'Twin' } },
+      gcGameAccounts: { 'gc-2': hot }
+    });
+    const b = ch('b', { gcIds: ['gc-2'], gcGameAccounts: { 'gc-2': hot } });
     const own = ch('own', { gcPath: 'D:\\own', gcGameAccount: hot });
     await launchCharacters([a, b, own], { delayMs: 0, gcId: 'gc-2' }, { invoke, ctx: ctx() });
     expect(seen.map(x => x.gameAccount)).toEqual([hot, null, hot]);

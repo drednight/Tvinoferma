@@ -37,19 +37,23 @@ beforeEach(() => {
   window.__TAURI_INTERNALS__ = { invoke: (...a) => invokeMock(...a) };
   invokeMock.mockReset();
   persistMock.mockClear();
-  invokeMock.mockImplementation(async cmd => {
+  invokeMock.mockImplementation(async (cmd, args) => {
     if (cmd === 'launcher_gc_info')
       return {
         exe: 'x',
         nick: 'Twin',
         loggedIn: true,
-        login: 'dissolute77@mail.ru',
-        gameAccounts: [
+        login: 'dissolute77@mail.ru'
+      };
+    if (cmd === 'launcher_saved_game_accounts') {
+      const [charId, gcId] = args.charId.split('@');
+      const char = state.characters.find(item => item.id === charId);
+      if (char?.launch?.gcAccounts?.[gcId])
+        return [
           { id: '49635696', name: 'WheeIman' },
           { id: '59424880', name: 'hotdevilcom' }
-        ],
-        selectedGameAccount: '59424880'
-      };
+        ];
+    }
     if (cmd === 'launcher_pick_gamecenter') return 'D:\\GC3\\GameCenter.exe';
     if (cmd === 'launcher_capture_account') return { ok: true, nick: 'Twin', steps: ['Готово: вход запомнен'] };
     return null;
@@ -113,8 +117,67 @@ describe('окно «GameCenter и персонажи»', () => {
     expect(document.querySelector('[data-char="a"] .gcm-badge').textContent).toBe('основной');
   });
 
+  it('разделяет игровые аккаунты по сохранённому VK Play-входу привязки', async () => {
+    const accountsA = [
+      { id: 'a-1', name: 'Альфа 1' },
+      { id: 'a-2', name: 'Альфа 2' }
+    ];
+    const accountsB = [
+      { id: 'b-1', name: 'Бета 1' },
+      { id: 'b-2', name: 'Бета 2' }
+    ];
+    for (const char of state.characters) {
+      char.launch.gcIds = ['gc-1'];
+      char.launch.gcAccounts['gc-1'] = { nick: char.id };
+    }
+    invokeMock.mockImplementation(async (cmd, args) => {
+      if (cmd === 'launcher_gc_info') return { nick: 'Twin', loggedIn: true };
+      if (cmd === 'launcher_saved_game_accounts') return args.charId === 'a@gc-1' ? accountsA : accountsB;
+      return null;
+    });
+
+    openGameCentersModal();
+    await until(() => document.querySelectorAll('[data-act="game-acc"]').length === 2);
+
+    const values = charId =>
+      [...document.querySelectorAll(`[data-char="${charId}"] [data-act="game-acc"] option`)].map(
+        option => option.value
+      );
+    const names = charId =>
+      [...document.querySelectorAll(`[data-char="${charId}"] [data-act="game-acc"] option`)].map(
+        option => option.textContent
+      );
+    expect(values('a')).toEqual(['', 'a-1', 'a-2']);
+    expect(names('a')).toEqual(['не выбирать автоматически', 'Альфа 1', 'Альфа 2']);
+    expect(values('b')).toEqual(['', 'b-1', 'b-2']);
+    expect(names('b')).toEqual(['не выбирать автоматически', 'Бета 1', 'Бета 2']);
+    expect(
+      invokeMock.mock.calls.filter(([cmd]) => cmd === 'launcher_saved_game_accounts').map(([, args]) => args.charId)
+    ).toEqual(expect.arrayContaining(['a@gc-1', 'b@gc-1']));
+  });
+
+  it('не показывает выбор, если для сохранённого входа остался один игровой персонаж', async () => {
+    state.characters[0].launch.gcIds = ['gc-1'];
+    state.characters[0].launch.gcAccounts['gc-1'] = { nick: 'Twin' };
+    let accountsLoaded = false;
+    invokeMock.mockImplementation(async (cmd, args) => {
+      if (cmd === 'launcher_gc_info') return { nick: 'Twin', loggedIn: true };
+      if (cmd === 'launcher_saved_game_accounts' && args.charId === 'a@gc-1') {
+        await new Promise(resolve => setTimeout(resolve, 0));
+        accountsLoaded = true;
+        return [{ id: 'only-one', name: 'Единственный' }];
+      }
+      return null;
+    });
+
+    openGameCentersModal();
+    await until(() => accountsLoaded);
+    expect(document.querySelector('[data-char="a"] [data-act="game-acc"]')).toBeNull();
+  });
+
   it('выбор игрового аккаунта окна «Выбор игрового аккаунта» сохраняется', async () => {
     state.characters[0].launch.gcIds = ['gc-1'];
+    state.characters[0].launch.gcAccounts['gc-1'] = { nick: 'Twin' };
     openGameCentersModal();
     await until(() => document.querySelector('[data-char="a"] select[data-act="game-acc"]'));
     const sel = document.querySelector('[data-char="a"] select[data-act="game-acc"]');
@@ -137,6 +200,7 @@ describe('окно «GameCenter и персонажи»', () => {
 
   it('«Запомнить вход» привязывает аккаунт к выбранному GameCenter персонажа', async () => {
     state.characters[0].launch.gcIds = ['gc-1', 'gc-2'];
+    state.characters[0].launch.gcGameAccounts = { 'gc-2': { id: '59424880', name: 'hotdevilcom' } };
     openGameCentersModal();
     document.querySelector('[data-char="a"] .gcm-bind[data-gc="gc-2"] [data-act="cap"]').click();
     await until(() => called('launcher_capture_account') && state.characters[0].launch.gcAccounts['gc-2']);
@@ -145,6 +209,7 @@ describe('окно «GameCenter и персонажи»', () => {
       { charId: 'a@gc-2', path: GC2.path }
     ]);
     expect(state.characters[0].launch.gcAccounts).toEqual({ 'gc-2': { nick: 'Twin' } });
+    expect(state.characters[0].launch.gcGameAccounts).toEqual({}); // новый сохранённый вход не наследует выбор старого
     expect(document.querySelector('[data-char="a"] .gcm-acc.is-saved').textContent).toContain('Twin');
   });
 

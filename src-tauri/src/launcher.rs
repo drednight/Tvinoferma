@@ -2076,6 +2076,23 @@ pub(super) fn stored_account(stored: &str) -> Result<Vec<(String, String)>, Stri
     Ok(pairs)
 }
 
+/// Логин VK Play из сохранённого набора ключей. Секреты остаются в хранилище ОС.
+fn stored_account_login(stored: &str) -> Result<String, String> {
+    let pairs = stored_account(stored)?;
+    pairs
+        .iter()
+        .find(|(key, _)| key.eq_ignore_ascii_case("MyComUserLogin"))
+        .map(|(_, value)| value.trim().to_string())
+        .filter(|login| !login.is_empty())
+        .ok_or_else(|| "В сохранённом входе не найден логин VK Play".to_string())
+}
+
+/// Игровые персонажи только того VK Play-входа, который сохранён для конкретной привязки.
+fn saved_game_accounts(text: &str, stored: &str) -> Result<Vec<GameAccount>, String> {
+    let login = stored_account_login(stored)?;
+    Ok(read_game_accounts(text, &login))
+}
+
 // ---------------------------------------------------------------------------
 // Токен аккаунта — в хранилище ОС (как учётные данные в commands/secrets.rs)
 // ---------------------------------------------------------------------------
@@ -2305,6 +2322,31 @@ pub async fn launcher_gc_info(path: String, kind: Option<String>) -> Result<GcIn
     tauri::async_runtime::spawn_blocking(move || read_gc_info(&exe))
         .await
         .map_err(|e| e.to_string())?
+}
+
+/// Игровые персонажи для входа, сохранённого именно у этой привязки персонажа к GameCenter.
+/// Токен и логин не возвращаются в интерфейс; при отсутствии сохранённого входа список пуст.
+#[tauri::command]
+pub async fn launcher_saved_game_accounts(
+    char_id: String,
+    path: String,
+    kind: Option<String>,
+) -> Result<Vec<GameAccount>, String> {
+    if kind.as_deref() == Some("astrum") {
+        return Ok(Vec::new());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(stored) = get_magic(&char_id)? else {
+            return Ok(Vec::new());
+        };
+        let exe = resolve_gamecenter_exe(&path)?;
+        let ini = gc_ini_path(&exe)?;
+        let bytes = std::fs::read(&ini).map_err(|e| format!("{}: {}", ini.display(), e))?;
+        let (text, _) = decode_ini(&bytes);
+        saved_game_accounts(&text, &stored)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Окно проводника «Открыть файл» (системное, через Windows Forms): пользователь указывает
@@ -4318,6 +4360,27 @@ mod tests {
                 }
             ]
         );
+    }
+
+    #[test]
+    fn reads_game_accounts_for_the_saved_vk_play_login_not_the_current_login() {
+        let ini = "[Main]\r\nMyComUserLogin=current@example.com\r\n\r\n[GamePersIds]\r\n0.61_pl_current@example.com=1:Current\r\n0.61_pl_saved@example.com=11:Saved One;22:Saved Two\r\n0.61_pl_other@example.com=99:Other\r\n";
+        let stored = "mycomuserlogin=saved@example.com\nMyComUserUid=42\nMyComUserMagic2=SECRET";
+        assert_eq!(
+            saved_game_accounts(ini, stored).unwrap(),
+            vec![
+                GameAccount {
+                    id: "11".into(),
+                    name: "Saved One".into()
+                },
+                GameAccount {
+                    id: "22".into(),
+                    name: "Saved Two".into()
+                }
+            ]
+        );
+        assert!(stored_account_login("MyComUserUid=42\nMyComUserMagic2=SECRET").is_err());
+        assert!(stored_account_login("SECRET").is_err());
     }
 
     #[test]
