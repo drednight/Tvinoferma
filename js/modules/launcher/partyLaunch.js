@@ -33,6 +33,7 @@ import {
   resolveGameCenter,
   accountKey,
   setGcAccount,
+  setGcGameAccount,
   pickMajorityGc,
   launcherKind,
   kindForPath,
@@ -889,6 +890,8 @@ export async function captureLogin(char, gcId = null) {
     if (target.gc) {
       const legacy = !!char.launch?.gcAccounts?.[target.gc.id]?.legacy;
       setGcAccount(char, target.gc.id, nick || '', legacy);
+      // Выбор игрового персонажа относится к прежнему входу, который мог отличаться.
+      setGcGameAccount(char, target.gc.id, null);
     } else {
       char.launch = { ...char.launch, gcNick: nick || '', gcAccount: true };
     }
@@ -910,6 +913,7 @@ export async function forgetLogin(char, gcId = null) {
     if (target?.gc) {
       const legacy = !!char.launch?.gcAccounts?.[target.gc.id]?.legacy;
       setGcAccount(char, target.gc.id, null);
+      setGcGameAccount(char, target.gc.id, null);
       // legacy-вход — это тот же токен, что и у «своего пути»: убираем и его отметку
       if (legacy) char.launch = { ...char.launch, gcNick: '', gcAccount: false };
     } else {

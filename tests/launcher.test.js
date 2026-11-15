@@ -248,11 +248,18 @@ describe('Astrum Play: второй лаунчер рядом с GameCenter', ()
   it('Rust и JS называют ключ выбора лаунчера одинаково', () => {
     // Расхождение в имени поля проявилось бы только в собранном приложении.
     const rust = readFileSync('src-tauri/src/launcher.rs', 'utf8');
-    for (const name of ['launcher_check_path', 'launcher_gc_info', 'launcher_capture_account', 'launcher_start']) {
+    for (const name of [
+      'launcher_check_path',
+      'launcher_gc_info',
+      'launcher_saved_game_accounts',
+      'launcher_capture_account',
+      'launcher_start'
+    ]) {
       expect(rust).toMatch(new RegExp(`fn ${name}\\([^)]*kind: Option<String>`));
     }
     const js = readFileSync('js/modules/launcher/launch.js', 'utf8');
     expect(js).toContain('kind: launcherKindArg(');
+    expect(js).toContain("'launcher_saved_game_accounts'");
     expect(js).toContain("'launcher_pick_gamecenter', { kind: launcherArg(");
   });
 });
