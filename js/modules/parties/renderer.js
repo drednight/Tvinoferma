@@ -121,7 +121,7 @@ function memberRowHtml(m, party) {
         <li class="pt-member party-member-row" data-char-id="${m.id}"${party ? ` data-party-id="${escapeHtml(party.id)}"` : ''}>
             ${handle}
             <span class="pt-ava ${isOnline ? 'is-online' : ''}">${src ? `<img src="${src}" alt="" loading="lazy" />` : escapeHtml(Array.from(m.nick || '?')[0])}</span>
-            <span class="pt-member-name"><strong>${escapeHtml(m.nick)}</strong><small class="muted">${escapeHtml(m.class || '')}</small></span>
+            <span class="pt-member-name"><strong>${escapeHtml(m.nick)}${party && state.settings.gameMacros?.leaders?.[party.id] === m.id ? ' <span title="ПЛ для управления окнами">👑</span>' : ''}</strong><small class="muted">${escapeHtml(m.class || '')}</small></span>
             ${party && !isMainParty(m, party.id) ? '<span class="pt-badge" title="Для этого персонажа это дополнительная пати: его монеты считаются в основной">доп.</span>' : ''}
             <span class="pt-dot" style="color:${authView.color}" title="${isOnline ? 'Онлайн' : 'Оффлайн'}">${authView.icon}</span>
             <button class="pt-open open-profile-btn" data-char-id="${m.id}" type="button">Открыть</button>
@@ -163,7 +163,7 @@ function partyCardHtml(name, members) {
             <header class="party-card-header pt-head ${isDraggable ? 'draggable-area' : ''}" data-party-name="${escapeHtml(name)}" ${dragAttrs}>
                 <span class="pt-badge-icon" aria-hidden="true">${isDraggable ? escapeHtml(partyInitials(name)) : '∅'}</span>
                 <div class="pt-title">
-                    <h3 title="${escapeHtml(name)}">${escapeHtml(name)}</h3>
+                    <h3 title="${escapeHtml(name)}">${escapeHtml(name)}${state.settings.gameMacros?.leaders?.[party?.id] && activeMembers.some(c => c.id === state.settings.gameMacros.leaders[party.id]) ? ' <span title="В пати назначен ПЛ для управления окнами">👑</span>' : ''}</h3>
                     <span class="pt-sub">${countLabel}${activeMembers.length ? ` · онлайн ${stats.onlineCount}` : ''}</span>
                 </div>
                 <div class="pt-coins" title="Монеты считаются по основной пати персонажей">${stats.totalCoins > 0 ? `${formatCoins(stats.totalCoins)} <svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>` : ''}</div>
@@ -504,7 +504,9 @@ function bindPartyEvents(container) {
       const members = party
         ? charactersInPartyOrdered(state.characters, party.id)
         : state.characters.filter(c => hasNoParty(c, state.parties));
-      import('../launcher/partyLaunch.js').then(m => m.launchGroup(`Запуск игры: ${name}`, members));
+      import('../launcher/partyLaunch.js').then(m =>
+        m.launchGroup(`Запуск игры: ${name}`, members, { partyId: party?.id })
+      );
       return;
     }
 

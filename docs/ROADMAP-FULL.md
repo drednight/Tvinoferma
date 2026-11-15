@@ -1,3 +1,5 @@
+> Исторический план. Актуальные задачи: [CURRENT-BACKLOG.md](CURRENT-BACKLOG.md), GitHub #195. Старые чеклисты ниже не подтверждают текущий остаток работ.
+
 # Роадмап Tvinoferma (версия 3, объединённая)
 
 > Репозиторий: [drednight/Tvinoferma](https://github.com/drednight/Tvinoferma) · Стек: Tauri 2 (Rust) + JavaScript без фреймворка · Версия в `Cargo.toml`: 1.0.0 · Автообновление и CI уже настроены.

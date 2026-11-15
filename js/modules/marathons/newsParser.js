@@ -1,4 +1,4 @@
-import { normalizeMarathonUrl } from './sourceUrl.js';
+import { checkPageLinks } from './checkPageParser.js';
 // js/modules/marathons/newsParser.js
 // Разбор новости pwonline.ru о марафоне (news.php?article=…):
 // этапы (спойлеры «Летний марафон: июнь» и т.п.), сроки, задания с целями «10/15/20 раз»,
@@ -79,11 +79,6 @@ const nums = s =>
     .split('/')
     .map(x => parseInt(x, 10))
     .filter(n => Number.isFinite(n));
-
-/** https, без завершающего «/» (в новостях бывает «supermarathon.php/»). */
-function cleanPageUrl(href) {
-  return normalizeMarathonUrl(href);
-}
 
 function parsePubDate(s) {
   const m = String(s || '').match(/(\d{2})\.(\d{2})\.(\d{4})/);
@@ -234,10 +229,8 @@ export function parseNewsHtml(html, meta = {}) {
   const title = norm(root.querySelector('h1')?.textContent) || norm(meta.title) || 'Марафон из новости';
 
   // Ссылка на страницу с отметками (FAQ: «Где я могу проследить…? — Здесь»)
-  const link = [...root.querySelectorAll('a[href]')]
-    .map(a => a.getAttribute('href'))
-    .find(h => /supermarathon\d*\.php/i.test(h));
-  const sourceUrl = link ? cleanPageUrl(new URL(link, 'https://pwonline.ru/news.php').href) : null;
+  const checkLinks = checkPageLinks(html, meta.newsUrl || 'https://pwonline.ru/news.php');
+  const sourceUrl = checkLinks.length === 1 ? checkLinks[0] : null;
   debug.push(
     sourceUrl
       ? `Страница отметок: ${sourceUrl}`
@@ -330,5 +323,8 @@ export function parseNewsHtml(html, meta = {}) {
     st.endDate = iso(y, mi + 1, new Date(y, mi + 1, 0).getDate());
   });
 
-  return { name: title, sourceUrl, newsUrl: meta.newsUrl || null, stages, quests: allQuests, debug };
+  const descriptionRoot = (root.querySelector('.js-mediator-article') || root).cloneNode(true);
+  descriptionRoot.querySelectorAll('script, style, iframe, form, input, button').forEach(node => node.remove());
+  const description = norm(descriptionRoot.textContent);
+  return { name: title, description, sourceUrl, newsUrl: meta.newsUrl || null, stages, quests: allQuests, debug };
 }

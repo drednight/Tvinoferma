@@ -6,7 +6,7 @@ import { escapeHtml } from '../core/utils.js';
 import { openOverlay } from '../modules/marathons/overlay.js';
 import { parseChangelog, renderHistoryHtml } from './changelog.js';
 import { state as appState } from '../core/state.js';
-import { installUpdate, checkForUpdates } from './updater.js';
+import { installUpdate, checkForUpdates, updatesDisabledForBuild } from './updater.js';
 import { resolveUpdateMode, nextCheckText } from './updateSchedule.js';
 import {
   subscribeUpdate,
@@ -86,7 +86,10 @@ function renderUpdateHistory() {
 /** Обновляет строку «Следующая проверка» (после смены режима в настройках). */
 export function refreshUpdateSchedule() {
   const el = document.getElementById('update-next-check');
-  if (el) el.textContent = nextCheckText(resolveUpdateMode(appState.settings));
+  if (el)
+    el.textContent = updatesDisabledForBuild()
+      ? 'Проверка обновлений отключена для этой сборки'
+      : nextCheckText(resolveUpdateMode(appState.settings));
 }
 
 /** Подключает кнопку в шапке и блок в настройках. Вызывать один раз при старте. */
@@ -96,7 +99,8 @@ export function initUpdateUi() {
   const checkedAt = document.getElementById('update-checked-at');
   const installBtn = document.getElementById('install-update-btn');
   const checkBtn = document.getElementById('check-updates-btn');
-  const supported = !!window.__TAURI_INTERNALS__;
+  const disabledForBuild = updatesDisabledForBuild();
+  const supported = !!window.__TAURI_INTERNALS__ && !disabledForBuild;
 
   renderUpdateHistory();
 
@@ -118,7 +122,8 @@ export function initUpdateUi() {
       }
     }
     refreshUpdateSchedule();
-    if (status) status.textContent = statusText(s, { supported });
+    if (status)
+      status.textContent = disabledForBuild ? 'Обновления отключены для этого профиля' : statusText(s, { supported });
     if (checkedAt) checkedAt.textContent = checkedAtText(s);
     if (installBtn) {
       installBtn.hidden = !show;

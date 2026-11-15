@@ -10,7 +10,7 @@ const source = () =>
       plannerView: 'month',
       sections: {
         hidden: ['runes'],
-        order: ['today', 'finance', 'characters', 'parties', 'marathons', 'runes', 'tools', 'settings']
+        order: ['today', 'finance', 'characters', 'parties', 'marathons', 'runes', 'tools', 'game-macros', 'settings']
       },
       guideSeen: true,
       onboardingSeen: true
@@ -32,7 +32,7 @@ describe('экспорт только выбранных настроек', () =
         appearance: { theme: 'dark' },
         navigation: {
           hidden: ['runes'],
-          order: ['today', 'finance', 'characters', 'parties', 'marathons', 'runes', 'tools', 'settings']
+          order: ['today', 'finance', 'characters', 'parties', 'marathons', 'runes', 'tools', 'game-macros', 'settings']
         },
         planner: { view: 'month' }
       }

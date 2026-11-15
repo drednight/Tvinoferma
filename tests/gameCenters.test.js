@@ -7,6 +7,7 @@ import {
   detachGc,
   replaceGc,
   setGcAccount,
+  setGcGameAccount,
   accountKeysOf,
   removeGameCenter,
   importLegacyPaths,
@@ -75,6 +76,26 @@ describe('GameCenter: общий список', () => {
     expect(c.launch.gcAccounts).toEqual({ 'gc-1': { nick: ' Twin ', legacy: true } });
     expect(JSON.stringify(c)).not.toContain('SECRET');
   });
+
+  it('персонаж: игровые аккаунты окна выбора нормализуются, мусор отбрасывается', () => {
+    const c = normalizeCharacter({
+      nick: 'X',
+      launch: {
+        gcGameAccounts: {
+          'gc-1': { id: ' 59424880 ', name: ' hotdevilcom ', secret: 'SECRET' },
+          'gc-2': { id: '', name: 'Без id' },
+          'gc-3': null
+        },
+        gcGameAccount: { id: '49635696', name: 'WheeIman' }
+      }
+    });
+    expect(c.launch.gcGameAccounts).toEqual({ 'gc-1': { id: '59424880', name: 'hotdevilcom' } });
+    expect(c.launch.gcGameAccount).toEqual({ id: '49635696', name: 'WheeIman' });
+    expect(JSON.stringify(c)).not.toContain('SECRET');
+    const empty = normalizeCharacter({ nick: 'Y', launch: { gcGameAccount: { id: '', name: '' }, gcGameAccounts: 5 } });
+    expect(empty.launch.gcGameAccount).toBeNull();
+    expect(empty.launch.gcGameAccounts).toEqual({});
+  });
 });
 
 describe('GameCenter: какой запускать', () => {
@@ -94,7 +115,15 @@ describe('GameCenter: какой запускать', () => {
     expect(resolveGameCenter(ch('a', { gcIds: ['gc-1'], gcPath: 'D:\\own' }), ctx()).path).toBe(GC1.path);
     const own = resolveGameCenter(ch('a', { gcPath: ' D:\\own ', gcNick: 'Twin', gcAccount: true }), ctx());
     // `kind` — тип лаунчера: у «своего пути» он узнаётся по имени файла в пути
-    expect(own).toEqual({ path: 'D:\\own', key: 'a', nick: 'Twin', saved: true, gc: null, kind: 'gamecenter' });
+    expect(own).toEqual({
+      path: 'D:\\own',
+      key: 'a',
+      nick: 'Twin',
+      saved: true,
+      gc: null,
+      kind: 'gamecenter',
+      gameAccount: null
+    });
     expect(resolveGameCenter(ch('a', { gcPath: 'D:\\AstrumPlay' }), ctx()).kind).toBe('astrum');
     expect(resolveGameCenter(ch('a', {}), ctx())).toBeNull();
     expect(resolveGameCenter(ch('a', { gcIds: ['удалён'] }), ctx())).toBeNull();
@@ -115,6 +144,38 @@ describe('GameCenter: какой запускать', () => {
     setGcAccount(c, 'gc-1', 'Twin', true);
     expect(accountKey(c, 'gc-1')).toBe('a');
     expect(accountKeysOf(c)).toEqual(['a']);
+  });
+
+  it('игровой аккаунт окна выбора хранится по каждому GameCenter отдельно', () => {
+    const c = ch('a', { gcIds: ['gc-1', 'gc-2'] });
+    const hot = { id: '59424880', name: 'hotdevilcom' };
+    setGcGameAccount(c, 'gc-2', hot);
+    expect(c.launch.gcGameAccounts).toEqual({ 'gc-2': hot });
+    expect(resolveGameCenter(c, ctx('gc-2')).gameAccount).toEqual(hot);
+    expect(resolveGameCenter(c, ctx('gc-1')).gameAccount).toBeNull();
+    // У «своего пути» — отдельное поле
+    const own = ch('b', { gcPath: 'D:\\own' });
+    setGcGameAccount(own, '', hot);
+    expect(own.launch.gcGameAccount).toEqual(hot);
+    expect(resolveGameCenter(own, ctx()).gameAccount).toEqual(hot);
+    // Пустой/битый аккаунт убирает выбор, а не ломает запуск
+    setGcGameAccount(own, '', { id: '', name: '' });
+    expect(own.launch.gcGameAccount).toBeNull();
+    setGcGameAccount(c, 'gc-2', null);
+    expect(c.launch.gcGameAccounts).toEqual({});
+    // state.json могли править руками: битый объект не уходит в Rust
+    const raw = ch('r', { gcIds: ['gc-1'], gcGameAccounts: { 'gc-1': { id: '', name: 'Без id' } } });
+    expect(resolveGameCenter(raw, ctx()).gameAccount).toBeNull();
+  });
+
+  it('при откреплении и замене игровой аккаунт уходит вместе с GameCenter', () => {
+    const c = ch('a', { gcIds: ['gc-1', 'gc-2'] });
+    setGcGameAccount(c, 'gc-1', { id: '1', name: 'One' });
+    setGcGameAccount(c, 'gc-2', { id: '2', name: 'Two' });
+    replaceGc(c, 0, 'gc-2'); // gc-2 уже есть — замены нет, данные на месте
+    expect(c.launch.gcGameAccounts).toEqual({ 'gc-1': { id: '1', name: 'One' }, 'gc-2': { id: '2', name: 'Two' } });
+    detachGc(c, 'gc-1');
+    expect(c.launch.gcGameAccounts).toEqual({ 'gc-2': { id: '2', name: 'Two' } });
   });
 });
 
@@ -218,6 +279,20 @@ describe('GameCenter: запуск', () => {
       [GC1.path, 'b@gc-1', false], // «Папки 2» нет — из доступной
       ['D:\\own', 'own', false] // старый путь из карточки
     ]);
+  });
+
+  it('игровой аккаунт окна выбора уходит в launcher_start вместе с путём', async () => {
+    const seen = [];
+    const invoke = async (cmd, args) => {
+      seen.push(args);
+      return {};
+    };
+    const hot = { id: '59424880', name: 'hotdevilcom' };
+    const a = ch('a', { gcIds: ['gc-1', 'gc-2'], gcGameAccounts: { 'gc-2': hot } });
+    const b = ch('b', { gcIds: ['gc-2'] });
+    const own = ch('own', { gcPath: 'D:\\own', gcGameAccount: hot });
+    await launchCharacters([a, b, own], { delayMs: 0, gcId: 'gc-2' }, { invoke, ctx: ctx() });
+    expect(seen.map(x => x.gameAccount)).toEqual([hot, null, hot]);
   });
 
   it('план запуска и фильтр учитывают GameCenter из списка', () => {

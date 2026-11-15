@@ -15,8 +15,18 @@ let pending = null; // объект Update из плагина (нужен дл�
 let checking = false;
 let installing = false;
 let timers = [];
-
-const isSupported = () => !!window.__TAURI_INTERNALS__;
+// The native plugin is also not registered in acceptance builds; this guard
+// keeps the UI and scheduler quiet and fails closed if profile detection fails.
+let buildProfile = 'stable';
+export function setUpdateBuildProfile(profile) {
+  buildProfile = profile === 'stable' ? 'stable' : profile === 'acceptance' ? 'acceptance' : 'unknown';
+  if (buildProfile !== 'stable') {
+    pending = null;
+    stopUpdateScheduler();
+  }
+}
+export const updatesDisabledForBuild = () => buildProfile !== 'stable';
+const isSupported = () => !!window.__TAURI_INTERNALS__ && !updatesDisabledForBuild();
 
 /**
  * Проверка обновлений. Диалогов не показывает.
@@ -24,12 +34,17 @@ const isSupported = () => !!window.__TAURI_INTERNALS__;
  * @returns {Promise<object|null>} найденное обновление или null
  */
 export async function checkForUpdates({ silent = false } = {}) {
-  if (!isSupported() || checking || installing) return pending;
+  if (!isSupported() || checking || installing) {
+    if (!silent && buildProfile !== 'stable')
+      toast('Обновление отключено для тестового или неопределённого профиля.', 'warning');
+    return pending;
+  }
   checking = true;
   if (!hasUpdate()) setUpdateState({ status: 'checking', error: null });
   try {
     const { check } = await import('@tauri-apps/plugin-updater');
     const update = await check();
+    if (!isSupported()) return null;
     const lastCheckedAt = new Date().toISOString();
     if (!update) {
       pending = null;
@@ -51,6 +66,7 @@ export async function checkForUpdates({ silent = false } = {}) {
       toast(`Доступна версия ${formatVersion(update.version)}. Кнопка обновления в шапке и в настройках.`, 'info');
     return update;
   } catch (e) {
+    if (!isSupported()) return null;
     console.warn('[UPDATER]', e);
     const message = e?.message || String(e);
     if (pending) {
@@ -72,7 +88,7 @@ export async function checkForUpdates({ silent = false } = {}) {
  * @returns {Promise<boolean>} true, если установка дошла до перезапуска
  */
 export async function installUpdate() {
-  if (!pending || installing) return false;
+  if (!isSupported() || !pending || installing) return false;
   installing = true;
   setUpdateState({ status: 'downloading', progress: null, error: null });
   try {

@@ -62,7 +62,7 @@ describe('разбор профиля', () => {
     const parties = profile().parties;
     expect(parties.map(p => p.name)).toEqual(['МТВ - Пати 2', 'ГВГ атака - Пати 1']);
     expect(parties[0].members.map(m => m.nick)).toEqual(['#Дреднайт', '#Ohayo', '#Μακαο', '#тирс', 'Rakohammа']);
-    expect(parties[0].members[0]).toEqual({ nick: '#Дреднайт', cls: 'luk', title: 'Лучник' });
+    expect(parties[0].members[0]).toEqual({ nick: '#Дреднайт', cls: 'luk', title: 'Лучник', leader: true });
     expect(parties[0].members[3]).toEqual({ nick: '#тирс', cls: 'tank', title: 'Оборотень' });
   });
 
@@ -174,6 +174,7 @@ describe('нормализация кэша', () => {
 
   it('пустое значение даёт пустую сводку', () => {
     expect(normalizeGuildData(undefined)).toEqual({
+      leaderOverrides: [],
       events: [],
       parties: [],
       selfNick: '',
@@ -391,4 +392,44 @@ describe('перенос настроек при переименовании et
   it('без обоих ключей — умолчание', () => {
     expect(normalizeState({ settings: {} }).settings.guild.enabled).toBe(false);
   });
+});
+
+describe('явная метка ПЛ', () => {
+  it('сохраняется отдельно от ника после разбора и нормализации, не попадает в копирование', () => {
+    const data = normalizeGuildData(profile());
+    expect(data.parties[0].members[0].leader).toBe(true);
+    expect(data.parties[0].members[1].leader).not.toBe(true);
+    expect(partyNicks(data.parties[0], 'another').join(' ')).not.toContain('(ПЛ)');
+  });
+  it('не угадывает ПЛ по порядку, пометке другого назначения или строковому boolean', () => {
+    const data = normalizeGuildData({
+      parties: [
+        { name: 'Test', members: [{ nick: 'Alpha', leader: 'true' }, { nick: 'Beta (ПЛ)' }, { nick: 'Gamma (запас)' }] }
+      ]
+    });
+    expect(data.parties[0].members.map(row => row.leader === true)).toEqual([false, true, false]);
+    expect(data.parties[0].members[1].nick).toBe('Beta');
+  });
+});
+
+it('reads explicit PL marker outside the nickname link in the same table cell', () => {
+  const page = doc();
+  const link = page.querySelector('a.table-username');
+  link.lastChild.textContent = '#Дреднайт';
+  link.after(document.createTextNode(' (ПЛ)'));
+  const member = parseProfileDocument(page).parties[0].members[0];
+  expect(member.nick).toBe('#Дреднайт');
+  expect(member.leader).toBe(true);
+});
+
+it('embedded site parser also preserves PL outside the nickname link', () => {
+  delete window.__tfGuildInstalled;
+  document.body.innerHTML = doc().body.innerHTML;
+  const link = document.querySelector('a.table-username');
+  link.lastChild.textContent = '#Дреднайт';
+  link.after(document.createTextNode(' (ПЛ)'));
+  window.history.replaceState(null, '', '/index.php');
+  new Function(readFileSync('src-tauri/src/scripts/guild.js', 'utf8'))();
+  const result = JSON.parse(decodeURIComponent(window.location.hash.replace('#TFETE1_', '')));
+  expect(result.data.parties[0].members[0]).toMatchObject({ nick: '#Дреднайт', leader: true });
 });

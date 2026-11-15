@@ -98,13 +98,17 @@
           <span class="next-nav-icon" aria-hidden="true">⚡</span>
           <span class="next-nav-copy"><strong>Инструменты</strong><small>Скрипты и окна игры</small></span>
         </button>
+        <button class="tab" data-tab="game-macros" data-subtitle="Команды, повтор ввода и оверлей." title="Ctrl+8">
+          <span class="next-nav-icon" aria-hidden="true">🎮</span>
+          <span class="next-nav-copy"><strong>Команды</strong><small>Макросы и повтор ввода</small></span>
+        </button>
 
       </nav>
       <div class="next-sidebar-bottom">
         <div id="msk-clock" class="msk-clock" role="timer" aria-label="Московское время"></div>
         <div id="server-status" class="server-status" aria-label="Статус серверов"></div>
         <div class="next-sidebar-divider" aria-hidden="true"></div>
-        <button class="tab next-settings-tab" data-tab="settings" data-subtitle="Данные и резервные копии, скрипты, запуск игры, уведомления и оформление." title="Ctrl+8">
+        <button class="tab next-settings-tab" data-tab="settings" data-subtitle="Данные и резервные копии, скрипты, запуск игры, уведомления и оформление." title="Ctrl+9">
           <span class="next-nav-icon" aria-hidden="true">⚙</span>
           <span class="next-nav-copy"><strong>Настройки</strong><small>Данные и приложение</small></span>
         </button>
@@ -131,6 +135,8 @@
 
     <!-- Основной контент -->
     <main class="content">
+
+      <div id="build-profile-banner" class="health-banner storage-readonly-banner" role="status" hidden></div>
 
       <!-- Предупреждение остаётся видимым до перезапуска при заблокированной записи. -->
       <div id="storage-readonly-banner" class="health-banner storage-readonly-banner" role="alert" hidden>
@@ -177,7 +183,7 @@
             <!-- Появляется, только когда включён хотя бы один фильтр -->
             <button id="filters-clear" class="filters-clear" type="button" hidden title="Сбросить поиск и все фильтры">✕ Сбросить</button>
           </div>
-          <div class="row gap" style="margin: 10px 0;">
+          <div class="row gap" style="margin: 10px 0; flex-direction: column; align-items: flex-start;">
             <button id="show-active-characters" class="btn secondary small" type="button">Персонажи <span id="active-character-count">0</span></button>
             <button id="show-archived-characters" class="btn ghost small" type="button">Архив <span id="archived-character-count">0</span></button>
           </div>
@@ -258,6 +264,10 @@
         <div id="tools-root"></div>
       </section>
 
+      <section class="page" data-section="game-macros">
+        <div id="game-macros-root"></div>
+      </section>
+
       <!-- РАЗДЕЛ: УЧЁТ -->
       <section class="page" data-section="finance">
         <div id="finance-root"></div>
@@ -307,6 +317,7 @@
           </summary>
           <p class="muted" style="margin-top: 0;">Переключатель убирает раздел из меню, стрелки меняют порядок — он же определяет, какой раздел открывает каждая цифра: Ctrl+1 — первый видимый.</p>
           <div id="sections-list" class="sections-list"></div>
+          <details class="fold"><summary>Расположение блоков на «Сегодня»</summary><div data-today-layout-settings></div></details>
         </details>
 <details class="panel fold" id="settings-launcher">
           <summary>
@@ -355,6 +366,10 @@
               <select class="select" data-setting="browser.linkCharacterId" data-value-type="string"><option value="">Без персонажа — отдельный профиль</option></select>
             </label>
             <p class="muted">По умолчанию новости и веб-ссылки открываются в WebView без персонажа. Можно выбрать свой системный браузер: тогда используются его сессии, а профиль персонажа ниже не применяется. Выбранный персонаж предоставляет сохранённую сессию сайта; пароли автоматически не вводятся. Удалённый персонаж не заменяется первым в списке. Смена настройки действует на следующие открытия.</p>
+            <label><input type="checkbox" data-setting="browser.marathonFollowCheckLinks" /> Марафоны: при разборе новости читать задания со связанной страницы сверки отметок. Создание — только после проверки в мастере.</label>
+            <p class="muted">Поддерживаются страницы supermarathon*.php и дополнительные страницы, добавленные в мастере марафона. Если ссылок несколько, выберите страницу вручную. Импорт HTML не запускает скрипты и не переносит личные отметки. Сроки и награды проверьте перед сохранением.</p>
+            <label>Импорт марафона из сохранённой страницы сверки или новости <input type="file" id="marathon-site-html" accept=".html,.htm,text/html" /></label>
+            <p id="marathon-site-import-status" role="status"></p>
             <label><input type="checkbox" data-setting="browser.unlimitedGiftItems" /> Передача предметов: снять лимит сайта «не более 6 предметов за раз» (можно отмечать любое число галочек; слева под «Помощником входа» появится панель «Типы предметов» с кнопками «Отметить»/«Снять» по каждому типу). Действует на окна, открытые после изменения. «Передать» вы нажимаете сами.</label>
             <label><input type="checkbox" data-setting="browser.collectionPanel" /> Мини-игра «Коллекция»: слева под «Помощником входа» показать панель «Коллекция» (цель, «Проверить», «Старт»/«Стоп» и статистика: сколько карт какой категории выпало). Карточки открываются только после вашего подтверждения. Действует на окна, открытые после изменения.</label>
           </div>
@@ -879,6 +894,11 @@
           </div>
           <p class="muted" style="margin-bottom: 8px;">Показаны 5 последних копий.</p>
           <div id="backup-list" class="list compact"></div>
+          <div class="row gap">
+            <button id="contact-file-export" class="btn" type="button">Создать защищённую копию контактов</button>
+            <button id="contact-file-review" class="btn ghost" type="button">Открыть защищённую копию контактов</button>
+          </div>
+          <p class="muted">Отдельный зашифрованный файл контактов с ключом, который нужно сохранить отдельно. Это не копия всех данных или входов GameCenter; проверка и восстановление контактов выполняются вручную.</p>
         </details>
 <details class="panel fold" id="settings-transfer">
           <summary>
@@ -959,6 +979,7 @@
             <h3>⚠️ Опасные действия</h3>
             <p class="muted">Массовое удаление пати, марафонов и персонажей с резервной копией. Полный сброс ниже удаляет и копии.</p>
           </summary>
+          <div class="danger-item"><div><strong>Дубли персонажей</strong><p>Поиск совпадений контактов и ника. Решение о слиянии, удалении или сохранении — только вручную.</p></div><button id="review-duplicates-btn" class="btn secondary" type="button">Проверить дубли…</button></div>
           <div class="danger-item">
             <div>
               <strong>Удалить все пати</strong>

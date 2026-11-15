@@ -1,3 +1,4 @@
+import { state } from '../js/core/state.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeScriptReport } from '../js/modules/automation/scriptReport.js';
 import {
@@ -139,7 +140,7 @@ describe('окно статистики', () => {
     const ov = openScriptStatistics(reports);
     ov.body.querySelector('[data-sr-search]').value = 'передача';
     ov.body.querySelector('[data-sr-search]').dispatchEvent(new Event('input', { bubbles: true }));
-    expect(ov.body.querySelectorAll('.sr-group')).toHaveLength(1);
+    expect(ov.body.querySelectorAll('.sr-table tbody tr')).toHaveLength(1);
     ov.foot.querySelector('[data-sr-close]').click();
     expect(ov.el.isConnected).toBe(false);
   });
@@ -173,4 +174,12 @@ describe('журнал задач', () => {
     expect(document.querySelector('.tf-dialog').textContent).toContain('Альфа');
     expect(document.querySelector('.tf-dialog').textContent).toContain('Руна');
   });
+});
+
+it('restores class icons for reports without a usable ID only when the nickname is unique', () => {
+  state.characters = [{ id: 'a', nick: 'Альфа', class: 'Жрец' }];
+  const report = makeScriptReport('promo', [{ nick: 'Альфа', status: 'success' }]);
+  expect(scriptStatisticsHtml([report])).toContain('<img class="char-class-ico"');
+  state.characters.push({ id: 'b', nick: 'Альфа', class: 'Воин' });
+  expect(scriptStatisticsHtml([report])).not.toContain('<img class="char-class-ico"');
 });

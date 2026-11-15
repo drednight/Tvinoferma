@@ -1,3 +1,5 @@
+import { checkPageLinks, parseCheckPageHtml } from './checkPageParser.js';
+import { mergeSiteAndNews } from './mergeSources.js';
 import { normalizeMarathonUrl } from './sourceUrl.js';
 // js/modules/marathons/siteSync.js
 // Связь марафонов с сайтом pwonline.ru: поиск марафонов, разбор страницы, сверка прогресса.
@@ -197,15 +199,67 @@ export async function loadNewsPage(url, { dock = false, onTask } = {}) {
   task.log(`Заголовок: «${res.news.title}», опубликовано ${res.news.publishedAt || '—'}`);
   let parsed;
   try {
-    parsed = parseNewsHtml(res.news.html, {
-      title: res.news.title,
-      publishedAt: res.news.publishedAt,
-      newsUrl: res.news.url || url
-    });
+    parsed = new DOMParser().parseFromString(res.news.html, 'text/html').querySelector('.season_marathon')
+      ? parseCheckPageHtml(res.news.html, { sourceUrl: res.news.url || url })
+      : parseNewsHtml(res.news.html, {
+          title: res.news.title,
+          publishedAt: res.news.publishedAt,
+          newsUrl: res.news.url || url
+        });
   } catch (e) {
     task.finish(`Ошибка разбора: ${e.message}`, 'error');
     return { marathon: null, error: e.message, task };
   }
+  if (state.settings.browser?.marathonFollowCheckLinks !== false) {
+    const links = checkPageLinks(res.news.html, res.news.url || url, customPages());
+    if (links.length > 1) {
+      parsed.debug.push(
+        'В новости несколько страниц сверки: выберите нужную вручную, автоматический переход не выполнен.'
+      );
+    } else if (links.length === 1 && !task.cancelled) {
+      const checkUrl = links[0];
+      task.setStep('Читаю задания со страницы сверки…');
+      task.watch('detail');
+      const detail = new Promise(resolve => {
+        detailWaiter = resolve;
+      });
+      try {
+        await invoke('parse_specific_marathon_page', { url: checkUrl, charId: pickScannerCharacter()?.id || null });
+        const result = await withTimeout(detail, 60000, { error: 'timeout' });
+        if (result.marathon?.quests?.length) {
+          const site = { ...result.marathon, sourceUrl: checkUrl };
+          if (!parsed.quests.length) {
+            parsed = {
+              ...site,
+              name: parsed.name,
+              description: [parsed.description, site.description].filter(Boolean).join('\n\n'),
+              quests: site.quests.map(q => ({
+                ...q,
+                siteTitle: q.title,
+                descriptionSource: 'site',
+                rewards: q.rewards || []
+              })),
+              newsUrl: parsed.newsUrl,
+              stages: site.stages?.length ? site.stages : parsed.stages,
+              debug: [
+                ...parsed.debug,
+                ...(site.debug || []),
+                'Задания взяты со страницы сверки. Проверьте сроки и награды перед созданием.'
+              ]
+            };
+          } else {
+            const merged = mergeSiteAndNews({ news: parsed, site });
+            parsed = { ...merged.raw, debug: [...parsed.debug, ...merged.notes.map(n => n.text)] };
+          }
+        } else parsed.debug.push('Не удалось прочитать страницу сверки; задания из новости оставлены без изменений.');
+      } catch {
+        parsed.debug.push('Страница сверки недоступна; попробуйте импорт сохранённого HTML в настройках сайта.');
+      } finally {
+        detailWaiter = null;
+      }
+    }
+  }
+  if (task.cancelled) return { marathon: null, error: 'cancelled', task };
   parsed.debug.forEach(line => task.log(line, /не найден|вручную|проверьте/i.test(line) ? 'warn' : 'info'));
   parsed.stages.forEach(st =>
     task.log(
@@ -214,7 +268,7 @@ export async function loadNewsPage(url, { dock = false, onTask } = {}) {
   );
   parsed.quests.forEach(q =>
     task.log(
-      `  ${q.title}: цель ${q.goal}${q.weekly ? ' (еженедельно)' : ''}, награды ${q.rewards.map(r => `${r.threshold}→<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>${r.rewardCoins}`).join(', ') || '—'}`
+      `  ${q.title}: цель ${q.goal}${q.weekly ? ' (еженедельно)' : ''}, награды ${(q.rewards || []).map(r => `${r.threshold}→<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>${r.rewardCoins}`).join(', ') || '—'}`
     )
   );
   if (!parsed.quests.length) {

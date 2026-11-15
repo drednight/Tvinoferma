@@ -1,0 +1,657 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Твиноферма — управление пати</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font: var(--overlay-font, 14px) system-ui;
+        color: var(--overlay-text, #eef1ff);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: transparent;
+      }
+      .tf-confirm-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        background: rgba(0, 0, 0, 0.75);
+        display: grid;
+        place-items: center;
+        padding: 12px;
+      }
+      .tf-confirm {
+        width: min(100%, 400px);
+        padding: 16px;
+        border: 1px solid #626b87;
+        border-radius: 10px;
+        background: #171d2b;
+        color: #eef1ff;
+      }
+      .tf-confirm .modal-header h3 {
+        margin: 0 0 12px;
+      }
+      .tf-confirm .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 16px;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      input[type='range'] {
+        width: 100%;
+        margin-top: 10px;
+      }
+      main {
+        height: 100vh;
+        overflow: hidden;
+        border: 0;
+        border-radius: 10px;
+      }
+      #panel {
+        background: rgba(16, 20, 30, var(--alpha, 0.9));
+        height: calc(100vh - 52px);
+        overflow: auto;
+        padding: 14px;
+      }
+      body.folded #panel {
+        display: none;
+      }
+      * {
+        scrollbar-width: none;
+      }
+      *::-webkit-scrollbar {
+        display: none;
+      }
+      body.header-hidden header {
+        display: none;
+      }
+      body.header-hidden #panel {
+        height: 100vh;
+      }
+      header span {
+        flex: 1;
+      }
+      header {
+        height: 52px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(16, 20, 30, calc(var(--alpha, 0.9) * 0.72));
+        font-size: 15px;
+        font-weight: 700;
+        padding: 6px 10px;
+        cursor: move;
+        user-select: none;
+      }
+      button {
+        padding: 8px;
+        margin: 4px;
+        border: 1px solid #637090;
+        border-radius: 7px;
+        background: #20283c;
+        color: inherit;
+        cursor: pointer;
+        font: inherit;
+      }
+      li {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        gap: 12px;
+        overflow-wrap: anywhere;
+        margin: 8px 0;
+      }
+      #commands {
+        padding: 0;
+      }
+      #commands li {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+      }
+      #commands .command-run {
+        margin: 0;
+        padding: 6px 9px;
+        color: var(--overlay-key, #f5cc76);
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      button:focus-visible {
+        outline: 2px solid var(--overlay-key, #f5cc76);
+        outline-offset: 2px;
+      }
+      kbd {
+        flex: 0 0 auto;
+        white-space: nowrap;
+        color: var(--overlay-key, #f5cc76);
+      }
+      pre {
+        white-space: pre-wrap;
+        max-height: 260px;
+        overflow: auto;
+        font: inherit;
+      }
+      .muted {
+        color: #aab1c6;
+      }
+      #status:is(
+        [data-execution-state='finished'],
+        [data-execution-state='failed'],
+        [data-execution-state='stopped'],
+        [data-execution-state='stopping']
+      ),
+      .gm-log-terminal {
+        color: var(--danger, #f7768e);
+        font-weight: 600;
+      }
+      #overlay-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin: 10px 0;
+      }
+      #overlay-nav button {
+        flex: 1;
+        padding: 8px;
+        border-radius: 8px;
+      }
+      #overlay-nav [aria-current='page'] {
+        border-color: var(--overlay-key);
+        color: var(--overlay-key);
+      }
+      .color-options {
+        border: 1px solid #4b5064;
+        border-radius: 10px;
+        padding: 10px;
+        margin: 12px 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .color-options legend {
+        padding: 0 6px;
+      }
+      .color-options label {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 6px;
+        border-radius: 6px;
+        background: #232737;
+      }
+      .color-options span::before {
+        content: '●';
+        margin-right: 5px;
+      }
+      [data-swatch='light'],
+      [data-swatch='white'] {
+        color: #eef2ff;
+      }
+      [data-swatch='warm'],
+      [data-swatch='gold'] {
+        color: #f5d98c;
+      }
+      [data-swatch='mint'] {
+        color: #91e2bd;
+      }
+      [data-swatch='blue'] {
+        color: #9ccaff;
+      }
+      [data-swatch='violet'] {
+        color: #c7a7ff;
+      }
+      [data-swatch='orange'] {
+        color: #ffb380;
+      }
+      #recipient-list {
+        list-style: none;
+        padding: 0;
+        max-height: 35vh;
+        overflow: auto;
+      }
+      #recipient-list label {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #4b5064;
+        border-radius: 8px;
+      }
+      #recipient-list li {
+        margin: 6px 0;
+      }
+      #recipients-screen select {
+        width: 100%;
+        padding: 8px;
+        background: #20283c;
+        color: inherit;
+        border: 1px solid #637090;
+        border-radius: 7px;
+      }
+      #recipients-screen .recipient-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+      }
+      #recipients-screen .recipient-help {
+        color: #aab1c6;
+        line-height: 1.5;
+      }
+      #windows li {
+        padding: 10px;
+        border-bottom: 1px solid #4b5064;
+      }
+      #party-screen select {
+        width: 100%;
+        padding: 8px;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: wait;
+      }
+      #floating-panel-toggle {
+        display: none;
+        position: fixed;
+        top: 6px;
+        right: 6px;
+        z-index: 10;
+        margin: 0;
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        border-radius: 50%;
+        opacity: 0.65;
+        box-shadow: 0 2px 8px #0005;
+      }
+      body.header-hidden #floating-panel-toggle {
+        display: block;
+      }
+      #floating-panel-toggle:hover,
+      #floating-panel-toggle:focus-visible {
+        opacity: 1;
+      }
+      body.header-hidden #overlay-controls {
+        padding-right: 30px;
+      }
+      .gm-journal-copy-fallback {
+        display: block;
+        width: 100%;
+        background: #10141e;
+        color: inherit;
+        border: 1px solid #637090;
+        border-radius: 8px;
+        padding: 10px;
+        font: inherit;
+      }
+      .gm-journal-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .gm-journal-actions > button {
+        margin: 0;
+      }
+      .launch-character {
+        border-left: 3px solid var(--overlay-command);
+        padding: 6px 10px;
+        font-weight: 700;
+        background: #7de4b41a;
+      }
+      #launch-result {
+        border-top: 1px solid #637090;
+        padding-top: 8px;
+      }
+      .repeat-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin: 8px 4px;
+      }
+      .repeat-controls .repeat-toggle {
+        margin: 0;
+        min-width: 0;
+        min-height: 30px;
+        width: auto;
+        flex: 0 0 auto;
+        padding: 4px 8px;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+      .repeat-toggle {
+        font-weight: 600;
+      }
+      .repeat-toggle[data-state='on'] {
+        background: #214c40;
+        border-color: #66d9ad;
+        color: #c5ffe6;
+      }
+      .repeat-toggle[data-state='off'] {
+        border-color: #82535f;
+        color: #edb2bd;
+      }
+      .repeat-toggle[data-state='pending'],
+      .repeat-toggle[data-state='paused'] {
+        border-color: #e6b86a;
+        color: #f5cc76;
+      }
+      body.folded header {
+        display: flex;
+        flex-wrap: wrap;
+        height: 120px;
+        align-content: center;
+        gap: 4px;
+      }
+      body.folded header > span {
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      body.folded .repeat-controls {
+        width: 100%;
+        flex: 0 0 100%;
+        margin: 0;
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 4px;
+      }
+      body.folded .repeat-controls button {
+        flex: 1;
+        padding: 5px 2px;
+        font-size: 11px;
+        white-space: nowrap;
+        margin: 0;
+      }
+      body.folded .repeat-controls button {
+        grid-column: span 2;
+      }
+      body.folded #pause-macros,
+      body.folded #reconnect-input {
+        grid-column: span 3;
+      }
+      body.folded .repeat-controls svg {
+        width: 25px;
+      }
+      #overlay-nav {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+      }
+      #overlay-nav button {
+        margin: 0;
+        min-width: 0;
+        overflow-wrap: normal;
+      }
+      .repeat-controls {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .repeat-controls button {
+        margin: 0;
+        min-width: 0;
+      }
+      .repeat-controls #reconnect-input {
+        grid-column: 1 / -1;
+      }
+      @media (min-width: 520px) {
+        #overlay-nav {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+        .repeat-controls {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        .repeat-controls #reconnect-input {
+          grid-column: span 2;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <button
+      id="floating-panel-toggle"
+      aria-controls="overlay-controls"
+      aria-expanded="true"
+      title="Скрыть или показать панель"
+      aria-label="Скрыть или показать панель"
+    >
+      ⋯
+    </button>
+    <main>
+      <header data-drag>
+        <span>🎮 Управление пати</span
+        ><button
+          id="info-toggle"
+          aria-controls="overlay-controls"
+          aria-expanded="true"
+          title="Скрыть или показать панель"
+        >
+          ⋯</button
+        ><button data-action="stop" title="Остановить команду" aria-label="Остановить команду">■</button
+        ><button
+          id="fold"
+          aria-controls="panel"
+          aria-expanded="true"
+          aria-label="Свернуть до верхней полосы"
+          title="Свернуть до верхней полосы"
+        >
+          ▴</button
+        ><button id="close" aria-label="Закрыть оверлей" title="Закрыть оверлей">×</button>
+      </header>
+      <section id="panel">
+        <div id="overlay-controls">
+          <nav id="overlay-nav" aria-label="Разделы оверлея">
+            <button data-view="shortcuts" aria-current="page">Назначенные клавиши</button
+            ><button data-view="recipients">Получатели</button><button data-view="journal">Журнал</button
+            ><button data-view="party">Пати и окна</button><button data-view="appearance">Настройки оверлея</button>
+          </nav>
+          <p id="status">Ожидание главного окна…</p>
+        </div>
+        <div class="repeat-controls" role="group" aria-label="Повтор ввода">
+          <button
+            type="button"
+            class="repeat-toggle"
+            id="mouse-repeat-toggle"
+            aria-label="Включить повтор мыши"
+            title="Включить повтор мыши"
+            aria-pressed="false"
+            data-state="off"
+            disabled
+          >
+            🖱 ВЫКЛ
+          </button>
+          <button
+            type="button"
+            class="repeat-toggle"
+            id="keyboard-repeat-toggle"
+            aria-label="Включить повтор клавиатуры"
+            title="Включить повтор клавиатуры"
+            aria-pressed="false"
+            data-state="off"
+            disabled
+          >
+            ⌨ ВЫКЛ
+          </button>
+          <button
+            type="button"
+            class="repeat-toggle"
+            id="hotkeys-toggle"
+            aria-pressed="false"
+            aria-label="Включить сочетания клавиш"
+            title="Включить сочетания клавиш"
+            data-state="off"
+            disabled
+          >
+            Сочетания: ВЫКЛ
+          </button>
+          <button type="button" class="repeat-toggle" id="pause-macros">Ⅱ Пауза</button>
+          <button type="button" class="repeat-toggle" id="reconnect-input">↻ Переподключить ввод</button>
+        </div>
+        <section id="shortcuts-screen">
+          <h3 data-service-heading>Назначенные клавиши</h3>
+          <ul id="commands"></ul>
+        </section>
+        <section id="recipients-screen" hidden>
+          <h3>Получатели команд</h3>
+          <p class="recipient-help">
+            По умолчанию выбраны все распознанные окна. Снимите отметку, чтобы исключить персонажа из команд. Новые окна
+            включаются автоматически.
+          </p>
+          <div class="recipient-actions">
+            <button type="button" id="recipients-refresh">↻ Обновить</button
+            ><button type="button" id="recipients-all">Выбрать всех</button
+            ><button type="button" id="recipients-none">Снять все</button>
+          </div>
+          <p id="recipients-notice" role="status" aria-live="polite">Обновите список.</p>
+          <ul id="recipient-list"></ul>
+          <label
+            >ПЛ для специальных команд
+            <select id="recipient-leader">
+              <option value="">Не менять текущего ПЛ</option>
+            </select></label
+          >
+          <p id="recipient-leader-hint" class="recipient-help">
+            ПЛ используется только там, где он нужен; в игре лидерство не меняется. При выборе ПЛ также меняется
+            управляющая пати. Обычные команды не требуют ПЛ.
+          </p>
+          <button type="button" id="recipients-save" disabled>Сохранить выбор</button>
+          <p class="recipient-help">
+            Старые команды могут дополнительно ограничивать получателей пати. Повтор клавиатуры и мыши настраивается
+            отдельно.
+          </p>
+        </section>
+        <section id="appearance-screen" hidden>
+          <h3>Настройки оверлея</h3>
+          <label
+            >Непрозрачность <output id="alpha-value">90%</output
+            ><input id="opacity" type="range" min="10" max="100" value="90"
+          /></label>
+          <p>
+            <label><input id="topmost" type="checkbox" checked /> Поверх других окон</label>
+          </p>
+          <p class="muted">
+            Верхняя полоса прозрачнее основного фона. ▴ сворачивает окно; ⋯ скрывает служебную панель.
+          </p>
+          <fieldset class="color-options">
+            <legend>Цвет текста</legend>
+            <input type="hidden" id="text-color" value="light" /><label
+              ><input type="radio" name="text-color-choice" value="light" checked /><span data-swatch="light"
+                >Светлый</span
+              ></label
+            ><label
+              ><input type="radio" name="text-color-choice" value="warm" /><span data-swatch="warm">Тёплый</span></label
+            ><label
+              ><input type="radio" name="text-color-choice" value="mint" /><span data-swatch="mint">Мятный</span></label
+            >
+          </fieldset>
+          <fieldset class="color-options">
+            <legend>Цвет клавиш</legend>
+            <input type="hidden" id="key-color" value="gold" /><label
+              ><input type="radio" name="key-color-choice" value="gold" checked /><span data-swatch="gold"
+                >Золотой</span
+              ></label
+            ><label
+              ><input type="radio" name="key-color-choice" value="blue" /><span data-swatch="blue">Голубой</span></label
+            ><label
+              ><input type="radio" name="key-color-choice" value="white" /><span data-swatch="white">Белый</span></label
+            >
+          </fieldset>
+          <fieldset class="color-options">
+            <legend>Цвет названия команды</legend>
+            <input type="hidden" id="command-color" value="mint" /><label
+              ><input type="radio" name="command-color-choice" value="mint" checked /><span data-swatch="mint"
+                >Мятный</span
+              ></label
+            ><label
+              ><input type="radio" name="command-color-choice" value="violet" /><span data-swatch="violet"
+                >Фиолетовый</span
+              ></label
+            ><label
+              ><input type="radio" name="command-color-choice" value="orange" /><span data-swatch="orange"
+                >Оранжевый</span
+              ></label
+            >
+          </fieldset>
+          <label>Размер текста<input id="font-size" type="range" min="10" max="24" value="14" /></label
+          ><label><input id="hide-header" type="checkbox" /> Скрыть заголовок и кнопки окна</label>
+          <p class="muted">
+            При скрытом заголовке кнопка ⋯ остаётся в правом верхнем углу. Она показывает меню, через которое можно
+            вернуться в настройки и включить заголовок.
+          </p>
+          <button id="save-appearance">Сохранить</button>
+          <p id="appearance-error" role="status"></p>
+        </section>
+        <section id="party-screen" hidden>
+          <h3>Пати и окна</h3>
+          <label
+            >Пати для запуска<select id="party-select">
+              <option value="">Выберите пати</option>
+            </select></label
+          >
+          <p>
+            <button id="party-launch">▶ Запустить пати</button><button id="party-refresh">Обновить окна</button
+            ><button id="party-close-all">Закрыть окна ▾</button>
+          </p>
+          <div id="close-confirm" hidden>
+            <label
+              >Какие окна закрыть<select id="close-mode">
+                <option value="all">Все игровые окна</option>
+                <option value="except-leader">Все кроме ПЛ выбранной пати</option>
+                <option value="selected">Только отмеченные окна</option>
+              </select></label
+            >
+            <p>
+              Для выборочного закрытия отметьте окна в списке ниже. Обновление списка снимает отметки. Несохранённые
+              данные в игре будут потеряны. Нераспознанные окна тоже могут быть закрыты.
+            </p>
+            <button id="close-confirm-yes">Подтвердить закрытие</button><button id="close-confirm-no">Отмена</button>
+          </div>
+          <div id="launch-progress" hidden>
+            <p id="launch-character" class="launch-character" hidden></p>
+            <progress id="launch-percent" max="100" value="0" aria-label="Прогресс запуска пати"></progress>
+            <p id="launch-stage" role="status" aria-live="polite"></p>
+            <p id="launch-elapsed" class="muted"></p>
+            <p id="launch-result" hidden></p>
+          </div>
+          <p id="window-notice" role="status">Нажмите «Обновить окна».</p>
+          <ul id="windows"></ul>
+          <p class="muted">
+            Запуск использует сохранённые настройки пати. Не закрывайте главное приложение. Список обновляется по
+            кнопке, не каждую секунду.
+          </p>
+        </section>
+        <section id="journal-screen" hidden>
+          <h3 data-service-heading>Журнал текущего сеанса</h3>
+          <div class="gm-journal-actions" role="group" aria-label="Действия с журналом">
+            <button type="button" id="copy-logs">Копировать весь лог</button>
+            <button
+              type="button"
+              data-action="clear-logs"
+              title="Очистить общий журнал макросов, не останавливая команду"
+            >
+              Очистить лог
+            </button>
+          </div>
+          <p id="copy-logs-status" role="status" aria-live="polite"></p>
+          <p class="muted">Копируются все сохранённые записи (до 300 строк), не только видимый фрагмент.</p>
+          <pre id="logs"></pre>
+        </section>
+      </section>
+    </main>
+    <script type="module" src="/js/modules/gameMacros/overlay.js"></script>
+  </body>
+</html>

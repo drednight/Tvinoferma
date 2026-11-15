@@ -51,14 +51,20 @@ mod cloud_outbox_store;
 mod commands;
 mod cookie_bank;
 mod elevate;
+mod game_macros;
 mod guild;
 mod injection;
+#[cfg(windows)]
+mod input_arbiter;
+mod input_receiver;
 mod launcher;
 mod layout_sync;
 mod marathons;
 mod notify;
 mod parsers;
 mod pool;
+mod profile;
+#[cfg(not(feature = "acceptance"))]
 mod shortcut;
 mod stats_ocr;
 mod tray;
@@ -70,6 +76,32 @@ use tauri::{Emitter, Manager, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let context = tauri::generate_context!();
+    profile::validate_config_identifier(
+        &context.config().identifier,
+        context.config().product_name.as_deref(),
+    )
+    .expect("Incompatible Tauri build profile and identifier");
+    #[cfg(feature = "acceptance")]
+    if context.config().app.app_directories_override.is_some()
+        || context
+            .config()
+            .app
+            .windows
+            .iter()
+            .any(|window| window.data_directory.is_some())
+        || context.config().bundle.active
+    {
+        panic!("Acceptance build refuses custom data paths or installer configuration");
+    }
+    // WebView2 can ignore data_directory when this inherited override is present.
+    // Never accept it in a test build: it could point to a production profile.
+    #[cfg(all(windows, feature = "acceptance"))]
+    if std::env::var_os("WEBVIEW2_USER_DATA_FOLDER").is_some()
+        || std::env::var_os("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").is_some()
+    {
+        panic!("Acceptance build refuses WebView2 profile or browser argument overrides");
+    }
     // Запуск-помощник: подписать окна или закрыть клиенты от администратора и выйти.
     // Проверяем до сборки Tauri — помощнику ни окно, ни трей, ни журнал не нужны.
     if elevate::run_as_helper_if_requested() {
@@ -98,9 +130,11 @@ pub fn run() {
             notify::register_at_startup();
             // Ярлык установщик называет по productName («Tvinoferma»), поэтому переименовываем
             // в русское имя: иначе поиск Windows не находит приложение по слову «Твиноферма»
+            #[cfg(not(feature = "acceptance"))]
             shortcut::ensure_russian_shortcut();
             #[cfg(desktop)]
             {
+                #[cfg(not(feature = "acceptance"))]
                 app.handle()
                     .plugin(tauri_plugin_updater::Builder::new().build())?;
                 tray::setup(app)?;
@@ -283,11 +317,32 @@ pub fn run() {
             launcher::launcher_self_elevated,
             elevate::launcher_run_elevated,
             elevate::launcher_relaunch_elevated,
+            launcher::site_login::gc_site_login_wait,
+            launcher::site_login::gc_site_login_cancel,
             launcher::launcher_capture_account,
             launcher::launcher_forget_account,
             launcher::launcher_has_account,
             // список запущенных окон игры и закрытие выбранных
             launcher::launcher_running_details,
+            game_macros::game_macro_overlay,
+            game_macros::game_macro_navigate,
+            game_macros::game_macro_overlay_fold,
+            game_macros::game_macro_overlay_preferences,
+            game_macros::game_macro_guide,
+            game_macros::game_macro_guide_result,
+            game_macros::game_macro_action,
+            game_macros::game_macro_input_stop,
+            game_macros::game_macro_compare_once,
+            game_macros::game_macro_modifier_trial,
+            game_macros::game_macro_compare_many,
+            game_macros::game_macro_close_targets,
+            game_macros::game_macro_input_idle,
+            game_macros::game_macro_background_probe,
+            input_receiver::game_macro_receiver,
+            game_macros::game_macro_bindings,
+            game_macros::game_macro_mirror,
+            game_macros::game_macro_pointer,
+            game_macros::game_macro_cursor,
             launcher::launcher_close_clients_pids,
             // повторная подпись окон (название и значок) после запуска
             launcher::launcher_decorate_clients,
@@ -299,7 +354,13 @@ pub fn run() {
             // системные уведомления Windows: регистрация приложения как источника и показ
             notify::tf_notify,
             notify::tf_notify_check,
+            profile::app_build_profile,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(context)
+        .expect("error while building tauri application")
+        .run(|_, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                game_macros::shutdown_mirror();
+            }
+        });
 }

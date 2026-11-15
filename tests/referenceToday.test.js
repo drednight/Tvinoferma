@@ -287,3 +287,13 @@ it('opens the equipment explanation from the event info button', () => {
   expect(dialog.textContent).toContain('Порядок — равный шмот');
   expect(dialog.textContent).toContain('19:00–23:00 (МСК)');
 });
+
+it('labels the marathon bar as whole-marathon progress and shows check totals', () => {
+  state.scenarios.marathon = true;
+  state.day.marathon = { ...state.day.marathon, percent: 30, doneChecks: 3, totalChecks: 10 };
+  render();
+  const progress = root.querySelector('.rt-marathon .rt-progress-link');
+  expect(progress.textContent).toContain('Прогресс марафона');
+  expect(progress.textContent).toContain('3/10 отметок');
+  expect(progress.textContent).not.toContain('Прогресс дня');
+});

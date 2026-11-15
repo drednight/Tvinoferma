@@ -6,13 +6,13 @@ import { GUIDES, GUIDE_CATEGORIES, PASS_FILTERS, STAGE_TAGS } from './guides-dat
 
 // --- Состояние ---
 const state = {
-  activeCategory: null,        // null = все категории
-  activeClass: null,           // название класса или null
-  activePass: null,            // 'weapon' | 'armor' | 'relic' | null
-  activeStage: null,           // ключ этапа или null
+  activeCategory: null, // null = все категории
+  activeClass: null, // название класса или null
+  activePass: null, // 'weapon' | 'armor' | 'relic' | null
+  activeStage: null, // ключ этапа или null
   searchQuery: '',
-  bookmarks: new Set(),        // множество id закладок
-  viewMode: 'grid'             // 'grid' | 'list'
+  bookmarks: new Set(), // множество id закладок
+  viewMode: 'grid' // 'grid' | 'list'
 };
 
 // --- DOM элементы ---
@@ -43,7 +43,7 @@ function init() {
 
 function bindEvents() {
   // Поиск
-  els.searchInput.addEventListener('input', (e) => {
+  els.searchInput.addEventListener('input', e => {
     state.searchQuery = e.target.value.toLowerCase().trim();
     renderGuides();
   });
@@ -105,7 +105,7 @@ function toggleBookmark(id) {
 
 // --- Фильтрация ---
 function filterGuides() {
-  return GUIDES.filter((guide) => {
+  return GUIDES.filter(guide => {
     // Категория
     if (state.activeCategory !== null && guide.category !== state.activeCategory) {
       return false;
@@ -130,12 +130,7 @@ function filterGuides() {
     }
     // Поиск
     if (state.searchQuery) {
-      const haystack = [
-        guide.title,
-        guide.description,
-        ...guide.tags,
-        guide.source
-      ].join(' ').toLowerCase();
+      const haystack = [guide.title, guide.description, ...guide.tags, guide.source].join(' ').toLowerCase();
       if (!haystack.includes(state.searchQuery)) {
         return false;
       }
@@ -149,7 +144,7 @@ function renderSidebar() {
   // Категории
   els.sidebarCategories.innerHTML = '';
   for (const cat of GUIDE_CATEGORIES) {
-    const count = GUIDES.filter((g) => g.category === cat.key).length;
+    const count = GUIDES.filter(g => g.category === cat.key).length;
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = `guides-category-btn ${state.activeCategory === cat.key ? 'is-active' : ''}`;
@@ -173,7 +168,7 @@ function renderSidebar() {
   }
 
   // Закладки
-  const bookmarked = GUIDES.filter((g) => state.bookmarks.has(g.id));
+  const bookmarked = GUIDES.filter(g => state.bookmarks.has(g.id));
   els.bookmarksEmpty.hidden = bookmarked.length > 0;
   els.bookmarksList.innerHTML = '';
   for (const guide of bookmarked) {
@@ -185,7 +180,7 @@ function renderSidebar() {
       <span class="guides-bookmark-title" style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(guide.title)}</span>
       <button type="button" class="guides-bookmark-remove" title="Удалить из закладок">✕</button>
     `;
-    item.addEventListener('click', (e) => {
+    item.addEventListener('click', e => {
       if (e.target.classList.contains('guides-bookmark-remove') || e.target.closest('.guides-bookmark-remove')) {
         e.stopPropagation();
         toggleBookmark(guide.id);
@@ -206,29 +201,44 @@ function renderSidebar() {
 function renderFilters() {
   // Фильтр классов
   const CLASS_ORDER = [
-    'Оборотень', 'Друид', 'Странник', 'Воин', 'Маг', 'Стрелок', 'Жрец', 'Лучник',
-    'Паладин', 'Убийца', 'Шаман', 'Бард', 'Мистик', 'Страж', 'Дух Крови', 'Жнец',
-    'Призрак', 'Канглонг'
+    'Оборотень',
+    'Друид',
+    'Странник',
+    'Воин',
+    'Маг',
+    'Стрелок',
+    'Жрец',
+    'Лучник',
+    'Паладин',
+    'Убийца',
+    'Шаман',
+    'Бард',
+    'Мистик',
+    'Страж',
+    'Дух Крови',
+    'Жнец',
+    'Призрак',
+    'Канглонг'
   ];
   const CLASS_ICON_FILES = {
-    'Оборотень': 'tank.webp',
-    'Друид': 'dru.webp',
-    'Странник': 'mk.webp',
-    'Воин': 'var.webp',
-    'Маг': 'mag.webp',
-    'Стрелок': 'gan.webp',
-    'Жрец': 'prist.webp',
-    'Лучник': 'luk.webp',
-    'Паладин': 'pal.webp',
-    'Убийца': 'sin.webp',
-    'Шаман': 'sham.webp',
-    'Бард': 'bard.webp',
-    'Мистик': 'mist.webp',
-    'Страж': 'sik.webp',
+    Оборотень: 'tank.webp',
+    Друид: 'dru.webp',
+    Странник: 'mk.webp',
+    Воин: 'var.webp',
+    Маг: 'mag.webp',
+    Стрелок: 'gan.webp',
+    Жрец: 'prist.webp',
+    Лучник: 'luk.webp',
+    Паладин: 'pal.webp',
+    Убийца: 'sin.webp',
+    Шаман: 'sham.webp',
+    Бард: 'bard.webp',
+    Мистик: 'mist.webp',
+    Страж: 'sik.webp',
     'Дух Крови': 'dk.webp',
-    'Жнец': 'kosa.webp',
-    'Призрак': 'gost.webp',
-    'Канглонг': 'canglong.webp'
+    Жнец: 'kosa.webp',
+    Призрак: 'gost.webp',
+    Канглонг: 'canglong.webp'
   };
 
   els.filterClass.innerHTML = `
@@ -238,7 +248,7 @@ function renderFilters() {
   `;
   for (const className of CLASS_ORDER) {
     const iconFile = CLASS_ICON_FILES[className];
-    const hasGuides = GUIDES.some((g) => g.class === className);
+    const hasGuides = GUIDES.some(g => g.class === className);
     const chip = document.createElement('div');
     chip.className = `guides-chip ${state.activeClass === className ? 'is-active' : ''} ${!hasGuides ? 'opacity-50' : ''}`;
     chip.dataset.filter = 'class';
@@ -266,7 +276,7 @@ function renderFilters() {
     </div>
   `;
   for (const pass of PASS_FILTERS) {
-    const hasGuides = GUIDES.some((g) => g.passType === pass.key);
+    const hasGuides = GUIDES.some(g => g.passType === pass.key);
     const chip = document.createElement('div');
     chip.className = `guides-chip ${state.activePass === pass.key ? 'is-active' : ''} ${!hasGuides ? 'opacity-50' : ''}`;
     chip.dataset.filter = 'pass';
@@ -342,12 +352,8 @@ function renderGuides() {
 
 function buildCardHtml(guide, isList = false) {
   const pinned = isBookmarked(guide.id);
-  const classIcon = guide.class
-    ? `/assets/icons/classes/${classIconFile(guide.class)}`
-    : null;
-  const passIcon = guide.passType
-    ? `/assets/icons/dungeons/pass-${guide.passType}.webp`
-    : null;
+  const classIcon = guide.class ? `/assets/icons/classes/${classIconFile(guide.class)}` : null;
+  const passIcon = guide.passType ? `/assets/icons/dungeons/pass-${guide.passType}.webp` : null;
 
   const badges = [];
   if (guide.source) {
@@ -363,24 +369,28 @@ function buildCardHtml(guide, isList = false) {
     badges.push(`<span class="guides-badge class">${escapeHtml(guide.class)}</span>`);
   }
   if (guide.passType) {
-    const pass = PASS_FILTERS.find((p) => p.key === guide.passType);
-    badges.push(`<span class="guides-badge pass">${passIcon ? `<img src="${passIcon}" width="12" height="12" alt="">` : ''}${escapeHtml(pass.label)}</span>`);
+    const pass = PASS_FILTERS.find(p => p.key === guide.passType);
+    badges.push(
+      `<span class="guides-badge pass">${passIcon ? `<img src="${passIcon}" width="12" height="12" alt="">` : ''}${escapeHtml(pass.label)}</span>`
+    );
   }
   if (guide.stage) {
-    const stage = STAGE_TAGS.find((s) => s.key === guide.stage);
+    const stage = STAGE_TAGS.find(s => s.key === guide.stage);
     if (stage) {
-      badges.push(`<span class="guides-badge stage" style="color: var(--stage-color)">${escapeHtml(stage.label)}</span>`);
+      badges.push(
+        `<span class="guides-badge stage" style="color: var(--stage-color)">${escapeHtml(stage.label)}</span>`
+      );
     }
   }
   if (guide.badge) {
-    badges.push(`<span class="guides-badge" style="background: var(--warning-soft); border-color: var(--warning); color: var(--warning)">${escapeHtml(guide.badge)}</span>`);
+    badges.push(
+      `<span class="guides-badge" style="background: var(--warning-soft); border-color: var(--warning); color: var(--warning)">${escapeHtml(guide.badge)}</span>`
+    );
   }
 
-  const tagsHtml = guide.tags.map((t) => `<span class="guides-tag">${escapeHtml(t)}</span>`).join('');
+  const tagsHtml = guide.tags.map(t => `<span class="guides-tag">${escapeHtml(t)}</span>`).join('');
 
-  const updatedHtml = guide.updated
-    ? `<span>Обновлён: ${escapeHtml(guide.updated)}</span>`
-    : '';
+  const updatedHtml = guide.updated ? `<span>Обновлён: ${escapeHtml(guide.updated)}</span>` : '';
 
   return `
     <div class="guides-card-header">
@@ -410,7 +420,7 @@ function bindCardEvents(card, guide) {
   // Открыть ссылку
   const openBtn = card.querySelector('[data-action="open"]');
   if (openBtn) {
-    openBtn.addEventListener('click', (e) => {
+    openBtn.addEventListener('click', e => {
       e.stopPropagation();
       e.preventDefault();
       openExternalLink(guide.url);
@@ -420,7 +430,7 @@ function bindCardEvents(card, guide) {
   // Копировать ссылку
   const copyBtn = card.querySelector('[data-action="copy"]');
   if (copyBtn) {
-    copyBtn.addEventListener('click', (e) => {
+    copyBtn.addEventListener('click', e => {
       e.stopPropagation();
       e.preventDefault();
       copyToClipboard(guide.url, guide.title, copyBtn);
@@ -430,7 +440,7 @@ function bindCardEvents(card, guide) {
   // Закладка
   const bookmarkBtn = card.querySelector('[data-action="bookmark"]');
   if (bookmarkBtn) {
-    bookmarkBtn.addEventListener('click', (e) => {
+    bookmarkBtn.addEventListener('click', e => {
       e.stopPropagation();
       e.preventDefault();
       toggleBookmark(guide.id);
@@ -443,24 +453,24 @@ function bindCardEvents(card, guide) {
 
 function classIconFile(className) {
   const map = {
-    'Оборотень': 'tank.webp',
-    'Друид': 'dru.webp',
-    'Странник': 'mk.webp',
-    'Воин': 'var.webp',
-    'Маг': 'mag.webp',
-    'Стрелок': 'gan.webp',
-    'Жрец': 'prist.webp',
-    'Лучник': 'luk.webp',
-    'Паладин': 'pal.webp',
-    'Убийца': 'sin.webp',
-    'Шаман': 'sham.webp',
-    'Бард': 'bard.webp',
-    'Мистик': 'mist.webp',
-    'Страж': 'sik.webp',
+    Оборотень: 'tank.webp',
+    Друид: 'dru.webp',
+    Странник: 'mk.webp',
+    Воин: 'var.webp',
+    Маг: 'mag.webp',
+    Стрелок: 'gan.webp',
+    Жрец: 'prist.webp',
+    Лучник: 'luk.webp',
+    Паладин: 'pal.webp',
+    Убийца: 'sin.webp',
+    Шаман: 'sham.webp',
+    Бард: 'bard.webp',
+    Мистик: 'mist.webp',
+    Страж: 'sik.webp',
     'Дух Крови': 'dk.webp',
-    'Жнец': 'kosa.webp',
-    'Призрак': 'gost.webp',
-    'Канглонг': 'canglong.webp'
+    Жнец: 'kosa.webp',
+    Призрак: 'gost.webp',
+    Канглонг: 'canglong.webp'
   };
   return map[className] || 'var.webp';
 }

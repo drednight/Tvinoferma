@@ -77,7 +77,7 @@ export async function syncIdWithNick(char) {
 // Меняем только известные ссылки на персонажа. Старый локальный id уже не UUID, а
 // слаг ника: произвольная рекурсивная замена портит совпадающие названия, id заданий
 // и даже sync-ID других сущностей. Перед изменением обнаруживаем столкновения ключей.
-function prepareReferenceRename(prevId, nextId) {
+function prepareReferenceRename(prevId, nextId, merging = false) {
   const conflict = () => {
     throw new Error('Ссылки персонажа неоднозначны');
   };
@@ -89,13 +89,29 @@ function prepareReferenceRename(prevId, nextId) {
   const replaceList = value => {
     const list = rows(value);
     if (list == null) return list;
-    if (list.includes(prevId) && list.includes(nextId)) return conflict();
-    return list.map(id => (id === prevId ? nextId : id));
+    if (list.includes(prevId) && list.includes(nextId) && !merging) return conflict();
+    const result = list.map(id => (id === prevId ? nextId : id));
+    return merging ? [...new Set(result)] : result;
   };
   const replaceKey = value => {
     if (value == null) return value;
     if (typeof value !== 'object' || Array.isArray(value)) return conflict();
-    if (Object.hasOwn(value, prevId) && Object.hasOwn(value, nextId)) return conflict();
+    if (Object.hasOwn(value, prevId) && Object.hasOwn(value, nextId)) {
+      if (!merging) return conflict();
+      const compatible = (a, b) => {
+        if (JSON.stringify(a) === JSON.stringify(b)) return a;
+        if (a && b && typeof a === 'object' && typeof b === 'object' && !Array.isArray(a) && !Array.isArray(b)) {
+          const out = { ...a };
+          for (const [key, item] of Object.entries(b))
+            out[key] = Object.hasOwn(out, key) ? compatible(out[key], item) : item;
+          return out;
+        }
+        return conflict();
+      };
+      const out = { ...value, [nextId]: compatible(value[nextId], value[prevId]) };
+      delete out[prevId];
+      return out;
+    }
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key === prevId ? nextId : key, item]));
   };
   const renameRows = (value, key) => {
@@ -161,4 +177,10 @@ function applyReferenceRename(references) {
 export function renameCharacterReferences(prevId, nextId) {
   if (prevId === nextId) return;
   applyReferenceRename(prepareReferenceRename(prevId, nextId));
+}
+
+/** Duplicate merge: union memberships and disjoint/equal records; never overwrite conflicting progress. */
+export function mergeCharacterReferences(prevId, nextId) {
+  if (prevId === nextId) return;
+  applyReferenceRename(prepareReferenceRename(prevId, nextId, true));
 }

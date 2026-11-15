@@ -19,7 +19,10 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "shots": "node scripts/ui-shots.mjs",
-    "check": "npm run lint && npm run typecheck && npm test"
+    "check": "npm run lint && npm run typecheck && npm test",
+    "format:staged": "node scripts/format-staged.mjs",
+    "hooks:install": "node scripts/install-git-hooks.mjs",
+    "prepare": "npm run hooks:install"
   },
   "dependencies": {
     "@noble/hashes": "2.4.0",

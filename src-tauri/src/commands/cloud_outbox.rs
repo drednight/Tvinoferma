@@ -152,7 +152,7 @@ mod windows_backend {
     use std::path::{Path, PathBuf};
     use tauri::Manager;
 
-    const SERVICE: &str = "com.tvinoferma.desktop";
+    const SERVICE: &str = crate::profile::VAULT_SERVICE;
     const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
     const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
 
