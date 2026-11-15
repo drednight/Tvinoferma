@@ -258,6 +258,15 @@ export function gameCenterInfo(path, deps = {}) {
   return (deps.invoke || tauriInvoke)('launcher_gc_info', { path, kind: launcherKindArg(deps.kind) });
 }
 
+/** Игровые персонажи именно того VK Play-входа, который сохранён для этой привязки. */
+export function savedGameCenterAccounts(path, charId, deps = {}) {
+  return (deps.invoke || tauriInvoke)('launcher_saved_game_accounts', {
+    path,
+    charId,
+    kind: launcherKindArg(deps.kind)
+  });
+}
+
 /** Открыть проводник и выбрать GameCenter.exe или AstrumPlay.exe. Возвращает полный путь или null. */
 export function pickGameCenter(deps = {}) {
   return (deps.invoke || tauriInvoke)('launcher_pick_gamecenter', { kind: launcherArg(deps.kind) });

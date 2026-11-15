@@ -7,7 +7,7 @@
 //  - settings.launcher.preferredGcId — какой GameCenter запускать в первую очередь ('' — первый из списка персонажа);
 //  - character.launch.gcIds — id прикреплённых к персонажу GameCenter (первый — «основной»);
 //  - character.launch.gcAccounts[gcId] — запомненный вход этого персонажа в этом GameCenter ({ nick }); токен лежит в хранилище ОС.
-//  - character.launch.gcGameAccounts[gcId] — игровой аккаунт (персонаж) для окна «Выбор игрового аккаунта» ({ id, name }).
+//  - character.launch.gcGameAccounts[gcId] — игровой аккаунт для сохранённого VK Play-входа этой привязки ({ id, name }).
 //  - character.launch.gcPath — «свой путь» из карточки (старый способ). Используется, только если GameCenter из списка не прикреплены.
 //
 // Выбор GameCenter при запуске (resolveGameCenter): если у персонажа есть предпочитаемый GameCenter — берётся он,
@@ -165,7 +165,9 @@ export function resolveGameCenter(char, ctx = {}) {
       saved: !!acc,
       gc,
       kind: launcherKind(gc),
-      gameAccount: cleanGameAccount(char.launch?.gcGameAccounts?.[gc.id])
+      // Старый выбор не применяем без сохранённого VK Play-входа этой привязки.
+      gameAccount:
+        acc && launcherKind(gc) === 'gamecenter' ? cleanGameAccount(char.launch?.gcGameAccounts?.[gc.id]) : null
     };
   }
   const own = String(char?.launch?.gcPath || '').trim();
