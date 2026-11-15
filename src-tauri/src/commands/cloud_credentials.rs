@@ -279,7 +279,7 @@ mod windows_backend {
     use std::path::Path;
     use tauri::Manager;
 
-    const SERVICE: &str = "com.tvinoferma.desktop";
+    const SERVICE: &str = crate::profile::VAULT_SERVICE;
 
     struct NativeVault;
 

@@ -84,7 +84,7 @@ pub(super) const ACCOUNT_KEYS: [&str; 4] = [
 ];
 /// По этому ключу видно, что вход выполнен
 pub(super) const LOGIN_KEY: &str = "MyComUserMagic2";
-const VAULT_SERVICE: &str = "com.tvinoferma.desktop";
+const VAULT_SERVICE: &str = crate::profile::VAULT_SERVICE;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

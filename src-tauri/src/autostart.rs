@@ -14,7 +14,7 @@ use std::path::Path;
 use std::process::Command;
 
 /// Имя значения в разделе `Run`
-const VALUE_NAME: &str = "Tvinoferma";
+const VALUE_NAME: &str = crate::profile::AUTOSTART_VALUE;
 /// Признак «запущено Windows при входе в систему»
 pub const ARG_AUTOSTART: &str = "--autostart";
 /// Признак «окно не показываем, приложение живёт в трее»
@@ -33,7 +33,7 @@ pub fn autostart_args(minimized: bool) -> String {
     }
 }
 /// Имя задания в Планировщике (латиницей: имя попадает в командную строку)
-const TASK_NAME: &str = "Tvinoferma autostart";
+const TASK_NAME: &str = crate::profile::AUTOSTART_TASK;
 /// Код «запрос прав администратора отменён» (так PowerShell сообщает об отказе в UAC)
 const EXIT_UAC_CANCELLED: i32 = 1223;
 
@@ -282,7 +282,7 @@ fn task_create(exe: &str, minimized: bool) -> Result<(), String> {
         std::env::var("USERNAME").unwrap_or_default()
     );
     let user = user.trim_matches('\\').to_string();
-    let file = std::env::temp_dir().join("tvinoferma-autostart-task.xml");
+    let file = std::env::temp_dir().join(crate::profile::AUTOSTART_XML);
     std::fs::write(&file, utf16le_with_bom(&task_xml(exe, minimized, &user)))
         .map_err(|e| format!("Не удалось подготовить задание: {}", e))?;
     let res = run_schtasks(&[
@@ -481,6 +481,9 @@ pub async fn autostart_status() -> Result<AutostartInfo, String> {
 }
 
 fn apply(enabled: bool, minimized: bool, admin: bool) -> Result<AutostartInfo, String> {
+    if cfg!(feature = "acceptance-shared") {
+        return Err("Автозапуск недоступен в тестовой сборке с общим профилем".into());
+    }
     let has_task = task_read().is_some();
     if enabled && admin {
         // создаём задание (Windows спросит разрешение), и только потом убираем обычную запись, чтобы не стартовало дважды
@@ -516,6 +519,13 @@ pub async fn autostart_set(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "acceptance-shared")]
+    #[test]
+    fn shared_test_cannot_change_autostart() {
+        assert!(apply(true, false, false).is_err());
+        assert!(apply(false, false, false).is_err());
+    }
 
     #[test]
     fn command_quotes_the_path_and_adds_flags() {

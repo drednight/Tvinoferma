@@ -22,7 +22,7 @@ import { initNotifications } from './desktop/notifications.js';
 import { bindNotifyCenter } from './core/notifyCenter.js';
 import { initSound } from './desktop/sound.js';
 import { initGettingStarted } from './settings/gettingStarted.js';
-import { startUpdateScheduler } from './desktop/updater.js';
+import { startUpdateScheduler, setUpdateBuildProfile } from './desktop/updater.js';
 import { resolveUpdateMode } from './desktop/updateSchedule.js';
 import { subscribeUpdate, setUpdateState } from './desktop/updateState.js';
 import { initUpdateUi } from './desktop/updateUi.js';
@@ -125,6 +125,28 @@ export async function boot() {
     console.log('[BOOT] Starting Twinoferma...');
 
     // 1. Загрузка данных из хранилища
+    if (isTauri()) {
+      let profile = 'unknown';
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        profile = await invoke('app_build_profile');
+      } catch {
+        // Missing or malformed profile must not enable the updater.
+      }
+      setUpdateBuildProfile(profile);
+      if (profile !== 'stable') {
+        const banner = document.getElementById('build-profile-banner');
+        if (banner) {
+          banner.hidden = false;
+          banner.textContent =
+            profile === 'acceptance-shared'
+              ? 'ТЕСТОВАЯ СБОРКА — ОБЩИЙ ПРОФИЛЬ: изменения затрагивают данные основной версии. Автообновление отключено. Закройте другую версию и сохраните резервные копии.'
+              : profile === 'acceptance'
+                ? 'ТЕСТОВАЯ СБОРКА: используйте только тестовые аккаунты и данные. Обновления отключены. Изоляция на Windows ещё не проверена.'
+                : 'Не удалось определить профиль сборки. Обновления отключены; проверьте происхождение программы.';
+        }
+      }
+    }
     let raw = null;
     let startupReadOnly = false;
     try {
