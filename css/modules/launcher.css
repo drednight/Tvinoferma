@@ -240,6 +240,17 @@
   font-size: 0.82rem;
   color: var(--text-dim);
 }
+.gcm-gameacc {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+.gcm-gameacc .select {
+  min-width: 140px;
+  max-width: 220px;
+}
 .gcm-acc.is-saved {
   color: var(--accent);
 }

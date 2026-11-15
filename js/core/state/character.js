@@ -77,6 +77,34 @@ export function normalizeGcAccounts(map) {
 }
 
 /**
+ * Игровой аккаунт (персонаж) внутри одного входа GameCenter: `{ id, name }`.
+ * `id` — из списка `[GamePersIds]`, `name` — подпись в окне «Выбор игрового аккаунта».
+ */
+export function normalizeGameAccount(value) {
+  if (!value || typeof value !== 'object') return null;
+  const id = String(value.id || '')
+    .trim()
+    .slice(0, 40);
+  const name = String(value.name || '')
+    .trim()
+    .slice(0, 120);
+  return id && name ? { id, name } : null;
+}
+
+/** Выбранные игровые аккаунты по GameCenter: `{ [gcId]: { id, name } }`. */
+export function normalizeGcGameAccounts(map) {
+  /** @type {Record<string, { id: string, name: string }>} */
+  const out = {};
+  if (!map || typeof map !== 'object') return out;
+  for (const [id, v] of Object.entries(map)) {
+    if (!id) continue;
+    const account = normalizeGameAccount(v);
+    if (account) out[id] = account;
+  }
+  return out;
+}
+
+/**
  * Порядок персонажа внутри пати: `{ [partyId]: номер }`.
  * Номера — целые от 1; мусор и нули отбрасываются, чтобы порядок не сбивался после импорта.
  */
@@ -124,7 +152,11 @@ export function normalizeCharacter(input = {}) {
       // GameCenter из общего списка (Настройки → Запуск игры): id по порядку, первый — основной
       gcIds: normalizeGcIds(input.launch?.gcIds),
       // Запомненный вход персонажа в каждом из них: { [gcId]: { nick, legacy? } }; токены лежат в хранилище ОС
-      gcAccounts: normalizeGcAccounts(input.launch?.gcAccounts)
+      gcAccounts: normalizeGcAccounts(input.launch?.gcAccounts),
+      // Игровой аккаунт (персонаж) для окна «Выбор игрового аккаунта» по каждому GameCenter
+      gcGameAccounts: normalizeGcGameAccounts(input.launch?.gcGameAccounts),
+      // То же для «своего пути» из карточки (когда GameCenter из списка не прикреплены)
+      gcGameAccount: normalizeGameAccount(input.launch?.gcGameAccount)
     },
     dungeonPasses: {
       weapon: Number(input.dungeonPasses?.weapon) || 0,

@@ -72,6 +72,11 @@ it('keeps settings and journal inside the overlay using only its top navigation'
   expect(document.querySelectorAll('[data-action="stop"]')).toHaveLength(1);
   expect(document.querySelector('[data-action="settings"]')).toBeNull();
 });
+it('keeps recipient selection in navigation but not on assigned keys, without the background-only journal', () => {
+  expect(document.querySelector('#shortcuts-screen [data-view="recipients"]')).toBeNull();
+  expect(document.querySelector('[data-view="recipients"]')).not.toBeNull();
+  expect(document.querySelector('#background-journal-open')).toBeNull();
+});
 it('hides the service panel without hiding assigned shortcuts', () => {
   document.querySelector('#info-toggle').click();
   expect(document.querySelector('#overlay-controls').hidden).toBe(true);
@@ -523,4 +528,71 @@ it('moves real repeat/hotkey toggles into the visible folded strip and restores 
     expect(document.getElementById(id).closest('#panel')).toBeNull();
   document.getElementById('fold').click();
   await vi.waitFor(() => expect(controls.parentElement).toBe(original));
+});
+
+it('opens recipient selection in the overlay, preserves edits on snapshots, and submits only on save', async () => {
+  document.querySelector('[data-view="recipients"]').click();
+  await vi.waitFor(() =>
+    expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-recipients', { action: 'refresh' })
+  );
+  const payload = {
+    recipients: {
+      revision: 'revision',
+      rows: [
+        { charId: 'a', nick: 'Alpha', selected: true, valid: true },
+        { charId: 'b', nick: 'Beta', selected: true, valid: true }
+      ],
+      options: [{ partyId: 'p', partyName: 'Пати', charId: 'a', nick: 'Alpha', current: false }]
+    },
+    recipientNotice: 'Измените отметки',
+    busy: false
+  };
+  mocks.handlers.get('game-macro-snapshot')({ payload });
+  expect(document.querySelector('#recipients-screen').hidden).toBe(false);
+  const check = document.querySelector('#recipient-list input[value="b"]');
+  check.checked = false;
+  check.dispatchEvent(new Event('change', { bubbles: true }));
+  mocks.handlers.get('game-macro-snapshot')({ payload });
+  expect(document.querySelector('#recipient-list input[value="b"]').checked).toBe(false);
+  document.querySelector('#recipient-leader').value = '1';
+  document.querySelector('#recipients-save').click();
+  await vi.waitFor(() =>
+    expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-recipients', {
+      action: 'save',
+      revision: 'revision',
+      selected: ['a'],
+      leader: { partyId: 'p', charId: 'a' }
+    })
+  );
+  expect(mocks.invoke).not.toHaveBeenCalledWith('game_macro_close_targets', expect.anything());
+});
+
+it('confirms before discarding changed recipients and ignores duplicate confirmation clicks', async () => {
+  document.querySelector('[data-view="recipients"]').click();
+  await vi.waitFor(() =>
+    expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-recipients', { action: 'refresh' })
+  );
+  mocks.handlers.get('game-macro-snapshot')({
+    payload: {
+      recipients: { revision: 'r', rows: [{ charId: 'a', nick: 'A', selected: true, valid: true }], options: [] },
+      busy: false
+    }
+  });
+  const checkbox = document.querySelector('#recipient-list input');
+  checkbox.checked = false;
+  checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+  mocks.emitTo.mockClear();
+  const refresh = document.querySelector('#recipients-refresh');
+  refresh.click();
+  refresh.click();
+  expect(document.querySelectorAll('.tf-confirm-overlay')).toHaveLength(1);
+  document.querySelector('.tf-confirm [data-act="cancel"]').click();
+  await vi.waitFor(() => expect(document.querySelector('.tf-confirm-overlay')).toBeNull());
+  expect(mocks.emitTo).not.toHaveBeenCalled();
+  expect(checkbox.checked).toBe(false);
+  refresh.click();
+  document.querySelector('.tf-confirm [data-act="ok"]').click();
+  await vi.waitFor(() =>
+    expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-recipients', { action: 'refresh' })
+  );
 });

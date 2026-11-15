@@ -28,9 +28,11 @@ beforeEach(async () => {
   state.characters = [{ id: 'a', nick: 'Alpha', partyIds: ['p'] }];
   state.settings.gameMacros = { partyId: 'p' };
   mocks.invoke.mockImplementation(async command =>
-    command === 'launcher_running_details'
-      ? [{ pid: 10, startedAt: 1000, hwnd: 100, elevated: false, title: 'Alpha — Воин' }]
-      : null
+    command === 'game_macro_overlay'
+      ? 'opened'
+      : command === 'launcher_running_details'
+        ? [{ pid: 10, startedAt: 1000, hwnd: 100, elevated: false, title: 'Alpha — Воин' }]
+        : null
   );
   runtime = await import('../js/modules/gameMacros/runtime.js');
 });
@@ -150,4 +152,116 @@ it('logs failed overlay creation without silently claiming it opened', async () 
   });
   await expect(runtime.openOverlay()).rejects.toThrow('создание окна');
   expect(runtime.snapshot().logs.join('\n')).toContain('открытие не завершено');
+});
+
+it('saves recipient exclusions from an overlay snapshot and leaves unseen exclusions unchanged', async () => {
+  state.settings.gameMacros.excludedCommandCharacters = ['offline'];
+  await runtime.overlayRecipientAction({ action: 'refresh' });
+  const snapshot = runtime.snapshot().recipients;
+  expect(snapshot.rows).toEqual([expect.objectContaining({ charId: 'a', selected: true })]);
+  await runtime.overlayRecipientAction({ action: 'save', revision: snapshot.revision, selected: [], leader: null });
+  expect(runtime.config().excludedCommandCharacters).toEqual(['offline', 'a']);
+  expect(mocks.persist).toHaveBeenCalledTimes(1);
+  expect(runtime.snapshot().recipients).toBeNull();
+});
+it('rejects stale or forged overlay selections without saving or widening', async () => {
+  await runtime.overlayRecipientAction({ action: 'refresh' });
+  const { revision } = runtime.snapshot().recipients;
+  await runtime.overlayRecipientAction({ action: 'save', revision, selected: ['invented'] });
+  expect(mocks.persist).not.toHaveBeenCalled();
+  expect(runtime.snapshot().recipientNotice).toContain('отсутствует');
+  mocks.invoke.mockImplementation(async command => (command === 'launcher_running_details' ? [] : null));
+  await runtime.overlayRecipientAction({ action: 'save', revision, selected: ['a'] });
+  expect(mocks.persist).not.toHaveBeenCalled();
+  expect(runtime.snapshot().recipientNotice).toContain('изменился');
+});
+it('assigns a checked running character as leader only after an explicit choice', async () => {
+  await runtime.overlayRecipientAction({ action: 'refresh' });
+  const { revision, options } = runtime.snapshot().recipients;
+  expect(options).toContainEqual(expect.objectContaining({ partyId: 'p', charId: 'a' }));
+  expect(runtime.config().leaders.p).toBeUndefined();
+  await runtime.overlayRecipientAction({
+    action: 'save',
+    revision,
+    selected: ['a'],
+    leader: { partyId: 'p', charId: 'a' }
+  });
+  expect(runtime.config().leaders.p).toBe('a');
+  expect(runtime.config().partyId).toBe('p');
+  expect(mocks.persist).toHaveBeenCalled();
+});
+it('rolls back the overlay selection when persistence fails', async () => {
+  await runtime.overlayRecipientAction({ action: 'refresh' });
+  const { revision } = runtime.snapshot().recipients;
+  mocks.persist.mockRejectedValueOnce(new Error('диск недоступен'));
+  await runtime.overlayRecipientAction({ action: 'save', revision, selected: [] });
+  expect(runtime.config().excludedCommandCharacters).toEqual([]);
+  expect(runtime.snapshot().recipientNotice).toContain('диск недоступен');
+});
+
+it('rejects an unchecked leader and detects settings changed in the main window', async () => {
+  await runtime.overlayRecipientAction({ action: 'refresh' });
+  const { revision } = runtime.snapshot().recipients;
+  await runtime.overlayRecipientAction({
+    action: 'save',
+    revision,
+    selected: [],
+    leader: { partyId: 'p', charId: 'a' }
+  });
+  expect(mocks.persist).not.toHaveBeenCalled();
+  expect(runtime.snapshot().recipientNotice).toContain('выбранным');
+  state.settings.gameMacros.excludedCommandCharacters = ['a'];
+  await runtime.overlayRecipientAction({ action: 'save', revision, selected: ['a'] });
+  expect(mocks.persist).not.toHaveBeenCalled();
+  expect(runtime.config().excludedCommandCharacters).toEqual(['a']);
+  expect(runtime.snapshot().recipientNotice).toContain('изменился');
+});
+
+it('serializes rapid toggles and cancels the opening confirmation on close', async () => {
+  vi.useFakeTimers();
+  try {
+    let release;
+    const first = new Promise(resolve => {
+      release = resolve;
+    });
+    let count = 0;
+    mocks.invoke.mockImplementation(async name => {
+      if (name === 'game_macro_overlay') return ++count === 1 ? first : 'closed';
+      return null;
+    });
+    const opening = runtime.openOverlay();
+    const closing = runtime.openOverlay();
+    await vi.waitFor(() => expect(count).toBe(1));
+    release('opened');
+    await Promise.all([opening, closing]);
+    expect(count).toBe(2);
+    expect(runtime.snapshot().overlayOpenRequest).toBe('');
+    await vi.advanceTimersByTimeAsync(5001);
+    expect(runtime.snapshot().logs.join('\n')).toContain('окно скрыто');
+    expect(runtime.snapshot().logs.join('\n')).not.toContain('нет подтверждения интерфейса');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('opens again after closing and starts a new confirmation request', async () => {
+  const replies = ['opened', 'closed', 'opened'];
+  mocks.invoke.mockImplementation(async name => (name === 'game_macro_overlay' ? replies.shift() : null));
+  await runtime.openOverlay();
+  const first = runtime.snapshot().overlayOpenRequest;
+  await runtime.openOverlay();
+  expect(runtime.snapshot().overlayOpenRequest).toBe('');
+  await runtime.openOverlay();
+  const reopened = runtime.snapshot().overlayOpenRequest;
+  expect(reopened).toBeTruthy();
+  expect(reopened).not.toBe(first);
+  mocks.handlers.get('game-overlay-opened')({ payload: { requestId: first } });
+  expect(runtime.snapshot().overlayOpenRequest).toBe(reopened);
+  mocks.handlers.get('game-overlay-opened')({ payload: { requestId: reopened } });
+});
+
+it('does not claim an opening when native toggle returns an unknown result', async () => {
+  mocks.invoke.mockImplementation(async () => null);
+  await expect(runtime.openOverlay()).rejects.toThrow('Не удалось подтвердить состояние');
+  expect(runtime.snapshot().overlayOpenRequest).toBe('');
 });

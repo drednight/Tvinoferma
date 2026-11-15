@@ -19,8 +19,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   document.body.innerHTML = '<div id="modal-root"></div><div id="toast-root"></div>';
   state.characters = [
-    { id: 'a', nick: 'Same', class: 'Воин', stats: { hp: 10 } },
-    { id: 'b', nick: 'same', class: 'Маг', stats: { mp: 20 } }
+    { id: 'a', nick: 'Same', contacts: { email: 'same@example.test' }, class: 'Воин', stats: { hp: 10 } },
+    { id: 'b', nick: 'same', contacts: { email: 'same@example.test' }, class: 'Маг', stats: { mp: 20 } }
   ];
   state.archivedCharacters = [];
   state.archivedParties = [];

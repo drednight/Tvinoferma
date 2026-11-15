@@ -1,5 +1,5 @@
 import { openOverlay } from '../marathons/overlay.js';
-import { ACTION_WIDGETS, WIDGET_VARIANTS } from './widgetCatalog.js';
+import { WIDGET_GROUPS, WIDGET_VARIANTS, widgetGroup, widgetIcon, widgetDescription } from './widgetCatalog.js';
 import { ensureActionWidgets } from './todayWidgets.js';
 import { escapeHtml as esc } from '../../core/utils.js';
 import { state } from '../../core/state.js';
@@ -7,6 +7,7 @@ import { persist } from '../../core/storage.js';
 import { toast } from '../../core/ui.js';
 import {
   TODAY_BLOCKS,
+  OPTIONAL_BLOCKS,
   todayOrder,
   normalizeTodayCanvas,
   applyTodayLayout,
@@ -46,7 +47,7 @@ function captureCanvas(root, defaults = false) {
   let index = 0;
   for (const id of todayOrder(defaults ? [] : state.settings.ui.todayOrder)) {
     const panel = root.querySelector(`.rt-${id}`);
-    if (!panel || (id.startsWith('script-') && panel.hidden)) continue;
+    if (!panel || (panel.hidden && (id.startsWith('script-') || OPTIONAL_BLOCKS.has(id)))) continue;
     const rect = panel.getBoundingClientRect();
     blocks[id] = {
       x: rect.width ? Math.max(0, rect.left - bounds.left) : (index % 3) * 340,
@@ -130,6 +131,22 @@ export function renderTodayLayoutEditor(root) {
   // Includes a block that has just become visible, while retaining hidden block coordinates.
   draft = workspace.canvas;
   const { surface, fit } = workspace;
+  // Layout editing must never run the card's real actions or change its data.
+  // Editor-owned remove/resize controls remain available.
+  for (const type of ['click', 'change', 'submit']) {
+    surface.addEventListener(
+      type,
+      event => {
+        const target = event.target;
+        if (!(target instanceof Element) || target.closest('[data-widget-remove], [data-layout-resize]')) return;
+        if (target.closest('button, a, input, select, textarea, summary, form')) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      },
+      true
+    );
+  }
   const board = root.querySelector('.rt-board');
   const toolbar = document.createElement('div');
   toolbar.dataset.layoutToolbar = '';
@@ -148,15 +165,19 @@ export function renderTodayLayoutEditor(root) {
     root.querySelector('[data-widget-library]')?.remove();
     const library = document.createElement('section');
     library.dataset.widgetLibrary = '';
-    library.className = 'rt-widget-library';
-    library.innerHTML = `<header><h3>Библиотека виджетов</h3><button class="btn ghost" data-library-close>Закрыть</button></header><p>Выберите вид и добавьте блок. После добавления его можно свободно растянуть и переместить. Превью — схематическое, ваши данные не меняются.</p><div class="rt-widget-catalog">${TODAY_BLOCKS.filter(
-      ([id]) => id !== 'clan' || surface.querySelector('.rt-clan')
-    )
-      .map(([id, title]) => {
-        const exists = surface.querySelector(`.rt-${id}`);
-        return `<article><h4>${esc(title)}</h4><div class="rt-widget-preview" aria-hidden="true"><b>${esc(title)}</b><i></i><i></i><i></i></div><select data-widget-variant="${id}" aria-label="Вариант ${esc(title)}">${WIDGET_VARIANTS.map(([key, label]) => `<option value="${key}">${label}</option>`).join('')}</select><p>${esc(ACTION_WIDGETS.find(row => row[0] === id)?.[2] || 'Ваши текущие данные в адаптивном блоке.')}</p><button class="btn" data-widget-insert="${id}" ${!exists ? 'disabled' : ''}>${!exists ? 'Недоступен: включите раздел в настройках' : !exists.hidden ? 'Изменить вид' : 'Добавить'}</button></article>`;
-      })
-      .join('')}</div>`;
+    library.className = 'rt-widget-library rt-reference';
+    const groups = WIDGET_GROUPS.map(([key, label, hint]) => {
+      const items = TODAY_BLOCKS.filter(
+        ([id]) => widgetGroup(id) === key && (id !== 'clan' || surface.querySelector('.rt-clan'))
+      );
+      return `<section class="rt-widget-group"><header><h4>${esc(label)}</h4><p>${esc(hint)}</p></header><div class="rt-widget-catalog">${items
+        .map(([id, title]) => {
+          const exists = surface.querySelector(`.rt-${id}`);
+          return `<article data-widget-card="${id}"><h4><span aria-hidden="true">${widgetIcon(id)}</span> ${esc(title)}</h4><div class="rt-widget-preview" aria-hidden="true"></div><select data-widget-variant="${id}" aria-label="Размер: ${esc(title)}">${WIDGET_VARIANTS.map(([key, label]) => `<option value="${key}">${label}</option>`).join('')}</select><p>${esc(widgetDescription(id))}</p><button type="button" class="btn" data-widget-insert="${id}" ${!exists ? 'disabled' : ''}>${!exists ? 'Недоступен' : exists.hidden ? 'Добавить' : 'Изменить размер'}</button></article>`;
+        })
+        .join('')}</div></section>`;
+    }).join('');
+    library.innerHTML = `<header><h3>Библиотека виджетов</h3><button type="button" class="btn ghost" data-library-close>Закрыть</button></header><p>Выберите размер и добавьте блок. Предпросмотр показывает текущие данные, но не выполняет действия. Изменения вступят в силу после сохранения.</p>${groups}`;
     const modal = openOverlay({ title: 'Библиотека виджетов', wide: true });
     modal.body.append(library);
     modal.foot.innerHTML = '';

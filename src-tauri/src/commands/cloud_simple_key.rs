@@ -2,7 +2,7 @@
 //! namespace: never overwrites legacy keys, OAuth credentials or contacts.
 use serde::{Deserialize, Serialize};
 
-const SERVICE: &str = "com.tvinoferma.desktop.cloud.simple-key";
+const SERVICE: &str = crate::profile::SIMPLE_KEY_SERVICE;
 const USER: &str = "current";
 const ERROR: &str = "Standalone cloud key unavailable";
 

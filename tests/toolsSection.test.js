@@ -36,6 +36,7 @@ describe('разметка раздела «Инструменты»', () => {
     expect(settings.title).toBe('Ctrl+9');
     expect(doc.querySelector('.next-nav [data-tab="finance"]').title).toBe('Ctrl+6');
     expect(doc.querySelector('.next-nav [data-tab="tools"]').title).toBe('Ctrl+7');
+    expect(doc.querySelector('.next-nav [data-tab="game-macros"] strong').textContent).toBe('Команды');
   });
 
   it('страница раздела есть; панель парсеров уехала в «Настройки → Синхронизация»', () => {

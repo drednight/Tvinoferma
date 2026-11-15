@@ -440,3 +440,85 @@ export async function verifyContactsSource(snapshot) {
     return false;
   }
 }
+
+// Protected copies for duplicate merging use new random keys. They are deliberately
+// not part of vault.known: ordinary saves and character deletion must not remove them.
+// The token is also embedded in the associated state backup filename for discovery.
+const MERGE_TOKEN = /^[0-9a-f]{24}$/;
+const mergeKey = (token, suffix) => `duplicate-merge-${token}-${suffix}`;
+
+export async function backupDuplicateContacts(snapshot, ids, token) {
+  const fail = () => new Error('Не удалось подтвердить защищённую копию контактов; слияние остановлено');
+  if (
+    !MERGE_TOKEN.test(token) ||
+    !Array.isArray(ids) ||
+    ids.length !== 2 ||
+    ids.some(id => typeof id !== 'string' || !id.trim()) ||
+    ids[0].toLowerCase() === ids[1].toLowerCase() ||
+    vault.blocked ||
+    !vault.checked ||
+    !vault.ready ||
+    !useVault() ||
+    snapshot.settings?.security?.useVault === false
+  )
+    throw fail();
+  try {
+    const characters = [...snapshot.characters, ...snapshot.archivedCharacters];
+    if (ids.some(id => characters.filter(c => c.id === id).length !== 1)) throw fail();
+    const currentIds = new Set(characters.map(c => c.id));
+    if ([...vault.known.keys()].some(id => !currentIds.has(id))) throw fail();
+    if (!(await verifyContactsSource(snapshot))) throw fail();
+    const keys = [mergeKey(token, '0'), mergeKey(token, '1'), mergeKey(token, 'manifest')];
+    const occupied = new Set([...characters.map(c => c.id), ...vault.known.keys()].map(id => id.toLowerCase()));
+    if (keys.some(key => occupied.has(key.toLowerCase()))) throw fail();
+    const originals = ids.map(id => vault.known.get(id)?.raw ?? null);
+    const manifest = JSON.stringify({ version: 1, ids, present: originals.map(value => value !== null) });
+    const copies = Object.create(null);
+    originals.forEach((value, index) => {
+      if (value !== null) copies[keys[index]] = value;
+    });
+    copies[keys[2]] = manifest;
+    const existing = readRecords(await invoke('secrets_get_many', { keys }), new Set(keys));
+    if (existing.size) throw fail();
+    const response = await invoke('secrets_set_many', { items: copies });
+    if (response !== null && response !== undefined) throw fail();
+    const check = readRecords(await invoke('secrets_get_many', { keys }), new Set(keys));
+    if (
+      check.size !== Object.keys(copies).length ||
+      Object.entries(copies).some(([key, value]) => check.get(key) !== value)
+    )
+      throw fail();
+    if (!(await verifyContactsSource(snapshot))) throw fail();
+  } catch {
+    // A failed IPC may have created copies; never overwrite/retry those keys and never expose IPC errors.
+    throw fail();
+  }
+}
+
+/** Read-only recovery review; values are returned only to the local, explicitly opened UI. */
+export async function readDuplicateContactBackup(token) {
+  if (!MERGE_TOKEN.test(token)) throw new Error('Не удалось прочитать защищённую копию контактов');
+  try {
+    const keys = [mergeKey(token, '0'), mergeKey(token, '1'), mergeKey(token, 'manifest')];
+    const records = readRecords(await invoke('secrets_get_many', { keys }), new Set(keys));
+    const manifest = JSON.parse(records.get(keys[2]));
+    if (
+      !manifest ||
+      manifest.version !== 1 ||
+      !Array.isArray(manifest.ids) ||
+      manifest.ids.length !== 2 ||
+      manifest.ids.some(id => typeof id !== 'string' || !id.trim()) ||
+      !Array.isArray(manifest.present) ||
+      manifest.present.length !== 2 ||
+      manifest.present.some(value => typeof value !== 'boolean')
+    )
+      throw invalidData();
+    return manifest.ids.map((id, index) => {
+      const raw = records.get(keys[index]);
+      if (manifest.present[index] !== (raw !== undefined)) throw invalidData();
+      return { id, contacts: raw === undefined ? null : parseStoredContacts(raw) };
+    });
+  } catch {
+    throw new Error('Не удалось прочитать защищённую копию контактов');
+  }
+}

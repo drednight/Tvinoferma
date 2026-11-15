@@ -2,11 +2,10 @@ import { keyboardButton } from './keyboardPicker.js';
 import { readDraft, writeDraft, clearDraft } from './drafts.js';
 import { commandFingerprint } from './fingerprint.js';
 import { reviewCommand, reviewHtml } from './review.js';
-import { BACKGROUND_METHODS, backgroundVariants, validateActivityCommand } from './background.js';
+import { BACKGROUND_METHODS, validateActivityCommand } from './background.js';
 import { mountCompositionEditor } from './compositionEditor.js';
 import { compileComposition } from './composition.js';
 import { unifiedCommand, materializeUnifiedCommand } from './unified.js';
-import { openOverlay } from '../marathons/overlay.js';
 import { state } from '../../core/state.js';
 import { escapeHtml as esc } from '../../core/utils.js';
 import { showModal } from '../../core/ui.js';
@@ -36,9 +35,10 @@ export const actionHelp = {
   sequence:
     'Отправляет выбранным участникам клавиши и паузы по порядку. Например: SHIFT+1, затем wait 100, затем F7 — каждый шаг с новой строки.',
   layout: 'Возвращает окна в сохранённые позиции и размеры. Сначала сохраните профиль размещения в основном разделе.',
-  click: 'Один левый клик по вашей экранной точке. Нужны калибровка, разрешение клика и предпросмотр в текущем сеансе.',
+  click:
+    'Один левый клик по вашей экранной точке. Нужны калибровка и разрешение клика; геометрия проверяется перед запуском.',
   follow:
-    'Настраиваемые клавиши, затем ЛКМ/ПКМ по двум сохранённым точкам. Старые команды сохраняют Shift+1 → ПКМ → ЛКМ. Нужны разрешение и предпросмотр.',
+    'Настраиваемые клавиши, затем ЛКМ/ПКМ по двум сохранённым точкам. Старые команды сохраняют Shift+1 → ПКМ → ЛКМ. Нужны разрешение и автоматическая проверка перед запуском.',
   f6f1: 'Сначала отправляет F6 всем, кроме ПЛ. Затем F1 всей пати, включая ПЛ.',
   optimize: 'Применяет размеры из раздела F11. Остальным участникам также отправляет Ctrl+F9.',
   launch: 'Запускает выбранную пати через обычную очередь запуска Твинофермы.',
@@ -155,7 +155,7 @@ export function openCommandEditor(c, save, row = null) {
       .map(([v, l]) => `<option value="${v}">${esc(l)}</option>`)
       .join(
         ''
-      )}</select></label><label><input type="checkbox" name="hybridConsent"> Разрешаю глобальные Ctrl/Alt/Shift в гибридном режиме из активного ПЛ. Они могут вызвать меню, смену раскладки или другие действия у ПЛ, даже если он не получатель. Все игровые действия проверены и безопасны.</label><small>Гибрид из ПЛ: только отдельная последовательность, до 8 шагов и 4 получателей выбранной пати. Запуск только из активного окна назначенного ПЛ, без Блокнота; фокус не переключается. Без резерва на другие окна, мыши и повтора. ПЛ-получатель получает полное сочетание SendInput, остальные — адресную клавишу с глобальными модификаторами. Фиксировано: gap 50 мс, hold 30 мс, timeout 100 мс, между командами 300 мс. Alt может открыть меню ПЛ; Alt+Shift/Ctrl+Shift — переключить раскладку. Не касайтесь ввода во время команды.</small><small>Уведомления активности + клавиша: отдельная последовательность, например SHIFT+1 и F2 с новой строки, при необходимости wait 200. Модификаторы передаются оконными сообщениями; обработка Shift/Ctrl/Alt игрой пока не подтверждена. Ручной B-тест не открыл инвентарь в двух клиентах PW. Новые способы тоже требуют ручной проверки. Не для мыши, повтора, F6→F1 и составных команд. Если получатели управляющей пати не определились до ввода, отдельная последовательность отправляется всем проверенным игровым окнам; расширение области видно в журнале. После ошибки ввода резерв не запускается. Окна должны быть не свёрнуты, удерживаемые клавиши и мышь отпущены. Нет SetFocus/SetForegroundWindow и автоперехода к активации; сам клиент может сменить фокус. При ошибке дальнейшая отправка прекращается. Кнопка ниже создаёт только три прежних варианта, без уведомлений активности.</small><button type="button" class="btn ghost" data-gm-background-variants>Создать 3 варианта для проверки</button></fieldset><fieldset data-gm-timing><legend>Переключение и завершение</legend><label data-gm-return>После команды<select name="returnTo"><option value="leader">Вернуться к ПЛ выбранной пати</option><option value="last">Остаться на последнем окне</option></select></label><label>Задержка после активации, мс<input name="switchMs" type="number" min="0" max="500" value="30"></label><label>Удержание клавиши, мс<input name="holdMs" type="number" min="10" max="200" value="30"></label><small>Уменьшайте только после проверки в игре. Фокус проверяется независимо от задержки. В составной команде возврат выполняется один раз в самом конце к ПЛ явно выбранной пати, а не к ПЛ последнего блока. По умолчанию составная команда остаётся на последнем окне.</small></fieldset><label data-gm-scope-field>Область команды <select name="scope"><option value="party">Управляющая пати</option><option value="managed">Все распознанные запущенные окна</option></select><small>«Управляющая пати» — участники пати, выбранной в основном разделе. «Все распознанные окна» — все проверенные клиенты, даже из других пати; это нужно, например, для общего реса. В явно выбранной общей области неизвестное окно блокирует запуск. Для отдельной последовательности с управляющей пати при ошибке определения получателей включается резерв на все проверенные игровые PID, даже без распознанного ника; причина и получатели видны в журнале до ввода.</small></label><fieldset class="gm-choice-grid" data-gm-targets><legend>Кому отправлять</legend>${[
+      )}</select></label><label><input type="checkbox" name="hybridConsent"> Разрешаю глобальные Ctrl/Alt/Shift в гибридном режиме из активного ПЛ. Они могут вызвать меню, смену раскладки или другие действия у ПЛ, даже если он не получатель. Все игровые действия проверены и безопасны.</label><small>Гибрид из ПЛ: только отдельная последовательность, до 8 шагов на каждого получателя выбранной пати. Запуск только из активного окна назначенного ПЛ, без Блокнота; фокус не переключается. Без резерва на другие окна, мыши и повтора. ПЛ-получатель получает полное сочетание SendInput, остальные — адресную клавишу с глобальными модификаторами. Фиксировано: gap 50 мс, hold 30 мс, timeout 100 мс, между командами 300 мс. Alt может открыть меню ПЛ; Alt+Shift/Ctrl+Shift — переключить раскладку. Не касайтесь ввода во время команды.</small><small>Уведомления активности + клавиша: отдельная последовательность, например SHIFT+1 и F2 с новой строки, при необходимости wait 200. Модификаторы передаются оконными сообщениями; обработка Shift/Ctrl/Alt игрой пока не подтверждена. Ручной B-тест не открыл инвентарь в двух клиентах PW. Новые способы тоже требуют ручной проверки. Не для мыши, повтора, F6→F1 и составных команд. Если получатели не определились, отправка останавливается без расширения области. Окна должны быть не свёрнуты, удерживаемые клавиши и мышь отпущены. Нет SetFocus/SetForegroundWindow и автоперехода к активации; сам клиент может сменить фокус. При ошибке дальнейшая отправка прекращается. Кнопка ниже создаёт только три прежних варианта, без уведомлений активности.</small></fieldset><fieldset data-gm-timing><legend>Переключение и завершение</legend><label data-gm-return>После команды<select name="returnTo"><option value="leader">Вернуться к ПЛ выбранной пати</option><option value="last">Остаться на последнем окне</option></select></label><label>Задержка после активации, мс<input name="switchMs" type="number" min="0" max="500" value="30"></label><label>Удержание клавиши, мс<input name="holdMs" type="number" min="10" max="200" value="30"></label><small>Уменьшайте только после проверки в игре. Фокус проверяется независимо от задержки. В составной команде возврат выполняется один раз в самом конце к ПЛ явно выбранной пати, а не к ПЛ последнего блока. По умолчанию составная команда остаётся на последнем окне.</small></fieldset><label data-gm-scope-field>Область команды <select name="scope"><option value="party">Управляющая пати</option><option value="managed">Все распознанные запущенные окна</option></select><small>«Управляющая пати» — участники пати, выбранной в основном разделе. «Все распознанные окна» — все проверенные клиенты, даже из других пати; это нужно, например, для общего реса. Нераспознанные окна не получают команду. При ошибке определения выбранных окон отправка останавливается.</small></label><fieldset class="gm-choice-grid" data-gm-targets><legend>Кому отправлять</legend>${[
       ['all', 'Вся пати'],
       ['leader', 'Только ПЛ'],
       ['others', 'Кроме ПЛ'],
@@ -169,8 +169,8 @@ export function openCommandEditor(c, save, row = null) {
       partyMembers(state, c.partyId)
         .map(char => `<label><input type="checkbox" name="charIds" value="${esc(char.id)}"> ${esc(char.nick)}</label>`)
         .join('') || '<p class="muted">Сначала выберите пати.</p>'
-    }</fieldset><label data-gm-click-field>Точка для клика <select name="pointId"><option value="">Не выбрана</option>${c.points.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height} · UI ${esc(p.uiScale)}</option>`).join('')}</select></label><fieldset data-gm-variants-field><legend>Дополнительные профили точки для других размеров/DPI</legend><p class="muted">Для реса во всех окнах разного размера откалибруйте одну и ту же кнопку в каждом формате. Автоматического масштабирования нет. Для каждого окна должен подойти ровно один профиль.</p>${c.points.map(p => `<label><input type="checkbox" name="pointIds" value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height} · DPI ${p.dpi}</label>`).join('')}</fieldset><label data-gm-follow-field>Пункт меню Follow <select name="menuPointId"><option value="">Не выбран</option>${c.points.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height}</option>`).join('')}</select></label><fieldset data-gm-follow-field><legend>Действия следования в каждом окне</legend><label>Клавиши перед кликами (можно оставить пустым)<textarea class="input" name="followSequence" rows="3">SHIFT+1</textarea></label><p class="muted">Один шаг на строку: SHIFT+1, F2 или wait 200. После клавиш — клик по основной точке, затем по пункту меню. Точки задаются в координатах игровой области с калибровкой DPI/UI; сначала выполните предпросмотр без кликов.</p><label>Клик по основной точке<select class="input" name="followButton"><option value="right">ПКМ</option><option value="left">ЛКМ</option></select></label><label>Клик по пункту меню<select class="input" name="followMenuButton"><option value="left">ЛКМ</option><option value="right">ПКМ</option></select></label><p class="muted">Проверьте, что клавиши и точки выбирают назначенного ПЛ. Внутриигровое лидерство программа не меняет. Для разных действий у отдельных персонажей используйте блоки составной команды с поднаборами.</p></fieldset><label class="gm-consent" data-gm-click-field><input type="checkbox" name="resourceAllowed"> Разрешаю координатный клик, в том числе возможный расход игровых ресурсов; сверил масштаб и расположение UI с профилем</label><label data-gm-sequence-field>Последовательность (один шаг на строку)<textarea class="input" name="sequence" rows="4">F8
-wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки клавиш меняют текущий шаг; «↵ Новая строка» добавляет следующий. Пример ассиста: SHIFT+1, wait 100, F7 — каждый шаг на новой строке. Проверьте игровые привязки; назначенный ПЛ не обязательно первый в игровом списке. Не более 20 шагов; бесконечных циклов и скриптов нет. Координатный клик — отдельное действие с калибровкой и разрешением расходов.</p><p data-gm-sequence-field><button type="button" class="btn ghost" data-gm-to-composition>＋ Добавить готовую команду в последовательность</button><small>Откроет составную последовательность. Текущие клавиши и паузы будут сохранены первым блоком; затем добавьте сохранённую команду.</small></p><div data-gm-composition hidden><div data-composition-editor></div><label><input type="checkbox" name="compositeConsent"> Разрешаю клики и возможный расход ресурсов в составной команде; сначала выполню предпросмотр</label></div><label data-gm-launch-field hidden>Пати для этой команды<select class="input" name="partyId"><option value="">Текущая управляющая пати</option>${state.parties.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></label><div data-gm-resize-field hidden><label>Ширина<input class="input" name="width" type="number" min="160" max="8000" value="2560"></label><label>Высота<input class="input" name="height" type="number" min="160" max="8000" value="1400"></label></div><label data-gm-profile-field hidden>Профиль<select class="input" name="profileId"><option value="">Выбранный в основном разделе</option>${c.profiles.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></label><div data-gm-pointer-buttons hidden><label>Кнопка мыши<select name="button">${[
+    }</fieldset><label data-gm-click-field>Точка для клика <select name="pointId"><option value="">Не выбрана</option>${c.points.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height} · UI ${esc(p.uiScale)}</option>`).join('')}</select></label><fieldset data-gm-variants-field><legend>Дополнительные профили точки для других размеров/DPI</legend><p class="muted">Для реса во всех окнах разного размера откалибруйте одну и ту же кнопку в каждом формате. Автоматического масштабирования нет. Для каждого окна должен подойти ровно один профиль.</p>${c.points.map(p => `<label><input type="checkbox" name="pointIds" value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height} · DPI ${p.dpi}</label>`).join('')}</fieldset><label data-gm-follow-field>Пункт меню Follow <select name="menuPointId"><option value="">Не выбран</option>${c.points.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height}</option>`).join('')}</select></label><fieldset data-gm-follow-field><legend>Действия следования в каждом окне</legend><label>Клавиши перед кликами (можно оставить пустым)<textarea class="input" name="followSequence" rows="3">SHIFT+1</textarea></label><p class="muted">Один шаг на строку: SHIFT+1, F2 или wait 200. После клавиш — клик по основной точке, затем по пункту меню. Точки задаются в координатах игровой области с калибровкой DPI/UI; геометрия проверяется автоматически, но расположение UI необходимо сверить вручную.</p><label>Клик по основной точке<select class="input" name="followButton"><option value="right">ПКМ</option><option value="left">ЛКМ</option></select></label><label>Клик по пункту меню<select class="input" name="followMenuButton"><option value="left">ЛКМ</option><option value="right">ПКМ</option></select></label><p class="muted">Проверьте, что клавиши и точки выбирают назначенного ПЛ. Внутриигровое лидерство программа не меняет. Для разных действий у отдельных персонажей используйте блоки составной команды с поднаборами.</p></fieldset><label class="gm-consent" data-gm-click-field><input type="checkbox" name="resourceAllowed"> Разрешаю координатный клик, в том числе возможный расход игровых ресурсов; сверил масштаб и расположение UI с профилем</label><label data-gm-sequence-field>Последовательность (один шаг на строку)<textarea class="input" name="sequence" rows="4">F8
+wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки клавиш меняют текущий шаг; «↵ Новая строка» добавляет следующий. Пример ассиста: SHIFT+1, wait 100, F7 — каждый шаг на новой строке. Проверьте игровые привязки; назначенный ПЛ не обязательно первый в игровом списке. Не более 20 шагов; бесконечных циклов и скриптов нет. Координатный клик — отдельное действие с калибровкой и разрешением расходов.</p><p data-gm-sequence-field><button type="button" class="btn ghost" data-gm-to-composition>＋ Добавить готовую команду в последовательность</button><small>Откроет составную последовательность. Текущие клавиши и паузы будут сохранены первым блоком; затем добавьте сохранённую команду.</small></p><div data-gm-composition hidden><div data-composition-editor></div><label class="gm-composite-consent"><input type="checkbox" name="compositeConsent"><span><strong>⚠ Разрешаю клики и возможный расход игровых ресурсов</strong><small>Я сверил точки и игровые кнопки. Перед запуском программа автоматически проверит доступную геометрию; она не видит содержимое игры. Ошибка или изменение окна может остановить команду после уже выполненных действий.</small></span></label></div><label data-gm-launch-field hidden>Пати для этой команды<select class="input" name="partyId"><option value="">Текущая управляющая пати</option>${state.parties.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></label><div data-gm-resize-field hidden><label>Ширина<input class="input" name="width" type="number" min="160" max="8000" value="2560"></label><label>Высота<input class="input" name="height" type="number" min="160" max="8000" value="1400"></label></div><label data-gm-profile-field hidden>Профиль<select class="input" name="profileId"><option value="">Выбранный в основном разделе</option>${c.profiles.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></label><div data-gm-pointer-buttons hidden><label>Кнопка мыши<select name="button">${[
       ['left', 'Левая'],
       ['right', 'Правая'],
       ['middle', 'Средняя'],
@@ -194,7 +194,6 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
             blocks.length !== 1 ||
             block.parallel ||
             block.repeat !== 1 ||
-            block.scope !== 'party' ||
             block.steps.some(s => !['keys', 'wait'].includes(s.type))
           )
             throw new Error('Гибрид из ПЛ: нужен один блок выбранной пати, только клавиши и паузы, без повторов.');
@@ -204,7 +203,7 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
             backgroundMethod: 'hybrid-party',
             scope: 'party',
             target: block.target,
-            partyId: block.partyId || value.partyId,
+            partyId: block.scope === 'party' ? block.partyId : '',
             charIds: block.charIds,
             sequence: block.steps.map(s => (s.type === 'wait' ? `wait ${s.ms}` : s.value)).join('\n')
           });
@@ -253,9 +252,10 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
         value.resourceAllowed =
           value.action === 'composite' ? data.has('compositeConsent') : data.has('resourceAllowed');
         if (value.action === 'composite') {
-          value.blocks = builder
-            .read()
-            .map(block => (block.backgroundMethod === 'hybrid-party' ? { ...block, backgroundMethod: 'post' } : block));
+          value.blocks = builder.read().map(block => {
+            const result = block.backgroundMethod === 'hybrid-party' ? { ...block, backgroundMethod: 'post' } : block;
+            return data.get('commandInputMode') === 'standard' ? { ...result, delivery: 'foreground' } : result;
+          });
           value.target = 'all';
           value.charIds = [];
         }
@@ -284,6 +284,12 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
         if (box) {
           box.hidden = false;
           box.textContent = error.message || 'Не удалось сохранить команду.';
+          box.scrollIntoView?.({ block: 'nearest' });
+        }
+        if (error.message?.includes('Разрешите координатные действия')) {
+          const consent = editorForm?.querySelector('[name="compositeConsent"]');
+          consent?.closest('label')?.scrollIntoView?.({ block: 'center' });
+          consent?.focus();
         }
         return false;
       }
@@ -313,68 +319,17 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
     if (input.type === 'checkbox') input.checked = value === true;
     else input.value = value;
   }
-  form.querySelector('[data-gm-background-variants]').onclick = async () => {
-    const errorBox = document.querySelector('[data-gm-form-error]');
-    try {
-      const draft = Object.fromEntries(new FormData(form));
-      if (!String(draft.name || '').trim()) throw new Error('Введите название теста.');
-      if (draft.action === 'sequence') steps(draft.sequence);
-      draft.charIds = new FormData(form).getAll('charIds');
-      const variants = backgroundVariants(draft, configCommands());
-      await save({ commands: [...configCommands(), ...variants] });
-      c = { ...c, commands: [...c.commands, ...variants] };
-      form.querySelector('[data-gm-background-variants]').disabled = true;
-      errorBox.hidden = false;
-      errorBox.textContent = 'Три варианта сохранены без горячих клавиш. Закройте редактор и запускайте по одному.';
-    } catch (error) {
-      errorBox.hidden = false;
-      errorBox.textContent = error.message || 'Не удалось создать варианты.';
-    }
-  };
-  const configCommands = () => c.commands;
   form.querySelector('[name="compositeConsent"]').checked = row?.resourceAllowed === true;
   form.elements.namedItem('followSequence').value = row?.followSequence ?? 'SHIFT+1';
   form.elements.namedItem('followButton').value = row?.followButton || 'right';
   form.elements.namedItem('followMenuButton').value = row?.followMenuButton || 'left';
-  builder = mountCompositionEditor(form.querySelector('[data-composition-editor]'), c, row, {
-    cursor: async () => (await import('./runtime.js')).recorderCursor(),
-    newPoint: partyId =>
-      new Promise(resolve => {
-        const overlay = openOverlay({ title: 'Новая именованная точка', onClose: resolve });
-        overlay.body.innerHTML = `<label>Название<input class="input" data-new-name maxlength="80"></label><label>Участник управляющей пати<select class="input" data-new-character>${partyMembers(
-          state,
-          partyId
-        )
-          .map(char => `<option value="${esc(char.id)}">${esc(char.nick)}</option>`)
-          .join(
-            ''
-          )}</select></label><p>Переместите нативный маркер в нужное место игры. Сохранение не кликает в игру.</p><p data-new-error role="alert"></p>`;
-        overlay.foot.innerHTML =
-          '<button class="btn primary" data-new-save>Задать точку</button><button class="btn" data-new-cancel>Отмена</button>';
-        overlay.foot.querySelector('[data-new-cancel]').onclick = () => overlay.close();
-        overlay.foot.querySelector('[data-new-save]').onclick = async () => {
-          const button = overlay.foot.querySelector('[data-new-save]');
-          button.disabled = true;
-          const previous = state.settings.gameMacros;
-          try {
-            const runtime = await import('./runtime.js');
-            await runtime.pickPoint(
-              overlay.body.querySelector('[data-new-character]').value,
-              overlay.body.querySelector('[data-new-name]').value,
-              null,
-              partyId
-            );
-            await (await import('../../core/storage.js')).persist();
-            c.points = runtime.config().points;
-            overlay.close();
-          } catch (error) {
-            state.settings.gameMacros = previous;
-            overlay.body.querySelector('[data-new-error]').textContent = error.message;
-          } finally {
-            button.disabled = false;
-          }
-        };
-      })
+  builder = mountCompositionEditor(form.querySelector('[data-composition-editor]'), c, row);
+  form.addEventListener('gm-template-picked', event => {
+    const name = form.elements.namedItem('name');
+    if (!row && !name.value.trim()) {
+      name.value = event.detail.name;
+      name.dispatchEvent(new Event('input', { bubbles: true }));
+    }
   });
   form.querySelectorAll('[name="charIds"]').forEach(input => {
     input.checked = !!row?.charIds?.includes(input.value);
@@ -442,9 +397,11 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
       form.elements.namedItem('delivery').value !== 'background' || !['sequence', 'f6f1'].includes(action);
     form.querySelector('[data-gm-composition]').hidden = action !== 'composite';
     form.querySelector('[data-gm-resize-field]').hidden = action !== 'resize';
-    form.querySelector('[data-gm-launch-field]').hidden = !['launch', 'composite'].includes(action);
+    form.querySelector('[data-gm-launch-field]').hidden = action !== 'launch';
     form.querySelector('[data-gm-return]').hidden = ['next', 'previous', 'leader'].includes(action);
-    form.querySelector('[data-gm-timing]').hidden = ['mirror', 'mouse-mirror', 'pause', 'launch'].includes(action);
+    form.querySelector('[data-gm-timing]').hidden =
+      ['mirror', 'mouse-mirror', 'pause', 'launch'].includes(action) ||
+      form.elements.namedItem('commandInputMode')?.value === 'hybrid-party';
     form.querySelector('[data-gm-profile-field]').hidden = action !== 'layout';
     form.querySelector('[data-gm-pointer-buttons]').hidden = action !== 'click';
     form.querySelector('[name="delivery"]').closest('label').hidden = ['composite', 'mirror', 'mouse-mirror'].includes(
@@ -479,22 +436,32 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
   if (unified) {
     const intro = document.createElement('div');
     intro.className = 'gm-editor-intro';
-    intro.innerHTML =
-      '<span>1 · Назовите команду</span><span>2 · Добавьте действия</span><span>3 · Сохраните и проверьте</span>';
+    intro.innerHTML = '<span>1 · Название</span><span>2 · Действия</span><span>3 · Сохранить</span>';
     form.prepend(intro);
     const basics = document.createElement('div');
     basics.className = 'gm-editor-basics';
     intro.after(basics);
     for (const name of ['name', 'hotkey']) basics.append(form.elements.namedItem(name).closest('label'));
     const mode = document.createElement('label');
-    mode.innerHTML = `<span>Режим команд</span><select name="commandInputMode"><option value="standard">Обычный — доставка из настроек блока</option><option value="hybrid-party" ${row?.backgroundMethod === 'hybrid-party' ? 'selected' : ''}>Гибридный — запуск из активного ПЛ пати</option></select><small>Гибрид: один блок, до 8 клавиш/пауз, до 4 получателей выбранной пати, без повторов и мыши. Блокнот не нужен. ПЛ должен оставаться активным. Глобальные модификаторы могут открыть меню ПЛ или сменить раскладку, даже если ПЛ не получатель. Если ПЛ выбран получателем, ему отправляется полное сочетание SendInput. Старые команды сами не переключаются.</small>`;
+    mode.className = 'gm-command-mode';
+    const legacyBackground =
+      row?.backgroundMethod !== 'hybrid-party' && row?.blocks?.some(block => block.delivery === 'background');
+    mode.innerHTML = `<span>Режим команды</span><select name="commandInputMode"><option value="standard">Активный — с переключением окон</option><option value="hybrid-party" ${row?.backgroundMethod === 'hybrid-party' ? 'selected' : ''}>Фоновый (гибридный) — из активного ПЛ</option>${legacyBackground ? '<option value="legacy" selected>Прежняя фоновая доставка (сохранённая команда)</option>' : ''}</select><small>Активный режим переключает окна. Гибридный не переключает окна, но требует активного ПЛ выбранной пати, выключенного повтора и явного согласия ниже. Только один блок клавиш и пауз, до 8 шагов для выбранных получателей. Из общего выбора используются только участники выбранной пати; ограничения группы сохраняются.</small>`;
     basics.append(mode);
-    basics.append(form.elements.namedItem('hybridConsent').closest('label'));
-
-    const advanced = document.createElement('details');
+    const hybridConsentLabel = form.elements.namedItem('hybridConsent').closest('label');
+    hybridConsentLabel.classList.add('gm-hybrid-consent');
+    basics.append(hybridConsentLabel);
+    const refreshHybridConsent = () => {
+      const selectedMode = mode.querySelector('select').value;
+      hybridConsentLabel.hidden = selectedMode !== 'hybrid-party';
+      builder.setMode(selectedMode);
+      sync();
+    };
+    mode.addEventListener('change', refreshHybridConsent);
+    refreshHybridConsent();
+    const advanced = document.createElement('section');
     advanced.className = 'gm-editor-advanced';
-    advanced.innerHTML =
-      '<summary>Дополнительно: задержки, возврат и пати команды</summary><p>Обычно эти настройки менять не нужно. Шаги и получатели настраиваются выше.</p>';
+    advanced.innerHTML = '<h4>Выполнение команды</h4><p>Время переключения и поведение после завершения.</p>';
     for (const selector of ['[data-gm-timing]', '[data-gm-launch-field]']) {
       const field = form.querySelector(selector);
       if (field) advanced.append(field);
@@ -558,6 +525,7 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
       builder.restoreBlocks(restore.blocks);
       banner.remove();
       sync();
+      form.querySelector('[name="commandInputMode"]')?.dispatchEvent(new Event('change', { bubbles: true }));
       refreshChecks();
       captureDraft();
     };
@@ -582,7 +550,9 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
   };
   const checks = document.createElement('details');
   checks.className = 'gm-editor-checks';
-  checks.innerHTML = '<summary>Проверка и полный план — без запуска</summary><div data-editor-review></div>';
+  checks.open = true;
+  checks.innerHTML =
+    '<summary>Автоматическая проверка настроек и полный план — без запуска</summary><div data-editor-review></div>';
   form.append(checks);
   const refreshChecks = () => {
     const values = Object.fromEntries(new FormData(form));
@@ -596,7 +566,37 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
       delivery: values.action === 'composite' ? 'foreground' : values.delivery,
       needsConfiguration: false
     };
+    const hybrid = values.commandInputMode === 'hybrid-party';
+    const blocks = draft.blocks;
+    if (hybrid && blocks.length === 1) {
+      const block = blocks[0];
+      Object.assign(draft, {
+        action: 'sequence',
+        scope: 'party',
+        partyId: block.scope === 'party' ? block.partyId : '',
+        target: block.target,
+        charIds: block.charIds,
+        delivery: 'background',
+        backgroundMethod: 'hybrid-party',
+        hybridConsent: form.elements.namedItem('hybridConsent').checked,
+        sequence: block.steps.map(step => (step.type === 'wait' ? `wait ${step.ms}` : step.value || '')).join('\n')
+      });
+    } else if (values.commandInputMode === 'standard' && draft.action === 'composite') {
+      draft.blocks = blocks.map(block => ({ ...block, delivery: 'foreground' }));
+    }
     const report = reviewCommand(draft, c, state);
+    if (
+      hybrid &&
+      (blocks.length !== 1 ||
+        blocks[0].parallel ||
+        blocks[0].repeat !== 1 ||
+        blocks[0].steps.some(step => !['keys', 'wait'].includes(step.type)))
+    )
+      report.issues.push({
+        severity: 'error',
+        field: 'blocks',
+        message: 'Гибрид: один блок клавиш и пауз, без повторов и параллельности.'
+      });
     checks.querySelector('[data-editor-review]').innerHTML = reviewHtml(report);
     for (const node of form.querySelectorAll('[data-field-check]')) node.remove();
     for (const node of form.querySelectorAll('[aria-invalid]')) node.removeAttribute('aria-invalid');

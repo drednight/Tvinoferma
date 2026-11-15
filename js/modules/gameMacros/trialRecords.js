@@ -5,6 +5,7 @@ export const EVIDENCE_METHODS = {
   ...BACKGROUND_METHODS,
   'mirror-activity-notify': 'Повтор клавиатуры · только activity-notify (ручное наблюдение)',
   'mirror-combined': 'Повтор клавиатуры · PostMessage + activity-notify (ручное наблюдение)',
+  'mirror-cache-hybrid': 'Повтор клавиатуры · глобальный ввод + WM_KEYDOWN (ручное наблюдение)',
   'mirror-post': 'Повтор клавиатуры · PostMessage (ручное наблюдение)'
 };
 export function trialTrace(run) {

@@ -2,7 +2,7 @@ import { chord, steps } from './keySyntax.js';
 import { openOverlay } from '../marathons/overlay.js';
 import { keyboardButton } from './keyboardPicker.js';
 import { escapeHtml } from '../../core/utils.js';
-import { appendBackgroundJournal, openBackgroundJournal } from './backgroundJournal.js';
+import { appendBackgroundJournal } from './backgroundJournal.js';
 
 export function validateModifierBatch(selection, state) {
   const charIds = selection.charIds;
@@ -139,9 +139,7 @@ ALT+3</textarea></label><p>Например: CTRL+SHIFT+4, F8, NUMPAD1, wait 500
     }
     q('status').textContent = 'Наблюдения сохранены.';
   };
-  ov.foot.innerHTML =
-    '<button type="button" class="btn" data-log>Журнал</button><button type="button" class="btn" data-close>Закрыть</button>';
-  ov.foot.querySelector('[data-log]').onclick = openBackgroundJournal;
+  ov.foot.innerHTML = '<button type="button" class="btn" data-close>Закрыть</button>';
   ov.foot.querySelector('[data-close]').onclick = () => ov.close();
   return ov;
 }

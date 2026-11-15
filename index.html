@@ -100,7 +100,7 @@
         </button>
         <button class="tab" data-tab="game-macros" data-subtitle="Команды, повтор ввода и оверлей." title="Ctrl+8">
           <span class="next-nav-icon" aria-hidden="true">🎮</span>
-          <span class="next-nav-copy"><strong>Управление пати и макросами</strong><small>Команды, повтор и оверлей</small></span>
+          <span class="next-nav-copy"><strong>Команды</strong><small>Макросы и повтор ввода</small></span>
         </button>
 
       </nav>
@@ -135,6 +135,8 @@
 
     <!-- Основной контент -->
     <main class="content">
+
+      <div id="build-profile-banner" class="health-banner storage-readonly-banner" role="status" hidden></div>
 
       <!-- Предупреждение остаётся видимым до перезапуска при заблокированной записи. -->
       <div id="storage-readonly-banner" class="health-banner storage-readonly-banner" role="alert" hidden>
@@ -892,6 +894,11 @@
           </div>
           <p class="muted" style="margin-bottom: 8px;">Показаны 5 последних копий.</p>
           <div id="backup-list" class="list compact"></div>
+          <div class="row gap">
+            <button id="contact-file-export" class="btn" type="button">Создать защищённую копию контактов</button>
+            <button id="contact-file-review" class="btn ghost" type="button">Открыть защищённую копию контактов</button>
+          </div>
+          <p class="muted">Отдельный зашифрованный файл контактов с ключом, который нужно сохранить отдельно. Это не копия всех данных или входов GameCenter; проверка и восстановление контактов выполняются вручную.</p>
         </details>
 <details class="panel fold" id="settings-transfer">
           <summary>
