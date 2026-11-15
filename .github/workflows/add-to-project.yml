@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ vars.PROJECT_URL != '' }}
     steps:
-      - uses: actions/add-to-project@v2.0.0
+      - uses: actions/add-to-project@v2.0.1
         with:
           project-url: ${{ vars.PROJECT_URL }}
           github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}

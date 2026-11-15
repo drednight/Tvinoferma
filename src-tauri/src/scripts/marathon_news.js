@@ -12,11 +12,11 @@
             return;
         }
         // A news URL can redirect to a check page. Preserve its task classes, not the account sidebar.
-        const check = document.querySelector('.season_marathon');
+        const check = TF.q('marathon.container');
         if (check) {
             const root = document.createElement('div');
             root.id = 'media_tabs';
-            for (const node of [document.querySelector('#media_tabs > h2'), document.querySelector('.status_legend'), check]) {
+            for (const node of [TF.q('news.checkHeading'), TF.q('marathon.legend'), check]) {
                 if (node) root.appendChild(node.cloneNode(true));
             }
             root.querySelectorAll('script, iframe, form, input, button').forEach(node => node.remove());

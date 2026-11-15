@@ -48,7 +48,7 @@ export const SECTIONS = [
   { id: 'runes', title: 'Руны', paletteIcon: '🔮' },
   { id: 'finance', title: 'Банк', paletteIcon: '₽' },
   { id: 'tools', title: 'Инструменты', paletteIcon: '⚡' },
-  { id: 'game-macros', title: 'Управление пати и макросами', paletteIcon: '🎮' },
+  { id: 'game-macros', title: 'Команды', paletteIcon: '🎮' },
   {
     id: 'settings',
     title: 'Настройки',

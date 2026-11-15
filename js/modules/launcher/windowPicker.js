@@ -24,6 +24,12 @@ import { windowOwnershipOptions, rememberExistingWindow, forgetManualWindow } fr
 
 const errText = e => String(e?.message || e || 'неизвестная ошибка');
 
+// Use local identity and party names only; never expose account contacts or notes.
+function attachmentLabel(char) {
+  const names = (char.partyIds || []).map(id => state.parties.find(party => party.id === id)?.name).filter(Boolean);
+  return `${char.nick || 'Без имени'} — ${char.class || 'Класс не выбран'} · ${names.length ? names.join(', ') : 'Без пати'} · ID: ${char.id}`;
+}
+
 /**
  * Открывает окно со списком запущенных клиентов игры.
  * @param {{ onClosed?: (report: any) => void }} [opts]
@@ -115,15 +121,15 @@ export async function openWindowPicker(opts = {}) {
           <span class="winp-ava">${icon ? `<img src="${escapeHtml(icon)}" alt="" />` : row.known && row.nick ? escapeHtml(row.nick[0]) : '?'}</span>
           <span class="winp-who">
             <b>${escapeHtml(row.nick || `PID ${row.pid}`)}</b>
-            ${row.cls ? `<small class="muted">${escapeHtml(row.cls)}</small>` : '<small class="muted">окно запущено не из Твинофермы</small>'}
+            ${row.ownershipSource === 'ambiguous' ? '<small class="muted">Неоднозначный ник — привяжите вручную</small>' : row.cls ? `<small class="muted">${escapeHtml(row.cls)}</small>` : '<small class="muted">окно запущено не из Твинофермы</small>'}
           </span>
         </label>
-        <span class="winp-source muted">${{ manual: 'Ручная привязка', title: 'Из заголовка', launcher: 'Запуск Твинофермой', unknown: 'Не распознано' }[row.ownershipSource]}</span>
+        <span class="winp-source muted">${{ manual: 'Ручная привязка', title: 'Из заголовка', launcher: 'Запуск Твинофермой', ambiguous: 'Ник неоднозначен', unknown: 'Не распознано' }[row.ownershipSource]}</span>
         ${row.ownershipSource === 'manual' ? `<button type="button" class="btn ghost small" data-detach="${row.pid}">Снять ручную привязку</button>` : ''}
         <span class="winp-meta muted" title="Идентификатор процесса">PID ${row.pid}</span>
         <span class="winp-meta muted" title="Сколько работает окно">${uptime}</span>
         ${row.elevated ? '<span class="winp-flag" title="Игра запущена от имени администратора">админ</span>' : ''}
-        ${`<label class="winp-attach">${row.known ? 'Сменить персонажа' : 'Прикрепить к персонажу'}<button type="button" class="btn ghost small" data-attach-open="${row.pid}" aria-haspopup="menu">Выбрать персонажа ▾</button><select data-attach="${row.pid}" hidden aria-hidden="true" tabindex="-1"><option value="">${row.known ? 'Выбрать другого…' : 'Выберите персонажа…'}</option>${state.characters.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.nick)}${c.class ? ` — ${escapeHtml(c.class)}` : ''}</option>`).join('')}</select></label>`}
+        ${`<label class="winp-attach">${row.known ? 'Сменить персонажа' : 'Прикрепить к персонажу'}<button type="button" class="btn ghost small" data-attach-open="${row.pid}" aria-haspopup="menu">Выбрать персонажа ▾</button><select data-attach="${row.pid}" hidden aria-hidden="true" tabindex="-1"><option value="">${row.known ? 'Выбрать другого…' : 'Выберите персонажа…'}</option>${state.characters.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(attachmentLabel(c))}</option>`).join('')}</select></label>`}
         <button type="button" class="btn ghost small winp-style" data-style="${row.pid}"
                 title="Задать своё название окна и поставить значок класса">✏️ Вид…</button>
       </div>`;
@@ -241,7 +247,7 @@ export async function openWindowPicker(opts = {}) {
         attachButton,
         state.characters.map(char => ({
           id: char.id,
-          label: `${char.nick}${char.class ? ` — ${char.class}` : ''}`,
+          label: attachmentLabel(char),
           disabled: rows.some(row => row.charId === char.id && row.pid !== pid),
           onSelect: () => {
             select.value = char.id;

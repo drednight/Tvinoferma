@@ -73,7 +73,7 @@ describe('single bounded executor', () => {
   });
 });
 
-describe('coordinate input is opt-in and previewed per session', () => {
+describe('coordinate input is opt-in and checked automatically', () => {
   const point = { id: 'point', name: 'test', uiScale: '100%', x: 10, y: 20, width: 800, height: 600, dpi: 96 };
   const setup = () => {
     state.settings.gameMacros.points = [point];
@@ -81,10 +81,15 @@ describe('coordinate input is opt-in and previewed per session', () => {
       { id: 'click', name: 'click', action: 'click', target: 'all', pointId: 'point', resourceAllowed: true }
     ];
   };
-  it('refuses clicks before preview in the current app session', async () => {
+  it('checks geometry before clicking without a manual preview', async () => {
     setup();
     await runtime.run('click');
-    expect(invoke.mock.calls.some(([, args]) => args?.action === 'click')).toBe(false);
+    expect(invoke.mock.calls.map(([, args]) => args?.action).filter(Boolean)).toEqual([
+      'preview',
+      'focus',
+      'click',
+      'focus'
+    ]);
   });
   it('previews without focus or input, then checks geometry again before clicking', async () => {
     setup();
@@ -362,14 +367,15 @@ describe('composition input and cancellation', () => {
     resourceAllowed: true,
     blocks: [{ partyId: 'p', target: 'all', delivery: 'background', steps }]
   });
-  it('requires screen preview and never focuses or sends global input in a background click', async () => {
+  it('checks screen coordinates automatically and never focuses in a background click', async () => {
     state.settings.gameMacros.commands = [
       plan([{ type: 'screen', x: 10, y: 20, button: 'right', count: 2, modifiers: ['CTRL'] }])
     ];
     await runtime.run('plan');
-    expect(invoke.mock.calls.some(([cmd]) => cmd === 'game_macro_pointer')).toBe(false);
-    await runtime.previewComposition('plan');
-    await runtime.run('plan');
+    const pointers = invoke.mock.calls.filter(([cmd]) => cmd === 'game_macro_pointer');
+    expect(pointers.length).toBeGreaterThanOrEqual(2);
+    expect(pointers[0][1].input.checkOnly).toBe(true);
+    expect(pointers.at(-1)[1].input.checkOnly).toBe(false);
     expect(
       invoke.mock.calls.some(
         ([cmd, args]) =>
@@ -377,6 +383,35 @@ describe('composition input and cancellation', () => {
       )
     ).toBe(true);
     expect(invoke.mock.calls.some(([cmd]) => cmd === 'game_macro_action')).toBe(false);
+  });
+  it('refuses a screen click if the fresh check after resize fails', async () => {
+    state.settings.gameMacros.commands = [
+      plan([
+        { type: 'resize', width: 800, height: 600 },
+        { type: 'screen', x: 10, y: 20, button: 'left' }
+      ])
+    ];
+    invoke.mockImplementation(async (name, args) => {
+      if (name === 'launcher_running_details') return [client];
+      if (name === 'game_macro_pointer' && args.input.checkOnly) throw new Error('window changed');
+      return null;
+    });
+    await runtime.run('plan');
+    expect(
+      invoke.mock.calls.some(([name, args]) => name === 'game_macro_action' && args.action === 'client-layout')
+    ).toBe(true);
+    expect(invoke.mock.calls.some(([name, args]) => name === 'game_macro_pointer' && !args.input.checkOnly)).toBe(
+      false
+    );
+  });
+  it('does not send screen input without explicit composition consent', async () => {
+    state.settings.gameMacros.commands = [
+      { ...plan([{ type: 'screen', x: 10, y: 20, button: 'left' }]), resourceAllowed: false }
+    ];
+    await runtime.run('plan');
+    expect(invoke.mock.calls.some(([name, args]) => name === 'game_macro_pointer' && !args.input.checkOnly)).toBe(
+      false
+    );
   });
   it('cancels a paused composition, clears its paused state, and never starts the next key', async () => {
     state.settings.gameMacros.commands = [plan([{ type: 'pause' }, { type: 'keys', value: 'F8' }])];
@@ -855,7 +890,7 @@ it('sends Shift+1 then F2 in order to each recipient with activity delivery', as
   expect(runtime.snapshot().executionState).toBe('finished');
 });
 it.each(['missing-party', 'missing-member'])(
-  'falls back to all validated game processes before input when %s cannot resolve',
+  'does not broaden to unrelated processes when %s cannot resolve',
   async reason => {
     if (reason === 'missing-party') state.settings.gameMacros.partyId = 'gone';
     else state.characters.push({ id: 'b', nick: 'Absent', partyIds: ['p'] });
@@ -876,14 +911,8 @@ it.each(['missing-party', 'missing-member'])(
     const calls = invoke.mock.calls
       .filter(([, args]) => args?.action === 'key-background')
       .map(([, args]) => [args.target.pid, args.key]);
-    expect(calls).toEqual([
-      [10, 'SHIFT+1'],
-      [10, 'F2'],
-      [30, 'SHIFT+1'],
-      [30, 'F2']
-    ]);
-    expect(runtime.snapshot().logs.join('\n')).toContain('Резерв: ВСЕ проверенные игровые окна (2)');
-    expect(runtime.snapshot().executionState).toBe('finished');
+    expect(calls).toEqual([]);
+    expect(runtime.snapshot().executionState).toBe('failed');
   }
 );
 it('does not fall back if any game process lacks a verified window identity', async () => {
@@ -1089,7 +1118,7 @@ it('resumes a composition waiting step through the always-available pause contro
   expect(invoke.mock.calls.some(([, a]) => a?.key === 'F2')).toBe(true);
 });
 
-it('retains explicit all-managed-window F6/F1 routing, validates the PL, and refuses unknown windows before input', async () => {
+it('retains explicit all-managed-window F6/F1 routing and skips unknown windows', async () => {
   const { unifiedCommand } = await import('../js/modules/gameMacros/unified.js');
   state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['q'] });
   const beta = { ...client, pid: 20, startedAt: 2000, hwnd: 200, title: 'Beta — Воин' };
@@ -1111,8 +1140,10 @@ it('retains explicit all-managed-window F6/F1 routing, validates the PL, and ref
     c === 'launcher_running_details' ? [client, { ...beta, title: 'Perfect World' }] : null
   );
   await runtime.run('global');
-  expect(invoke.mock.calls.some(([, a]) => a?.action === 'key')).toBe(false);
-  expect(runtime.snapshot().executionState).toBe('failed');
+  expect(invoke.mock.calls.filter(([, a]) => a?.action === 'key').map(([, a]) => [a.target.pid, a.key])).toEqual([
+    [10, 'F1']
+  ]);
+  expect(runtime.snapshot().executionState).toBe('finished');
 });
 
 it('fails closed for strict laboratory recipients instead of widening to every running game', async () => {
@@ -1532,4 +1563,314 @@ describe('party leader hybrid commands', () => {
     await runtime.run('hybrid');
     expect(invoke.mock.calls.filter(([c]) => c === 'game_macro_modifier_trial')).toHaveLength(1);
   });
+});
+
+describe('shared command recipient selection', () => {
+  const beta = { ...client, pid: 20, startedAt: 2000, hwnd: 200, title: 'Beta — Воин' };
+  const unknown = { ...client, pid: 30, startedAt: 3000, hwnd: 300, title: 'Element Client' };
+  const setup = () => {
+    state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['q'] });
+    state.settings.gameMacros.commands = [
+      { id: 'test', name: 'test', action: 'sequence', target: 'all', scope: 'managed', sequence: 'B', returnTo: 'last' }
+    ];
+    invoke.mockImplementation(async name => (name === 'launcher_running_details' ? [client, beta, unknown] : null));
+  };
+  const keys = () => invoke.mock.calls.filter(([, a]) => a?.action === 'key').map(([, a]) => a.target.pid);
+  it('sends to recognized running windows across parties by default and ignores unknown windows', async () => {
+    setup();
+    await runtime.run('test');
+    expect(keys()).toEqual([10, 20]);
+  });
+  it('excludes manually unchecked characters and includes a newly opened character', async () => {
+    setup();
+    state.settings.gameMacros.excludedCommandCharacters = ['a'];
+    await runtime.run('test');
+    expect(keys()).toEqual([20]);
+  });
+  it('does not send when all recognized characters are excluded', async () => {
+    setup();
+    state.settings.gameMacros.excludedCommandCharacters = ['a', 'b'];
+    await runtime.run('test');
+    expect(keys()).toEqual([]);
+    expect(runtime.snapshot().executionState).toBe('failed');
+  });
+  it('refuses ambiguous or insufficiently checked selected windows', async () => {
+    setup();
+    invoke.mockImplementation(async name =>
+      name === 'launcher_running_details' ? [client, { ...beta, elevated: null }] : null
+    );
+    await runtime.run('test');
+    expect(keys()).toEqual([]);
+    expect(runtime.snapshot().executionState).toBe('failed');
+  });
+  it('applies exclusions to composite command preflight and execution', async () => {
+    setup();
+    state.settings.gameMacros.excludedCommandCharacters = ['a'];
+    state.settings.gameMacros.commands = [
+      {
+        id: 'test',
+        name: 'composite',
+        action: 'composite',
+        returnTo: 'last',
+        blocks: [{ scope: 'managed', target: 'all', perWindow: true, steps: [{ type: 'keys', value: 'B' }] }]
+      }
+    ];
+    await runtime.run('test');
+    expect(keys()).toEqual([20]);
+  });
+});
+
+it('never runs a composite hotkey from outside a recognized game window', async () => {
+  state.settings.gameMacros.commands = [
+    {
+      id: 'test',
+      name: 'composite',
+      action: 'composite',
+      blocks: [{ scope: 'managed', target: 'all', steps: [{ type: 'keys', value: 'B' }] }]
+    }
+  ];
+  invoke.mockImplementation(async (name, args) => {
+    if (name === 'launcher_running_details') return [client];
+    if (args?.action === 'foreground') throw new Error('not active');
+    return null;
+  });
+  await runtime.run('test', true);
+  expect(invoke.mock.calls.some(([, args]) => args?.action === 'key')).toBe(false);
+  expect(runtime.snapshot().executionState).toBe('failed');
+});
+
+it('does not require an offline character explicitly excluded from a legacy party command', async () => {
+  state.characters.push({ id: 'b', nick: 'Absent', partyIds: ['p'] });
+  state.settings.gameMacros.excludedCommandCharacters = ['b'];
+  state.settings.gameMacros.commands[0].sequence = 'B';
+  state.settings.gameMacros.commands[0].returnTo = 'last';
+  await runtime.run('test');
+  expect(invoke.mock.calls.filter(([, args]) => args?.action === 'key').map(([, args]) => args.target.pid)).toEqual([
+    10
+  ]);
+});
+
+describe('hybrid recipients use the running selection within one party', () => {
+  const hybrid = {
+    action: 'sequence',
+    delivery: 'background',
+    backgroundMethod: 'hybrid-party',
+    scope: 'party',
+    target: 'others',
+    sequence: 'F2',
+    hybridConsent: true
+  };
+  const beta = { pid: 20, startedAt: 2000, hwnd: 200, elevated: false, known: true, charId: 'b' };
+  beforeEach(() => {
+    state.characters = [
+      { id: 'a', nick: 'Alpha', partyIds: ['p'] },
+      { id: 'b', nick: 'Beta', partyIds: ['p'] },
+      { id: 'c', nick: 'Offline', partyIds: ['p'] },
+      { id: 'd', nick: 'Other party', partyIds: ['q'] }
+    ];
+  });
+  it('only includes running, selected party members and ignores absent or other-party characters', async () => {
+    const c = { partyId: 'p', leaders: { p: 'a' }, excludedCommandCharacters: [] };
+    const rows = [{ ...client, known: true, charId: 'a' }, beta, { ...beta, pid: 30, hwnd: 300, charId: 'd' }];
+    expect((await runtime.commandTargets(hybrid, c, rows)).map(row => row.charId)).toEqual(['b']);
+    c.excludedCommandCharacters = ['b'];
+    await expect(runtime.commandTargets(hybrid, c, rows)).rejects.toThrow('Нет выбранных');
+  });
+  it('refuses ambiguous or insufficiently verified windows instead of guessing', async () => {
+    const c = { partyId: 'p', leaders: { p: 'a' }, excludedCommandCharacters: [] };
+    await expect(runtime.commandTargets(hybrid, c, [beta, { ...beta, pid: 21, hwnd: 201 }])).rejects.toThrow();
+    await expect(runtime.commandTargets(hybrid, c, [{ ...beta, hwnd: null }])).rejects.toThrow();
+  });
+});
+
+it('executes a hybrid plan for ten recipients in sequence without changing focus', async () => {
+  state.characters = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta', 'Iota', 'Kappa'].map(
+    (nick, i) => ({
+      id: `c${i}`,
+      nick,
+      partyIds: ['p']
+    })
+  );
+  state.settings.gameMacros.partyId = 'p';
+  state.settings.gameMacros.leaders = { p: 'c0' };
+  state.settings.gameMacros.commands = [
+    {
+      id: 'many',
+      name: 'many',
+      action: 'sequence',
+      scope: 'party',
+      target: 'all',
+      sequence: 'F2',
+      delivery: 'background',
+      backgroundMethod: 'hybrid-party',
+      hybridConsent: true
+    }
+  ];
+  let inFlight = 0,
+    peak = 0;
+  invoke.mockImplementation(async command => {
+    if (command === 'launcher_running_details')
+      return state.characters.map((char, i) => ({
+        pid: i + 10,
+        hwnd: i + 100,
+        startedAt: 1000 + i,
+        elevated: false,
+        title: `${char.nick} — Воин`
+      }));
+    if (command === 'game_macro_modifier_trial') {
+      peak = Math.max(peak, ++inFlight);
+      await Promise.resolve();
+      inFlight--;
+      return { ok: true, releaseUnconfirmed: false, foregroundChanged: false };
+    }
+    return null;
+  });
+  await runtime.run('many');
+  const calls = invoke.mock.calls.filter(([command]) => command === 'game_macro_modifier_trial');
+  expect(calls.map(([, args]) => args.target.pid).sort((a, b) => a - b)).toEqual([
+    10, 11, 12, 13, 14, 15, 16, 17, 18, 19
+  ]);
+  expect(peak).toBe(1);
+  expect(calls.every(([, args]) => args.source.pid === 10 && args.method === 'hybrid-party')).toBe(true);
+  expect(invoke.mock.calls.some(([, args]) => ['focus', 'key', 'key-background'].includes(args?.action))).toBe(false);
+  expect(runtime.snapshot().executionState).toBe('finished');
+});
+
+it('stops a larger hybrid sequence immediately when one recipient returns an uncertain delivery', async () => {
+  state.characters = Array.from({ length: 10 }, (_, i) => ({ id: `c${i}`, nick: `Player${i}`, partyIds: ['p'] }));
+  state.settings.gameMacros.partyId = 'p';
+  state.settings.gameMacros.leaders = { p: 'c0' };
+  state.settings.gameMacros.commands = [
+    {
+      id: 'many',
+      name: 'many',
+      action: 'sequence',
+      scope: 'party',
+      target: 'all',
+      sequence: 'F2',
+      delivery: 'background',
+      backgroundMethod: 'hybrid-party',
+      hybridConsent: true
+    }
+  ];
+  let sent = 0;
+  invoke.mockImplementation(async command => {
+    if (command === 'launcher_running_details')
+      return state.characters.map((char, i) => ({
+        pid: i + 10,
+        hwnd: i + 100,
+        startedAt: i + 1000,
+        elevated: false,
+        title: `${char.nick} — Воин`
+      }));
+    if (command === 'game_macro_modifier_trial')
+      return ++sent === 5
+        ? {
+            ok: false,
+            timedOut: true,
+            timeoutMs: 100,
+            releaseUnconfirmed: false,
+            deliveryUncertain: true,
+            steps: [{ phase: 'key-down', ok: false, error: 1460 }]
+          }
+        : { ok: true };
+    return null;
+  });
+  await runtime.run('many');
+  expect(sent).toBe(5);
+  const trace = runtime.getExecutionHistory().at(-1);
+  const failed = trace.events.find(
+    event => event.stage === 'native:game_macro_modifier_trial' && event.status === 'blocked'
+  );
+  expect(failed.details).toMatchObject({
+    errorCode: 1460,
+    timedOut: true,
+    timeoutMs: 100,
+    releaseUnconfirmed: false,
+    deliveryUncertain: true
+  });
+  expect(runtime.snapshot().executionState).toBe('failed');
+  expect(invoke.mock.calls.some(([, args]) => ['focus', 'key', 'key-background'].includes(args?.action))).toBe(false);
+});
+
+it('toggles mouse repeat off via a composite hotkey while the mirror owns the input lease', async () => {
+  state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['p'] });
+  state.settings.gameMacros.commands = [
+    {
+      id: 'mouse-toggle',
+      name: 'Повтор мыши',
+      action: 'composite',
+      hotkey: 'CTRL+F8',
+      returnTo: 'last',
+      blocks: [
+        {
+          name: 'Повтор',
+          scope: 'managed',
+          target: 'all',
+          steps: [{ type: 'repeat', device: 'mouse', mode: 'toggle' }]
+        }
+      ]
+    }
+  ];
+  let mirrorRunning = false;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'launcher_running_details')
+      return [client, { ...client, pid: 20, hwnd: 200, startedAt: 2000, title: 'Beta — Воин' }];
+    if (command === 'game_macro_mirror' && args.operation === 'start') {
+      mirrorRunning = true;
+      return true;
+    }
+    if (command === 'game_macro_mirror' && args.operation === 'stop') {
+      mirrorRunning = false;
+      return true;
+    }
+    if (command === 'game_macro_action' && mirrorRunning && args.action !== 'foreground')
+      throw new Error('Native input busy');
+    if (command === 'game_macro_action' && args.action === 'foreground' && args.target.pid !== 10)
+      throw new Error('not active');
+    return null;
+  });
+  await runtime.run('mouse-toggle', true);
+  expect(runtime.snapshot().mirrorMouse).toBe(true);
+  const stopsBefore = invoke.mock.calls.filter(([c, a]) => c === 'game_macro_mirror' && a.operation === 'stop').length;
+  await runtime.run('mouse-toggle', true);
+  expect(runtime.snapshot().mirrorMouse).toBe(false);
+  expect(runtime.snapshot().executionState).toBe('finished');
+  expect(invoke.mock.calls.filter(([c, a]) => c === 'game_macro_mirror' && a.operation === 'stop')).toHaveLength(
+    stopsBefore + 1
+  );
+});
+
+it('keeps a composite hotkey blocked outside a recognized foreground game even when repeat is active', async () => {
+  state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['p'] });
+  state.settings.gameMacros.commands = [
+    {
+      id: 'toggle',
+      name: 'Повтор',
+      action: 'composite',
+      returnTo: 'last',
+      blocks: [
+        {
+          name: 'Повтор',
+          scope: 'managed',
+          target: 'all',
+          steps: [{ type: 'repeat', device: 'mouse', mode: 'toggle' }]
+        }
+      ]
+    }
+  ];
+  let inGame = true;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'launcher_running_details')
+      return [client, { ...client, pid: 20, hwnd: 200, startedAt: 2000, title: 'Beta — Воин' }];
+    if (command === 'game_macro_mirror' && args.operation === 'start') return true;
+    if (command === 'game_macro_action' && args.action === 'foreground' && !inGame) throw new Error('not active');
+    return null;
+  });
+  await runtime.run('toggle', true);
+  inGame = false;
+  await runtime.run('toggle', true);
+  expect(runtime.snapshot().mirrorMouse).toBe(true);
+  expect(runtime.snapshot().notice).toContain('Горячая команда пропущена');
+  await runtime.disableKeyboardMirror();
 });

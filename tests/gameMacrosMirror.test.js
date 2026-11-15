@@ -24,7 +24,10 @@ beforeEach(async () => {
     { id: 'a', nick: 'Alpha' },
     { id: 'b', nick: 'Beta' }
   ];
-  state.settings.gameMacros = { commands: [{ id: 'mirror', action: 'mirror', hotkey: 'CTRL+ALT+F12' }] };
+  state.settings.gameMacros = {
+    commands: [{ id: 'mirror', action: 'mirror', hotkey: 'CTRL+ALT+F12' }],
+    mirrorKeyboardGlobalInput: true
+  };
   m.invoke.mockImplementation(async (c, a) =>
     c === 'launcher_running_details'
       ? clients
@@ -369,44 +372,64 @@ it('reconnects an enabled mouse repeat when its configurable modifier changes', 
   expect(args.mouse).toBe(true);
 });
 
-it('enables combined transport only for opt-in keyboard repeat', async () => {
-  state.settings.gameMacros.mirrorKeyboardMethod = 'combined';
-  await runtime.toggleKeyboardMirror();
-  const start = m.invoke.mock.calls.find(([name, args]) => name === 'game_macro_mirror' && args.operation === 'start');
-  expect(start[1].combined).toBe(true);
-  expect(start[1].keyboard).toBe(true);
-});
-
-it('does not enable combined transport for mouse-only repeat', async () => {
-  state.settings.gameMacros.mirrorKeyboardMethod = 'combined';
-  await runtime.toggleKeyboardMirror('mouse');
-  const start = m.invoke.mock.calls.find(([name, args]) => name === 'game_macro_mirror' && args.operation === 'start');
-  expect(start[1].combined).toBe(false);
-});
-
-it('passes activity-only transport and hold-only explicitly to native repeat', async () => {
-  state.settings.gameMacros.mirrorKeyboardMethod = 'activity-notify';
-  state.settings.gameMacros.mirrorHoldOnly = true;
+it('uses one experimental keyboard route and passes the selected party leader identity', async () => {
+  state.characters.forEach(char => (char.partyIds = ['p']));
+  Object.assign(state.settings.gameMacros, { partyId: 'p', leaders: { p: 'a' } });
   await runtime.toggleKeyboardMirror();
   const start = m.invoke.mock.calls.find(([name, args]) => name === 'game_macro_mirror' && args.operation === 'start');
   expect(start[1]).toMatchObject({
-    keyboardMethod: 'activity-notify',
-    combined: false,
-    holdOnly: true,
-    keyboard: true
+    keyboardMethod: 'cache-hybrid',
+    keyboard: true,
+    globalMouse: false,
+    keyboardLeader: { pid: 10, startedAt: 100, hwnd: 1000 }
   });
+  expect(start[1]).not.toHaveProperty('combined');
+  expect(start[1]).not.toHaveProperty('keyboardTimeoutMs');
+  expect(start[1]).not.toHaveProperty('holdOnly');
+  expect(runtime.snapshot().logs.join('\n')).toContain('глобальный ввод + WM_KEYDOWN');
 });
 
-it('distinguishes bounded key timeout from PostMessage rejection', async () => {
+it('passes the global-input candidate to native repeat and warns about the global input leak', async () => {
+  state.settings.gameMacros.mirrorKeyboardMethod = 'cache-hybrid';
   await runtime.toggleKeyboardMirror();
-  const [, args] = m.invoke.mock.calls.find(
+  const start = m.invoke.mock.calls.find(([name, args]) => name === 'game_macro_mirror' && args.operation === 'start');
+  expect(start[1]).toMatchObject({ keyboardMethod: 'cache-hybrid', keyboard: true, globalMouse: false });
+  expect(start[1]).not.toHaveProperty('combined');
+  const log = runtime.snapshot().logs.join('\n');
+  expect(log).toContain('глобальн');
+  expect(log).toContain('активном окне');
+  expect(log).toContain('не подтверждена');
+});
+
+it('reports a rejected global injection as a stopped repeat with a stuck key warning', async () => {
+  state.settings.gameMacros.mirrorKeyboardMethod = 'cache-hybrid';
+  await runtime.toggleKeyboardMirror();
+  const args = m.invoke.mock.calls.find(
     ([name, args]) => name === 'game_macro_mirror' && args.operation === 'start'
-  );
+  )[1];
   m.listeners.get('game-macro-mirror-state')({
-    payload: { sessionId: args.sessionId, active: false, reason: 8, failedInput: { vk: 66, up: true, ageMs: 29 } }
+    payload: { sessionId: args.sessionId, active: false, reason: 11, failedInput: { vk: 66, up: false, ageMs: 12 } }
   });
-  expect(runtime.snapshot().notice).toContain('SendMessageTimeout');
-  expect(runtime.snapshot().notice).not.toContain('Windows отказала');
+  expect(runtime.snapshot().notice).toContain('Глобальная инъекция');
+  expect(runtime.snapshot().notice).toContain('остаться нажатой');
+});
+
+it('refuses keyboard repeat while experimental global input is disabled', async () => {
+  state.settings.gameMacros.mirrorKeyboardGlobalInput = false;
+  await runtime.toggleKeyboardMirror();
+  expect(runtime.snapshot().notice).toContain('глобальный ввод клавиатуры выключен');
+  expect(m.invoke.mock.calls.some(([name, args]) => name === 'game_macro_mirror' && args.operation === 'start')).toBe(
+    false
+  );
+});
+
+it('passes opt-in global mouse input separately and reports the source-window risk', async () => {
+  state.settings.gameMacros.mirrorMouseGlobalInput = true;
+  await runtime.toggleKeyboardMirror('mouse');
+  const start = m.invoke.mock.calls.find(([name, args]) => name === 'game_macro_mirror' && args.operation === 'start');
+  expect(start[1]).toMatchObject({ keyboard: false, mouse: true, globalMouse: true });
+  expect(runtime.snapshot().logs.join('\n')).toContain('экспериментальный SendInput + оконные сообщения');
+  expect(runtime.snapshot().logs.join('\n')).toContain('Курсор должен оставаться');
 });
 
 it('routes keyboard to the selected party leader independently of shared mouse source', async () => {

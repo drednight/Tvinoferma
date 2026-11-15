@@ -1,3 +1,4 @@
+import { selectableRecipients, leaderChoices } from './recipients.js';
 import { appendBackgroundJournal, openBackgroundJournal } from './backgroundJournal.js';
 import { nativeResultStatus } from './nativeStatus.js';
 import { buildTrial } from './trialEvidence.js';
@@ -52,7 +53,9 @@ let mirroring = false,
 let paused = false,
   composing = false;
 let launchProgress = null;
-let overlayWindows = [],
+let overlayRecipientSession = null,
+  overlayRecipientNotice = 'Обновите список запущенных персонажей.',
+  overlayWindows = [],
   overlayWindowNotice = 'Нажмите «Обновить окна», чтобы проверить запущенные клиенты.';
 const logs = [];
 const logEntries = [];
@@ -61,7 +64,6 @@ let activeCommandName = '',
 let executionState = 'idle';
 let overlayOpenRequest = '',
   overlayOpenTimer;
-const reviewedPoints = new Set();
 export const config = () => normalizeGameMacros(state.settings.gameMacros);
 const native = async (command, args) => {
   if (!window.__TAURI_INTERNALS__) throw new Error('Нужна настольная версия Windows.');
@@ -92,7 +94,7 @@ const native = async (command, args) => {
   const details = {
     action: args?.action || args?.operation,
     key: args?.key,
-    method: args?.timing?.backgroundMethod,
+    method: args?.timing?.backgroundMethod || args?.method,
     pid: args?.target?.pid,
     startedAt: args?.target?.startedAt,
     hwnd: args?.target?.hwnd
@@ -119,7 +121,16 @@ const native = async (command, args) => {
         ok: result?.ok,
         inputSent: result?.inputSent,
         foregroundChanged: result?.foregroundChanged,
-        errorCode: typeof result?.error === 'number' ? result.error : undefined,
+        errorCode:
+          typeof result?.error === 'number'
+            ? result.error
+            : command === 'game_macro_modifier_trial'
+              ? result?.steps?.find(step => step.phase === 'key-down' && step.ok === false)?.error
+              : undefined,
+        timedOut: result?.timedOut,
+        timeoutMs: result?.timeoutMs,
+        releaseUnconfirmed: result?.releaseUnconfirmed,
+        deliveryUncertain: result?.deliveryUncertain,
         blockedBy: result?.blockedBy
       });
     if (traced && currentExecutionId() === traceId && command === 'game_macro_action')
@@ -152,6 +163,8 @@ export function snapshot() {
     parties: (state.parties || []).map(({ id, name }) => ({ id, name })),
     partyId: c.partyId,
     windows: overlayWindows,
+    recipients: overlayRecipientSession?.public || null,
+    recipientNotice: overlayRecipientNotice,
     windowNotice: overlayWindowNotice,
     launchProgress,
     executionState,
@@ -301,19 +314,32 @@ export async function reconnectInput() {
     `Повторная настройка ввода завершена. ${config().enabled ? (hotkeyFailures.length ? 'Есть конфликты сочетаний — см. журнал.' : 'Сочетания зарегистрированы Windows.') : 'Сочетания выключены пользователем.'} Обработка ввода игрой не подтверждена.`
   );
 }
-export async function openOverlay() {
+// Queue clicks so each native toggle observes the result of the previous one.
+let overlayToggleChain = Promise.resolve();
+export function openOverlay() {
+  const toggle = overlayToggleChain.then(toggleOverlay);
+  overlayToggleChain = toggle.catch(() => {});
+  return toggle;
+}
+async function toggleOverlay() {
   clearTimeout(overlayOpenTimer);
-  overlayOpenRequest = crypto.randomUUID();
-  const request = overlayOpenRequest;
-  log(`Оверлей [${request.slice(0, 8)}]: запрос открытия.`);
+  overlayOpenRequest = '';
+  const request = crypto.randomUUID();
+  log(`Оверлей [${request.slice(0, 8)}]: запрос переключения.`);
   try {
     await initGameMacros();
-    state.settings.gameMacros = { ...config(), appearance: { ...config().appearance, hideHeader: false } };
-    await native('game_macro_overlay', {
+    const result = await native('game_macro_overlay', {
       topmost: config().topmost,
       position: config().overlayPosition,
       existingOnly: false
     });
+    if (result === 'closed') {
+      log(`Оверлей [${request.slice(0, 8)}]: окно скрыто.`);
+      return;
+    }
+    if (result !== 'opened') throw new Error('Не удалось подтвердить состояние окна оверлея');
+    state.settings.gameMacros = { ...config(), appearance: { ...config().appearance, hideHeader: false } };
+    overlayOpenRequest = request;
     log(
       `Оверлей [${request.slice(0, 8)}]: Windows выполнила показ/разворачивание и вывод окна вперёд. Ожидаем подтверждение интерфейса.`
     );
@@ -326,6 +352,7 @@ export async function openOverlay() {
     await broadcast();
   } catch (error) {
     clearTimeout(overlayOpenTimer);
+    overlayOpenRequest = '';
     log(`Оверлей [${request.slice(0, 8)}]: открытие не завершено. ${macroErrorText(error)}`);
     throw error;
   }
@@ -354,7 +381,8 @@ export async function listMacroWindows() {
 export async function windowTargets(
   command = { target: 'all', action: 'next' },
   selected = config(),
-  snapshotRows = null
+  snapshotRows = null,
+  excluded = new Set()
 ) {
   selected = scopedConfig(selected, command);
   const rows = snapshotRows || (await listMacroWindows());
@@ -402,7 +430,45 @@ export async function windowTargets(
       return [];
     }
   }
-  return resolveTargets(state, selected, command, rows);
+  return resolveTargets(state, selected, command, rows, excluded);
+}
+// Ordinary command execution uses a fresh list and a single, explicit exclusion list.
+// Diagnostics and calibration keep their own exact targets; explicit command subsets are never broadened.
+export async function commandTargets(command, selected = config(), snapshotRows = null) {
+  const excluded = new Set(selected.excludedCommandCharacters || []);
+  const rows = snapshotRows || (await listMacroWindows());
+  if (command.delivery === 'background' && command.backgroundMethod === 'hybrid-party' && command.scope !== 'managed') {
+    const members = partyMembers(state, selected.partyId);
+    const leader = selected.leaders[selected.partyId];
+    if (!members.some(char => char.id === leader)) throw new Error('В настройках выбранной пати назначьте ПЛ.');
+    if (!['all', 'others', 'leader', 'subset'].includes(command.target)) throw new Error('Укажите получателей явно.');
+    if (
+      command.target === 'subset' &&
+      (!command.charIds?.length || command.charIds.some(id => !members.some(char => char.id === id)))
+    )
+      throw new Error('Выберите действующих участников пати.');
+    const ids = members
+      .filter(char => !excluded.has(char.id))
+      .filter(
+        char =>
+          command.target === 'all' ||
+          (command.target === 'others' && char.id !== leader) ||
+          (command.target === 'leader' && char.id === leader) ||
+          (command.target === 'subset' && command.charIds.includes(char.id))
+      )
+      .filter(char => rows.some(row => row.known && row.charId === char.id))
+      .map(char => char.id);
+    if (!ids.length) throw new Error('Нет выбранных распознанных получателей выбранной пати.');
+    return resolveTargets(state, selected, { ...command, target: 'subset', charIds: ids }, rows, excluded);
+  }
+  if (command.scope === 'managed') {
+    const recognized = rows.filter(row => row.known && row.charId && !excluded.has(row.charId));
+    if (!recognized.length) throw new Error('Нет выбранных распознанных игровых окон.');
+    return windowTargets(command, selected, recognized);
+  }
+  const targets = await windowTargets(command, selected, rows, excluded);
+  if (!targets.length && !command.allowEmptyOthers) throw new Error('Нет выбранных получателей команды.');
+  return targets;
 }
 let inputStarted = 0,
   firstInputLogged = false;
@@ -551,7 +617,7 @@ export function macroErrorText(error) {
     'preview required':
       'Для этой координатной команды нажмите «Предпросмотр без клика» в «Моих командах». Это нужно один раз в текущем сеансе и после изменения точки.',
     'Ambiguous/missing calibration for client size and DPI':
-      'Для одного из окон нет единственной подходящей точки. Задайте точку при его текущем размере и масштабе Windows; для других размеров добавьте дополнительные профили этой же точки.',
+      'Для одного из окон нет единственной подходящей точки. Задайте точку при текущем размере и масштабе Windows. Для окон разных размеров используйте отдельные группы с соответствующими точками.',
     'no complete profile': 'Не выбран полный профиль размещения окон. Сначала сохраните профиль для текущей пати.',
     'missing profile member':
       'В профиле размещения отсутствует участник пати. Сохраните профиль заново для текущего состава.',
@@ -1007,12 +1073,32 @@ async function executeCommand(id, hotkey = false, trial = null) {
     };
     inputTiming = rootTiming;
     if (command.action === 'composite') {
+      if (hotkey) {
+        const candidates = (await listMacroWindows()).filter(
+          row =>
+            row.known &&
+            row.startedAt &&
+            row.hwnd &&
+            (row.elevated === false || (row.elevated === true && row.selfElevated === true))
+        );
+        let foreground = false;
+        for (const row of candidates) {
+          try {
+            await act(row, 'foreground');
+            foreground = true;
+            break;
+          } catch {
+            /* not the active game */
+          }
+        }
+        if (!foreground) throw new Error('Горячая команда пропущена: активное окно не относится к распознанной игре.');
+      }
       composing = true;
       const plan = compileComposition(command, c);
       await preflightComposition(plan, c, false);
       await executeComposition(plan, {
         action: (cmd, target) => executeLegacy(cmd, c, false, false, null, target),
-        targets: selector => windowTargets(selector, scopedConfig(c, selector)),
+        targets: selector => commandTargets(selector, scopedConfig(c, selector)),
         wait,
         checkpoint,
         pause: async () => {
@@ -1118,52 +1204,7 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
     throw new Error('Эта команда не поддерживает фоновую доставку. Нужна последовательность клавиш либо F6→F1.');
   validateActivityCommand(command, composing);
   const snapshotRows = await (preparedRows || listMacroWindows());
-  let rows,
-    fallbackAll = false;
-  try {
-    rows = await windowTargets(command, c, snapshotRows);
-  } catch (error) {
-    if (
-      command.backgroundMethod === 'hybrid-party' ||
-      command.strictTargets ||
-      exactTarget ||
-      composing ||
-      command.action !== 'sequence' ||
-      command.scope === 'managed'
-    )
-      throw error;
-    // Resolution-only fallback, before input. Never retry/broaden after a delivery failure.
-    if (
-      !snapshotRows.length ||
-      snapshotRows.some(
-        row =>
-          !row.pid ||
-          !row.startedAt ||
-          !row.hwnd ||
-          !(row.elevated === false || (row.elevated === true && row.selfElevated === true))
-      ) ||
-      new Set(snapshotRows.map(row => row.pid)).size !== snapshotRows.length
-    ) {
-      throw new Error(
-        'Резерв для всех окон недоступен: есть непроверенный процесс, дескриптор или права. Ввод не отправлен.',
-        { cause: error }
-      );
-    }
-    rows = orderManagedTargets(
-      state,
-      c,
-      snapshotRows.map(row => ({
-        ...row,
-        charId: row.known ? row.charId : `window:${row.pid}`,
-        nick: row.known ? row.nick : `PID ${row.pid}`
-      }))
-    );
-    fallbackAll = true;
-    log(
-      `Управляющая пати недоступна: ${macroErrorText(error)} Резерв: ВСЕ проверенные игровые окна (${rows.length}). Фильтр ПЛ/поднабора не применяется.`,
-      command.name
-    );
-  }
+  let rows = await commandTargets(command, c, snapshotRows);
   if (exactTarget) {
     rows = rows.filter(
       row =>
@@ -1188,11 +1229,10 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
       throw new Error('ПЛ выбранной пати не определён однозначно.');
     if (
       !rows.length ||
-      rows.length > 4 ||
       rows.some(r => !r.known || !r.hwnd || !r.startedAt) ||
       new Set(rows.map(r => r.hwnd)).size !== rows.length
     )
-      throw new Error('Гибрид: нужны 1–4 однозначных получателя.');
+      throw new Error('Гибрид: нужны однозначно распознанные получатели.');
     const leader = leaders[0];
     await act(leader, 'foreground');
     const source = { pid: leader.pid, startedAt: leader.startedAt, hwnd: leader.hwnd };
@@ -1241,8 +1281,14 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
     let foreground = false;
     const memberIds = new Set((await import('./model.js')).partyMembers(state, c.partyId).map(ch => ch.id));
     const sources =
-      fallbackAll || command.scope === 'managed'
-        ? rows
+      command.scope === 'managed'
+        ? snapshotRows.filter(
+            row =>
+              row.known &&
+              row.startedAt &&
+              row.hwnd &&
+              (row.elevated === false || (row.elevated === true && row.selfElevated === true))
+          )
         : snapshotRows.filter(row => row.known && memberIds.has(row.charId));
     for (const row of sources) {
       try {
@@ -1254,12 +1300,12 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
       }
     }
     if (!foreground) {
-      throw new Error('Горячая команда пропущена: активное окно не относится к выбранной пати.');
+      throw new Error('Горячая команда пропущена: активное окно не относится к распознанной игре или выбранной пати.');
     }
   }
   log(`Начало: ${command.name}. Получателей: ${rows.length}.`);
   log(
-    `Порядок «${fallbackAll ? 'Все проверенные игровые окна (резерв)' : state.parties.find(p => p.id === c.partyId)?.name || 'Все окна'}»: ${rows.map(row => state.characters.find(ch => ch.id === row.charId)?.nick || row.pid).join(' → ')}`
+    `Порядок «${command.scope === 'managed' ? 'Все выбранные окна' : state.parties.find(p => p.id === c.partyId)?.name || 'Пати'}»: ${rows.map(row => state.characters.find(ch => ch.id === row.charId)?.nick || row.pid).join(' → ')}`
   );
   if (command.delivery === 'background' && ['sequence', 'f6f1'].includes(command.action)) {
     log(
@@ -1362,7 +1408,6 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
   } else if (command.action === 'follow') {
     const point = commandPoint(c, command),
       menu = commandPoint(c, { ...command, pointId: command.menuPointId });
-    if (![point, menu].every(p => reviewedPoints.has(JSON.stringify(p)))) throw new Error('preview required');
     for (const row of rows)
       for (const p of [point, menu]) {
         if (cancelled) throw new Error('cancel');
@@ -1386,7 +1431,7 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
       log(`Следование: ввод отправлен для ${row.nick}; результат в игре не проверялся.`);
     }
   } else if (command.action === 'click') {
-    const plan = await pointPlan(c, command, rows, true);
+    const plan = await pointPlan(c, command, rows);
     for (const { row, point } of plan) {
       if (cancelled) throw new Error('cancel');
       await act(row, 'preview', { point });
@@ -1407,6 +1452,10 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
       log(`Клик отправлен: ${index + 1}/${rows.length}. Игровой результат не проверялся.`);
     }
   } else if (command.action === 'screen') {
+    for (const row of rows) {
+      await checkpoint();
+      await pointer(row, command, null, true);
+    }
     for (const row of rows) {
       await checkpoint();
       if (command.delivery !== 'background') await act(row, 'focus');
@@ -1449,7 +1498,6 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
   }
   if (
     restore &&
-    !fallbackAll &&
     command.returnTo !== 'last' &&
     ['sequence', 'follow', 'click', 'resize', 'layout'].includes(command.action) &&
     !cancelled
@@ -1509,10 +1557,10 @@ export async function previewCommand(id) {
   cancelled = false;
   void broadcast();
   try {
-    const rows = await windowTargets(command, c);
+    const rows = await commandTargets(command, c);
     const plan =
       command.action === 'click'
-        ? await pointPlan(c, command, rows, false, false)
+        ? await pointPlan(c, command, rows, false)
         : rows.flatMap(row =>
             [point, commandPoint(c, { ...command, pointId: command.menuPointId }, false)].map(point => ({ row, point }))
           );
@@ -1520,7 +1568,6 @@ export async function previewCommand(id) {
       await wait(50);
       await act(row, 'preview', { point });
     }
-    for (const { point } of plan) reviewedPoints.add(JSON.stringify(point));
     log(
       `Проверены профили: ${[...new Set(plan.map(({ point }) => `${point.name} (${point.width}×${point.height}, DPI ${point.dpi}, UI ${point.uiScale})`))].join('; ')}. Без кликов.`
     );
@@ -1613,6 +1660,9 @@ export async function initGameMacros() {
   await listen('game-overlay-ready', () => {
     void broadcast();
   });
+  await listen('game-overlay-recipients', event => {
+    void overlayRecipientAction(event.payload);
+  });
   await listen('game-overlay-party', event => {
     void overlayPartyAction(event.payload);
   });
@@ -1674,7 +1724,7 @@ export function commandReady(c, command) {
   return true;
 }
 
-async function pointPlan(c, command, rows, requireReview, authorize = true) {
+async function pointPlan(c, command, rows, authorize = true) {
   const primary = commandPoint(c, command, authorize);
   const candidates = [
     primary,
@@ -1694,7 +1744,6 @@ async function pointPlan(c, command, rows, requireReview, authorize = true) {
       if (matches.length !== 1) throw new Error('Ambiguous/missing calibration for client size and DPI');
       point = matches[0];
     }
-    if (requireReview && !reviewedPoints.has(JSON.stringify(point))) throw new Error('preview required');
     plan.push({ row, point });
   }
   return plan;
@@ -1841,6 +1890,7 @@ const mirrorArgs = (operation, sessionId = mirrorSession, extra = {}) => ({
   targets: [],
   shortcuts: [],
   mouse: false,
+  globalMouse: false,
   source: null,
   ...extra
 });
@@ -1882,11 +1932,14 @@ function ensureMirror() {
         3: 'Игровое окно изменилось: повтор остановлен.',
         4: 'PostMessage не принят: повтор остановлен.',
         7: 'Не принято уведомление активности: повтор остановлен.',
-        8: 'Отправка клавиши через SendMessageTimeout не завершилась за 25 мс или вернула ошибку: повтор остановлен.',
+        8: 'Отправка клавиши через SendMessageTimeout не завершилась за 25 мс или вернула ошибку: повтор остановлен. Состояние на части окон неизвестно; не повторяйте действие вслепую.',
         9: 'Не принято восстановление уведомлений активности: повтор остановлен.',
         10: 'Активное окно изменилось при отправке: повтор остановлен.',
         5: 'Клавиша удерживалась более 60 секунд без повтора: режим выключен защитой.',
-        6: 'Точка мыши вне игровой области или недоступна: повтор остановлен.'
+        6: 'Точка мыши вне игровой области или недоступна: повтор остановлен.',
+        11: 'Глобальная инъекция клавиши отклонена: повтор остановлен. Клавиша могла остаться нажатой в активном окне.',
+        12: 'Внутренняя ошибка порядка доставки: повтор остановлен.',
+        13: 'Глобальный ввод мыши отклонён или указатель переместился: повтор остановлен. Проверьте состояние кнопки мыши в активном окне.'
       };
       const failed = event.payload.failedInput;
       const label = inputLabel(failed?.vk);
@@ -1909,7 +1962,8 @@ function mirrorFingerprint() {
     enabled: c.enabled,
     source: c.mirrorSource,
     keyboardMethod: c.mirrorKeyboardMethod,
-    holdOnly: c.mirrorHoldOnly,
+    keyboardGlobalInput: c.mirrorKeyboardGlobalInput,
+    mouseGlobalInput: c.mirrorMouseGlobalInput,
     keyboardSource: c.mirrorKeyboardSource,
     keyboardTargets: c.mirrorKeyboardTargets,
     keyboardParty: c.mirrorKeyboardTargets !== 'all' ? partyMembers(state, c.partyId).map(char => char.id) : [],
@@ -1967,8 +2021,20 @@ async function applyMirrorToggle(kind = 'keyboard', commandName = '', refreshMod
   kind = kind === 'mouse' ? 'mouse' : 'keyboard';
   if (mirrorPending) return;
   const turningOff = kind === 'keyboard' ? mirrorKeys : mirrorMouse;
-  const desiredKeys = refreshModes ? refreshModes.keys : kind === 'keyboard' ? !mirrorKeys : mirrorKeys,
-    desiredMouse = refreshModes ? refreshModes.mouse : kind === 'mouse' ? !mirrorMouse : mirrorMouse;
+  let desiredKeys = refreshModes ? refreshModes.keys : kind === 'keyboard' ? !mirrorKeys : mirrorKeys;
+  const desiredMouse = refreshModes ? refreshModes.mouse : kind === 'mouse' ? !mirrorMouse : mirrorMouse;
+  const c = config();
+  if (desiredKeys && !c.mirrorKeyboardGlobalInput) {
+    if (mirrorKeys) {
+      // A saved change can disable the experiment while keyboard repeat is running.
+      desiredKeys = false;
+    } else {
+      notice = 'Экспериментальный глобальный ввод клавиатуры выключен. Включите его в настройках повтора.';
+      log(notice, commandName, true);
+      void broadcast();
+      return;
+    }
+  }
   if ((busy || paused) && !refreshModes && !turningOff) {
     log('Сначала остановите команду и снимите паузу.');
     return;
@@ -2003,13 +2069,13 @@ async function applyMirrorToggle(kind = 'keyboard', commandName = '', refreshMod
     if (rows.length < 2 || rows.length > 30 || new Set(rows.map(r => r.charId)).size !== rows.length)
       throw new Error('Для повтора нужны 2–30 однозначно распознанных игровых окон. Неизвестные клиенты исключены.');
     if (epoch !== mirrorEpoch) return;
-    const c = config();
     const sourceRow = c.mirrorSource === 'leader' ? rows.find(row => row.charId === c.leaders[c.partyId]) : null;
     if (c.mirrorSource === 'leader' && !sourceRow && (desiredMouse || c.mirrorKeyboardSource === 'shared'))
       throw new Error('Для повтора только из ПЛ выберите пати, назначьте ПЛ и запустите его распознанное окно.');
     const keyboardSourceMode = c.mirrorKeyboardSource === 'shared' ? c.mirrorSource : c.mirrorKeyboardSource;
     const keyboardSourceRow =
       keyboardSourceMode === 'leader' ? rows.find(row => row.charId === c.leaders[c.partyId]) : null;
+    const keyboardLeaderRow = c.partyId ? rows.find(row => row.charId === c.leaders[c.partyId]) : null;
     const keyboardMembers = partyMembers(state, c.partyId);
     if (
       desiredKeys &&
@@ -2060,10 +2126,12 @@ async function applyMirrorToggle(kind = 'keyboard', commandName = '', refreshMod
           ? { pid: twinsLeader.pid, startedAt: twinsLeader.startedAt, hwnd: twinsLeader.hwnd }
           : null,
         mouse: desiredMouse,
+        globalMouse: desiredMouse && c.mirrorMouseGlobalInput,
         keyboard: desiredKeys,
-        combined: desiredKeys && c.mirrorKeyboardMethod === 'combined',
         keyboardMethod: c.mirrorKeyboardMethod,
-        holdOnly: desiredKeys && c.mirrorHoldOnly,
+        keyboardLeader: keyboardLeaderRow
+          ? { pid: keyboardLeaderRow.pid, startedAt: keyboardLeaderRow.startedAt, hwnd: keyboardLeaderRow.hwnd }
+          : null,
         keyboardSource: keyboardSourceRow
           ? { pid: keyboardSourceRow.pid, startedAt: keyboardSourceRow.startedAt, hwnd: keyboardSourceRow.hwnd }
           : null,
@@ -2123,18 +2191,17 @@ async function applyMirrorToggle(kind = 'keyboard', commandName = '', refreshMod
       log(
         `Клавиатура: источник ${keyboardSourceRow ? 'ПЛ выбранной пати' : 'любое распознанное окно'}; получатели ${c.mirrorKeyboardTargets}: ${keyboardRows.map(row => state.characters.find(char => char.id === row.charId)?.nick || row.charId).join(', ')}. Исходное окно исключается.`
       );
-    if (desiredKeys && c.mirrorHoldOnly)
-      log('Удержание без автоповтора: один DOWN и один UP; сочетания передаются по событиям.');
     if (desiredKeys)
       log(
-        c.mirrorKeyboardMethod === 'activity-notify'
-          ? 'Клавиатурный повтор: только activity-notify, без PostMessage. Состояние чата не определяется. Команды не изменены.'
-          : c.mirrorKeyboardMethod === 'combined'
-            ? 'Клавиатурный повтор: эксперимент PostMessage + activity-notify. Двойные действия возможны; чат не определяется. Команды не изменены.'
-            : 'Клавиатурный повтор: PostMessage с scan-code источника; это не activity-notify. Текст в чате и игровые горячие клавиши могут обрабатываться по-разному. Состояние чата программа не определяет.'
+        `Клавиатурный повтор: эксперимент «глобальный ввод + WM_KEYDOWN». Источник ${keyboardSourceRow ? 'ПЛ выбранной пати' : 'любое распознанное окно'}; получатели ${c.mirrorKeyboardTargets}: ${keyboardRows.map(row => state.characters.find(char => char.id === row.charId)?.nick || row.charId).join(', ')}. При источнике-ПЛ дополнительный SendInput пропускается, чтобы не дублировать физическое нажатие в ПЛ; иначе глобальный ввод может сработать повторно в активном окне. Адресный WM_KEYDOWN идёт только выбранным получателям. При смене фокуса SendInput может попасть в другое приложение. Чат не распознаётся; проверка игры не выполнена.`
+      );
+    if (desiredMouse && c.mirrorMouseGlobalInput)
+      log(
+        'Мышь: включён экспериментальный SendInput + оконные сообщения. Глобальный клик действует в активном окне у курсора и может повторить действие/потратить ресурс; при источнике-ПЛ глобальный дубль подавляется. Курсор должен оставаться в точке события. Совместимость с игрой не подтверждена.'
       );
     log(
-      `Повтор ВКЛЮЧЁН (клавиатура: ${mirrorKeys ? 'да' : 'нет'}, мышь: ${mirrorMouse ? 'да' : 'нет'}): ${rows.length} проверенных окон, общий источник/мышь: ${sourceRow ? 'ПЛ выбранной пати' : 'любая распознанная игра'}. ${mirrorMouse ? 'Кнопки мыши: абсолютные экранные точки.' : 'Мышь не передаётся.'} Ctrl+Alt+Pause — выключить. Обработка сообщений игрой не подтверждена.`,
+      `Повтор ВКЛЮЧЁН (клавиатура: ${mirrorKeys ? 'да' : 'нет'}, мышь: ${mirrorMouse ? 'да' : 'нет'}): ${rows.length} проверенных окон, общий источник/мышь: ${sourceRow ? 'ПЛ выбранной пати' : 'любая распознанная игра'}. ${mirrorMouse ? `Кнопки мыши: абсолютные экранные точки${c.mirrorMouseGlobalInput ? ' + экспериментальный глобальный ввод' : ''}.` : 'Мышь не передаётся.'} Ctrl+Alt+Pause — выключить. Обработка сообщений игрой не подтверждена.`,
+
       commandName
     );
   } catch (error) {
@@ -2188,12 +2255,10 @@ async function pointer(row, command, point, checkOnly) {
 export async function recorderCursor() {
   return native('game_macro_cursor');
 }
-const screenReview = cmd => JSON.stringify({ screen: true, x: cmd.x, y: cmd.y });
 async function preflightComposition(plan, c, preview) {
   const actions = compositionActions(plan),
     launched = new Set(),
-    changed = new Set(),
-    reviewed = [];
+    changed = new Set();
   for (const cmd of actions) validateActivityCommand(cmd, true);
   for (const cmd of actions) {
     await checkpoint();
@@ -2220,19 +2285,15 @@ async function preflightComposition(plan, c, preview) {
       ];
       if (cmd.action === 'follow') points.push(commandPoint(scoped, { ...cmd, pointId: cmd.menuPointId }, false));
       if (!cmd.resourceAllowed) throw new Error('Разрешите координатные действия.');
-      if (!preview && points.some(p => !reviewedPoints.has(JSON.stringify(p)))) throw new Error('preview required');
-      reviewed.push(...points.map(p => JSON.stringify(p)));
     }
     if (cmd.action === 'screen') {
       if (!cmd.resourceAllowed) throw new Error('Разрешите действия мышью.');
       if (cmd.delivery === 'background' && cmd.modifiers?.includes('ALT'))
         throw new Error('Alt+клик: выберите обычный режим блока.');
-      if (!preview && !reviewedPoints.has(screenReview(cmd))) throw new Error('preview required');
-      reviewed.push(screenReview(cmd));
     }
     let rows;
     try {
-      rows = await windowTargets(cmd, scoped);
+      rows = await commandTargets(cmd, scoped);
     } catch (error) {
       if (!launched.has(party)) throw error;
       log('Окна после запуска будут проверены непосредственно перед действием.');
@@ -2254,9 +2315,15 @@ async function preflightComposition(plan, c, preview) {
       continue;
     }
     if (cmd.action === 'screen') for (const row of rows) await pointer(row, cmd, null, true);
-    for (const row of rows) for (const point of points) await act(row, 'preview', { point });
+    if (cmd.action === 'click') {
+      const plan = await pointPlan(scoped, cmd, rows, false);
+      for (const { row, point } of plan) await act(row, 'preview', { point });
+    } else {
+      for (const row of rows) for (const point of points) await act(row, 'preview', { point });
+    }
   }
-  if (preview) for (const id of reviewed) reviewedPoints.add(id);
+  if (!preview && actions.some(cmd => ['screen', 'click', 'follow'].includes(cmd.action)))
+    log('Автоматическая проверка доступных точек выполнена без кликов. Значение игровых кнопок не распознаётся.');
 }
 export async function previewComposition(id) {
   if (busy) throw new Error('Сначала остановите команду.');
@@ -2274,9 +2341,115 @@ export async function previewComposition(id) {
   }
 }
 
+// The overlay submits a reviewed snapshot, never arbitrary HWNDs or arbitrary character IDs.
+const recipientSettingsKey = c =>
+  JSON.stringify({ excluded: c.excludedCommandCharacters, leaders: c.leaders, partyId: c.partyId });
+const recipientIdentity = row => JSON.stringify([row.charId, row.pid, row.startedAt, row.hwnd]);
+export async function overlayRecipientAction(request) {
+  if (!['refresh', 'save'].includes(request?.action)) return;
+  if (busy) {
+    overlayRecipientNotice = 'Дождитесь завершения команды.';
+    await broadcast();
+    return;
+  }
+  busy = true;
+  overlayRecipientNotice = request.action === 'refresh' ? 'Проверяем окна…' : 'Сохраняем выбор…';
+  await broadcast();
+  try {
+    if (request.action === 'refresh') {
+      const rows = selectableRecipients(await listMacroWindows());
+      const c = config();
+      const choices = leaderChoices(state, c, rows);
+      overlayRecipientSession = {
+        identities: rows.map(recipientIdentity).sort(),
+        settingsKey: recipientSettingsKey(c),
+        public: {
+          revision: crypto.randomUUID(),
+          rows: rows.map(row => ({
+            charId: row.charId,
+            nick: row.nick || state.characters.find(char => char.id === row.charId)?.nick || 'Персонаж',
+            selected: !c.excludedCommandCharacters.includes(row.charId),
+            valid: !!(
+              row.startedAt &&
+              row.hwnd &&
+              (row.elevated === false || (row.elevated === true && row.selfElevated === true))
+            )
+          })),
+          ...choices
+        }
+      };
+      overlayRecipientNotice = rows.length
+        ? 'Измените отметки и нажмите «Сохранить».'
+        : 'Распознанных запущенных персонажей нет.';
+    } else {
+      const session = overlayRecipientSession;
+      if (
+        !session ||
+        request.revision !== session.public.revision ||
+        recipientSettingsKey(config()) !== session.settingsKey
+      )
+        throw new Error('Выбор изменился. Обновите список и повторите.');
+      if (!Array.isArray(request.selected) || request.selected.some(id => typeof id !== 'string'))
+        throw new Error('Некорректный выбор персонажей.');
+      const chosen = new Set(request.selected);
+      const currentRows = selectableRecipients(await listMacroWindows());
+      const identities = currentRows.map(recipientIdentity).sort();
+      if (JSON.stringify(identities) !== JSON.stringify(session.identities))
+        throw new Error('Список окон изменился. Обновите его и повторите.');
+      if ([...chosen].some(id => !currentRows.some(row => row.charId === id)))
+        throw new Error('Выбранный персонаж отсутствует. Обновите список.');
+      const c = config();
+      if (recipientSettingsKey(c) !== session.settingsKey) throw new Error('Настройки изменились. Обновите список.');
+      const excluded = new Set(c.excludedCommandCharacters);
+      for (const row of currentRows) {
+        if (chosen.has(row.charId)) excluded.delete(row.charId);
+        else excluded.add(row.charId);
+      }
+      const previous = state.settings.gameMacros;
+      const patch = { excludedCommandCharacters: [...excluded] };
+      if (request.leader) {
+        if (mirroring || mirrorKeys || mirrorMouse || mirrorPending)
+          throw new Error('Выключите повтор ввода перед изменением ПЛ.');
+        const { partyId, charId } = request.leader;
+        if (
+          !chosen.has(charId) ||
+          !session.public.options.some(option => option.partyId === partyId && option.charId === charId) ||
+          !partyMembers(state, partyId).some(char => char.id === charId)
+        )
+          throw new Error('ПЛ должен быть выбранным запущенным участником существующей пати.');
+        const leaderWindow = currentRows.find(row => row.charId === charId);
+        if (
+          !leaderWindow?.startedAt ||
+          !leaderWindow?.hwnd ||
+          !(leaderWindow.elevated === false || (leaderWindow.elevated === true && leaderWindow.selfElevated === true))
+        )
+          throw new Error('Окно ПЛ не прошло проверку. Откройте «Проверить окна».');
+        patch.partyId = partyId;
+        patch.leaders = { ...c.leaders, [partyId]: charId };
+      }
+      state.settings.gameMacros = normalizeGameMacros({ ...c, ...patch });
+      try {
+        await (await import('../../core/storage.js')).persist();
+      } catch (error) {
+        state.settings.gameMacros = previous;
+        throw error;
+      }
+      overlayRecipientSession = null;
+      overlayRecipientNotice = 'Выбор сохранён. Откройте список заново для изменений.';
+      window.dispatchEvent(new Event('tf-game-macro-party-selected'));
+    }
+  } catch (error) {
+    overlayRecipientNotice = macroErrorText(error);
+    if (request.action === 'refresh') overlayRecipientSession = null;
+  } finally {
+    busy = false;
+    await broadcast();
+  }
+}
+
 // Native bridge accepts requests only from main/overlay. Resolve IDs against current user data.
 export async function overlayPartyAction(request) {
-  if (!['party-refresh', 'party-launch', 'party-close-all'].includes(request?.action)) return;
+  if (!['party-refresh', 'party-launch', 'party-close-all', 'party-redecorate'].includes(request?.action)) return;
   if (busy) {
     overlayWindowNotice = 'Сначала завершите текущую команду.';
     await broadcast();
@@ -2285,7 +2458,8 @@ export async function overlayPartyAction(request) {
   busy = true;
   cancelled = false;
   launchProgress = null;
-  overlayWindowNotice = 'Проверка окон…';
+  overlayWindowNotice = request.action === 'party-redecorate' ? 'Обновляем оформление окон…' : 'Проверка окон…';
+  let completionNotice = '';
   void broadcast();
   try {
     if (request.action === 'party-close-all') {
@@ -2334,6 +2508,18 @@ export async function overlayPartyAction(request) {
       if (!result || result.some(r => r.ok === false || r.cancelled))
         throw new Error('Запуск пати не завершён. Проверьте журнал скриптов.');
     }
+    if (request.action === 'party-redecorate') {
+      const windows = await listMacroWindows();
+      const { redecorateRunningWindows, redecorateText } = await import('../launcher/launch.js');
+      const report = await redecorateRunningWindows(windows);
+      const summary = redecorateText(report);
+      completionNotice = report.denied
+        ? `Windows не дал доступ к части окон. ${summary || report.details.join('; ')}`
+        : summary ||
+          (report.details.length
+            ? report.details.join('; ')
+            : `Оформление проверено: без изменений (${report.ok} окон актуальны).`);
+    }
     const rows = await listMacroWindows();
     overlayWindows = rows.map(row => ({
       name: row.nick || 'Нераспознанное окно',
@@ -2345,7 +2531,7 @@ export async function overlayPartyAction(request) {
     }));
     overlayWindowNotice = cancelled
       ? 'Остановлено пользователем.'
-      : `Найдено окон: ${rows.length}. Обновите список после входа персонажей.`;
+      : completionNotice || `Найдено окон: ${rows.length}. Обновите список после входа персонажей.`;
   } catch (error) {
     overlayWindowNotice = macroErrorText(error);
   } finally {

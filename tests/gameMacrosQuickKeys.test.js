@@ -16,16 +16,20 @@ it('updates the field via input event without sending game input', () => {
   expect(input.value).toBe('SHIFT+1');
   expect(edits).toBe(1);
 });
-it('combined repeat is opt-in and rejects unknown methods', () => {
-  expect(normalizeGameMacros({}).mirrorKeyboardMethod).toBe('post');
-  expect(normalizeGameMacros({ mirrorKeyboardMethod: 'combined' }).mirrorKeyboardMethod).toBe('combined');
-  expect(normalizeGameMacros({ mirrorKeyboardMethod: 'activity' }).mirrorKeyboardMethod).toBe('post');
-});
-
-it('supports activity-only repeat and opt-in hold-only independently', () => {
-  expect(normalizeGameMacros({ mirrorKeyboardMethod: 'activity-notify', mirrorHoldOnly: true })).toMatchObject({
-    mirrorKeyboardMethod: 'activity-notify',
-    mirrorHoldOnly: true
+it('uses one repeat transport and keeps global input disabled unless explicitly opted in', () => {
+  expect(normalizeGameMacros({})).toMatchObject({
+    mirrorKeyboardMethod: 'cache-hybrid',
+    mirrorKeyboardGlobalInput: false,
+    mirrorMouseGlobalInput: false
   });
-  expect(normalizeGameMacros({}).mirrorHoldOnly).toBe(false);
+  expect(normalizeGameMacros({ mirrorKeyboardMethod: 'post' })).toMatchObject({
+    mirrorKeyboardMethod: 'cache-hybrid',
+    mirrorKeyboardGlobalInput: false
+  });
+  expect(normalizeGameMacros({ mirrorKeyboardMethod: 'cache-hybrid' }).mirrorKeyboardGlobalInput).toBe(true);
+  expect(
+    normalizeGameMacros({ mirrorKeyboardMethod: 'cache-hybrid', mirrorKeyboardGlobalInput: false })
+      .mirrorKeyboardGlobalInput
+  ).toBe(false);
+  expect(normalizeGameMacros({ mirrorMouseGlobalInput: true }).mirrorMouseGlobalInput).toBe(true);
 });

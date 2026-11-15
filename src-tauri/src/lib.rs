@@ -301,6 +301,7 @@ pub fn run() {
             // запуск GameCenter
             launcher::launcher_check_path,
             launcher::launcher_gc_info,
+            launcher::launcher_saved_game_accounts,
             launcher::launcher_pick_gamecenter,
             // Layout: образец раскладки поверх остальных файлов папки
             commands::layout::layout_pick_folder,

@@ -82,7 +82,15 @@ fn classify_scan(res: Wait) -> Result<Scan, (&'static str, String)> {
                 && account.len() <= 512
                 && !account.chars().any(char::is_control)
             {
-                Some(format!("{:x}", Sha256::digest(account.as_bytes())))
+                Some({
+                    use std::fmt::Write;
+                    let digest = Sha256::digest(account.as_bytes());
+                    let mut hash = String::with_capacity(64);
+                    for byte in digest.iter() {
+                        let _ = write!(&mut hash, "{byte:02x}");
+                    }
+                    hash
+                })
             } else {
                 None
             };

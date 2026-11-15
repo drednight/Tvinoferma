@@ -109,6 +109,9 @@ pub(super) fn info(exe: &Path) -> Result<GcInfo, String> {
         exe: exe.display().to_string(),
         nick,
         logged_in,
+        login: String::new(),
+        game_accounts: Vec::new(),
+        selected_game_account: String::new(),
     })
 }
 
@@ -282,6 +285,7 @@ fn launch_blocking(
     Ok(LaunchInfo {
         pid,
         dialog_clicked,
+        game_account_clicked: false,
         switched,
         client_pid,
         closed_other_gc: 0,

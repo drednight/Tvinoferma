@@ -422,6 +422,33 @@ describe('реальный порядок старта с имитацией nat
   });
 });
 
+it('starts read-only after a possible interrupted duplicate merge and does not migrate or write vault', async () => {
+  const { beginDuplicateMergeJournal } = await import('../js/core/duplicateMergeJournal.js');
+  const entry = beginDuplicateMergeJournal('state.backup-123-dup-0123456789abcdef01234567-42-1.json');
+  await boot();
+  const banner = document.getElementById('storage-readonly-banner');
+  expect(banner.hidden).toBe(false);
+  expect(banner.textContent).toContain('слияние карточек');
+  expect(banner.querySelector('button').textContent).toContain('Проверить слияние');
+  expect(disk.file).toBe(OLD);
+  expect(calls('create_migration_backup')).toHaveLength(0);
+  expect(calls('rename_char_profiles')).toHaveLength(0);
+  expect(ipc.mock.calls.some(([cmd]) => cmd.startsWith('secrets_'))).toBe(false);
+  const { persist } = await import('../js/core/storage.js');
+  await expect(persist()).rejects.toThrow('Запись остановлена');
+  expect(JSON.parse(localStorage.getItem('tf:duplicate-merge-pending-v1'))).toEqual(entry);
+});
+
+it('fails closed at startup when the interruption marker is malformed', async () => {
+  localStorage.setItem('tf:duplicate-merge-pending-v1', '{');
+  await boot();
+  expect(document.getElementById('storage-readonly-banner').textContent).toContain('Не удалось проверить отметку');
+  expect(calls('create_migration_backup')).toHaveLength(0);
+  expect(ipc.mock.calls.some(([cmd]) => cmd.startsWith('secrets_'))).toBe(false);
+  const { persist } = await import('../js/core/storage.js');
+  await expect(persist()).rejects.toThrow('Запись остановлена');
+});
+
 it('shows an unmistakable test-build banner after native profile detection', async () => {
   mode = 'acceptance-profile';
   await boot();

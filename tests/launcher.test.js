@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
   normalizeGameCenters,
@@ -23,7 +23,9 @@ import {
   inspectVerdict,
   inspectReportText,
   PROBE_TITLE,
-  redecorateRunningWindows
+  redecorateRunningWindows,
+  LAUNCHED_DECOR_RECHECK_MS,
+  scheduleLaunchedDecorRecheck
 } from '../js/modules/launcher/launch.js';
 import { confirmModal } from '../js/core/ui.js';
 import { charactersInParty } from '../js/modules/parties/membership.js';
@@ -33,6 +35,36 @@ import { normalizeCharacter, normalizeState } from '../js/core/state.js';
 const ch = (id, gcPath, extra = {}) => ({ id, nick: id, launch: { gcPath, ...extra } });
 
 describe('launcher', () => {
+  it('повторно проверяет оформление через минуту после последнего успешно запущенного окна', async () => {
+    vi.useFakeTimers();
+    try {
+      const verify = vi.fn(async () => 'исправлены значки: 1');
+      const onComplete = vi.fn();
+      const launchedAt = Date.now() - 10_000;
+      const results = [{ ok: true, clientPid: 123, decor: { windowTitle: 'Alpha — Воин' } }];
+      expect(scheduleLaunchedDecorRecheck(results, { launchedAt, verify, onComplete })).not.toBeNull();
+      expect(vi.getTimerCount()).toBe(1);
+      await vi.advanceTimersByTimeAsync(LAUNCHED_DECOR_RECHECK_MS - 10_001);
+      expect(verify).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(verify).toHaveBeenCalledWith(results);
+      expect(onComplete).toHaveBeenCalledWith({ note: 'исправлены значки: 1', error: null });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('не планирует проверку оформления, если нет успешно запущенного узнаваемого окна', () => {
+    const setTimeoutFn = vi.fn();
+    for (const results of [
+      [{ ok: false, clientPid: 123, decor: { windowTitle: 'Alpha' } }],
+      [{ ok: true, clientPid: 123, decor: { windowTitle: null } }],
+      [{ ok: true, clientPid: null, decor: { windowTitle: 'Alpha' } }]
+    ])
+      expect(scheduleLaunchedDecorRecheck(results, { setTimeoutFn })).toBeNull();
+    expect(setTimeoutFn).not.toHaveBeenCalled();
+  });
+
   it('берёт только аккаунты с путём к GameCenter', () => {
     const list = [ch('a', 'D:\\GC1'), ch('b', ''), ch('c', '  '), { id: 'd' }, ch('e', 'D:\\GC2')];
     expect(launchable(list).map(c => c.id)).toEqual(['a', 'e']);
@@ -64,6 +96,21 @@ describe('launcher', () => {
     expect(done).toEqual(['a', 'b', 'c']);
   });
 
+  it('exposes Rust clientPid in launch results and onDone with the expected decoration', async () => {
+    const onDone = vi.fn();
+    const results = await launchCharacters(
+      [{ id: 'a', nick: 'a', class: 'Воин', launch: { gcPath: 'one' } }],
+      { delayMs: 0, onDone },
+      { invoke: async () => ({ clientPid: 123 }), icons: false }
+    );
+    expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ ok: true, info: { clientPid: 123 } }), 1, 1);
+    expect(results[0]).toMatchObject({
+      ok: true,
+      clientPid: 123,
+      decor: { windowTitle: 'a — Воин', iconSmall: null, iconBig: null }
+    });
+  });
+
   it('в команду запуска уходят путь и id аккаунта (токен в JS не ходит), признак входа и время ожидания', async () => {
     const seen = [];
     const invoke = async (cmd, args) => {
@@ -85,6 +132,7 @@ describe('launcher', () => {
           path: 'one',
           charId: 'a',
           loginSaved: true,
+          gameAccount: null,
           url: 'vkplay://play/0.61',
           waitSecs: 30,
           windowTitle: 'a',
@@ -99,6 +147,7 @@ describe('launcher', () => {
       path: 'two',
       charId: 'b',
       loginSaved: false,
+      gameAccount: null,
       url: null,
       waitSecs: null,
       windowTitle: 'b',
@@ -155,14 +204,24 @@ describe('launcher', () => {
       nick: 'X',
       launch: { gcPath: '  D:\\GC1  ', gcNick: ' Twin ', gcAccount: true, gcMagic: 'SECRET' }
     });
-    expect(c.launch).toEqual({ gcPath: 'D:\\GC1', gcNick: 'Twin', gcAccount: true, gcIds: [], gcAccounts: {} });
+    expect(c.launch).toEqual({
+      gcPath: 'D:\\GC1',
+      gcNick: 'Twin',
+      gcAccount: true,
+      gcIds: [],
+      gcAccounts: {},
+      gcGameAccounts: {},
+      gcGameAccount: null
+    });
     expect(JSON.stringify(c)).not.toContain('SECRET');
     expect(normalizeCharacter({ nick: 'X' }).launch).toEqual({
       gcPath: '',
       gcNick: '',
       gcAccount: false,
       gcIds: [],
-      gcAccounts: {}
+      gcAccounts: {},
+      gcGameAccounts: {},
+      gcGameAccount: null
     });
   });
 });
@@ -236,11 +295,18 @@ describe('Astrum Play: второй лаунчер рядом с GameCenter', ()
   it('Rust и JS называют ключ выбора лаунчера одинаково', () => {
     // Расхождение в имени поля проявилось бы только в собранном приложении.
     const rust = readFileSync('src-tauri/src/launcher.rs', 'utf8');
-    for (const name of ['launcher_check_path', 'launcher_gc_info', 'launcher_capture_account', 'launcher_start']) {
+    for (const name of [
+      'launcher_check_path',
+      'launcher_gc_info',
+      'launcher_saved_game_accounts',
+      'launcher_capture_account',
+      'launcher_start'
+    ]) {
       expect(rust).toMatch(new RegExp(`fn ${name}\\([^)]*kind: Option<String>`));
     }
     const js = readFileSync('js/modules/launcher/launch.js', 'utf8');
     expect(js).toContain('kind: launcherKindArg(');
+    expect(js).toContain("'launcher_saved_game_accounts'");
     expect(js).toContain("'launcher_pick_gamecenter', { kind: launcherArg(");
   });
 });

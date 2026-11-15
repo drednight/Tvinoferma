@@ -258,6 +258,15 @@ export function gameCenterInfo(path, deps = {}) {
   return (deps.invoke || tauriInvoke)('launcher_gc_info', { path, kind: launcherKindArg(deps.kind) });
 }
 
+/** Игровые персонажи именно того VK Play-входа, который сохранён для этой привязки. */
+export function savedGameCenterAccounts(path, charId, deps = {}) {
+  return (deps.invoke || tauriInvoke)('launcher_saved_game_accounts', {
+    path,
+    charId,
+    kind: launcherKindArg(deps.kind)
+  });
+}
+
 /** Открыть проводник и выбрать GameCenter.exe или AstrumPlay.exe. Возвращает полный путь или null. */
 export function pickGameCenter(deps = {}) {
   return (deps.invoke || tauriInvoke)('launcher_pick_gamecenter', { kind: launcherArg(deps.kind) });
@@ -542,7 +551,7 @@ export function closeAllClientsElevated(deps = {}) {
 
 /**
  * Ответ Rust на запуск (`launcher_start`).
- * @typedef {{ pid?: number, dialogClicked?: boolean, switched?: boolean, clientPid?: number, closedOtherGc?: number, gcCloseFailed?: number }} LaunchInfo
+ * @typedef {{ pid?: number, dialogClicked?: boolean, gameAccountClicked?: boolean, switched?: boolean, clientPid?: number, closedOtherGc?: number, gcCloseFailed?: number }} LaunchInfo
  */
 
 /**
@@ -651,6 +660,9 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
           // если вход помечен, а в хранилище его нет, Rust откажется запускать — иначе он бы
           // молча открыл игру под тем аккаунтом, что уже выбран в лаунчере.
           loginSaved: !!target?.saved,
+          // Игровой аккаунт для окна «Выбор игрового аккаунта»: Rust пишет его id в `_sel_`,
+          // а затем сам выбирает строку с этим именем через UI Automation.
+          gameAccount: target?.gameAccount || null,
           url: url || null,
           waitSecs: waitSecs ?? null,
           kind: launcherKindArg(target?.kind),
@@ -777,6 +789,36 @@ export async function verifyLaunchedDecor(results, deps = {}) {
   if (!targets.length) return '';
   const res = await redecorateClients(targets, deps);
   return redecorateText(res);
+}
+
+export const LAUNCHED_DECOR_RECHECK_MS = 60_000;
+
+/**
+ * Запланировать повторную проверку оформления примерно через минуту после запуска последнего окна.
+ *
+ * Отсчёт идёт от `launchedAt`, а не от окончания запуска всей пати: при длинной очереди
+ * последняя проверка не должна откладываться ещё на минуту после уже прошедшей минуты.
+ * @param {Array<any>} results
+ * @param {{ launchedAt?: number, delayMs?: number, now?: () => number, setTimeoutFn?: Function, verify?: Function, onComplete?: Function }} [opts]
+ * @returns {any|null} таймер либо null, если нет успешно запущенных окон с ожидаемым оформлением
+ */
+export function scheduleLaunchedDecorRecheck(results, opts = {}) {
+  if (!(results || []).some(row => row?.ok && row.clientPid && row.decor?.windowTitle)) return null;
+  const launchedAt = Number(opts.launchedAt ?? Date.now());
+  const delayMs = Number.isFinite(opts.delayMs) ? Math.max(0, opts.delayMs) : LAUNCHED_DECOR_RECHECK_MS;
+  const now = opts.now || Date.now;
+  const remaining = Math.max(0, delayMs - Math.max(0, now() - launchedAt));
+  const setTimer = opts.setTimeoutFn || setTimeout;
+  const verify = opts.verify || verifyLaunchedDecor;
+  const onComplete = opts.onComplete || (() => {});
+  return setTimer(() => {
+    Promise.resolve()
+      .then(() => verify(results))
+      .then(
+        note => onComplete({ note, error: null }),
+        error => onComplete({ note: '', error })
+      );
+  }, remaining);
 }
 
 /**
