@@ -285,6 +285,22 @@ export function rewardPotential(task) {
   return { max, tiers, text };
 }
 
+/** Today's completion cannot also be counted as a future opportunity.
+ * Undated site totals exceeding all past active days necessarily include today.
+ * Reserve can never exceed the event's total spare days.
+ */
+export function checkReserve(m, task, count, data, today) {
+  const dates = getAllDatesInRange(m.startDate, m.endDate);
+  const active = dates.filter(d => isTaskActiveOnDate(task, d, dates));
+  const past = active.filter(d => d < today).length;
+  const todayDone =
+    active.includes(today) &&
+    ((data?.marks || []).includes(today) || Number(data?.history?.[today]) > 0 || count > past);
+  const available = active.filter(d => d >= today).length - Number(todayDone);
+  const target = Number(task.targetChecks) || 0;
+  return Math.min(active.length - target, available - Math.max(0, target - count));
+}
+
 /**
  * Полный расчёт ячейки.
  * Сверка с сайтом и ручные отметки идут ПАРАЛЛЕЛЬНО (issue #72, п.3):
@@ -309,9 +325,11 @@ export function computeCell(m, charId, taskId, today = todayStr()) {
   const count = Math.max(0, base + adjust);
   const remaining = Math.max(0, target - count);
   const left = daysLeft(m, task, today);
-  const reserve = left - remaining;
-  const siteReserve = hasSite ? left - Math.max(0, target - Math.max(0, site + adjust)) : null;
-  const manualReserve = left - Math.max(0, target - Math.max(0, manual + adjust));
+  const reserve = checkReserve(m, task, count, data, today);
+  const siteReserve = hasSite
+    ? checkReserve(m, task, Math.max(0, site + adjust), { history: data?.history }, today)
+    : null;
+  const manualReserve = checkReserve(m, task, Math.max(0, manual + adjust), { marks: data?.marks }, today);
   // Что даёт итог: 'site' | 'manual' | 'both' (поровну) | 'none'
   const driver = !base ? 'none' : !hasSite || manual > site ? 'manual' : manual === site ? 'both' : 'site';
   const { reached, next } = rewardFor(task, count);
@@ -399,7 +417,7 @@ export function calendarStates(m, task, cell, today = todayStr()) {
 
   if (!done) {
     // Запас = свободные дни впереди − сколько ещё нужно выполнить
-    const reserve = Math.max(0, Math.min(futureOpen.length, futureOpen.length - Math.max(0, target - count)));
+    const reserve = Math.max(0, Math.min(futureOpen.length, checkReserve(m, task, count, cell, today)));
     futureOpen.slice(futureOpen.length - reserve).forEach(d => {
       out[d] = 'spare';
     });
@@ -461,6 +479,14 @@ export function marathonTotals(m) {
       perChar[cid].coins += c.coins;
       perTask[t.id].coins += c.coins;
     });
+    for (const status of bonusStatus(m, cid)) {
+      const amount = bonusRewardCoins(status.bonus);
+      if (perChar[cid].assigned >= status.need) maxCoins += amount;
+      if (status.reached) {
+        coins += amount;
+        perChar[cid].coins += amount;
+      }
+    }
   });
 
   // Завершённый марафон: монеты берём из зафиксированных наград
@@ -512,6 +538,18 @@ export function freezeAwards(m, characters) {
         });
       }
     });
+    for (const { bonus, reached } of bonusStatus(m, cid)) {
+      const amount = bonusRewardCoins(bonus);
+      if (reached && amount > 0)
+        awards.push({
+          characterId: cid,
+          charNick: ch?.nick || '',
+          taskId: null,
+          taskTitle: 'Бонус',
+          rewardText: bonus.text,
+          coins: amount
+        });
+    }
   });
   return awards;
 }
@@ -611,7 +649,7 @@ export function applySiteQuests(m, charId, quests, at = new Date().toISOString()
   const changes = [];
   if (!Array.isArray(quests) || m.kind === 'series' || m.status === 'completed') return changes;
   if (!m.participantIds.includes(charId)) return changes;
-  const day = at.slice(0, 10);
+  const day = mskDate(at);
   if (m.startDate && day < m.startDate) return changes;
 
   m.tasks.forEach(task => {
@@ -637,6 +675,18 @@ export function applySiteQuests(m, charId, quests, at = new Date().toISOString()
     if (from !== to) changes.push({ taskId: task.id, from, to });
   });
   return changes;
+}
+
+/** Only explicitly named Ancient Coins count; other reward quantities are not coins. */
+export function bonusRewardCoins(bonus) {
+  const text = String(bonus.text || '').replace(/\u00a0|\u202f/g, ' ');
+  const coinName = 'древн[а-яё]*\\s+монет[а-яё]*';
+  const number = '(\\d+(?:[ \\t]\\d{3})*)';
+  const pattern = new RegExp(
+    `${number}\\s*(?:[xх×]\\s*)?[«"“]?${coinName}|${coinName}[»"”]?\\s*(?:[—–:хx×(-]\\s*)?${number}`,
+    'gi'
+  );
+  return [...text.matchAll(pattern)].reduce((sum, match) => sum + Number((match[1] || match[2]).replace(/\s/g, '')), 0);
 }
 
 /** Статус бонусов персонажа: [{ bonus, done, need, reached }] */

@@ -173,3 +173,24 @@ describe('очередь запуска игры', () => {
     expect(started()).toEqual(['b', 'c']);
   });
 });
+
+it('preserves the per-request GameCenter and account when another character is added to the queue', async () => {
+  const second = { id: 'gc-2', name: 'Папка 2', path: 'D:\\GC2\\GameCenter.exe' };
+  state.settings.launcher.gameCenters = [GC1, second];
+  state.settings.launcher.preferredGcId = 'gc-1';
+  const a = A(),
+    b = B();
+  b.launch.gcIds = ['gc-1', 'gc-2'];
+  b.launch.gcAccounts = { 'gc-2': { nick: b.nick } };
+  state.characters = [a, b];
+  const blocker = taskLog.startTask('Занято', { cancelable: true });
+  const first = partyLaunch.launchOne(a, { interactive: false });
+  const secondLaunch = partyLaunch.launchOne(b, { interactive: false, gcId: 'gc-2' });
+  expect(started()).toEqual([]);
+  blocker.finish('Готово');
+  await Promise.all([first, secondLaunch]);
+  const args = invoke.mock.calls.filter(([cmd]) => cmd === 'launcher_start').map(([, args]) => args);
+  expect(args).toHaveLength(2);
+  expect(args[0]).toMatchObject({ path: GC1.path, charId: 'a@gc-1', loginSaved: true });
+  expect(args[1]).toMatchObject({ path: second.path, charId: 'b@gc-2', loginSaved: true });
+});

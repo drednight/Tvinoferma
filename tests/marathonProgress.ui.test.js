@@ -67,3 +67,20 @@ describe('плитки прогресса на странице марафона
     expect(card('Прогресс').textContent).not.toContain('0%');
   });
 });
+
+it('shows only bonus marks per character, keeping reward details below the table', () => {
+  const m = state.marathons[0];
+  m.bonuses = [{ id: 'bonus', needTasks: 1, text: '50 Древних монет + ларец' }];
+  m.progress.c.t0.site = 7;
+  page.openMarathon(m.id);
+  const table = [...document.querySelectorAll('table')].find(
+    t => t.querySelector('th')?.textContent === 'Персонаж' && t.textContent.includes('🎁 Бонус')
+  );
+  expect(table).toBeTruthy();
+  expect(table.querySelector('tbody tr').children[3].textContent).toBe('✅');
+  expect(table.textContent).not.toContain('Древних монет');
+  expect(document.body.textContent).toContain('50 Древних монет + ларец');
+  m.progress.c.t0.site = 0;
+  page.openMarathon(m.id);
+  expect(document.querySelector('[aria-label="Бонус не выполнен"]').textContent).toBe('❌');
+});

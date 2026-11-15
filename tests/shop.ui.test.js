@@ -295,6 +295,7 @@ describe('gift item selection → quantities → guarded purchase', () => {
   });
   it('refresh without a table selection never scans every account', async () => {
     await setup();
+    $('[data-q=none]').click();
     mocks.invoke.mockClear();
     $('[data-q=refresh]').click();
     await wait(20);

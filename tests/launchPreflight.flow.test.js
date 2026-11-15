@@ -77,6 +77,8 @@ describe('порядок запуска по пати', () => {
 
     await partyLaunch.launchPartyByName('Папка 1');
     expect(started()).toEqual(['c', 'a', 'b']);
+    expect(state.settings.gameMacros.partyId).toBe('p1');
+    expect(state.settings.gameMacros.buffPartyId).toBe('p1');
   });
 
   it('у кого порядок не задан — запускаются по алфавиту, но после заданных', async () => {
@@ -299,4 +301,70 @@ describe('история запусков', () => {
     await partyLaunch.launchGroup('Пати', [A()]);
     expect(log.loadLaunchLog()).toEqual([]);
   });
+});
+
+describe('safe single launch and explicit GameCenter selection', () => {
+  it('does not start a second client automatically after an uncertain timeout', async () => {
+    const char = A();
+    state.characters = [char];
+    invoke.mockImplementation(async cmd => {
+      if (cmd === 'launcher_running_details') return [];
+      if (cmd === 'launcher_start') throw new Error('Клиент игры не запустился за 60 с (GameCenter: folder)');
+      return {};
+    });
+    await partyLaunch.launchOne(char, { interactive: false });
+    expect(started()).toEqual(['a']);
+  });
+  it('uses the explicitly selected launcher for preflight as well as the actual start', async () => {
+    const second = { id: 'gc-2', name: 'Папка 2', path: 'D:\\GC2\\GameCenter.exe' };
+    state.settings.launcher.gameCenters = [GC1, second];
+    state.settings.launcher.preferredGcId = 'gc-1';
+    const char = ch('a', 'Аа', ['gc-1', 'gc-2']);
+    delete char.launch.gcAccounts['gc-1'];
+    state.characters = [char];
+    await partyLaunch.launchGroup('Явный GameCenter', [char], { gcId: 'gc-2', interactive: false });
+    expect(started()).toEqual(['a']);
+    expect(invoke.mock.calls.find(([cmd]) => cmd === 'launcher_start')[1]).toMatchObject({
+      path: second.path,
+      charId: 'a@gc-2',
+      loginSaved: true
+    });
+  });
+  it('does not pass preflight with a saved account belonging only to a different launcher', async () => {
+    state.settings.launcher.gameCenters = [GC1, { id: 'gc-2', name: 'Папка 2', path: 'D:\\GC2\\GameCenter.exe' }];
+    const char = ch('a', 'Аа', ['gc-1', 'gc-2']);
+    delete char.launch.gcAccounts['gc-2'];
+    state.characters = [char];
+    await partyLaunch.launchGroup('Другой GameCenter', [char], { gcId: 'gc-2', interactive: false });
+    expect(started()).toEqual([]);
+  });
+});
+
+it('publishes launch progress, current character stage and terminal summary to the overlay callback', async () => {
+  const updates = [];
+  state.characters = [A(), B()];
+  await partyLaunch.launchGroup('Прогресс', state.characters, {
+    interactive: false,
+    onProgress: progress => updates.push({ ...progress })
+  });
+  expect(updates.some(p => p.stage.includes('проверка'))).toBe(true);
+  expect(updates.some(p => p.stage.includes('Аа') && p.stage.includes('ожидание'))).toBe(true);
+  expect(updates.some(p => p.done === 1 && p.total === 2 && p.percent > 0 && p.percent < 100)).toBe(true);
+  expect(updates.at(-1).percent).toBe(100);
+  expect(updates.at(-1).stage).toContain('Запущено');
+  expect(updates.some(p => p.character?.id === 'a' && p.stageStartedAt > 0)).toBe(true);
+  expect(updates.at(-1).counts).toMatchObject({ launched: 2, alreadyRunning: 0, failed: 0, cancelled: 0 });
+  expect(updates.at(-1).finishedAt).toBeGreaterThan(0);
+});
+
+it('reports waiting for a decision in the main window rather than a client-window wait', async () => {
+  const updates = [];
+  state.characters = [A()];
+  state.characters[0].launch.gcAccounts = {};
+  const pending = partyLaunch.launchGroup('Проверка', state.characters, { onProgress: p => updates.push(p) });
+  await vi.waitFor(() => expect(updates.some(p => p.waitingForUser)).toBe(true));
+  expect(updates.find(p => p.waitingForUser).stage).toContain('главном окне');
+  click('cancel');
+  await pending;
+  expect(updates.at(-1).counts.cancelled).toBe(1);
 });

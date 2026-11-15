@@ -214,3 +214,32 @@ describe('прогресс марафона считается по отметк
     expect(marathonTotals(none)).toMatchObject({ cells: 0, checks: 0, maxChecks: 0, percent: 0 });
   });
 });
+
+describe('4–11 ноября, цель 7: только один запасной день', () => {
+  const november = data => {
+    const m = june({ startDate: '2026-11-04', endDate: '2026-11-11', tasks: [{ id: 't', targetChecks: 7 }] });
+    cell(m, data);
+    return m;
+  };
+  it('3/7 до сегодняшней отметки и 4/7 после неё дают запас 1, а не 2', () => {
+    for (const site of [3, 4]) {
+      const m = november({ site });
+      expect(computeCell(m, 'c', 't', '2026-11-07').reserve).toBe(1);
+      expect(
+        Object.values(calendarStates(m, m.tasks[0], m.progress.c.t, '2026-11-07')).filter(x => x === 'spare')
+      ).toHaveLength(1);
+    }
+  });
+  it('сегодня отмечено, но ранее пропущен день — запас уже 0', () => {
+    const m = november({ marks: ['2026-11-04', '2026-11-05', '2026-11-07'] });
+    expect(computeCell(m, 'c', 't', '2026-11-07').reserve).toBe(0);
+  });
+  it('после пропуска 7 ноября запас израсходован, после второго — не успеваем', () => {
+    expect(computeCell(november({ site: 3 }), 'c', 't', '2026-11-08').reserve).toBe(0);
+    expect(computeCell(november({ site: 3 }), 'c', 't', '2026-11-09').reserve).toBe(-1);
+  });
+  it('на старте запас 1 и дата окончания включена', () => {
+    expect(computeCell(november({}), 'c', 't', '2026-11-04').reserve).toBe(1);
+    expect(computeCell(november({ site: 6 }), 'c', 't', '2026-11-11').reserve).toBe(0);
+  });
+});

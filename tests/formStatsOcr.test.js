@@ -242,3 +242,32 @@ describe('характеристики одним сворачиваемым б�
     }
   });
 });
+
+it.each([false, true])('сохраняет способ входа через GameCenter при создании/редактировании: %s', async editing => {
+  const { normalizeCharacter } = await import('../js/core/state/character.js');
+  const { CLASSES } = await import('../js/core/constants.js');
+  const char = normalizeCharacter({ id: 'hero', nick: 'Герой', class: CLASSES[0], siteLogin: { mode: 'gamecenter' } });
+  if (editing) state.characters = [char];
+  const ui = await import('../js/core/ui.js');
+  ui.showModal.mockImplementation(options => {
+    mocks.submit = options.onSubmit;
+    document.getElementById('modal-root').innerHTML =
+      `<div class="modal-body">${options.content}</div><div class="modal-footer"></div>`;
+  });
+  openCharacterForm(editing ? char : null);
+  expect(document.querySelector('[name="site-gamecenter"]').checked).toBe(editing);
+  expect(document.querySelector('[name="site-gamecenter"]').getAttribute('role')).toBe('switch');
+  expect(document.querySelector('[name="site-gamecenter"]').closest('.character-login-switch')).not.toBeNull();
+  document.querySelector('[name="site-gamecenter"]').checked = true;
+  const values = new Map([
+    ['nick', 'Герой'],
+    ['class', CLASSES[0]],
+    ['site-gamecenter', 'on'],
+    ['coins', '0']
+  ]);
+  expect(await mocks.submit({ get: key => values.get(key) ?? null, getAll: () => [] }, { setError: vi.fn() })).toBe(
+    true
+  );
+  expect(state.characters[0].siteLogin.mode).toBe('gamecenter');
+  expect(state.characters[0].isLoggedIn).not.toBe(true);
+});

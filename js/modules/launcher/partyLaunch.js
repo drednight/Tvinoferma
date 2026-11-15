@@ -6,7 +6,8 @@
 import { state } from '../../core/state.js';
 import { persist, isTauri } from '../../core/storage.js';
 import { toast, confirmModal } from '../../core/ui.js';
-import { startTask } from '../../core/taskLog.js';
+import { windowOwnershipOptions } from './launchedWindows.js';
+import { startTask, onTaskChange } from '../../core/taskLog.js';
 import {
   launchCharacters,
   launchSummary,
@@ -112,7 +113,14 @@ async function runPreflight(characters, ctx = launchContext()) {
  */
 function launchContextForGroup(characters, gcId) {
   const base = launchContext();
-  const empty = { ctx: base, gcId, gcName: '', count: 0, total: 0, distinct: 0 };
+  const empty = {
+    ctx: gcId ? { ...base, preferredId: gcId } : base,
+    gcId,
+    gcName: '',
+    count: 0,
+    total: 0,
+    distinct: 0
+  };
   const list = characters || [];
   if (gcId || list.length < 2) return empty;
   const major = pickMajorityGc(list, base);
@@ -217,21 +225,28 @@ async function openGameCentersForFix(pre, opts) {
  *   interactive: false — без экрана проверок (запуск из трея: окно приложения может быть скрыто).
  */
 /**
- * Кого стоит повторить: не запустились, но и не отменены пользователем.
- *
- * Отменённые повторять нельзя — человек сам остановил запуск.
+ * Повторяем только подтверждённый отказ закрытия лаунчера ДО отправки запуска.
+ * Таймаут появления клиента и неизвестная ошибка не доказывают, что игра не запустится позже.
+ * Отменённые пользователем попытки также не повторяются.
  */
 export function retryableCharacters(characters, results) {
-  const failed = new Set((results || []).filter(r => !r.ok && !r.cancelled).map(r => String(r.id)));
+  // Only failures known to occur BEFORE spawn may be retried. A timeout after spawn
+  // is uncertain: a late client could already be on its way.
+  const safeBeforeSpawn =
+    /^(?:GameCenter не закрылся после \d+ попыток закрытия|Astrum Play не закрылся \(запущенных осталось:)/;
+  const failed = new Set(
+    (results || [])
+      .filter(r => !r.ok && !r.cancelled && safeBeforeSpawn.test(String(r.error || '')))
+      .map(r => String(r.id))
+  );
   return characters.filter(c => failed.has(String(c.id)));
 }
 
 /**
  * Повторный проход по персонажам, которые не запустились.
  *
- * Зачем: часть отказов временная, а не «этот персонаж не запускается никогда» — GameCenter не
- * успел закрыться между окнами, окно клиента не появилось за отведённое время. Второй проход
- * по тем же персонажам это снимает, и повторять запуск всей пати вручную не нужно.
+ * Только безопасный повтор отказа до запуска процесса. Неопределённый результат после
+ * отправки запуска нельзя превращать в новую попытку автоматически.
  *
  * Возвращает объединённый список: удачный повтор заменяет провал, неудачный — оставляет
  * первую ошибку (второй раз то же самое только на словах). Замеры этапов складываются, иначе
@@ -263,21 +278,77 @@ export async function launchGroup(title, characters, opts = {}) {
     toast('Запуск игры работает только в приложении (в браузере недоступен)', 'error');
     return null;
   }
+  if (opts.partyId) {
+    try {
+      const { selectMacroParty } = await import('../gameMacros/runtime.js');
+      await selectMacroParty(opts.partyId);
+    } catch {
+      toast('Пати выбрана для команд, но настройку не удалось сохранить.', 'warning');
+    }
+  }
   const signal = { cancelled: false };
   activeLaunches += 1;
   let task = null;
+  let macroCancelTimer;
+  let unsubscribeProgress = () => {};
+  let stageKey = '',
+    stageStartedAt = Date.now(),
+    currentCharacter = null,
+    waitingForUser = false;
+  let counts = { launched: 0, alreadyRunning: 0, failed: 0, cancelled: 0, skipped: 0 };
+  const characterStage = (character, stage) => {
+    currentCharacter = { id: character.id, nick: character.nick };
+    waitingForUser = false;
+    task.setStep(`${character.nick}: ${stage}`);
+  };
+  const publishProgress = current => {
+    if (!opts.onProgress) return;
+    try {
+      const total = Math.max(0, Number(current.total) || 0),
+        done = Math.max(0, Number(current.done) || 0);
+      const running = current.status === 'running';
+      const key = `${current.step}|${currentCharacter?.id || ''}|${waitingForUser}`;
+      if (key !== stageKey) {
+        stageKey = key;
+        stageStartedAt = Date.now();
+      }
+      opts.onProgress({
+        character: running ? currentCharacter : null,
+        waitingForUser: running && waitingForUser,
+        stageStartedAt,
+        finishedAt: running ? null : Date.now(),
+        counts: { ...counts },
+        done,
+        total,
+        percent: running ? Math.min(99, total ? Math.round((done / total) * 95) : 0) : 100,
+        stage: current.step || current.summary || 'Ожидание очереди',
+        status: current.status
+      });
+    } catch {
+      /* progress rendering must never abort a launch */
+    }
+  };
   try {
     // Задача создаётся сразу, до проверок: пока идёт другой скрипт, запуск встаёт в очередь
     // дока и ждёт своей очереди, а не отказывает («запуск уже идёт»). Проверки идут уже после
     // ожидания: иначе «окна уже запущены» считалось бы по окнам чужого, ещё не закончившегося
     // запуска, и наш персонаж был бы пропущен.
     task = startTask(title, { cancelable: true });
+    unsubscribeProgress = onTaskChange(current => {
+      if (current === task) publishProgress(current);
+    });
+    publishProgress(task);
+    if (typeof opts.cancelled === 'function')
+      macroCancelTimer = setInterval(() => {
+        if (opts.cancelled()) task.cancel();
+      }, 100);
     task.onCancel(() => {
       signal.cancelled = true;
     });
     // Ждём своей очереди: пока идёт другой скрипт, игру не запускаем
     await task.waitTurn();
     if (signal.cancelled) {
+      counts.cancelled = characters.length;
       task.finish('Отменено в очереди', 'warn');
       return null;
     }
@@ -296,8 +367,13 @@ export async function launchGroup(title, characters, opts = {}) {
     //   — если после правки ничего не изменилось, второй экран не показываем вовсе.
     let fixedOnce = false;
     while (opts.interactive !== false && shouldShowPreflight(pre, mode)) {
+      currentCharacter = null;
+      waitingForUser = true;
+      task.setStep('Ожидаем действие пользователя в главном окне: проверка запуска');
       const choice = await openPreflight(pre, { title, gameCenters: launchContext().gameCenters });
+      waitingForUser = false;
       if (!choice) {
+        counts.cancelled = characters.length;
         task.finish('Отменено на экране проверки', 'warn');
         return null;
       }
@@ -306,7 +382,10 @@ export async function launchGroup(title, characters, opts = {}) {
       if (fixes.some(f => f.id === 'openGcWindow')) {
         if (fixedOnce) break; // окно уже открывали, второй раз по той же просьбе — нет
         fixedOnce = true;
+        waitingForUser = true;
+        task.setStep('Ожидаем действие пользователя в главном окне: настройки GameCenter');
         await openGameCentersForFix(pre, opts);
+        waitingForUser = false;
       }
       // Окна игры от администратора: подписываем их короткоживущим помощником от администратора.
       // Твиноферма при этом не перезапускается — права нужны только на это действие.
@@ -318,6 +397,8 @@ export async function launchGroup(title, characters, opts = {}) {
     }
     const ready = pre.toLaunch;
     const skipped = [...pre.noGc, ...pre.noSavedLogin];
+    counts.alreadyRunning = pre.alreadyRunning.length;
+    counts.skipped = skipped.length;
     if (!ready.length) {
       if (pre.alreadyRunning.length && !skipped.length)
         toast(launchSummary({ ok: 0, running: pre.alreadyRunning.length, ms: 0 }), 'info');
@@ -348,20 +429,38 @@ export async function launchGroup(title, characters, opts = {}) {
       );
     }
 
-    const firstPass = await launchCharacters(ready, {
-      signal,
-      gcId,
-      onStart: c => task.setStep(`${c.nick}: запуск…`),
-      onDone: (e, done, total) => {
-        task.log(`${e.nick}: ${e.ok ? 'клиент игры запущен' : `ошибка — ${e.error}`}`, e.ok ? 'ok' : 'error');
-        launchWarnings(e.info).forEach(w => task.log(`${e.nick}: ${w}`, 'warn'));
-        task.progress(done, total);
-      }
-    });
+    const firstPass = await launchCharacters(
+      ready,
+      {
+        signal,
+        gcId,
+        onStage: (c, stage) => characterStage(c, stage),
+        onStart: c => {
+          characterStage(c, 'запуск…');
+          const target = resolveGameCenter(c, group.ctx);
+          task.log(
+            `${c.nick}: GameCenter «${target?.gc?.name || 'свой путь'}»; сохранённый вход — ${target?.saved ? 'да' : 'нет'}.`
+          );
+        },
+        onDone: (e, done, total) => {
+          task.log(`${e.nick}: ${e.ok ? 'клиент игры запущен' : `ошибка — ${e.error}`}`, e.ok ? 'ok' : 'error');
+          launchWarnings(e.info).forEach(w => task.log(`${e.nick}: ${w}`, 'warn'));
+          counts.launched += Number(!!e.ok);
+          counts.cancelled += Number(!!e.cancelled);
+          counts.failed += Number(!e.ok && !e.cancelled);
+          task.progress(done, total);
+        }
+      },
+      { ctx: group.ctx }
+    );
 
-    // Повторный проход по тем, кто не запустился. Часть отказов временная (GameCenter не успел
-    // закрыться, окно клиента не появилось за отведённое время), и второй проход по тем же
-    // персонажам это снимает — иначе пришлось бы повторять запуск всей пати вручную.
+    // Retry only a verified pre-spawn close failure. Never retry uncertain post-spawn results.
+    for (const result of firstPass.filter(row => !row.ok && /^Клиент игры не запустился за /.test(row.error || ''))) {
+      task.log(
+        `${result.nick}: появление клиента не подтверждено вовремя. Автоповтор отключён: поздний запуск мог бы создать лишнее окно. Проверьте окна перед ручным повтором.`,
+        'warn'
+      );
+    }
     let results = firstPass;
     const retry = signal.cancelled ? [] : retryableCharacters(ready, firstPass);
     if (retry.length) {
@@ -370,17 +469,22 @@ export async function launchGroup(title, characters, opts = {}) {
         `Не запустились: ${nicks}. Повторяю их — ${retry.length} ${retry.length === 1 ? 'окно' : 'окон'}`,
         'warn'
       );
-      const second = await launchCharacters(retry, {
-        signal,
-        gcId,
-        onStart: c => task.setStep(`${c.nick}: повтор…`),
-        onDone: e => {
-          task.log(
-            `${e.nick}: повтор — ${e.ok ? 'клиент игры запущен' : `снова ошибка — ${e.error}`}`,
-            e.ok ? 'ok' : 'error'
-          );
-        }
-      });
+      const second = await launchCharacters(
+        retry,
+        {
+          signal,
+          gcId,
+          onStage: (c, stage) => characterStage(c, `повтор — ${stage}`),
+          onStart: c => characterStage(c, 'повтор…'),
+          onDone: e => {
+            task.log(
+              `${e.nick}: повтор — ${e.ok ? 'клиент игры запущен' : `снова ошибка — ${e.error}`}`,
+              e.ok ? 'ok' : 'error'
+            );
+          }
+        },
+        { ctx: group.ctx }
+      );
       results = mergeLaunchResults(firstPass, second);
       const revived = second.filter(r => r.ok).length;
       if (revived) task.log(`Повтор помог: запустилось ${revived} из ${retry.length}`, 'ok');
@@ -389,6 +493,8 @@ export async function launchGroup(title, characters, opts = {}) {
     // Проверяем, что окна действительно получили название «Ник — Класс» и значок: окно клиента
     // появляется не сразу, и игра может переписать заголовок. Где не вышло — пробуем ещё раз.
     try {
+      currentCharacter = null;
+      task.setStep('Проверка названий и значков игровых окон…');
       const decorNote = await verifyLaunchedDecor(results);
       if (decorNote) task.log(decorNote, 'warn');
     } catch (e) {
@@ -410,6 +516,7 @@ export async function launchGroup(title, characters, opts = {}) {
       running: pre.alreadyRunning.length,
       ms
     });
+    counts = { launched: ok, alreadyRunning: pre.alreadyRunning.length, failed, cancelled, skipped: skipped.length };
     task.finish(summary, failed ? 'warn' : undefined);
     reportDone(summary, failed > 0);
     saveRunToHistory({ title, results, pre, ms, gcName });
@@ -420,6 +527,8 @@ export async function launchGroup(title, characters, opts = {}) {
     toast(`Запуск не удался: ${errText(e)}`, 'error');
     return null;
   } finally {
+    unsubscribeProgress();
+    clearInterval(macroCancelTimer);
     activeLaunches = Math.max(0, activeLaunches - 1);
     // Окна только что открылись — обновляем общий список окон, чтобы в карточке пати
     // появилась кнопка «🔖», а в шапке — кнопки закрытия окон.
@@ -463,7 +572,7 @@ export async function launchOne(char, opts = {}) {
   // Проверка та же, что у пати (launchBlocker), иначе одиночный запуск вёл себя иначе:
   // персонаж с GameCenter, но без запомненного входа проходил проверку и упирался в
   // сообщение про пати, в котором не упомянуто, что именно не так с этим персонажем.
-  const blocker = launchBlocker(char);
+  const blocker = launchBlocker(char, opts.gcId);
   if (blocker) {
     if (blocker === 'no-gc') {
       toast('Укажите GameCenter этого аккаунта', 'error');
@@ -535,7 +644,8 @@ export async function closePartyWindows(partyName) {
 
   let rows;
   try {
-    rows = windowRows(await runningClientDetails(), state.characters);
+    const clients = await runningClientDetails();
+    rows = windowRows(clients, state.characters, windowOwnershipOptions(clients));
   } catch (e) {
     toast(`Не удалось получить список окон: ${errText(e)}`, 'error');
     return 0;
@@ -599,7 +709,8 @@ export async function signPartyWindows(partyName) {
 
   let rows;
   try {
-    rows = windowRows(await runningClientDetails(), state.characters);
+    const clients = await runningClientDetails();
+    rows = windowRows(clients, state.characters, windowOwnershipOptions(clients));
   } catch (e) {
     toast(`Не удалось получить список окон: ${errText(e)}`, 'error');
     return 0;

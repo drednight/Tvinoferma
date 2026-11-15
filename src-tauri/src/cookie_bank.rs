@@ -37,7 +37,7 @@ const AUTH_SCRIPT: &str = include_str!("scripts/check_auth.js");
 /// Временный чистый профиль для `bank_verify` (папка `pw-sync-profiles/_bank_probe`).
 const PROBE_KEY: &str = "_bank_probe";
 
-const KEYRING_SERVICE: &str = "com.tvinoferma.desktop";
+const KEYRING_SERVICE: &str = crate::profile::VAULT_SERVICE;
 const KEYRING_USER: &str = "cookie-bank-key";
 
 /// Один поток работает с файлами банка и ключом одновременно.
