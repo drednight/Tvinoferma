@@ -67,7 +67,8 @@ export function getClassIconSrcByStem(stem) {
   const raw = String(stem || '')
     .trim()
     .toLowerCase();
-  const key = raw === 'priest' ? 'prist' : raw;
+  const aliases = { priest: 'prist', gun: 'gan', gunner: 'gan' };
+  const key = Object.hasOwn(aliases, raw) ? aliases[raw] : raw;
   return /^[a-z0-9_-]+$/i.test(key) ? `${ICON_BASE_PATH}${key}.webp` : null;
 }
 
@@ -93,6 +94,17 @@ export const PASS_TYPES = [
 ];
 
 export const DEFAULT_SETTINGS = {
+  gameMacros: {
+    points: [],
+    enabled: false,
+    partyId: '',
+    leaders: {},
+    commands: [],
+    profiles: [],
+    profileId: '',
+    opacity: 0.9,
+    topmost: true
+  },
   privacy: {
     maskEmailByDefault: true,
     maskPasswordByDefault: true,
@@ -135,6 +147,9 @@ export const DEFAULT_SETTINGS = {
     theme: 'dark',
     // Вид календаря на странице «Сегодня»: компактная неделя или месяц (js/modules/dashboard/plannerView.js)
     plannerView: 'week',
+    todayOrder: [],
+    todaySizes: {},
+    todayCanvas: null,
     // Какие разделы показывать в меню и в каком порядке (js/core/sections.js).
     // Пусто значит «порядок по умолчанию, все видны» — список разделов и так меняется
     // с выходом новой версии, а хранить его копию значило бы забыть об этом.
@@ -190,6 +205,7 @@ export const DEFAULT_SETTINGS = {
   },
   // Видимые окна браузера персонажей
   browser: {
+    marathonFollowCheckLinks: true,
     linkOpenMode: 'webview',
     linkCharacterId: '', // no implicit first-character fallback for ordinary links
     unlimitedGiftItems: true, // на странице передачи предметов снять лимит сайта «не более 6 предметов» (панель «Типы предметов»)

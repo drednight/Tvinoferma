@@ -84,6 +84,16 @@ export const tauriAdapter = {
     }
   },
 
+  async saveStateIfRawUnchanged(expectedRaw, data) {
+    try {
+      const response = await invoke('save_state_if_unchanged', { expectedRaw, payload: data });
+      if (response !== null && response !== undefined) throw new Error('Некорректный ответ команды');
+      return true;
+    } catch (error) {
+      throw classifyNativeStateWriteFailure(error);
+    }
+  },
+
   forgetLoadedState(snapshot) {
     readWitness.forget(snapshot);
   },

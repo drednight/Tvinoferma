@@ -90,6 +90,25 @@ fn list_backup_files(dir: &Path) -> Result<Vec<(PathBuf, u64, u64)>, String> {
     Ok(files)
 }
 
+// These backups identify separately protected originals. Do not rotate them away:
+// users may still need both halves to recover a partially completed merge.
+fn is_duplicate_merge_backup(name: &str) -> bool {
+    let Some((_, rest)) = name
+        .strip_prefix("state.backup-")
+        .and_then(|s| s.split_once("-dup-"))
+    else {
+        return false;
+    };
+    let Some((token, suffix)) = rest.split_once('-') else {
+        return false;
+    };
+    token.len() == 24
+        && token
+            .bytes()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+        && suffix.ends_with(".json")
+}
+
 fn prune_backups(dir: &Path, max_count: usize, protected: &str) -> Result<(), String> {
     // Новая проверенная копия обязательно остаётся, даже если у файлов одинаковое mtime.
     let keep_others = max_count.max(1) - 1;
@@ -102,7 +121,13 @@ fn prune_backups(dir: &Path, max_count: usize, protected: &str) -> Result<(), St
     }
     for (path, _, _) in files
         .into_iter()
-        .filter(|(path, _, _)| path.file_name().and_then(|name| name.to_str()) != Some(protected))
+        .filter(|(path, _, _)| {
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("");
+            name != protected && !is_duplicate_merge_backup(name)
+        })
         .skip(keep_others)
     {
         let _ = fs::remove_file(path);
@@ -519,6 +544,17 @@ mod tests {
         assert!(!is_valid_backup_name("state.json"));
         assert!(!is_valid_backup_name("../state.backup-1.json"));
         assert!(!is_valid_backup_name("state.backup-1.txt"));
+    }
+
+    #[test]
+    fn duplicate_merge_backups_survive_ordinary_rotation() {
+        let dir = TestDir::new();
+        let state = dir.0.join("state.json");
+        fs::write(&state, br#"{"v":1}"#).unwrap();
+        let protected =
+            create_verified_backup(&state, &dir.0, 122, "dup-0123456789abcdef01234567").unwrap();
+        create_backup_at(&dir.0, &state, 1, "manual", 123).unwrap();
+        assert!(dir.0.join(protected).exists());
     }
 
     #[test]

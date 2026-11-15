@@ -29,6 +29,7 @@ export const STATUS_INFO = {
   no_roster: { icon: '🔄', label: 'Сначала подтяните серверы и персонажей', level: 'warn' },
   no_server_chosen: { icon: '🌐', label: 'Сервер не выбран — не передавалось', level: 'warn' },
   nothing_to_transfer: { icon: '🎁', label: 'Передавать нечего: подарков на аккаунте нет', level: 'info' },
+  selection_required: { icon: '📦', label: 'Наборы не выбраны или требуют повторной проверки', level: 'info' },
   no_server: { icon: '🚫', label: 'На этом сервере у аккаунта нет персонажей', level: 'warn' },
   no_recipient: { icon: '❔', label: 'Получатель не выбран — не передавалось', level: 'warn' },
   same_site: { icon: '↪️', label: 'Тот же аккаунт сайта — передаётся один раз', level: 'info' },

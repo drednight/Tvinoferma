@@ -11,13 +11,14 @@ import { persist, isTauri } from '../../core/storage.js';
 import { showModal, toast, confirmModal } from '../../core/ui.js';
 import { escapeHtml } from '../../core/utils.js';
 import { getClassIconSrc } from '../../core/constants.js';
-import { gameCenterInfo, pickGameCenter, forgetAccount } from './launch.js';
+import { gameCenterInfo, savedGameCenterAccounts, pickGameCenter, forgetAccount } from './launch.js';
 import { captureLogin, forgetLogin } from './partyLaunch.js';
 import {
   attachedGcs,
   attachGc,
   detachGc,
   replaceGc,
+  setGcGameAccount,
   accountKey,
   newGcId,
   suggestGcName,
@@ -51,8 +52,8 @@ export function hasAnySavedLogin(char) {
  * @param {any} char
  * @returns {'no-gc' | 'no-login' | null}
  */
-export function launchBlocker(char) {
-  const target = resolveGameCenter(char, { gameCenters: gcs() });
+export function launchBlocker(char, preferredId = launcherSettings().preferredGcId) {
+  const target = resolveGameCenter(char, { gameCenters: gcs(), preferredId });
   if (!target) return 'no-gc';
   if (!target.saved) return 'no-login';
   return null;
@@ -90,6 +91,11 @@ async function forgetKey(key) {
 export function openGameCentersModal(opts = {}) {
   /** @type {Map<string, { status: 'loading' | 'ok' | 'error', nick?: string, loggedIn?: boolean, error?: string }>} */
   const info = new Map();
+  /** Список игровых персонажей — отдельно для каждого сохранённого входа в каждой привязке. */
+  /** @type {Map<string, { status: 'loading' | 'ok' | 'error', accounts?: Array<{id: string, name: string}>, error?: string, request?: number }>} */
+  const bindingAccounts = new Map();
+  let accountRequest = 0;
+  const bindingKey = (charId, gcId) => JSON.stringify([charId, gcId]);
   let filter = '';
   /** Фильтр по пати: '' — все, NO_PARTY — без пати, иначе id пати. */
   let partyFilter = opts.partyId || '';
@@ -209,11 +215,32 @@ export function openGameCentersModal(opts = {}) {
       .map((g, i) => {
         const acc = c.launch?.gcAccounts?.[g.id];
         const others = gcs().filter(x => x.id === g.id || !attached.some(a => a.id === x.id));
+        const accountList = bindingAccounts.get(bindingKey(c.id, g.id));
+        const accounts = accountList?.status === 'ok' ? accountList.accounts || [] : [];
+        const current = c.launch?.gcGameAccounts?.[g.id] || null;
+        // Список относится только к VK Play-входу, сохранённому у этой привязки.
+        // Если у него один персонаж или список ещё не загружен, поле не показываем.
+        const gameAcc =
+          accounts.length > 1
+            ? `<label class="gcm-gameacc" title="Выбор доступен для сохранённого входа, если у него несколько игровых персонажей. Выберите нужного — Твиноферма выберет его в окне сама.">
+          <span>Игровой аккаунт:</span>
+          <select class="select" data-act="game-acc" aria-label="Игровой аккаунт в окне выбора">
+            <option value=""${current && accounts.some(a => a.id === current.id) ? '' : ' selected'}>не выбирать автоматически</option>
+            ${accounts
+              .map(
+                a =>
+                  `<option value="${escapeHtml(a.id)}"${current?.id === a.id ? ' selected' : ''}>${escapeHtml(a.name)}</option>`
+              )
+              .join('')}
+          </select>
+        </label>`
+            : '';
         return `
         <div class="gcm-bind" data-gc="${escapeHtml(g.id)}" data-i="${i}">
           <select class="select" data-act="swap" aria-label="GameCenter персонажа">${optionsHtml(others, g.id)}</select>
           ${i === 0 && attached.length > 1 ? '<span class="gcm-badge" title="Первый в списке: запускается, если не выбран другой">основной</span>' : ''}
           <span class="gcm-acc ${acc ? 'is-saved' : 'muted'}">${acc ? `🔑 Вход запомнен${acc.nick ? `: ${escapeHtml(acc.nick)}` : ''}` : 'Вход не запомнен'}</span>
+          ${gameAcc}
           <button type="button" class="btn secondary" data-act="cap" title="Сначала войдите в аккаунт этого персонажа в выбранном GameCenter, затем нажмите: токен сохранится в хранилище ОС">🔑 Запомнить вход</button>
           ${acc ? '<button type="button" class="btn ghost" data-act="forget">Забыть</button>' : ''}
           <button type="button" class="btn ghost" data-act="detach" title="Открепить этот GameCenter от персонажа">✕</button>
@@ -318,7 +345,7 @@ export function openGameCentersModal(opts = {}) {
     </section>
     <section class="gcm-sec">
       <h4>3. Персонажи <small id="gcm-summary" class="muted"></small></h4>
-      <p class="muted">К каждому персонажу можно прикрепить несколько GameCenter. «🔑 Запомнить вход» привязывает к выбранному GameCenter аккаунт, под которым вы в нём сейчас вошли: сначала войдите в нужный аккаунт в самом GameCenter.</p>
+      <p class="muted">К каждому персонажу можно прикрепить несколько GameCenter. «🔑 Запомнить вход» привязывает к выбранному GameCenter аккаунт, под которым вы в нём сейчас вошли: сначала войдите в нужный аккаунт в самом GameCenter. Список «Игровой аккаунт» берётся только для входа, сохранённого у этой привязки, и показывается, если у него несколько игровых персонажей; при запуске Твиноферма выберет нужного в окне GameCenter.</p>
       <div class="gcm-filters">
         <input id="gcm-filter" class="input" type="search" placeholder="Найти по нику или классу…" aria-label="Найти персонажа" />
         <select id="gcm-party" class="select" aria-label="Фильтр по пати">${partyOptionsHtml()}</select>
@@ -334,21 +361,68 @@ export function openGameCentersModal(opts = {}) {
 
   const gcRow = id => [...root.querySelectorAll('.gcm-gc')].find(el => el.getAttribute('data-gc') === id) || null;
 
+  const loadBindingAccounts = async (char, gc) => {
+    if (!isTauri()) return;
+    const key = bindingKey(char.id, gc.id);
+    const request = ++accountRequest;
+    bindingAccounts.set(key, { status: 'loading', request });
+    renderChars();
+    try {
+      const result = await savedGameCenterAccounts(gc.path, accountKey(char, gc.id), { kind: launcherKind(gc) });
+      if (bindingAccounts.get(key)?.request !== request) return;
+      const accounts = Array.isArray(result) ? result.filter(a => a?.id && a?.name) : [];
+      bindingAccounts.set(key, { status: 'ok', accounts });
+
+      // Сохранённый выбор относится к конкретному входу: убираем его, если для этого входа
+      // его больше нет или вариантов не больше одного.
+      const current = char.launch?.gcGameAccounts?.[gc.id];
+      if (current && (accounts.length <= 1 || !accounts.some(a => a.id === current.id))) {
+        setGcGameAccount(char, gc.id, null);
+        char.updatedAt = new Date().toISOString();
+        try {
+          await save();
+        } catch (e) {
+          console.warn('[GC] не удалось очистить выбор игрового аккаунта', e);
+        }
+      }
+    } catch (e) {
+      if (bindingAccounts.get(key)?.request !== request) return;
+      bindingAccounts.set(key, { status: 'error', error: errText(e) });
+    }
+    if (bindingAccounts.get(key)?.request === request) renderChars();
+  };
+
+  const loadBindingAccountsForGc = gc =>
+    Promise.all(
+      state.characters
+        .filter(c => attachedGcs(c, gcs()).some(attached => attached.id === gc.id))
+        .map(c => loadBindingAccounts(c, gc))
+    );
+
   const loadInfo = async gc => {
     if (!isTauri()) return;
     info.set(gc.id, { status: 'loading' });
     const setText = () => {
       const el = gcRow(gc.id)?.querySelector('.gcm-gc-who');
-      if (el) el.textContent = infoText(gc);
+      if (el) {
+        el.textContent = infoText(gc);
+        el.setAttribute('title', infoText(gc));
+      }
     };
     setText();
     try {
       const r = await gameCenterInfo(gc.path, { kind: launcherKind(gc) });
-      info.set(gc.id, { status: 'ok', nick: r?.nick || '', loggedIn: !!r?.loggedIn });
+      info.set(gc.id, {
+        status: 'ok',
+        nick: r?.nick || '',
+        loggedIn: !!r?.loggedIn
+      });
     } catch (e) {
       info.set(gc.id, { status: 'error', error: errText(e) });
     }
     setText();
+    renderChars();
+    await loadBindingAccountsForGc(gc);
   };
   const loadAllInfo = async () => {
     for (const gc of gcs()) await loadInfo(gc);
@@ -437,17 +511,17 @@ export function openGameCentersModal(opts = {}) {
     } else if (act === 'detach' && c && gc) {
       const acc = c.launch?.gcAccounts?.[gc.id];
       if (acc && !acc.legacy) await forgetKey(accountKey(c, gc.id));
+      bindingAccounts.delete(bindingKey(c.id, gc.id));
       detachGc(c, gc.id);
       touch(c);
       await save();
       renderChars();
     } else if (act === 'cap' && c && gc) {
       btn.setAttribute('disabled', '');
-      await captureLogin(c, gc.id);
+      if (await captureLogin(c, gc.id)) await loadInfo(gc);
       renderChars();
-      loadInfo(gc);
     } else if (act === 'forget' && c && gc) {
-      await forgetLogin(c, gc.id);
+      if (await forgetLogin(c, gc.id)) await loadBindingAccounts(c, gc);
       renderChars();
     }
   });
@@ -492,19 +566,34 @@ export function openGameCentersModal(opts = {}) {
     }
     const c = findChar(el);
     if (!c) return;
+    if (act === 'game-acc' && gc) {
+      // Пустое значение — не выбирать автоматически: окно выбора останется за пользователем.
+      const id = el.value;
+      const account = (bindingAccounts.get(bindingKey(c.id, gc.id))?.accounts || []).find(a => a.id === id) || null;
+      setGcGameAccount(c, gc.id, account);
+      touch(c);
+      await save();
+      renderChars();
+      return;
+    }
     if (act === 'attach' && el.value) {
+      const attached = gcs().find(item => item.id === el.value);
       attachGc(c, el.value);
       touch(c);
       await save();
       renderChars();
+      if (attached) await loadBindingAccounts(c, attached);
     } else if (act === 'swap' && gc) {
       const idx = Number(el.closest('[data-i]')?.getAttribute('data-i'));
       const acc = c.launch?.gcAccounts?.[gc.id];
       if (acc && !acc.legacy) await forgetKey(accountKey(c, gc.id));
+      bindingAccounts.delete(bindingKey(c.id, gc.id));
+      const replacement = gcs().find(item => item.id === el.value);
       replaceGc(c, idx, el.value);
       touch(c);
       await save();
       renderChars();
+      if (replacement) await loadBindingAccounts(c, replacement);
     }
   });
 

@@ -13,17 +13,27 @@ const withStages = (list, stages) => {
 };
 
 describe('повторный проход: кого повторять', () => {
-  it('только те, кто не запустился и кого не отменяли', () => {
+  it('только безопасный отказ до старта, не неопределённый результат после старта', () => {
     const list = chars(['а', 'б', 'в', 'г']);
     const first = [
       res('а'),
       res('б', { ok: false, error: 'окно не появилось' }),
       res('в', { ok: false, cancelled: true }),
-      res('г', { ok: false, error: 'GameCenter не закрылся' })
+      res('г', { ok: false, error: 'GameCenter не закрылся после 2 попыток закрытия (запущенных осталось: 1).' })
     ];
-    expect(retryableCharacters(list, first).map(c => c.id)).toEqual(['б', 'г']);
+    expect(retryableCharacters(list, first).map(c => c.id)).toEqual(['г']);
   });
 
+  it('does not repeat timed-out or unknown launch failures', () => {
+    const list = chars(['a', 'b', 'c']);
+    expect(
+      retryableCharacters(list, [
+        res('a', { ok: false, error: 'Клиент игры не запустился за 60 с (GameCenter: folder)' }),
+        res('b', { ok: false, error: 'unknown' }),
+        res('c', { ok: false })
+      ])
+    ).toEqual([]);
+  });
   it('успешных и отменённых в повтор не берём', () => {
     const list = chars(['а', 'б']);
     const first = [res('а'), res('б', { ok: false, cancelled: true })];

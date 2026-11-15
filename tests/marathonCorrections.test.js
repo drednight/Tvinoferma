@@ -70,3 +70,18 @@ it('ignores an explicit old year even when the event task has no year in its tit
   ).toEqual([]);
   expect(m.progress.c.t.site).toBe(5);
 });
+
+it('uses Moscow day for site sync after MSK midnight while UTC is still yesterday', () => {
+  const m = createMarathon({
+    startDate: '2026-11-08',
+    endDate: '2026-11-11',
+    participantIds: ['c'],
+    tasks: [{ id: 't', title: 'Задание', targetChecks: 3 }],
+    assignments: { c: ['t'] },
+    progress: { c: { t: { site: 0, marks: [], history: {} } } }
+  });
+  const changes = applySiteQuests(m, 'c', [{ title: 'Задание', completed: 1, total: 3 }], '2026-11-07T21:01:00.000Z');
+  expect(changes).toHaveLength(1);
+  expect(m.progress.c.t.site).toBe(1);
+  expect(m.progress.c.t.history).toEqual({ '2026-11-08': 1 });
+});

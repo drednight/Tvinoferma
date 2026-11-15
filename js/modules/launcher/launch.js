@@ -258,6 +258,15 @@ export function gameCenterInfo(path, deps = {}) {
   return (deps.invoke || tauriInvoke)('launcher_gc_info', { path, kind: launcherKindArg(deps.kind) });
 }
 
+/** Игровые персонажи именно того VK Play-входа, который сохранён для этой привязки. */
+export function savedGameCenterAccounts(path, charId, deps = {}) {
+  return (deps.invoke || tauriInvoke)('launcher_saved_game_accounts', {
+    path,
+    charId,
+    kind: launcherKindArg(deps.kind)
+  });
+}
+
 /** Открыть проводник и выбрать GameCenter.exe или AstrumPlay.exe. Возвращает полный путь или null. */
 export function pickGameCenter(deps = {}) {
   return (deps.invoke || tauriInvoke)('launcher_pick_gamecenter', { kind: launcherArg(deps.kind) });
@@ -542,7 +551,7 @@ export function closeAllClientsElevated(deps = {}) {
 
 /**
  * Ответ Rust на запуск (`launcher_start`).
- * @typedef {{ pid?: number, dialogClicked?: boolean, switched?: boolean, clientPid?: number, closedOtherGc?: number, gcCloseFailed?: number }} LaunchInfo
+ * @typedef {{ pid?: number, dialogClicked?: boolean, gameAccountClicked?: boolean, switched?: boolean, clientPid?: number, closedOtherGc?: number, gcCloseFailed?: number }} LaunchInfo
  */
 
 /**
@@ -607,6 +616,7 @@ export function withoutSavedLogin(entries) {
  *   signal?: { cancelled: boolean },
  *   gcId?: string,
  *   decorate?: boolean,
+ *   onStage?: (character: any, stage: string) => void,
  *   onStart?: (character: any) => void,
  *   onDone?: (entry: { id: string, nick: string, ok: boolean, error?: string, info?: LaunchInfo, ms?: number | null }, done: number, total: number) => void
  * }} [opts]
@@ -641,6 +651,7 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
       const t0 = Date.now();
       let info;
       try {
+        opts.onStage?.(character, 'запуск лаунчера и ожидание нового игрового клиента…');
         info = await invoke('launcher_start', {
           path: target?.path,
           charId: target?.key,
@@ -649,6 +660,9 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
           // если вход помечен, а в хранилище его нет, Rust откажется запускать — иначе он бы
           // молча открыл игру под тем аккаунтом, что уже выбран в лаунчере.
           loginSaved: !!target?.saved,
+          // Игровой аккаунт для окна «Выбор игрового аккаунта»: Rust пишет его id в `_sel_`,
+          // а затем сам выбирает строку с этим именем через UI Automation.
+          gameAccount: target?.gameAccount || null,
           url: url || null,
           waitSecs: waitSecs ?? null,
           kind: launcherKindArg(target?.kind),
@@ -659,6 +673,7 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
       }
       if (!last && delayMs > 0) {
         // следующий аккаунт стартует после паузы
+        opts.onStage?.(character, `клиент найден, пауза ${delayMs} мс перед следующим…`);
         delayTotal += delayMs;
         await sleep(delayMs);
       }
