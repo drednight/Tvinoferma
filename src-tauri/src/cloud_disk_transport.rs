@@ -472,7 +472,15 @@ pub fn prepare(mut args: CloudDiskArgs) -> Option<PreparedRequest> {
             if !canonical_envelope(&envelope, &dataset, &version) {
                 return None;
             }
-            let sha256 = format!("{:x}", Sha256::digest(envelope.as_bytes()));
+            let sha256 = {
+                use std::fmt::Write;
+                let digest = Sha256::digest(envelope.as_bytes());
+                let mut hash = String::with_capacity(64);
+                for byte in digest.iter() {
+                    let _ = write!(&mut hash, "{byte:02x}");
+                }
+                hash
+            };
             let name = format!("tf-v1-{dataset}-{version}.tfsc");
             let google = provider == Provider::Google;
             let (metadata_url, folder) = if google {
