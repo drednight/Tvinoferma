@@ -323,19 +323,17 @@ async function init() {
         `${launch.percent}% · ${launch.stage}${launch.total ? ` · ${launch.done}/${launch.total}` : ''}`;
     }
     const a = normalizeAppearance(data.appearance);
-    document.documentElement.style.setProperty('--overlay-text', TEXT_PRESETS[a.textColor]);
-    document.documentElement.style.setProperty('--overlay-key', KEY_PRESETS[a.keyColor]);
-    document.documentElement.style.setProperty('--overlay-command', COMMAND_PRESETS[a.commandColor]);
+    document.documentElement.style.setProperty('--overlay-text', TEXT_PRESETS[a.textColor] || a.textColor);
+    document.documentElement.style.setProperty('--overlay-key', KEY_PRESETS[a.keyColor] || a.keyColor);
+    document.documentElement.style.setProperty('--overlay-command', COMMAND_PRESETS[a.commandColor] || a.commandColor);
     document.documentElement.style.setProperty('--overlay-font', a.fontSize + 'px');
     document.body.classList.toggle('header-hidden', a.hideHeader);
     if (document.getElementById('appearance-screen').hidden) {
-      document.getElementById('text-color').value = a.textColor;
-      document.getElementById('key-color').value = a.keyColor;
-      document.getElementById('command-color').value = a.commandColor;
-      for (const id of ['text-color', 'key-color', 'command-color'])
-        document
-          .querySelectorAll(`[name="${id}-choice"]`)
-          .forEach(input => (input.checked = input.value === document.getElementById(id).value));
+      for (const [id, value] of Object.entries({
+        'text-color': a.textColor,
+        'key-color': a.keyColor,
+        'command-color': a.commandColor
+      })) setColor(id, value);
       document.getElementById('font-size').value = String(a.fontSize);
       document.getElementById('hide-header').checked = a.hideHeader;
     }
@@ -464,60 +462,54 @@ async function init() {
     if (button.dataset.view === '__fold') { void foldClick(); return; }
     showView(button.dataset.view);
   }));
-  const handleMenuAction = action => {
-    if (action === 'toggle-menu') document.getElementById('menu-btn')?.click();
-    else if (action === 'ghost') document.getElementById('ghost')?.click();
-    else if (action === 'fold') document.getElementById('fold')?.click();
-    else if (action === 'hide-header') {
-      const hh = document.getElementById('hide-header');
-      if (hh) { hh.checked = !hh.checked; hh.dispatchEvent(new Event('change')); }
-    } else if (action === 'close') document.getElementById('close')?.click();
-  };
-  document.querySelectorAll('[data-menu-action]').forEach(button => (button.onclick = () => {
-    closeMenu();
-    handleMenuAction(button.dataset.menuAction);
-  }));
-  const extraNames = {
-    pink: 'Розовый',
-    cyan: 'Бирюзовый',
-    lime: 'Лаймовый',
-    coral: 'Коралловый',
-    silver: 'Серебристый',
-    lavender: 'Лавандовый'
-  };
-  for (const id of ['text-color', 'key-color', 'command-color']) {
-    const fieldset = document.getElementById(id).closest('fieldset');
-    for (const [value, name] of Object.entries(extraNames)) {
-      const label = document.createElement('label'),
-        input = document.createElement('input'),
-        span = document.createElement('span');
-      input.type = 'radio';
-      input.name = `${id}-choice`;
-      input.value = value;
-      span.textContent = name;
-      label.append(input, span);
-      fieldset.append(label);
-    }
-  }
+
+  // Палитра цветов: пары основных пресетов + выбор произвольного цвета свайдами.
+  const COLOR_PALETTE = [
+    '#ff6b6b', '#ffb46b', '#f5cc76', '#7de4b4', '#83e8f5', '#b7c2ff',
+    '#c4a5ff', '#ffb3d9', '#d4ee85', '#eef1ff', '#cbd5e1', '#ffffff',
+    '#1a2233', '#000000'
+  ];
   const colorPresets = {
     'text-color': TEXT_PRESETS,
     'key-color': KEY_PRESETS,
     'command-color': COMMAND_PRESETS
   };
+  /** Устанавливает цвет (пресет по имени или hex) и применяет его сразу. */
+  function setColor(id, value) {
+    const hidden = document.getElementById(id);
+    if (hidden) hidden.value = value;
+    document.querySelectorAll(`[name="${id}-choice"]`).forEach(input => {
+      input.checked = input.value === value;
+    });
+    const row = document.querySelector(`[data-swatch-for="${id}"]`);
+    if (row) row.querySelectorAll('.swatch').forEach(s => s.classList.toggle('sel', s.dataset.color === value));
+    const color = colorPresets[id]?.[value] || value;
+    document.documentElement.style.setProperty('--overlay-' + id.replace('-color', ''), color);
+  }
+  // Заполняем палитру свайдами для каждого цвета.
+  for (const id of ['text-color', 'key-color', 'command-color']) {
+    const row = document.querySelector(`[data-swatch-for="${id}"]`);
+    if (!row) continue;
+    COLOR_PALETTE.forEach(color => {
+      const swatch = document.createElement('button');
+      swatch.type = 'button';
+      swatch.className = 'swatch';
+      swatch.dataset.color = color;
+      swatch.style.background = color;
+      swatch.title = color;
+      swatch.setAttribute('aria-label', `Цвет ${color}`);
+      swatch.onclick = () => setColor(id, color);
+      row.append(swatch);
+    });
+  }
   document.querySelectorAll('.color-options input[type=radio]').forEach(
     input =>
       (input.onchange = () => {
         const id = input.name.replace('-choice', '');
-        document.getElementById(id).value = input.value;
-        const value = colorPresets[id]?.[input.value];
-        if (value) document.documentElement.style.setProperty('--overlay-' + id.replace('-color', ''), value);
+        setColor(id, input.value);
       })
   );
-  for (const [id, colors] of Object.entries({
-    'text-color': TEXT_PRESETS,
-    'key-color': KEY_PRESETS,
-    'command-color': COMMAND_PRESETS
-  }))
+  for (const [id, colors] of Object.entries(colorPresets))
     document
       .querySelectorAll(`[name="${id}-choice"]`)
       .forEach(input => (input.nextElementSibling.style.color = colors[input.value]));
@@ -603,6 +595,14 @@ async function init() {
 
   const hideHeader = document.getElementById('hide-header');
   if (hideHeader) hideHeader.onchange = event => document.body.classList.toggle('header-hidden', event.target.checked);
+
+  // Кнопка в хедере: скрыть/показать заголовок и кнопки окна (сразу, с синхронной чекбоксом).
+  const headerToggle = document.getElementById('header-toggle');
+  if (headerToggle) headerToggle.onclick = () => {
+    const on = !document.body.classList.contains('header-hidden');
+    document.body.classList.toggle('header-hidden', on);
+    if (hideHeader) hideHeader.checked = on;
+  };
 
   const themeGrid = document.getElementById('theme-grid');
   if (themeGrid) {

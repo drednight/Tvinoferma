@@ -278,6 +278,10 @@
       .color-options { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin: 10px 0; display: flex; flex-wrap: wrap; gap: 6px; }
       .color-options legend { padding: 0 6px; font-size: 0.846rem; color: var(--text-dim); }
       .color-options label { display: flex; align-items: center; gap: 5px; padding: 5px 8px; border-radius: 7px; background: var(--panel-3); cursor: pointer; font-size: 0.846rem; }
+      .swatch-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--line-2); }
+      .swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); cursor: pointer; padding: 0; transition: .12s; }
+      .swatch:hover { transform: scale(1.12); border-color: var(--text-dim); }
+      .swatch.sel { border-color: var(--text); box-shadow: 0 0 0 2px var(--panel-2), 0 0 0 4px var(--accent); }
       .color-options input[type="radio"] { accent-color: var(--accent); }
       .color-options span::before { content: "●"; margin-right: 5px; }
       [data-swatch="light"], [data-swatch="white"] { color: #eef2ff; }
@@ -302,6 +306,18 @@
       body.folded .backbar,
       body.folded #overlay-controls { display: none; }
       body.folded .ov { border-radius: 0; height: auto; max-height: none; overflow: visible; }
+      /* при свернутом оверлее меню открывается полностью — по высоте окна, со скроллом, без обрезки */
+      body.folded .menu {
+        top: 44px;
+        left: 8px;
+        right: 8px;
+        min-width: 0;
+        max-height: calc(100% - 52px);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+      }
+      body.folded .menu::-webkit-scrollbar { width: 7px; }
+      body.folded .menu::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; }
       body.header-hidden .ov-header,
       body.header-hidden .backbar { display: none; }
       body.header-hidden .ov { border-radius: 0; }
@@ -355,6 +371,7 @@
         <div class="winbtns">
           <button class="winbtn" id="ghost" title="Призрачный режим (почти прозрачно)" aria-label="Призрачный режим">👁</button>
           <button class="winbtn" id="fold" title="Свернуть (оставить кнопки)" aria-label="Свернуть">▾</button>
+          <button class="winbtn" id="header-toggle" title="Скрыть заголовок и кнопки окна" aria-label="Скрыть заголовок и кнопки окна">🚫</button>
           <button class="winbtn" id="close" title="Закрыть оверлей" aria-label="Закрыть оверлей">×</button>
         </div>
       </header>
@@ -365,13 +382,6 @@
         <button data-view="journal"><span class="ico">📜</span>Журнал</button>
         <div class="sep"></div>
         <button data-view="appearance"><span class="ico">🎨</span>Настройки</button>
-        <div class="sep"></div>
-        <div class="menu-label">Действия</div>
-        <button data-menu-action="toggle-menu">☰ Бургер меню</button>
-        <button data-menu-action="ghost">👁 Призрачный режим</button>
-        <button data-menu-action="fold">▾ Свернуть до кнопок</button>
-        <button data-menu-action="hide-header">Скрыть заголовок и кнопки окна</button>
-        <button data-menu-action="close">× Закрыть оверлей</button>
       </div>
 
       <div class="repeat-strip">
@@ -514,6 +524,7 @@
                   <label><input type="radio" name="text-color-choice" value="light" checked /><span data-swatch="light">Светлый</span></label>
                   <label><input type="radio" name="text-color-choice" value="warm" /><span data-swatch="warm">Тёплый</span></label>
                   <label><input type="radio" name="text-color-choice" value="mint" /><span data-swatch="mint">Мятный</span></label>
+                  <div class="swatch-row" data-swatch-for="text-color"></div>
                 </fieldset>
                 <fieldset class="color-options">
                   <legend>Цвет клавиш</legend>
@@ -521,6 +532,7 @@
                   <label><input type="radio" name="key-color-choice" value="gold" checked /><span data-swatch="gold">Золотой</span></label>
                   <label><input type="radio" name="key-color-choice" value="blue" /><span data-swatch="blue">Голубой</span></label>
                   <label><input type="radio" name="key-color-choice" value="white" /><span data-swatch="white">Белый</span></label>
+                  <div class="swatch-row" data-swatch-for="key-color"></div>
                 </fieldset>
                 <fieldset class="color-options">
                   <legend>Цвет названия команды</legend>
@@ -528,6 +540,7 @@
                   <label><input type="radio" name="command-color-choice" value="mint" checked /><span data-swatch="mint">Мятный</span></label>
                   <label><input type="radio" name="command-color-choice" value="violet" /><span data-swatch="violet">Фиолетовый</span></label>
                   <label><input type="radio" name="command-color-choice" value="orange" /><span data-swatch="orange">Оранжевый</span></label>
+                  <div class="swatch-row" data-swatch-for="command-color"></div>
                 </fieldset>
                 <label class="field" style="margin-top:10px">Размер текста <output id="font-size-out">13px</output>
                   <input id="font-size" type="range" min="10" max="18" value="13" />
