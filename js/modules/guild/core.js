@@ -11,7 +11,7 @@
 // Из страницы берём предстоящие события, свои пати и активный опрос.
 
 import { mskDate } from '../../core/msk.js';
-import { normalizeGuildPoll, parseGuildPoll } from './poll.js';
+import { normalizeGuildPoll, parseGuildPoll, pollTextParts } from './poll.js';
 
 /** Отметка на ивенте: значения радио на сайте. */
 export const RESPONSE_YES = 'yes';
@@ -69,6 +69,8 @@ const clean = s =>
   String(s ?? '')
     .replace(/\s+/g, ' ')
     .trim();
+/** Номер опроса/опции на сайте: 1–12 цифр. */
+const ID = /^\d{1,12}$/;
 
 /** Ключ для сравнения ников: без `#` и регистра. */
 const nickKey = nick => clean(nick).replace(/^#+/, '').toLowerCase();
@@ -86,6 +88,16 @@ function normalizeMember(m) {
   if (!nick) return null;
   const cls = /^[a-z0-9_-]+$/i.test(String(m?.cls || '').trim()) ? String(m.cls).trim() : '';
   return { nick, cls, title: clean(m?.title), ...(leader ? { leader: true } : {}) };
+}
+
+/**
+ * Опросы из кэша. Открытые опросы со страницы polls.php: закрытые (надпись
+ * «Голосование закрыто») в список не попадают. Каждый опрос приводится через
+ * normalizeGuildPoll, чтобы мусор из state.json не ломал экран.
+ */
+export function normalizeGuildPolls(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.map(normalizeGuildPoll).filter(Boolean);
 }
 
 /**
@@ -114,6 +126,7 @@ export function normalizeGuildData(raw) {
       .filter(row => row.party && row.nick),
     selfNick: clean(src.selfNick),
     poll: normalizeGuildPoll(src.poll),
+    polls: normalizeGuildPolls(src.polls),
     syncedAt: Number.isFinite(Number(src.syncedAt)) && Number(src.syncedAt) > 0 ? Number(src.syncedAt) : null
   };
 }
@@ -209,6 +222,26 @@ export function parseProfileDocument(document) {
     poll: parseGuildPoll(document),
     syncedAt: null
   };
+}
+
+/**
+ * Открытые опросы со страницы polls.php. Закрытые — класс `closed` или блок
+ * `.poll__closed` с текстом «Голосование закрыто» — пропускаем: в приложение
+ * попадают только те, в которые можно проголосовать.
+ * @param {Document} document
+ * @returns {{ id: string, title: any }[]}
+ */
+export function parseGuildPollsList(document) {
+  const grid = document.querySelector('.polls__grid') || document;
+  return [...grid.querySelectorAll('.poll')]
+    .map(el => {
+      if (el.classList.contains('closed') || /голосование закрыто/iu.test(clean(el.querySelector('.poll__closed')?.textContent)))
+        return null;
+      const id = String(el.getAttribute('data-poll-id') || '').trim();
+      if (!ID.test(id)) return null;
+      return { id, title: pollTextParts(el.querySelector('.poll__title')) };
+    })
+    .filter(Boolean);
 }
 
 /** Ивенты, на которые человек ещё не ответил: их и показываем в первую очередь. */

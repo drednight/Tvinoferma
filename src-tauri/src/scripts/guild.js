@@ -166,6 +166,54 @@
     return { id, title: pollTextParts(root.querySelector('.poll__title')), type: 'single', options: [], loadError: false };
   }
 
+  // Список опросов со страницы polls.php. Закрытые (надпись «Голосование закрыто»
+  // или класс closed) пропускаем — в приложение попадают только открытые.
+  function parsePollsList(doc) {
+    const grid = doc.querySelector('.polls__grid') || doc;
+    const closed = (el) =>
+      el.classList.contains('closed') ||
+      clean(el.querySelector('.poll__closed')?.textContent).includes('Голосование закрыто');
+    return [...grid.querySelectorAll('.poll')]
+      .map((el) => {
+        const id = clean(el.getAttribute('data-poll-id'));
+        if (!validId(id) || closed(el)) return null;
+        return { id, title: pollTextParts(el.querySelector('.poll__title')) };
+      })
+      .filter(Boolean);
+  }
+
+  // Загружает polls.php и достаёт варианты для каждого открытого опроса.
+  async function loadPolls() {
+    if (!isGuildOrigin()) throw new Error('wrong_site');
+    const reply = await fetch(new URL('/polls.php', window.__tfGuildOrigin).href, {
+      credentials: 'include', cache: 'no-store'
+    });
+    if (!reply.ok) throw new Error('polls_unavailable');
+    const doc = new DOMParser().parseFromString(await reply.text(), 'text/html');
+    const list = parsePollsList(doc);
+    const polls = await Promise.all(
+      list.map(async (p) => {
+        try {
+          return applyPollOptions(p, await fetchPoll(p.id));
+        } catch (e) {
+          return { ...p, type: 'single', options: [], loadError: true };
+        }
+      })
+    );
+    return polls.filter((p) => p.options.length || p.loadError);
+  }
+
+  // Единая сборка сводки: профиль (events/parties/poll) + список открытых опросов.
+  async function buildReport(doc) {
+    const data = parseProfile(doc);
+    data.polls = await loadPolls().catch(() => []);
+    if (data.poll) {
+      try { data.poll = applyPollOptions(data.poll, await fetchPoll(data.poll.id)); }
+      catch { data.poll.loadError = true; }
+    }
+    return data;
+  }
+
   // Варианты и уже выбранные ответы сайт возвращает отдельным JSON-запросом.
   async function fetchPoll(id) {
     if (!isGuildOrigin() || !validId(id)) throw new Error('wrong_site');
@@ -217,24 +265,23 @@
   // Повторный разбор отменяет публикацию предыдущего: медленный ответ API не должен
   // затереть более свежую сводку после нажатия «Обновить».
   let scrapeSequence = 0;
-  window.__tfGuildScrape = function () {
+  window.__tfGuildScrape = async function () {
     const sequence = ++scrapeSequence;
-    if (document.querySelector('.user__events, .user__col')) {
-      const data = parseProfile(document);
-      if (!data.poll) {
-        publish('TFETE1_', { data, error: null });
-      } else {
-        fetchPoll(data.poll.id)
-          .then((reply) => { data.poll = applyPollOptions(data.poll, reply); })
-          .catch(() => { data.poll.loadError = true; })
-          .finally(() => { if (sequence === scrapeSequence) publish('TFETE1_', { data, error: null }); });
-      }
-      return true;
-    }
     if (document.querySelector('input[type="password"]')) {
-      publish('TFETE1_', { data: null, error: 'login' });
+      if (sequence === scrapeSequence) publish('TFETE1_', { data: null, error: 'login' });
+      return false;
     }
-    return false;
+    if (!document.querySelector('.user__events, .user__col')) {
+      if (sequence === scrapeSequence) publish('TFETE1_', { data: null, error: 'page' });
+      return false;
+    }
+    try {
+      const data = await buildReport(document);
+      if (sequence === scrapeSequence) publish('TFETE1_', { data, error: null });
+    } catch (error) {
+      if (sequence === scrapeSequence) publish('TFETE1_', { data: null, error: clean(error?.message || error) });
+    }
+    return true;
   };
 
   // A visible window still contains its original DOM after a POST. Verification must
@@ -251,11 +298,7 @@
       const doc = new DOMParser().parseFromString(await reply.text(), 'text/html');
       if (!doc.querySelector('.user__events, .user__col'))
         throw new Error(doc.querySelector('input[type="password"]') ? 'login' : 'page');
-      const data = parseProfile(doc);
-      if (data.poll) {
-        try { data.poll = applyPollOptions(data.poll, await fetchPoll(data.poll.id)); }
-        catch { data.poll.loadError = true; }
-      }
+      const data = await buildReport(doc);
       if (sequence === scrapeSequence) publish('TFETE1_', { data, error: null });
     } catch (error) {
       if (sequence === scrapeSequence) publish('TFETE1_', { data: null, error: clean(error?.message || error) });

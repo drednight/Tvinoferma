@@ -146,8 +146,9 @@ async function onPollSubmit(e) {
   }
   if (votePending) return;
   const pollId = form.dataset.pollId;
-  const poll = readGuildData().poll;
-  if (!poll || poll.id !== pollId || poll.loadError) {
+  const data = readGuildData();
+  const poll = data.poll?.id === pollId ? data.poll : data.polls.find(p => p.id === pollId);
+  if (!poll || poll.loadError) {
     toast('Опрос изменился. Обновите сводку клана.', 'warning');
     return;
   }
@@ -423,6 +424,18 @@ function partiesHtml(data) {
     <div class="guild-parties">${data.parties.map(p => partyHtml(p, data.selfNick, data.leaderOverrides, data.parties.filter(other => other.name === p.name).length === 1)).join('')}</div>`;
 }
 
+/** Список открытых опросов со страницы polls.php: только те, в которые можно проголосовать. */
+function pollsHtml(data) {
+  const polls = (data.polls || []).filter(poll => poll.id !== (data.poll && data.poll.id));
+  if (!polls.length) return '';
+  return `
+    <section class="guild-polls" aria-labelledby="guild-polls-title">
+      <h3 id="guild-polls-title">Опросы</h3>
+      <p class="muted guild-polls-hint">Только открытые опросы с сайта клана.</p>
+      ${polls.map(poll => guildPollHtml(poll)).join('')}
+    </section>`;
+}
+
 /** Блок под «Сегодня»: сводка и две колонки — события слева, пати справа. */
 export function renderGuildToday() {
   const box = document.getElementById('guild-today');
@@ -451,5 +464,6 @@ export function renderGuildToday() {
         <div class="guild-col guild-col--parties">${partiesHtml(data)}</div>
       </div>
       ${guildPollHtml(data.poll)}
+      ${pollsHtml(data)}
     </section>`;
 }

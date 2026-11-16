@@ -156,6 +156,33 @@
   font-size: 0.84rem;
 }
 
+/* Список открытых опросов со страницы polls.php: каждый опрос — как отдельный блок. */
+.guild-polls {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.guild-polls h3 {
+  margin: 0 0 2px;
+  font-size: 0.95rem;
+}
+
+.guild-polls-hint {
+  margin: 0 0 4px;
+  font-size: 0.84rem;
+}
+
+.guild-polls .guild-poll {
+  margin-top: 16px;
+}
+
+.guild-polls .guild-poll:first-of-type {
+  margin-top: 8px;
+  border-top: none;
+  padding-top: 0;
+}
+
 .guild-poll-options {
   display: grid;
   gap: 6px;

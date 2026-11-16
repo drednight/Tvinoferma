@@ -51,14 +51,19 @@ export async function writeGuildData(data) {
 /** Если голос принят, а сводку перечитать не удалось, сохраняем только сам ответ. */
 export async function rememberGuildPollVote(pollId, optionIds) {
   const data = readGuildData();
-  if (!data.poll || data.poll.id !== String(pollId)) return false;
   const selected = new Set(optionIds.map(String));
-  const poll = {
-    ...data.poll,
-    options: data.poll.options.map(option => ({ ...option, selected: selected.has(option.id) }))
-  };
-  // syncedAt остаётся временем последней настоящей сводки, а не неудачного обновления.
-  state.settings.guild = { ...guildSettings(), poll };
+  const withVote = poll =>
+    poll ? { ...poll, options: poll.options.map(option => ({ ...option, selected: selected.has(option.id) })) } : null;
+  if (data.poll && data.poll.id === String(pollId)) {
+    // syncedAt остаётся временем последней настоящей сводки, а не неудачного обновления.
+    state.settings.guild = { ...guildSettings(), poll: withVote(data.poll) };
+    await persist();
+    return true;
+  }
+  // Опрос может прийти только из списка открытых опросов (polls.php), а не с профиля.
+  const polls = data.polls.map(poll => (poll.id === String(pollId) ? withVote(poll) : poll));
+  if (!polls.some(poll => poll.id === String(pollId))) return false;
+  state.settings.guild = { ...guildSettings(), polls };
   await persist();
   return true;
 }
