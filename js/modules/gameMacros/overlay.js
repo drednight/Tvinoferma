@@ -359,31 +359,33 @@ async function init() {
                 : 'Хоткеи выключены / недоступны');
     document.getElementById('commands').replaceChildren(
       ...(data.commands || []).map(row => {
-        const li = document.createElement('li'),
-          key = document.createElement('kbd');
+        const li = document.createElement('li');
+        li.className = 'cmd';
+        const key = document.createElement('kbd');
+        key.textContent = String(row.hotkey || 'Не назначена');
         const name = document.createElement('span');
+        name.className = 'name';
         name.textContent = String(row.name || '');
         name.style.minWidth = '0';
-        const play = document.createElement('button');
-        play.type = 'button';
-        play.className = 'command-run';
-        play.textContent = '▶';
-        play.title = `Запустить: ${row.name || 'команда'}`;
-        play.setAttribute('aria-label', play.title);
-        play.disabled = !row.id || (!!data.busy && !row.allowWhileBusy);
-        play.onclick = async () => {
-          play.disabled = true;
+        const quick = document.createElement('button');
+        quick.type = 'button';
+        quick.className = 'cmd-run';
+        quick.textContent = '▶';
+        quick.title = `Запустить: ${row.name || 'команда'}`;
+        quick.setAttribute('aria-label', quick.title);
+        quick.disabled = !row.id || (!!data.busy && !row.allowWhileBusy);
+        li.append(key, name, quick);
+        li.onclick = async () => {
+          if (!row.id || (!!data.busy && !row.allowWhileBusy)) return;
+          quick.disabled = true;
           try {
             await emitTo('main', 'game-overlay-run', row.id);
           } catch {
             document.getElementById('status').textContent = 'Не удалось отправить запрос запуска команды.';
           } finally {
-            play.disabled = !row.id || (!!data.busy && !row.allowWhileBusy);
+            quick.disabled = !row.id || (!!data.busy && !row.allowWhileBusy);
           }
         };
-        li.append(play, name);
-        key.textContent = String(row.hotkey || 'Не назначена');
-        li.append(key);
         return li;
       })
     );
@@ -439,12 +441,8 @@ async function init() {
   const showView = view => {
     for (const id of ['shortcuts', 'journal', 'party', 'appearance', 'recipients'])
       document.getElementById(`${id}-screen`).hidden = id !== view;
-    const back = document.getElementById('back-btn');
-    if (back) back.hidden = view === 'shortcuts';
     const where = document.getElementById('where');
     if (where) where.textContent = viewLabels[view] || view;
-    const crumb = document.getElementById('crumb');
-    if (crumb) crumb.textContent = viewLabels[view] ? `Оверлей · ${viewLabels[view]}` : 'Оверлей';
     if (view === 'party') void partyRequest('party-refresh');
     if (view === 'recipients' && !recipientRevision) void recipientRequest({ action: 'refresh' });
     document.querySelectorAll('[data-view]').forEach(button => {
@@ -457,8 +455,6 @@ async function init() {
     if (button.dataset.view === '__fold') { void foldClick(); return; }
     showView(button.dataset.view);
   }));
-  const backBtn = document.getElementById('back-btn');
-  if (backBtn) backBtn.onclick = () => showView('shortcuts');
   const extraNames = {
     pink: 'Розовый',
     cyan: 'Бирюзовый',
@@ -522,19 +518,13 @@ async function init() {
   document.getElementById('party-select').onchange = () =>
     (document.getElementById('party-launch').disabled = partyBusy || !document.getElementById('party-select').value);
   document.getElementById('party-launch').onclick = () => partyRequest('party-launch');
-  document.getElementById('party-close-all').onclick = () => {
-    document.getElementById('close-confirm').hidden = false;
-  };
-  document.getElementById('close-confirm-no').onclick = () => {
-    document.getElementById('close-confirm').hidden = true;
-  };
-  document.getElementById('close-confirm-yes').onclick = () => {
-    document.getElementById('close-confirm').hidden = true;
-    const closeMode = document.getElementById('close-mode').value;
-    if (closeMode === 'all') return partyRequest('party-close-all');
+  const closeButton = document.getElementById('party-close-all');
+  const closeDropdown = document.getElementById('close-dropdown');
+  const closeWindows = mode => {
+    if (mode === 'all') { void partyRequest('party-close-all'); return; }
     const closeTargets = [
       ...document.querySelectorAll(
-        closeMode === 'selected' ? '[data-close-window]:checked' : '[data-close-window]:not(:disabled)'
+        mode === 'selected' ? '[data-close-window]:checked' : '[data-close-window]:not(:disabled)'
       )
     ].map(input => JSON.parse(input.value));
     if (!closeTargets.length) {
@@ -542,8 +532,27 @@ async function init() {
         'Отметьте актуальные окна в списке. Для режима «кроме ПЛ» сначала обновите окна.';
       return;
     }
-    return partyRequest('party-close-all', { closeMode, closeTargets });
+    void partyRequest('party-close-all', { closeMode: mode, closeTargets });
   };
+  if (closeButton && closeDropdown) {
+    closeButton.onclick = event => {
+      event.stopPropagation();
+      const open = closeDropdown.hidden;
+      closeDropdown.hidden = !open;
+      closeButton.setAttribute('aria-expanded', String(open));
+    };
+    closeDropdown.querySelectorAll('[data-close-mode]').forEach(option => {
+      option.onclick = () => {
+        closeDropdown.hidden = true;
+        closeButton.setAttribute('aria-expanded', 'false');
+        closeWindows(option.dataset.closeMode);
+      };
+    });
+    document.addEventListener('click', event => {
+      if (closeDropdown.hidden) return;
+      if (!event.target.closest('.close-wrap')) closeDropdown.hidden = true;
+    });
+  }
   document.getElementById('party-refresh').onclick = () => partyRequest('party-refresh');
   const menuBtn = document.getElementById('menu-btn');
   const menu = document.getElementById('menu');
@@ -553,12 +562,10 @@ async function init() {
     if (menuBtn) menuBtn.setAttribute('aria-expanded', String(open));
   };
   if (menuBtn) menuBtn.onclick = toggleMenu;
-  const floatingPanelToggle = document.getElementById('floating-panel-toggle');
-  if (floatingPanelToggle) floatingPanelToggle.onclick = () => { menu.hidden = false; };
   document.addEventListener('click', event => {
     if (menu.hidden) return;
     const target = event.target;
-    if (target.closest('#menu') || target.closest('#menu-btn') || target.closest('#floating-panel-toggle')) return;
+    if (target.closest('#menu') || target.closest('#menu-btn')) return;
     closeMenu();
   });
 
@@ -581,10 +588,6 @@ async function init() {
       if (!opt) return;
       const size = opt.dataset.size;
       document.documentElement.setAttribute('data-size', size);
-      document.documentElement.style.setProperty('--fs', (size === 'S' ? '11px' : size === 'L' ? '15px' : '13px'));
-      document.body.classList.toggle('size-xs', size === 'S');
-      document.body.classList.toggle('size-md', size === 'M');
-      document.body.classList.toggle('size-lg', size === 'L');
     };
   }
   const ghost = document.getElementById('ghost');

@@ -95,15 +95,16 @@
 
       /* ---- окно оверлея (всё окно) ---- */
       .ov {
-        position: fixed; inset: 0; z-index: 10;
+        position: fixed; left: 50%; top: 50%; z-index: 10;
+        transform: translate(-50%, -50%);
         display: flex; flex-direction: column;
+        width: var(--ov-w, 380px); height: var(--ov-h, 380px); max-height: 92vh;
         background: var(--panel);
         backdrop-filter: blur(20px) saturate(140%);
         -webkit-backdrop-filter: blur(20px) saturate(140%);
         border: 1px solid var(--line); border-radius: var(--radius);
         box-shadow: var(--shadow); overflow: hidden; color: var(--overlay-text, var(--text));
         font: var(--font); color: var(--overlay-text, var(--text));
-        opacity: var(--alpha, 0.9);
       }
       .ov.ghost { border-color: var(--line-2); box-shadow: 0 8px 24px rgba(0,0,0,0.25); }
 
@@ -183,7 +184,7 @@
       .backbar { display: flex; align-items: center; gap: 6px; padding: 7px 11px; font-size: 11px; color: var(--text-mute); border-bottom: 1px solid var(--line-2); background: rgba(255,255,255,0.02); }
       .backbar button { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel-3); color: var(--text-dim); cursor: pointer; font: inherit; font-size: 11px; font-weight: 600; transition: .15s; }
       .backbar button:hover { color: var(--text); border-color: var(--accent); }
-      .backbar .where { margin-left: auto; color: var(--accent); }
+      .backbar .where { color: var(--accent); font-weight: 700; }
 
       /* body / service panel */
       #overlay-controls { flex: 1; overflow: auto; }
@@ -201,10 +202,12 @@
 
       /* цветные команды */
       #commands { list-style: none; padding: 0; margin: 0; }
-      .cmd { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 8px; padding: 7px 8px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--panel-3); margin-bottom: 6px; }
+      .cmd { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--panel-3); margin-bottom: 8px; cursor: pointer; }
       .cmd:last-child { margin-bottom: 0; }
-      .cmd .run { width: 30px; height: 27px; display: grid; place-items: center; border: none; border-radius: 7px; background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 45%, var(--panel-3)), var(--panel-3)); color: var(--accent); cursor: pointer; font-size: 11px; }
-      .cmd .run:hover { filter: brightness(1.15); }
+      .cmd:hover { border-color: var(--line); }
+      .cmd-run { width: 30px; height: 27px; display: grid; place-items: center; border: none; border-radius: 7px; background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 45%, var(--panel-3)), var(--panel-3)); color: var(--accent); cursor: pointer; font-size: 11px; }
+      .cmd-run:hover { filter: brightness(1.15); }
+      .cmd-run:disabled { opacity: .4; cursor: default; }
       .cmd .name { font-size: 12px; font-weight: 700; min-width: 0; color: var(--overlay-command, var(--cmd)); overflow-wrap: anywhere; }
       .cmd.c2 .name { color: var(--accent-2); }
       .cmd.c3 .name { color: var(--accent-3); }
@@ -242,6 +245,19 @@
       .btn:hover { border-color: var(--accent); }
       .btn.primary { background: linear-gradient(180deg, color-mix(in srgb, var(--accent-2) 30%, var(--panel-3)), var(--panel-3)); border-color: color-mix(in srgb, var(--accent-2) 45%, transparent); color: var(--accent-2); }
       .btn.ghost { background: transparent; }
+      .close-wrap { position: relative; display: inline-block; }
+      .close-dropdown {
+        position: absolute; z-index: 30; top: calc(100% + 4px); left: 0;
+        min-width: 220px; padding: 5px;
+        background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px;
+        box-shadow: var(--shadow);
+      }
+      .close-dropdown button {
+        display: block; width: 100%; text-align: left; padding: 8px 10px;
+        border: none; border-radius: 7px; background: transparent; color: var(--text);
+        cursor: pointer; font: inherit; font-size: 11.5px; transition: .12s;
+      }
+      .close-dropdown button:hover { background: rgba(255,255,255,0.07); color: var(--accent); }
       #party-screen select { width: 100%; padding: 7px 8px; background: var(--panel-3); color: var(--text); border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 11.5px; }
       .launch-character { border-left: 3px solid var(--accent-2); padding: 6px 10px; font-weight: 700; color: var(--accent-2); background: color-mix(in srgb, var(--accent-2) 12%, transparent); }
 
@@ -280,32 +296,15 @@
       body.folded .ov-status,
       body.folded .backbar,
       body.folded #overlay-controls { display: none; }
-      body.folded .ov { border-radius: 0; }
-      body.header-hidden .ov-header { display: none; }
+      body.folded .ov { border-radius: 0; height: auto; max-height: 92vh; }
+      body.header-hidden .ov-title,
+      body.header-hidden .winbtns { display: none; }
+      body.header-hidden .ov-header { padding: 6px 8px; }
       body.header-hidden .ov { border-radius: 0; }
-      .floating-panel-toggle {
-        display: none;
-        position: fixed;
-        top: 6px;
-        right: 6px;
-        z-index: 40;
-        width: 30px;
-        height: 30px;
-        padding: 0;
-        border: 1px solid var(--line);
-        border-radius: 50%;
-        background: var(--panel-3);
-        color: var(--text-dim);
-        cursor: pointer;
-        font-size: 15px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-      }
-      body.header-hidden .floating-panel-toggle { display: block; }
-      .floating-panel-toggle:hover { color: var(--text); border-color: var(--accent); }
 
-      body.size-xs { --fs: 11px; }
-      body.size-md { --fs: 13px; }
-      body.size-lg { --fs: 15px; }
+      :root[data-size="S"] { --ov-w: 300px; --ov-h: 300px; --fs: 11px; }
+      :root[data-size="M"] { --ov-w: 380px; --ov-h: 380px; --fs: 13px; }
+      :root[data-size="L"] { --ov-w: 460px; --ov-h: 460px; --fs: 15px; }
 
       /* ============ ADAPTIVE ============ */
       @media (max-width: 520px) {
@@ -319,14 +318,8 @@
   </head>
   <body>
     <div class="ov" id="ov">
-      <button class="floating-panel-toggle" id="floating-panel-toggle" title="Меню" aria-label="Меню">⋯</button>
       <header class="ov-header" id="ov-handle" data-drag>
         <button class="menu-btn" id="menu-btn" aria-expanded="false" aria-haspopup="true" title="Меню" aria-label="Меню">☰</button>
-        <div class="ov-title">
-          <span class="dot"></span>
-          <span>Управление пати</span>
-          <span class="crumb" id="crumb">· главная</span>
-        </div>
         <div class="winbtns">
           <button class="winbtn" id="ghost" title="Призрачный режим (почти прозрачно)" aria-label="Призрачный режим">👁</button>
           <button class="winbtn" id="fold" title="Свернуть (оставить кнопки)" aria-label="Свернуть">▾</button>
@@ -358,7 +351,6 @@
       </div>
 
       <div class="backbar">
-        <button id="back-btn">← Назад</button>
         <span class="where" id="where">главная</span>
       </div>
 
@@ -412,20 +404,16 @@
                 <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px">
                   <button type="button" class="btn primary" id="party-launch">▶ Запустить пати</button>
                   <button type="button" class="btn ghost" id="party-refresh">Обновить окна</button>
-                  <button type="button" class="btn ghost" id="party-close-all">Закрыть окна ▾</button>
+                  <div class="close-wrap">
+                    <button type="button" class="btn ghost" id="party-close-all" aria-expanded="false" aria-haspopup="true">Закрыть окна ▾</button>
+                    <div class="close-dropdown" id="close-dropdown" hidden>
+                      <button type="button" data-close-mode="all">Все игровые окна</button>
+                      <button type="button" data-close-mode="except-leader">Все кроме ПЛ выбранной пати</button>
+                      <button type="button" data-close-mode="selected">Только отмеченные окна</button>
+                    </div>
+                  </div>
                 </div>
-                <div id="close-confirm" hidden>
-                  <label class="field" style="margin-bottom:6px">Какие окна закрыть
-                    <select id="close-mode">
-                      <option value="all">Все игровые окна</option>
-                      <option value="except-leader">Все кроме ПЛ выбранной пати</option>
-                      <option value="selected">Только отмеченные окна</option>
-                    </select>
-                  </label>
-                  <p class="recipient-help">Для выборочного закрытия отметьте окна в списке ниже. Несохранённые данные в игре будут потеряны.</p>
-                  <button type="button" class="btn" id="close-confirm-yes">Подтвердить закрытие</button>
-                  <button type="button" class="btn ghost" id="close-confirm-no">Отмена</button>
-                </div>
+                <p class="recipient-help">Для выборочного закрытия отметьте окна в списке ниже. Несохранённые данные в игре будут потеряны.</p>
                 <div id="launch-progress" hidden>
                   <p id="launch-character" class="launch-character" hidden></p>
                   <progress id="launch-percent" max="100" value="0" aria-label="Прогресс запуска пати"></progress>
