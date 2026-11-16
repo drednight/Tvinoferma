@@ -5,7 +5,7 @@ import { copyJournal } from './journal.js';
 import { normalizeAppearance, TEXT_PRESETS, KEY_PRESETS, COMMAND_PRESETS } from './appearance.js';
 import { listen, emitTo } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getCurrentWindow, ResizeDirection } from '@tauri-apps/api/window';
 async function init() {
   const current = getCurrentWindow();
   let latestLaunch = null;
@@ -455,6 +455,19 @@ async function init() {
     if (button.dataset.view === '__fold') { void foldClick(); return; }
     showView(button.dataset.view);
   }));
+  const handleMenuAction = action => {
+    if (action === 'toggle-menu') document.getElementById('menu-btn')?.click();
+    else if (action === 'ghost') document.getElementById('ghost')?.click();
+    else if (action === 'fold') document.getElementById('fold')?.click();
+    else if (action === 'hide-header') {
+      const hh = document.getElementById('hide-header');
+      if (hh) { hh.checked = !hh.checked; hh.dispatchEvent(new Event('change')); }
+    } else if (action === 'close') document.getElementById('close')?.click();
+  };
+  document.querySelectorAll('[data-menu-action]').forEach(button => (button.onclick = () => {
+    closeMenu();
+    handleMenuAction(button.dataset.menuAction);
+  }));
   const extraNames = {
     pink: 'Розовый',
     cyan: 'Бирюзовый',
@@ -477,10 +490,18 @@ async function init() {
       fieldset.append(label);
     }
   }
+  const colorPresets = {
+    'text-color': TEXT_PRESETS,
+    'key-color': KEY_PRESETS,
+    'command-color': COMMAND_PRESETS
+  };
   document.querySelectorAll('.color-options input[type=radio]').forEach(
     input =>
       (input.onchange = () => {
-        document.getElementById(input.name.replace('-choice', '')).value = input.value;
+        const id = input.name.replace('-choice', '');
+        document.getElementById(id).value = input.value;
+        const value = colorPresets[id]?.[input.value];
+        if (value) document.documentElement.style.setProperty('--overlay-' + id.replace('-color', ''), value);
       })
   );
   for (const [id, colors] of Object.entries({
@@ -562,10 +583,12 @@ async function init() {
     if (menuBtn) menuBtn.setAttribute('aria-expanded', String(open));
   };
   if (menuBtn) menuBtn.onclick = toggleMenu;
+  const floatingPanelToggle = document.getElementById('floating-panel-toggle');
+  if (floatingPanelToggle) floatingPanelToggle.onclick = () => { menu.hidden = false; };
   document.addEventListener('click', event => {
     if (menu.hidden) return;
     const target = event.target;
-    if (target.closest('#menu') || target.closest('#menu-btn')) return;
+    if (target.closest('#menu') || target.closest('#menu-btn') || target.closest('#floating-panel-toggle')) return;
     closeMenu();
   });
 
@@ -612,6 +635,10 @@ async function init() {
     document.getElementById('alpha-value').textContent = event.target.value + '%';
     document.documentElement.style.setProperty('--alpha', String(Number(event.target.value) / 100));
   };
+  document.getElementById('font-size').oninput = event => {
+    document.getElementById('font-size-out').textContent = event.target.value + 'px';
+    document.documentElement.style.setProperty('--overlay-font', event.target.value + 'px');
+  };
   document.getElementById('save-appearance').onclick = async () => {
     const button = document.getElementById('save-appearance');
     button.disabled = true;
@@ -645,6 +672,13 @@ async function init() {
   });
   document.querySelector('[data-drag]').onpointerdown = event => {
     if (event.button === 0 && !event.target.closest('button')) void current.startDragging();
+  };
+  document.getElementById('resize-handle').onpointerdown = event => {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    if (current && typeof current.startResizeDragging === 'function') {
+      current.startResizeDragging(ResizeDirection.SouthEast);
+    }
   };
   let collapsed = false;
   const fold = document.getElementById('fold');

@@ -8,7 +8,7 @@
       /* ============ THEMES ============ */
       :root {
         color-scheme: dark;
-        --font: var(--fs, var(--overlay-font, 13px)) system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+        --font: var(--overlay-font, 13px) system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
         --radius: 14px;
         --radius-sm: 9px;
         --alpha: 0.9;
@@ -133,7 +133,7 @@
 
       /* выпадающее меню */
       .menu {
-        position: absolute; top: 40px; left: 10px; z-index: 30;
+        position: absolute; top: 46px; left: 10px; z-index: 30;
         min-width: 190px; padding: 6px;
         background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px;
         box-shadow: var(--shadow); backdrop-filter: blur(20px);
@@ -202,13 +202,13 @@
 
       /* цветные команды */
       #commands { list-style: none; padding: 0; margin: 0; }
-      .cmd { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--panel-3); margin-bottom: 8px; cursor: pointer; }
+      .cmd { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--panel); margin-bottom: 8px; cursor: pointer; }
       .cmd:last-child { margin-bottom: 0; }
       .cmd:hover { border-color: var(--line); }
-      .cmd-run { width: 30px; height: 27px; display: grid; place-items: center; border: none; border-radius: 7px; background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 45%, var(--panel-3)), var(--panel-3)); color: var(--accent); cursor: pointer; font-size: 11px; }
+      .cmd-run { flex: 0 0 auto; width: 30px; height: 27px; display: grid; place-items: center; border: none; border-radius: 7px; background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 45%, var(--panel-3)), var(--panel-3)); color: var(--accent); cursor: pointer; font-size: 11px; }
       .cmd-run:hover { filter: brightness(1.15); }
       .cmd-run:disabled { opacity: .4; cursor: default; }
-      .cmd .name { font-size: 12px; font-weight: 700; min-width: 0; color: var(--overlay-command, var(--cmd)); overflow-wrap: anywhere; }
+      .cmd .name { flex: 1 1 auto; min-width: 0; font-size: 12px; font-weight: 700; color: var(--overlay-command, var(--cmd)); overflow-wrap: anywhere; }
       .cmd.c2 .name { color: var(--accent-2); }
       .cmd.c3 .name { color: var(--accent-3); }
       .cmd.c4 .name { color: var(--accent); }
@@ -292,19 +292,56 @@
       .theme-opt.sel { border-color: var(--accent); }
 
       /* свёрнутый вид: оставляем header + repeat-strip, прячем навигацию и содержимое */
-      body.folded .top,
       body.folded .ov-status,
       body.folded .backbar,
       body.folded #overlay-controls { display: none; }
-      body.folded .ov { border-radius: 0; height: auto; max-height: 92vh; }
-      body.header-hidden .ov-title,
-      body.header-hidden .winbtns { display: none; }
-      body.header-hidden .ov-header { padding: 6px 8px; }
+      body.folded .ov { border-radius: 0; height: auto; max-height: none; overflow: visible; }
+      body.header-hidden .ov-header,
+      body.header-hidden .backbar { display: none; }
       body.header-hidden .ov { border-radius: 0; }
+      .floating-panel-toggle {
+        display: none;
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        z-index: 40;
+        width: 30px;
+        height: 30px;
+        place-items: center;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-3);
+        color: var(--text-dim);
+        cursor: pointer;
+        font-size: 14px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+      }
+      body.header-hidden .floating-panel-toggle { display: grid; }
+      .floating-panel-toggle:hover { color: var(--text); border-color: var(--accent); }
+      .resize-handle {
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        z-index: 35;
+        width: 18px;
+        height: 18px;
+        cursor: nwse-resize;
+        background: linear-gradient(135deg, transparent 50%, var(--line) 50%);
+        border-bottom-right-radius: var(--radius);
+      }
+      .resize-handle:hover { background: linear-gradient(135deg, transparent 50%, var(--accent) 50%); }
+      .menu-label {
+        padding: 5px 10px 3px;
+        font-size: 9.5px;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: var(--text-mute);
+      }
 
-      :root[data-size="S"] { --ov-w: 300px; --ov-h: 300px; --fs: 11px; }
-      :root[data-size="M"] { --ov-w: 380px; --ov-h: 380px; --fs: 13px; }
-      :root[data-size="L"] { --ov-w: 460px; --ov-h: 460px; --fs: 15px; }
+      :root[data-size="S"] { --ov-w: 300px; --ov-h: 300px; }
+      :root[data-size="M"] { --ov-w: 380px; --ov-h: 380px; }
+      :root[data-size="L"] { --ov-w: 460px; --ov-h: 460px; }
 
       /* ============ ADAPTIVE ============ */
       @media (max-width: 520px) {
@@ -318,6 +355,7 @@
   </head>
   <body>
     <div class="ov" id="ov">
+      <button class="floating-panel-toggle" id="floating-panel-toggle" title="Меню" aria-label="Меню">☰</button>
       <header class="ov-header" id="ov-handle" data-drag>
         <button class="menu-btn" id="menu-btn" aria-expanded="false" aria-haspopup="true" title="Меню" aria-label="Меню">☰</button>
         <div class="winbtns">
@@ -325,17 +363,22 @@
           <button class="winbtn" id="fold" title="Свернуть (оставить кнопки)" aria-label="Свернуть">▾</button>
           <button class="winbtn" id="close" title="Закрыть оверлей" aria-label="Закрыть оверлей">×</button>
         </div>
-        <div class="menu" id="menu" hidden>
-          <button data-view="shortcuts" aria-current="page"><span class="ico">⌨</span>Назначенные клавиши</button>
-          <button data-view="recipients"><span class="ico">👥</span>Получатели</button>
-          <button data-view="party"><span class="ico">🪟</span>Окна и пати</button>
-          <button data-view="journal"><span class="ico">📜</span>Журнал</button>
-          <div class="sep"></div>
-          <button data-view="appearance"><span class="ico">🎨</span>Настройки</button>
-          <div class="sep"></div>
-          <button data-view="__fold"><span class="ico">▾</span>Свернуть оверлей</button>
-        </div>
       </header>
+      <div class="menu" id="menu" hidden>
+        <button data-view="shortcuts" aria-current="page"><span class="ico">⌨</span>Назначенные клавиши</button>
+        <button data-view="recipients"><span class="ico">👥</span>Получатели</button>
+        <button data-view="party"><span class="ico">🪟</span>Окна и пати</button>
+        <button data-view="journal"><span class="ico">📜</span>Журнал</button>
+        <div class="sep"></div>
+        <button data-view="appearance"><span class="ico">🎨</span>Настройки</button>
+        <div class="sep"></div>
+        <div class="menu-label">Действия</div>
+        <button data-menu-action="toggle-menu">☰ Бургер меню</button>
+        <button data-menu-action="ghost">👁 Призрачный режим</button>
+        <button data-menu-action="fold">▾ Свернуть до кнопок</button>
+        <button data-menu-action="hide-header">Скрыть заголовок и кнопки окна</button>
+        <button data-menu-action="close">× Закрыть оверлей</button>
+      </div>
 
       <div class="repeat-strip">
         <button type="button" class="chip" id="mouse-repeat-toggle" aria-pressed="false" data-state="off" disabled><span>🖱</span> Мышь<span class="state">выкл</span></button>
@@ -504,6 +547,7 @@
           </section>
         </div>
       </div>
+      <div class="resize-handle" id="resize-handle" title="Растягивать окно" aria-label="Растягивать окно"></div>
     </div>
 
     <script type="module" src="/js/modules/gameMacros/overlay.js"></script>
