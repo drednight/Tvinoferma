@@ -63,7 +63,7 @@ function renderTodayNow() {
 /** Показывает или прячет панель клана на «Сегодня» по флагу. */
 export function applyGuildVisibility() {
   if (backgroundStarted) responses.resume();
-  renderGuildToday();
+  renderTodayNow();
 }
 
 /** Обработчики кнопок клана вешаются один раз на весь документ: блоки перерисовываются (календарь перезадаёт всю страницу). */
@@ -129,7 +129,7 @@ async function run(btn, fn) {
     toast(`Не удалось: ${err?.message || err}`, 'error');
   } finally {
     btn.disabled = false;
-    renderGuildToday();
+    renderTodayNow();
   }
 }
 
@@ -203,7 +203,7 @@ async function onPollSubmit(e) {
     toast(message, 'warning');
   } finally {
     votePending = false;
-    if (accepted) renderGuildToday();
+    if (accepted) renderTodayNow();
     else controls.forEach(control => (control.disabled = false));
   }
 }
