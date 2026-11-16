@@ -367,26 +367,26 @@ async function init() {
         name.className = 'name';
         name.textContent = String(row.name || '');
         name.style.minWidth = '0';
-        const del = document.createElement('button');
-        del.type = 'button';
-        del.className = 'cmd-del';
-        del.textContent = '✕';
-        del.title = `Удалить: ${row.name || 'команда'}`;
-        del.setAttribute('aria-label', del.title);
-        del.disabled = !row.id;
-        del.onclick = async event => {
+        const run = document.createElement('button');
+        run.type = 'button';
+        run.className = 'cmd-run';
+        run.textContent = '▶';
+        run.title = `Запустить: ${row.name || 'команда'}`;
+        run.setAttribute('aria-label', run.title);
+        run.disabled = !row.id || (!!data.busy && !row.allowWhileBusy);
+        run.onclick = async event => {
           event.stopPropagation();
-          if (!row.id) return;
-          del.disabled = true;
+          if (!row.id || (!!data.busy && !row.allowWhileBusy)) return;
+          run.disabled = true;
           try {
-            await emitTo('main', 'game-overlay-delete', row.id);
+            await emitTo('main', 'game-overlay-run', row.id);
           } catch {
-            document.getElementById('status').textContent = 'Не удалось удалить команду.';
+            document.getElementById('status').textContent = 'Не удалось отправить запрос запуска команды.';
           } finally {
-            del.disabled = false;
+            run.disabled = !row.id || (!!data.busy && !row.allowWhileBusy);
           }
         };
-        li.append(key, name, del);
+        li.append(key, name, run);
         li.onclick = async () => {
           if (!row.id || (!!data.busy && !row.allowWhileBusy)) return;
           try {
@@ -695,13 +695,6 @@ async function init() {
   });
   document.querySelector('[data-drag]').onpointerdown = event => {
     if (event.button === 0 && !event.target.closest('button')) void current.startDragging();
-  };
-  document.getElementById('resize-handle').onpointerdown = event => {
-    if (event.button !== 0) return;
-    event.stopPropagation();
-    if (current && typeof current.startResizeDragging === 'function') {
-      current.startResizeDragging('SouthEast');
-    }
   };
   let collapsed = false;
   const fold = document.getElementById('fold');

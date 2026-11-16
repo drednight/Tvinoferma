@@ -1740,7 +1740,7 @@
   font-size: 0.85rem;
 }
 .gm-command-detail .gm-icon-actions {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
 }
 .gm-command-empty {

@@ -112,7 +112,7 @@
       .ov.ghost .winbtn,
       .ov.ghost .menu-btn,
       .ov.ghost .btn,
-      .ov.ghost .cmd-del { background-color: color-mix(in srgb, var(--panel-3) 45%, transparent); }
+      .ov.ghost .cmd-run { background-color: color-mix(in srgb, var(--panel-3) 45%, transparent); }
 
       /* header */
       .ov-header {
@@ -201,7 +201,7 @@
       .target { display: inline-flex; align-items: center; gap: 4px; font-size: 9.5px; font-weight: 700; color: var(--accent-3); background: color-mix(in srgb, var(--accent-3) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent-3) 30%, transparent); padding: 2px 7px; border-radius: 20px; white-space: nowrap; }
       .target::before { content: "◎"; font-size: 9px; }
 
-      .card { border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--panel-2); overflow: hidden; }
+      .card { border: 1px solid var(--line-2); border-radius: var(--radius-sm); overflow: hidden; }
       .card > .chead { display: flex; align-items: center; gap: 7px; padding: 8px 10px; border-bottom: 1px solid var(--line-2); background: rgba(255,255,255,0.03); }
       .card > .chead h3 { margin: 0; font-size: 12px; font-weight: 700; color: var(--accent-2); }
       .card > .cbody { padding: 9px 10px; }
@@ -211,15 +211,15 @@
       .cmd { position: relative; display: flex; align-items: center; gap: 10px; padding: 9px 10px 9px 10px; padding-right: 40px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--panel); margin-bottom: 8px; cursor: pointer; }
       .cmd:last-child { margin-bottom: 0; }
       .cmd:hover { border-color: var(--line); }
-      .cmd-del { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 26px; height: 26px; display: grid; place-items: center; border: none; border-radius: 7px; background: color-mix(in srgb, var(--danger, #f7768e) 18%, transparent); color: var(--danger, #f7768e); cursor: pointer; font-size: 12px; }
-      .cmd-del:hover { background: color-mix(in srgb, var(--danger, #f7768e) 34%, transparent); }
-      .cmd-del:disabled { opacity: .4; cursor: default; }
+      .cmd-run { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 26px; height: 26px; display: grid; place-items: center; border: none; border-radius: 7px; background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); cursor: pointer; font-size: 11px; }
+      .cmd-run:hover { background: color-mix(in srgb, var(--accent) 34%, transparent); }
+      .cmd-run:disabled { opacity: .4; cursor: default; }
       .cmd .name { flex: 1 1 auto; min-width: 0; font-size: 12px; font-weight: 700; color: var(--overlay-command, var(--cmd)); overflow-wrap: anywhere; }
       .cmd.c2 .name { color: var(--accent-2); }
       .cmd.c3 .name { color: var(--accent-3); }
       .cmd.c4 .name { color: var(--accent); }
       .cmd .name small { display: block; font-weight: 500; color: var(--text-mute); font-size: 10px; }
-      kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; font-weight: 700; color: var(--overlay-key, var(--accent)); background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: 5px; padding: 2px 6px; white-space: nowrap; }
+      kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; font-weight: 700; color: var(--overlay-key, var(--accent)); background: color-mix(in srgb, var(--overlay-key, var(--accent)) 12%, transparent); border: 1px solid color-mix(in srgb, var(--overlay-key, var(--accent)) 35%, transparent); border-radius: 5px; padding: 2px 6px; white-space: nowrap; }
 
       /* recipients */
       #recipient-list { list-style: none; padding: 0; margin: 0; }
@@ -324,18 +324,6 @@
       }
       body.header-hidden .floating-panel-toggle { display: grid; }
       .floating-panel-toggle:hover { color: var(--text); border-color: var(--accent); }
-      .resize-handle {
-        position: absolute;
-        right: 0;
-        bottom: 0;
-        z-index: 35;
-        width: 18px;
-        height: 18px;
-        cursor: nwse-resize;
-        background: linear-gradient(135deg, transparent 50%, var(--line) 50%);
-        border-bottom-right-radius: var(--radius);
-      }
-      .resize-handle:hover { background: linear-gradient(135deg, transparent 50%, var(--accent) 50%); }
       .menu-label {
         padding: 5px 10px 3px;
         font-size: 9.5px;
@@ -553,7 +541,6 @@
           </section>
         </div>
       </div>
-      <div class="resize-handle" id="resize-handle" title="Растягивать окно" aria-label="Растягивать окно"></div>
     </div>
 
     <script type="module" src="/js/modules/gameMacros/overlay.js"></script>
