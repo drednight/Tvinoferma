@@ -285,7 +285,7 @@ pub fn game_macro_overlay_fold(
         window
             .set_size(tauri::PhysicalSize::new(
                 size.width,
-                (120.0 * window.scale_factor().unwrap_or(1.0)).round() as u32,
+                (168.0 * window.scale_factor().unwrap_or(1.0)).round() as u32,
             ))
             .map_err(|_| "Cannot collapse overlay")?;
     } else {
@@ -296,6 +296,23 @@ pub fn game_macro_overlay_fold(
             .set_resizable(true)
             .map_err(|_| "Cannot unlock overlay size")?;
     }
+    Ok(())
+}
+#[tauri::command]
+pub fn game_macro_overlay_resize(
+    window: tauri::WebviewWindow,
+    width: u32,
+    height: u32,
+) -> Result<(), String> {
+    if window.label() != "game-overlay" {
+        return Err("Only the overlay can resize itself".into());
+    }
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let w = (width as f64 / scale).max(320.0) as u32;
+    let h = (height as f64 / scale).max(52.0) as u32;
+    window
+        .set_size(tauri::PhysicalSize::new(w, h))
+        .map_err(|_| "Cannot resize overlay")?;
     Ok(())
 }
 #[tauri::command]

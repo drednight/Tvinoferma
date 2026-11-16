@@ -328,6 +328,7 @@ pub fn run() {
             game_macros::game_macro_overlay,
             game_macros::game_macro_navigate,
             game_macros::game_macro_overlay_fold,
+            game_macros::game_macro_overlay_resize,
             game_macros::game_macro_overlay_preferences,
             game_macros::game_macro_guide,
             game_macros::game_macro_guide_result,

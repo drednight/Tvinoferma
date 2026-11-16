@@ -615,11 +615,25 @@ async function init() {
   }
   const sizeGrid = document.getElementById('size-grid');
   if (sizeGrid) {
-    sizeGrid.onclick = event => {
+    const SIZE_PIXELS = {
+      S: { width: 360, height: 500 },
+      M: { width: 430, height: 580 },
+      L: { width: 520, height: 700 }
+    };
+    sizeGrid.onclick = async event => {
       const opt = event.target.closest('[data-size]');
       if (!opt) return;
       const size = opt.dataset.size;
       document.documentElement.setAttribute('data-size', size);
+      const px = SIZE_PIXELS[size];
+      try {
+        await invoke('game_macro_overlay_resize', {
+          width: px ? px.width : 0,
+          height: px ? px.height : 0
+        });
+      } catch {
+        /* размер уже применён или окно занято — игнорируем */
+      }
     };
   }
   const ghost = document.getElementById('ghost');
