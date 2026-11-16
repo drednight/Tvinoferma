@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Твиноферма — оверлей v2 (маленький, прозрачный, перемещаемый)</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --font: 13px system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+        --text: #eef2ff;
+        --text-dim: #aab1c6;
+        --text-mute: #7a8299;
+        --accent: #f5cc76;
+        --accent-2: #91e2bd;
+        --accent-3: #c7a7ff;
+        --danger: #f7768e;
+        --warn: #e6b86a;
+        --line: rgba(255, 255, 255, 0.12);
+        --line-2: rgba(255, 255, 255, 0.06);
+        --glass-3: rgba(33, 40, 58, 0.9);
+        --radius: 14px;
+        --radius-sm: 9px;
+        /* прозрачность окна управляется через --alpha */
+        --alpha: 0.9;
+      }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+
+      /* ---- фон «игры», чтобы прозрачность была видна ---- */
+      .game-bg {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        background:
+          radial-gradient(800px 500px at 20% 25%, #1c2a4d 0%, transparent 60%),
+          radial-gradient(700px 500px at 80% 60%, #3a2147 0%, transparent 55%),
+          radial-gradient(600px 400px at 60% 90%, #143a3a 0%, transparent 55%),
+          linear-gradient(160deg, #0c1020, #141a2c);
+        overflow: hidden;
+      }
+      .game-bg::before, .game-bg::after {
+        content: "";
+        position: absolute;
+        border-radius: 28px;
+        opacity: 0.5;
+      }
+      .game-bg::before {
+        top: 18%; left: 12%; width: 240px; height: 160px;
+        background: linear-gradient(135deg, #2b3b6b, #1a2340);
+        box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      }
+      .game-bg::after {
+        bottom: 20%; right: 14%; width: 300px; height: 180px;
+        background: linear-gradient(135deg, #3b2a5e, #241b3d);
+        box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      }
+      .hint {
+        position: fixed;
+        left: 12px; bottom: 12px;
+        z-index: 2;
+        font: 12px system-ui;
+        color: var(--text-mute);
+        background: rgba(0,0,0,0.4);
+        border: 1px solid var(--line-2);
+        padding: 8px 12px;
+        border-radius: 10px;
+        backdrop-filter: blur(8px);
+        max-width: 320px;
+        line-height: 1.5;
+      }
+
+      /* ---- оверлей-окошко ---- */
+      .ov {
+        position: fixed;
+        top: 120px;
+        left: 120px;
+        width: 300px;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        /* прозрачность: фон с --alpha, border/shadow мягкие */
+        background: rgba(16, 20, 30, var(--alpha));
+        backdrop-filter: blur(20px) saturate(140%);
+        -webkit-backdrop-filter: blur(20px) saturate(140%);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        box-shadow: 0 16px 44px rgba(0,0,0,0.5);
+        overflow: hidden;
+        color: var(--text);
+        transition: opacity 0.15s ease;
+      }
+      /* при очень низкой прозрачности — «призрачный» режим */
+      .ov.ghost {
+        border-color: rgba(255,255,255,0.05);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+      }
+
+      /* header */
+      .ov-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 10px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+        border-bottom: 1px solid var(--line-2);
+        cursor: move;
+        user-select: none;
+      }
+      .ov-title {
+        display: flex; align-items: center; gap: 7px;
+        font-weight: 700; font-size: 13.5px; flex: 1; min-width: 0;
+      }
+      .ov-title .dot {
+        width: 8px; height: 8px; border-radius: 50%;
+        background: var(--accent-2); box-shadow: 0 0 10px var(--accent-2);
+      }
+      .ov-title .sub { font-weight: 500; font-size: 11px; color: var(--text-mute); }
+      .winbtns { display: flex; gap: 5px; }
+      .winbtn {
+        width: 26px; height: 26px; display: grid; place-items: center;
+        border: 1px solid var(--line); border-radius: 8px;
+        background: var(--glass-3); color: var(--text-dim);
+        cursor: pointer; font-size: 13px; transition: 0.15s;
+      }
+      .winbtn:hover { color: var(--text); border-color: var(--accent); }
+
+      /* status bar */
+      .ov-status {
+        display: flex; align-items: center; gap: 7px;
+        padding: 7px 10px; font-size: 11.5px; color: var(--text-dim);
+        background: rgba(0,0,0,0.16); border-bottom: 1px solid var(--line-2);
+      }
+      .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-2); animation: pulse 1.6s infinite; }
+      @keyframes pulse { 0%,100%{opacity:.35;transform:scale(.85)} 50%{opacity:1;transform:scale(1.1)} }
+      .ov-status b { color: var(--text); font-weight: 600; }
+      .sep { opacity: 0.4; }
+
+      /* tabs */
+      .tabs { display: flex; gap: 3px; padding: 8px 8px 0; }
+      .tab {
+        flex: 1; padding: 6px 4px; border: 1px solid transparent; border-bottom: none;
+        border-radius: 8px 8px 0 0; background: transparent; color: var(--text-mute);
+        cursor: pointer; font: inherit; font-size: 11.5px; font-weight: 600; transition: 0.15s;
+      }
+      .tab:hover { color: var(--text-dim); background: rgba(255,255,255,0.04); }
+      .tab[aria-current="page"] { color: var(--accent); background: rgba(255,255,255,0.06); border-color: var(--line); }
+
+      /* body */
+      .body { padding: 11px; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+      .body::-webkit-scrollbar { width: 7px; }
+      .body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+      /* chips */
+      .chips { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+      .chip {
+        display: flex; align-items: center; gap: 7px; padding: 7px 8px;
+        border: 1px solid var(--line); border-radius: var(--radius-sm);
+        background: var(--glass-3); cursor: pointer; font-size: 11.5px; font-weight: 600;
+        text-align: left; transition: 0.15s; color: var(--text);
+      }
+      .chip:hover { border-color: rgba(255,255,255,0.2); }
+      .chip .state { margin-left: auto; font-size: 9.5px; font-weight: 700; padding: 2px 6px; border-radius: 20px; background: rgba(255,255,255,0.08); color: var(--text-mute); }
+      .chip.on { border-color: rgba(145,226,189,0.5); background: rgba(145,226,189,0.1); }
+      .chip.on .state { background: rgba(145,226,189,0.22); color: var(--accent-2); }
+      .chip.paused { border-color: rgba(230,184,106,0.5); background: rgba(230,184,106,0.1); }
+      .chip.paused .state { background: rgba(230,184,106,0.22); color: var(--warn); }
+
+      /* target badge */
+      .target { display: inline-flex; align-items: center; gap: 4px; font-size: 9.5px; font-weight: 700; color: var(--accent-3); background: rgba(199,167,255,0.12); border: 1px solid rgba(199,167,255,0.28); padding: 2px 7px; border-radius: 20px; white-space: nowrap; }
+      .target::before { content: "◎"; font-size: 9px; }
+
+      /* card */
+      .card { border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: rgba(24,30,44,0.86); overflow: hidden; }
+      .card > .chead { display: flex; align-items: center; gap: 7px; padding: 8px 10px; border-bottom: 1px solid var(--line-2); background: rgba(255,255,255,0.03); }
+      .card > .chead h3 { margin: 0; font-size: 12px; font-weight: 700; }
+      .card > .cbody { padding: 9px 10px; }
+
+      /* commands */
+      .cmd { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 8px; padding: 7px 8px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--glass-3); margin-bottom: 6px; }
+      .cmd:last-child { margin-bottom: 0; }
+      .cmd .run { width: 30px; height: 27px; display: grid; place-items: center; border: none; border-radius: 7px; background: linear-gradient(180deg,#2c3550,#232a3e); color: var(--accent); cursor: pointer; font-size: 11px; }
+      .cmd .run:hover { background: linear-gradient(180deg,#3a4470,#2c3550); }
+      .cmd .name { font-size: 12px; font-weight: 600; min-width: 0; }
+      .cmd .name small { display: block; font-weight: 500; color: var(--text-mute); font-size: 10px; }
+      .kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; font-weight: 700; color: var(--accent); background: rgba(245,204,118,0.1); border: 1px solid rgba(245,204,118,0.3); border-radius: 5px; padding: 2px 6px; white-space: nowrap; }
+      .kbd.none { color: var(--text-mute); background: rgba(255,255,255,0.05); border-color: var(--line-2); }
+
+      /* recipients */
+      .rrow { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--glass-3); margin-bottom: 6px; }
+      .rrow:last-child { margin-bottom: 0; }
+      .rrow input { width: 15px; height: 15px; accent-color: var(--accent-2); }
+      .rrow .nick { font-weight: 600; font-size: 12px; }
+      .rrow .party { font-size: 10px; color: var(--text-mute); }
+      .rrow .lead { margin-left: auto; font-size: 9px; font-weight: 700; color: var(--accent); background: rgba(245,204,118,0.12); border: 1px solid rgba(245,204,118,0.3); padding: 1px 6px; border-radius: 20px; }
+      .actions { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 8px; }
+      .btn { padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--glass-3); color: var(--text); cursor: pointer; font: inherit; font-size: 11.5px; font-weight: 600; }
+      .btn:hover { border-color: var(--accent); background: rgba(245,204,118,0.1); }
+      .btn.primary { background: linear-gradient(180deg,#3a4470,#2c3550); border-color: rgba(145,226,189,0.4); color: var(--accent-2); }
+      .btn.ghost { background: transparent; }
+
+      /* windows */
+      .wrow { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--glass-3); margin-bottom: 6px; font-size: 11.5px; }
+      .wrow:last-child { margin-bottom: 0; }
+      .wrow input { width: 14px; height: 14px; accent-color: var(--danger); }
+      .wrow .pname { font-weight: 600; }
+      .wrow .pmeta { font-size: 10px; color: var(--text-mute); }
+      .progress { height: 7px; border-radius: 20px; background: rgba(255,255,255,0.08); overflow: hidden; margin-top: 6px; }
+      .progress > i { display: block; height: 100%; width: 62%; border-radius: 20px; background: linear-gradient(90deg, var(--accent-2), var(--accent)); }
+      select { width: 100%; padding: 7px 8px; background: var(--glass-3); color: var(--text); border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 11.5px; }
+
+      /* journal */
+      .journal { font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; line-height: 1.5; background: rgba(0,0,0,0.3); border: 1px solid var(--line-2); border-radius: var(--radius-sm); padding: 8px 10px; white-space: pre-wrap; max-height: 160px; overflow: auto; }
+      .journal .t { color: var(--danger); } .journal .c { color: var(--accent); } .journal .ok { color: var(--accent-2); }
+
+      /* appearance */
+      .field { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--text-dim); margin-bottom: 10px; }
+      .field output { color: var(--accent); font-weight: 700; min-width: 34px; text-align: right; }
+      input[type="range"] { accent-color: var(--accent); flex: 1; }
+      .note { font-size: 10.5px; color: var(--text-mute); line-height: 1.5; }
+      .swatches { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+      .swatch { display: flex; align-items: center; gap: 5px; padding: 5px 8px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--glass-3); cursor: pointer; font-size: 11px; }
+      .swatch.sel { border-color: var(--accent); background: rgba(245,204,118,0.1); }
+      .swatch i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+      .size-presets { display: flex; gap: 6px; margin-top: 4px; }
+      .size-presets .btn { flex: 1; text-align: center; }
+
+      /* collapse (folded) */
+      .ov.folded .body, .ov.folded .ov-status, .ov.folded .tabs { display: none; }
+      .ov.folded .ov-header { cursor: move; }
+
+      /* resize handle */
+      .resize {
+        position: absolute;
+        right: 0; bottom: 0;
+        width: 16px; height: 16px;
+        cursor: nwse-resize;
+        z-index: 5;
+      }
+      .resize::after {
+        content: "";
+        position: absolute;
+        right: 3px; bottom: 3px;
+        width: 8px; height: 8px;
+        border-right: 2px solid rgba(255,255,255,0.25);
+        border-bottom: 2px solid rgba(255,255,255,0.25);
+        border-radius: 0 0 4px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="game-bg"></div>
+
+    <div class="ov" id="ov">
+      <div class="ov-header" data-drag>
+        <div class="ov-title">
+          <span class="dot"></span>
+          <span>Управление пати</span>
+          <span class="sub">оверлей v2</span>
+        </div>
+        <div class="winbtns">
+          <button class="winbtn" id="ghost" title="Призрачный режим (почти прозрачно)" aria-label="Призрачный режим">👁</button>
+          <button class="winbtn" id="fold" title="Свернуть" aria-label="Свернуть">▾</button>
+          <button class="winbtn" id="close" title="Закрыть" aria-label="Закрыть">×</button>
+        </div>
+      </div>
+
+      <div class="ov-status">
+        <span class="pulse"></span>
+        <span>Повтор: <b>Клавиатура ВКЛ</b><span class="sep">·</span> <b>Мышь выкл</b></span>
+        <span class="sep">·</span>
+        <span>Ctrl+Alt+Pause</span>
+      </div>
+
+      <div class="tabs" role="tablist">
+        <button class="tab" data-view="keys" aria-current="page">Клавиши</button>
+        <button class="tab" data-view="recipients">Получатели</button>
+        <button class="tab" data-view="windows">Окна</button>
+        <button class="tab" data-view="journal">Журнал</button>
+        <button class="tab" data-view="appearance">Настройки</button>
+      </div>
+
+      <div class="body">
+        <div class="chips">
+          <button class="chip" data-chip="mouse"><span>🖱</span> Мышь<span class="state">выкл</span></button>
+          <button class="chip on" data-chip="keyboard"><span>⌨</span> Клавиатура<span class="state">ВКЛ</span></button>
+          <button class="chip" data-chip="hotkeys"><span>⚡</span> Сочетания<span class="state">выкл</span></button>
+          <button class="chip" data-chip="pause"><span>⏸</span> Пауза<span class="state">работает</span></button>
+        </div>
+
+        <!-- KEYS -->
+        <section data-view="keys">
+          <div class="card">
+            <div class="chead"><h3>Назначенные клавиши</h3><span class="target">цель: окна пати</span></div>
+            <div class="cbody">
+              <div class="cmd"><button class="run">▶</button><div class="name">Баф выбранной пати<small>По всем выбранным получателям</small></div><span class="kbd">F6 → F1</span></div>
+              <div class="cmd"><button class="run">▶</button><div class="name">Рес полной пати<small>Сброс и перезапуск рессурс</small></div><span class="kbd">F7 → F2</span></div>
+              <div class="cmd"><button class="run">▶</button><div class="name">Ассист лидера<small>Таргет на ПЛ текущей пати</small></div><span class="kbd">F9</span></div>
+              <div class="cmd"><button class="run">▶</button><div class="name">Следование за лидером<small>Переключение между окнами</small></div><span class="kbd none">не назначена</span></div>
+              <div class="cmd"><button class="run">▶</button><div class="name">Управление окошками<small>Клики и координаты</small></div><span class="kbd">Ctrl + колесо</span></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- RECIPIENTS -->
+        <section data-view="recipients" hidden>
+          <div class="card">
+            <div class="chead"><h3>Получатели команд</h3><span class="target">цель: персонажи</span></div>
+            <div class="cbody">
+              <div class="actions">
+                <button class="btn ghost">↻ Обновить</button>
+                <button class="btn ghost">Выбрать всех</button>
+                <button class="btn ghost">Снять все</button>
+              </div>
+              <div class="rrow"><input type="checkbox" checked /><div><div class="nick">Артём</div><div class="party">Пати «Этернал»</div></div><span class="lead">ПЛ</span></div>
+              <div class="rrow"><input type="checkbox" checked /><div><div class="nick">Марина</div><div class="party">Пати «Этернал»</div></div></div>
+              <div class="rrow"><input type="checkbox" checked /><div><div class="nick">Сергей</div><div class="party">Пати «Этернал»</div></div></div>
+              <div class="rrow"><input type="checkbox" /><div><div class="nick">Дмитрий</div><div class="party">Пати «Восход»</div></div></div>
+              <div class="field" style="margin-top:8px">ПЛ для специальных команд
+                <select><option>Не менять: Артём</option><option>Не назначать ПЛ</option><option>Марина</option></select>
+              </div>
+              <button class="btn primary" style="width:100%">Сохранить выбор</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- WINDOWS -->
+        <section data-view="windows" hidden>
+          <div class="card">
+            <div class="chead"><h3>Окна и пати</h3><span class="target">цель: игровые окна</span></div>
+            <div class="cbody">
+              <div class="field" style="margin-bottom:8px">Пати для запуска
+                <select><option>Этернал</option><option>Восход</option></select>
+              </div>
+              <div class="actions">
+                <button class="btn primary">▶ Запустить пати</button>
+                <button class="btn ghost">Обновить</button>
+                <button class="btn ghost">Закрыть ▾</button>
+              </div>
+              <div class="wrow"><input type="checkbox" /><div><div class="pname">Perfect World · Артём</div><div class="pmeta">PID 4821 · распознано</div></div></div>
+              <div class="wrow"><input type="checkbox" /><div><div class="pname">Perfect World · Марина</div><div class="pmeta">PID 4830 · из заголовка</div></div></div>
+              <div class="wrow"><input type="checkbox" /><div><div class="pname">Perfect World · Сергей</div><div class="pmeta">PID 4844 · ручная привязка</div></div></div>
+              <div class="note" style="margin-top:6px">Запуск пати · 62% · 3/5</div>
+              <div class="progress"><i></i></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- JOURNAL -->
+        <section data-view="journal" hidden>
+          <div class="card">
+            <div class="chead"><h3>Журнал сеанса</h3><span class="target">цель: сеанс</span></div>
+            <div class="cbody">
+              <div class="actions">
+                <button class="btn ghost">Копировать лог</button>
+                <button class="btn ghost">Очистить</button>
+              </div>
+              <div class="journal"><span class="ok">[ok]</span> Баф пати запущен · 3 получателя
+<span class="c">[cmd]</span> F6→F1 отправлено в 3 окна
+<span class="ok">[ok]</span> Рес полной пати · 3/3
+<span class="t">[err]</span> Окно ПЛ не отвечает · переподключение
+<span class="c">[cmd]</span> Ctrl+колесо → координаты калиброваны</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- APPEARANCE -->
+        <section data-view="appearance" hidden>
+          <div class="card">
+            <div class="chead"><h3>Настройки оверлея</h3><span class="target">цель: внешность</span></div>
+            <div class="cbody">
+              <div class="field">Прозрачность окна <output id="alphaVal">90%</output>
+                <input id="opacity" type="range" min="5" max="100" value="90" />
+              </div>
+              <div class="note" style="margin:-4px 0 10px">Задвигайте ползунок вниз — окно станет практически невидимым (прозрачным).</div>
+
+              <div class="field"><input type="checkbox" checked /> Поверх других окон</div>
+              <div class="field">Размер окна</div>
+              <div class="size-presets">
+                <button class="btn" data-size="small">S</button>
+                <button class="btn" data-size="medium">M</button>
+                <button class="btn" data-size="large">L</button>
+              </div>
+              <div class="note" style="margin-top:4px">Или тяните за правый нижний угол окошка (стрелочка) — размер регулируется вручную.</div>
+
+              <div class="field" style="margin-top:10px">Цвет текста</div>
+              <div class="swatches" data-group="text">
+                <span class="swatch sel" data-val="light"><i style="background:#eef2ff"></i>Светлый</span>
+                <span class="swatch" data-val="warm"><i style="background:#f5d98c"></i>Тёплый</span>
+                <span class="swatch" data-val="mint"><i style="background:#91e2bd"></i>Мятный</span>
+              </div>
+              <div class="field" style="margin-top:10px">Цвет клавиш</div>
+              <div class="swatches" data-group="key">
+                <span class="swatch sel" data-val="gold"><i style="background:#f5cc76"></i>Золотой</span>
+                <span class="swatch" data-val="blue"><i style="background:#9ccaff"></i>Голубой</span>
+                <span class="swatch" data-val="white"><i style="background:#eef2ff"></i>Белый</span>
+              </div>
+              <div class="field" style="margin-top:10px">Размер текста <output id="fontVal">13px</output>
+                <input id="fontSize" type="range" min="10" max="18" value="13" />
+              </div>
+              <button class="btn primary" style="width:100%">Сохранить</button>
+              <p class="note" style="margin-top:6px">Прототип: изменения в мок-интерфейсе не сохраняются в приложение.</p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="resize" id="resize" title="Тяните для изменения размера"></div>
+    </div>
+
+    <div class="hint">
+      ** Тестовый прототип v2.** Тяните за шапку — перемещайте окошко в свободное место.
+      Тяните за правый нижний угол — масштабируйте. Задвигайте «Прозрачность» в настройках
+      или жмите 👁 — окно станет практически прозрачным. Все функции (повтор, команды,
+      получатели, окна, журнал, настройки) сохранены.
+    </div>
+
+    <script>
+      const ov = document.getElementById('ov');
+      const header = document.querySelector('.ov-header');
+      const resize = document.getElementById('resize');
+
+      // ---- transparency (core feature) ----
+      const opacity = document.getElementById('opacity');
+      const alphaVal = document.getElementById('alphaVal');
+      const ghost = document.getElementById('ghost');
+      const applyAlpha = v => {
+        const a = v / 100;
+        ov.style.setProperty('--alpha', a);
+        alphaVal.textContent = v + '%';
+        ov.classList.toggle('ghost', a <= 0.12);
+      };
+      opacity.addEventListener('input', () => applyAlpha(Number(opacity.value)));
+      ghost.addEventListener('click', () => {
+        // призрачный режим: практически прозрачно
+        opacity.value = 8;
+        applyAlpha(8);
+      });
+
+      // ---- drag ----
+      header.addEventListener('pointerdown', e => {
+        if (e.target.closest('button')) return;
+        const sx = e.clientX - ov.offsetLeft, sy = e.clientY - ov.offsetTop;
+        const move = ev => {
+          ov.style.left = Math.max(0, ev.clientX - sx) + 'px';
+          ov.style.top = Math.max(0, ev.clientY - sy) + 'px';
+        };
+        const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+      });
+
+      // ---- resize ----
+      resize.addEventListener('pointerdown', e => {
+        e.stopPropagation();
+        const sx = e.clientX, sy = e.clientY;
+        const sw = ov.offsetWidth, sh = ov.offsetHeight;
+        const move = ev => {
+          const w = Math.max(220, Math.min(560, sw + ev.clientX - sx));
+          const h = Math.max(180, Math.min(720, sh + ev.clientY - sy));
+          ov.style.width = w + 'px';
+          ov.style.height = h + 'px';
+        };
+        const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+      });
+
+      // ---- size presets ----
+      const sizeMap = { small: { w: 240, h: 300 }, medium: { w: 300, h: 420 }, large: { w: 380, h: 560 } };
+      document.querySelectorAll('[data-size]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const s = sizeMap[btn.dataset.size];
+          ov.style.width = s.w + 'px';
+          ov.style.height = s.h + 'px';
+        });
+      });
+
+      // ---- tabs ----
+      const tabs = document.querySelectorAll('.tab');
+      const sections = document.querySelectorAll('[data-view]');
+      tabs.forEach(tab => tab.addEventListener('click', () => {
+        const view = tab.dataset.view;
+        tabs.forEach(t => t.removeAttribute('aria-current'));
+        tab.setAttribute('aria-current', 'page');
+        sections.forEach(s => (s.hidden = s.dataset.view !== view));
+      }));
+
+      // ---- chips ----
+      document.querySelectorAll('[data-chip]').forEach(chip => {
+        chip.addEventListener('click', () => {
+          if (chip.dataset.chip === 'pause') {
+            chip.classList.toggle('paused');
+            const on = chip.classList.contains('paused');
+            chip.querySelector('.state').textContent = on ? 'пауза' : 'работает';
+            chip.querySelector('span').textContent = on ? '▶' : '⏸';
+            return;
+          }
+          chip.classList.toggle('on');
+          const on = chip.classList.contains('on');
+          chip.querySelector('.state').textContent = on ? 'ВКЛ' : 'выкл';
+        });
+      });
+
+      // ---- fold / close ----
+      document.getElementById('fold').addEventListener('click', () => ov.classList.toggle('folded'));
+      document.getElementById('close').addEventListener('click', () => {
+        ov.style.opacity = '0';
+        setTimeout(() => (ov.style.opacity = ''), 300);
+      });
+
+      // ---- font size ----
+      const fontSize = document.getElementById('fontSize');
+      const fontVal = document.getElementById('fontVal');
+      fontSize.addEventListener('input', () => {
+        fontVal.textContent = fontSize.value + 'px';
+        document.documentElement.style.setProperty('--font', fontSize.value + 'px system-ui, "Segoe UI", Roboto, sans-serif');
+      });
+
+      // ---- swatches ----
+      document.querySelectorAll('.swatches').forEach(group => {
+        group.querySelectorAll('.swatch').forEach(sw => sw.addEventListener('click', () => {
+          group.querySelectorAll('.swatch').forEach(s => s.classList.remove('sel'));
+          sw.classList.add('sel');
+        }));
+      });
+    </script>
+  </body>
+</html>
