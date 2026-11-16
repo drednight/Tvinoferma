@@ -202,12 +202,12 @@
 
       /* цветные команды */
       #commands { list-style: none; padding: 0; margin: 0; }
-      .cmd { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--panel); margin-bottom: 8px; cursor: pointer; }
+      .cmd { position: relative; display: flex; align-items: center; gap: 10px; padding: 9px 10px 9px 10px; padding-right: 40px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--panel); margin-bottom: 8px; cursor: pointer; }
       .cmd:last-child { margin-bottom: 0; }
       .cmd:hover { border-color: var(--line); }
-      .cmd-run { flex: 0 0 auto; width: 30px; height: 27px; display: grid; place-items: center; border: none; border-radius: 7px; background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 45%, var(--panel-3)), var(--panel-3)); color: var(--accent); cursor: pointer; font-size: 11px; }
-      .cmd-run:hover { filter: brightness(1.15); }
-      .cmd-run:disabled { opacity: .4; cursor: default; }
+      .cmd-del { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 26px; height: 26px; display: grid; place-items: center; border: none; border-radius: 7px; background: color-mix(in srgb, var(--danger, #f7768e) 18%, transparent); color: var(--danger, #f7768e); cursor: pointer; font-size: 12px; }
+      .cmd-del:hover { background: color-mix(in srgb, var(--danger, #f7768e) 34%, transparent); }
+      .cmd-del:disabled { opacity: .4; cursor: default; }
       .cmd .name { flex: 1 1 auto; min-width: 0; font-size: 12px; font-weight: 700; color: var(--overlay-command, var(--cmd)); overflow-wrap: anywhere; }
       .cmd.c2 .name { color: var(--accent-2); }
       .cmd.c3 .name { color: var(--accent-3); }

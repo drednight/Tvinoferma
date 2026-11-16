@@ -5,7 +5,7 @@ import { copyJournal } from './journal.js';
 import { normalizeAppearance, TEXT_PRESETS, KEY_PRESETS, COMMAND_PRESETS } from './appearance.js';
 import { listen, emitTo } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
-import { getCurrentWindow, ResizeDirection } from '@tauri-apps/api/window';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 async function init() {
   const current = getCurrentWindow();
   let latestLaunch = null;
@@ -367,23 +367,32 @@ async function init() {
         name.className = 'name';
         name.textContent = String(row.name || '');
         name.style.minWidth = '0';
-        const quick = document.createElement('button');
-        quick.type = 'button';
-        quick.className = 'cmd-run';
-        quick.textContent = '▶';
-        quick.title = `Запустить: ${row.name || 'команда'}`;
-        quick.setAttribute('aria-label', quick.title);
-        quick.disabled = !row.id || (!!data.busy && !row.allowWhileBusy);
-        li.append(key, name, quick);
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'cmd-del';
+        del.textContent = '✕';
+        del.title = `Удалить: ${row.name || 'команда'}`;
+        del.setAttribute('aria-label', del.title);
+        del.disabled = !row.id;
+        del.onclick = async event => {
+          event.stopPropagation();
+          if (!row.id) return;
+          del.disabled = true;
+          try {
+            await emitTo('main', 'game-overlay-delete', row.id);
+          } catch {
+            document.getElementById('status').textContent = 'Не удалось удалить команду.';
+          } finally {
+            del.disabled = false;
+          }
+        };
+        li.append(key, name, del);
         li.onclick = async () => {
           if (!row.id || (!!data.busy && !row.allowWhileBusy)) return;
-          quick.disabled = true;
           try {
             await emitTo('main', 'game-overlay-run', row.id);
           } catch {
             document.getElementById('status').textContent = 'Не удалось отправить запрос запуска команды.';
-          } finally {
-            quick.disabled = !row.id || (!!data.busy && !row.allowWhileBusy);
           }
         };
         return li;
@@ -677,7 +686,7 @@ async function init() {
     if (event.button !== 0) return;
     event.stopPropagation();
     if (current && typeof current.startResizeDragging === 'function') {
-      current.startResizeDragging(ResizeDirection.SouthEast);
+      current.startResizeDragging('SouthEast');
     }
   };
   let collapsed = false;
