@@ -103,6 +103,8 @@ export function openGameCentersModal(opts = {}) {
   let onlyUnbound = false;
   /** Скрывать ли тех, у кого вход уже запомнен хотя бы в одном прикреплённом GameCenter. */
   let onlyNoLogin = opts.onlyNoLogin === true;
+  /** Показывать только персонажей, которым ещё нужно выбрать игровой аккаунт. */
+  let onlyNeedsGameAccount = false;
 
   showModal({
     title: '🎮 GameCenter и персонажи',
@@ -200,6 +202,16 @@ export function openGameCentersModal(opts = {}) {
     );
   };
 
+  /** Есть ли у персонажа привязка с несколькими игровыми аккаунтами и незаданным выбором. */
+  const needsGameAccountSelection = char =>
+    attachedGcs(char, gcs()).some(gc => {
+      const loaded = bindingAccounts.get(bindingKey(char.id, gc.id));
+      const accounts = loaded?.status === 'ok' ? loaded.accounts || [] : [];
+      if (accounts.length <= 1) return false;
+      const selected = char.launch?.gcGameAccounts?.[gc.id];
+      return !selected || !accounts.some(account => account.id === selected.id);
+    });
+
   const charHtml = c => {
     const attached = attachedGcs(c, gcs());
     const free = gcs().filter(g => !attached.some(a => a.id === g.id));
@@ -222,10 +234,13 @@ export function openGameCentersModal(opts = {}) {
         // Если у него один персонаж или список ещё не загружен, поле не показываем.
         const gameAcc =
           accounts.length > 1
-            ? `<label class="gcm-gameacc" title="Выбор доступен для сохранённого входа, если у него несколько игровых персонажей. Выберите нужного — Твиноферма выберет его в окне сама.">
-          <span>Игровой аккаунт:</span>
+            ? `<label class="gcm-gameacc">
+          <span class="gcm-gameacc-copy">
+            <span class="gcm-gameacc-title">Игровой аккаунт для запуска</span>
+            <small>Выберите персонажа, которого Твиноферма выберет при запуске. Не выбрано — выберете вручную в GameCenter.</small>
+          </span>
           <select class="select" data-act="game-acc" aria-label="Игровой аккаунт в окне выбора">
-            <option value=""${current && accounts.some(a => a.id === current.id) ? '' : ' selected'}>не выбирать автоматически</option>
+            <option value=""${current && accounts.some(a => a.id === current.id) ? '' : ' selected'}>Выбрать вручную при запуске</option>
             ${accounts
               .map(
                 a =>
@@ -236,14 +251,18 @@ export function openGameCentersModal(opts = {}) {
         </label>`
             : '';
         return `
-        <div class="gcm-bind" data-gc="${escapeHtml(g.id)}" data-i="${i}">
-          <select class="select" data-act="swap" aria-label="GameCenter персонажа">${optionsHtml(others, g.id)}</select>
-          ${i === 0 && attached.length > 1 ? '<span class="gcm-badge" title="Первый в списке: запускается, если не выбран другой">основной</span>' : ''}
-          <span class="gcm-acc ${acc ? 'is-saved' : 'muted'}">${acc ? `🔑 Вход запомнен${acc.nick ? `: ${escapeHtml(acc.nick)}` : ''}` : 'Вход не запомнен'}</span>
+        <div class="gcm-bind${accounts.length > 1 ? ' has-gameacc' : ''}" data-gc="${escapeHtml(g.id)}" data-i="${i}">
+          <div class="gcm-bind-main">
+            <select class="select" data-act="swap" aria-label="GameCenter персонажа">${optionsHtml(others, g.id)}</select>
+            ${i === 0 && attached.length > 1 ? '<span class="gcm-badge" title="Первый в списке: запускается, если не выбран другой">основной</span>' : ''}
+            <span class="gcm-acc ${acc ? 'is-saved' : 'muted'}">${acc ? `🔑 Вход запомнен${acc.nick ? `: ${escapeHtml(acc.nick)}` : ''}` : 'Вход не запомнен'}</span>
+          </div>
           ${gameAcc}
-          <button type="button" class="btn secondary" data-act="cap" title="Сначала войдите в аккаунт этого персонажа в выбранном GameCenter, затем нажмите: токен сохранится в хранилище ОС">🔑 Запомнить вход</button>
-          ${acc ? '<button type="button" class="btn ghost" data-act="forget">Забыть</button>' : ''}
-          <button type="button" class="btn ghost" data-act="detach" title="Открепить этот GameCenter от персонажа">✕</button>
+          <div class="gcm-bind-actions">
+            <button type="button" class="btn secondary" data-act="cap" title="Сначала войдите в аккаунт этого персонажа в выбранном GameCenter, затем нажмите: токен сохранится в хранилище ОС">🔑 Запомнить вход</button>
+            ${acc ? '<button type="button" class="btn ghost" data-act="forget">Забыть</button>' : ''}
+            <button type="button" class="btn ghost" data-act="detach" title="Открепить этот GameCenter от персонажа">✕</button>
+          </div>
         </div>`;
       })
       .join('');
@@ -279,10 +298,11 @@ export function openGameCentersModal(opts = {}) {
       // прикреплён, но вход не запомнен ни в одном из них. Такой при запуске пати попадёт
       // в окно предупреждения, и фильтр помогает найти их заранее.
       if (onlyNoLogin && hasAnySavedLogin(c)) return false;
+      if (onlyNeedsGameAccount && !needsGameAccountSelection(c)) return false;
       return true;
     });
     if (!gcs().length) return '<p class="muted gcm-empty">Сначала добавьте хотя бы один GameCenter выше.</p>';
-    if (!list.length) return '<p class="muted gcm-empty">Никого не найдено. Измените поиск или фильтр по пати.</p>';
+    if (!list.length) return '<p class="muted gcm-empty">Никого не найдено. Измените поиск или фильтры персонажей.</p>';
     return list.map(charHtml).join('');
   };
 
@@ -351,6 +371,7 @@ export function openGameCentersModal(opts = {}) {
         <select id="gcm-party" class="select" aria-label="Фильтр по пати">${partyOptionsHtml()}</select>
         <label class="gcm-only"><input type="checkbox" id="gcm-unbound" /> Только без GameCenter</label>
         <label class="gcm-only" title="Персонажи, у которых вход не запомнен ни в одном прикреплённом GameCenter"><input type="checkbox" id="gcm-nologin"${onlyNoLogin ? ' checked' : ''} /> Только без запомненного входа</label>
+        <label class="gcm-only gcm-only-account" title="Показывает персонажей с несколькими игровыми аккаунтами для сохранённого входа, если выбор ещё не сохранён"><input type="checkbox" id="gcm-account-needed" /> Требуется выбор аккаунта</label>
         <span id="gcm-shown" class="muted gcm-shown"></span>
       </div>
       <div id="gcm-chars"></div>
@@ -547,6 +568,11 @@ export function openGameCentersModal(opts = {}) {
     }
     if (el.id === 'gcm-nologin') {
       onlyNoLogin = /** @type {HTMLInputElement} */ (el).checked;
+      renderChars();
+      return;
+    }
+    if (el.id === 'gcm-account-needed') {
+      onlyNeedsGameAccount = /** @type {HTMLInputElement} */ (el).checked;
       renderChars();
       return;
     }

@@ -5,6 +5,8 @@
 не скачивает секреты GitHub, не переключает ветку, не публикует релиз, не создаёт
 установщик/подпись автообновления и не запускает полученную программу.
 
+Нужны только команды? См. [краткую памятку по вариантам сборки](WINDOWS-BUILD-QUICK-REFERENCE.md).
+
 ## 1. Подготовка один раз
 
 Нужна **Windows x64**, доступ в интернет и несколько гигабайт свободного места
@@ -33,7 +35,7 @@ PowerShell 5.1 и PowerShell 7. Обычный запуск не требует 
 Для первой загрузки откройте PowerShell в папке, где хотите хранить проект:
 
 ```powershell
-git clone --branch arena/95755e6b-tvinoferma --single-branch https://github.com/drednight/Tvinoferma.git
+git clone --branch arena/dc78b4e4-tvinoferma --single-branch https://github.com/drednight/Tvinoferma.git
 cd Tvinoferma
 git rev-parse --short HEAD
 ```
@@ -54,7 +56,11 @@ git pull --ff-only
 
 ## 3. Запустить сборку
 
-Из корня репозитория:
+В Windows-версии VS Code откройте корень репозитория и нажмите **Ctrl+Shift+B**: по умолчанию запускается задача `Tvinoferma: Windows build (isolated)`. Она собирает текущую рабочую копию (в том числе локальные правки), а SHA отпечатка исходников записывается в `BUILD-INFO.json`. Чтобы запустить последний isolated EXE после сборки, откройте **Терминал → Выполнить задачу…** и выберите `Tvinoferma: Run latest Windows build (isolated)`.
+
+Для общего профиля выберите задачу `Tvinoferma: Windows build (shared current data)`, введите запрашиваемую фразу подтверждения, а после успешной сборки отдельно запустите `Tvinoferma: Run latest Windows build (shared current data)`. Этот режим показывает аккаунты/данные основного профиля, но способен изменить их; сначала закройте основную версию и сделайте независимые резервные копии. Подробности и риски описаны в разделе 6 ниже. Не используйте общий профиль, если не готовы проверять на тех же данных.
+
+Тот же isolated-вариант можно запустить из PowerShell из корня репозитория:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows-local.ps1
@@ -96,18 +102,18 @@ format/typecheck и тесты, но не саму сборку; это **не �
 ## 4. Где результат и как его использовать
 
 При успехе консоль напечатает `SUCCESS: ...`. В новой папке
-`local-acceptance/isolated-<дата>-<коммит>-<суффикс>/` появятся:
+`local-acceptance/isolated-<дата>-<коммит>-<суффикс>/` (или `shared-...` для общего профиля) появятся:
 
-- `Tvinoferma.exe`;
+- `Tvinoferma.exe` для isolated-профиля или `Tvinoferma-SHARED-TEST.exe` для общего;
 - `SHA256SUMS.txt` — SHA-256 исполняемого файла;
-- `BUILD-INFO.json` — коммит, ветка, признак местных правок, версия и режим проверок;
+- `BUILD-INFO.json` — коммит, ветка, признак местных правок, SHA-256 отпечаток локальных исходников, версия и режим проверок;
 - `READ-ME.txt` — ограничения и предупреждения.
 
 Предыдущие сборки не перезаписываются. Папка исключена из Git.
 Можно проверить хеш вручную:
 
 ```powershell
-Get-FileHash .\local-acceptance\<папка-сборки>\Tvinoferma.exe -Algorithm SHA256
+Get-FileHash .\local-acceptance\<папка-сборки>\<имя-exe-из-папки> -Algorithm SHA256
 ```
 
 **Это неподписанная тестовая программа, а не установщик. Встроенный номер версии
@@ -117,8 +123,10 @@ WebView-профили и пространства имён Windows vault; updat
 отдельной тестовой учётной записи Windows без рабочих данных Твинофермы. Не запускайте
 одновременно с другой версией, пока ручная проверка ниже не завершена.**
 
-Скрипт сам приложение не запускает. SmartScreen может предупредить об отсутствии
-подписи; не отключайте защиту Windows целиком. Проверьте происхождение исходников
+Скрипт сборки сам приложение не запускает. После проверки `READ-ME.txt` для запуска
+используйте соответствующую задачу `Run latest Windows build` в VS Code; она перед
+запуском проверяет профиль и SHA-256, а для общего профиля требует отдельное подтверждение.
+SmartScreen может предупредить об отсутствии подписи; не отключайте защиту Windows целиком. Проверьте происхождение исходников
 и собранного файла. Копирование exe не переносит профиль, контакты или vault.
 
 Для тестов фонового ввода см. `docs/GAME-MACROS.md`. Сборка сама по себе не доказывает
@@ -203,7 +211,7 @@ Credential Manager и браузерные профили основной ве�
 Только когда вы осознанно хотите работать с общими данными, соберите из корня проекта:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows-local.ps1 -Profile Shared -SharedProfileConfirmed
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows-local.ps1 -Profile Shared -SharedProfileConfirmation I_HAVE_BACKUP_AND_ACCEPT_SHARED_DATA
 ```
 
 Если исходники содержат проверенные вами локальные изменения, скрипту дополнительно

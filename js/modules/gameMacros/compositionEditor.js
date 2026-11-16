@@ -8,8 +8,14 @@ import { partyMembers, commandVisible } from './model.js';
 import { STEP_LABELS, normalizeComposition } from './composition.js';
 import { commandBlocks } from './unified.js';
 export function mountCompositionEditor(host, c, row) {
+  const editableBlocks = items =>
+    items.map(block =>
+      block?.backgroundMethod === 'hybrid-party'
+        ? { ...block, delivery: 'foreground', backgroundMethod: 'post' }
+        : block
+    );
   let blocks = row?.blocks?.length
-    ? structuredClone(row.blocks).map(block => ({ charIds: [], ...block }))
+    ? editableBlocks(structuredClone(row.blocks).map(block => ({ charIds: [], ...block })))
     : [newBlock()];
   const selected = new Map();
   const collapsed = new Set();
@@ -67,23 +73,15 @@ export function mountCompositionEditor(host, c, row) {
     `<select class="input" data-field="${field}">${values.map(([v, l]) => option(v, l, value, field === 'commandId' && c.commands.some(cmd => cmd.id === v && !commandVisible(cmd)))).join('')}</select>`;
   const input = (field, value, type = 'text') =>
     `<input class="input" data-field="${field}" type="${type}" value="${esc(value ?? '')}">`;
-  const recipients = block => {
-    if (host.dataset.commandMode !== 'hybrid-party')
-      return block.scope === 'managed' ? state.characters : partyMembers(state, block.partyId || c.partyId);
-    const members = partyMembers(state, block.scope === 'party' ? block.partyId || c.partyId : c.partyId);
-    // Keep previously selected outsiders visible so they can be unchecked without data loss.
-    return [
-      ...members,
-      ...state.characters.filter(char => block.charIds.includes(char.id) && !members.some(m => m.id === char.id))
-    ];
-  };
+  const recipients = block =>
+    block.scope === 'managed' ? state.characters : partyMembers(state, block.partyId || c.partyId);
   const parties = () => [['', 'Текущая управляющая пати'], ...state.parties.map(p => [p.id, p.name])];
   function fields(step) {
     switch (step.type) {
       case 'keys':
         return `<label>Клавиша ${input('value', step.value)}${quickKeysHtml()}</label><small>Например SHIFT+1, CTRL+F2 или F8. Сочетание задаётся здесь, без отдельного окна ввода.</small>`;
       case 'wait':
-        return `<label>Задержка, мс ${input('ms', step.ms, 'number')}${host.dataset.commandMode === 'hybrid-party' ? '<small>Для гибрида: от 50 до 3000 мс.</small>' : ''}</label>`;
+        return `<label>Задержка, мс ${input('ms', step.ms, 'number')}</label>`;
       case 'command':
         return `<label>Команда ${select(
           'commandId',
@@ -187,10 +185,10 @@ export function mountCompositionEditor(host, c, row) {
     );
   }
   function draw() {
-    host.innerHTML = `<div class="gm-compose-title"><h4>Что выполнить</h4><button type="button" class="btn ghost small" data-undo ${undo.length ? '' : 'disabled'}>↶ Отменить изменение</button></div><p>Добавьте действия и расположите их в нужном порядке. Команда выполняется на выбранных запущенных персонажах.</p><p class="gm-safety-note" data-hybrid-plan-warning hidden></p>${blocks
+    host.innerHTML = `<div class="gm-compose-title"><h4>Что выполнить</h4><button type="button" class="btn ghost small" data-undo ${undo.length ? '' : 'disabled'}>↶ Отменить изменение</button></div><p>Добавьте действия и расположите их в нужном порядке. Команда выполняется на выбранных запущенных персонажах.</p>${blocks
       .map(
         (block, b) =>
-          `<section class="gm-compose-block" data-block="${b}"><header><button type="button" class="btn ghost small" data-block-collapse aria-expanded="${!collapsed.has(b)}" title="Свернуть или раскрыть блок">${collapsed.has(b) ? '▸' : '▾'}</button><label>Название ${input('name', block.name)}</label><button class="btn ghost" type="button" data-block-up ${b === 0 ? 'disabled' : ''}>↑</button><button class="btn danger" type="button" data-block-delete>Удалить блок</button></header><p class="gm-compose-summary">${blocks.length > 1 ? `${esc(block.name)} · ` : ''}${block.steps.length} действий × ${block.repeat ?? 1} · <span data-gm-standard-scope>${block.scope === 'managed' ? 'Все распознанные окна' : esc(state.parties.find(p => p.id === (block.partyId || c.partyId))?.name || 'Текущая пати')}</span><span data-gm-hybrid-scope>Гибрид: ${esc(state.parties.find(p => p.id === (block.scope === 'party' ? block.partyId || c.partyId : c.partyId))?.name || 'текущая пати')}</span><span data-gm-legacy-delivery> · ${block.delivery === 'background' ? 'В фоне' : 'С активацией'}</span></p><div ${collapsed.has(b) ? 'hidden' : ''}><label><input type="checkbox" data-field="parallel" ${block.parallel ? 'checked' : ''} ${b === 0 ? 'disabled' : ''}> Одновременно с предыдущим</label><div class="gm-compose-fields"><label>Область ${select(
+          `<section class="gm-compose-block" data-block="${b}"><header><button type="button" class="btn ghost small" data-block-collapse aria-expanded="${!collapsed.has(b)}" title="Свернуть или раскрыть блок">${collapsed.has(b) ? '▸' : '▾'}</button><label>Название ${input('name', block.name)}</label><button class="btn ghost" type="button" data-block-up ${b === 0 ? 'disabled' : ''}>↑</button><button class="btn danger" type="button" data-block-delete>Удалить блок</button></header><p class="gm-compose-summary">${blocks.length > 1 ? `${esc(block.name)} · ` : ''}${block.steps.length} действий × ${block.repeat ?? 1} · <span data-gm-standard-scope>${block.scope === 'managed' ? 'Все распознанные окна' : esc(state.parties.find(p => p.id === (block.partyId || c.partyId))?.name || 'Текущая пати')}</span><span data-gm-legacy-delivery> · ${block.delivery === 'background' ? 'В фоне' : 'С активацией'}</span></p><div ${collapsed.has(b) ? 'hidden' : ''}><label><input type="checkbox" data-field="parallel" ${block.parallel ? 'checked' : ''} ${b === 0 ? 'disabled' : ''}> Одновременно с предыдущим</label><div class="gm-compose-fields"><label>Область ${select(
             'scope',
             [
               ['party', 'Пати'],
@@ -206,7 +204,7 @@ export function mountCompositionEditor(host, c, row) {
               ['subset', 'Отмеченным']
             ],
             block.target
-          )}</label><label>Доставка ${select(
+          )}</label><label data-gm-legacy-delivery>Доставка ${select(
             'delivery',
             [
               ['foreground', 'С активацией'],
@@ -215,7 +213,7 @@ export function mountCompositionEditor(host, c, row) {
             block.delivery
           )}</label>${
             block.delivery === 'background'
-              ? `<label>Способ для клавиш ${select(
+              ? `<label data-gm-legacy-delivery>Способ для клавиш ${select(
                   'backgroundMethod',
                   [
                     ['activity-notify', BACKGROUND_METHODS['activity-notify']],
@@ -248,7 +246,7 @@ export function mountCompositionEditor(host, c, row) {
                 )
                   .map(
                     char =>
-                      `<label><input type="checkbox" data-character="${esc(char.id)}" ${block.charIds.includes(char.id) ? 'checked' : ''}>${esc(char.nick)}${host.dataset.commandMode === 'hybrid-party' && !partyMembers(state, block.scope === 'party' ? block.partyId || c.partyId : c.partyId).some(member => member.id === char.id) ? ' · вне выбранной пати — снимите отметку' : ''}</label>`
+                      `<label><input type="checkbox" data-character="${esc(char.id)}" ${block.charIds.includes(char.id) ? 'checked' : ''}>${esc(char.nick)}</label>`
                   )
                   .join('')}</fieldset>`
               : ''
@@ -361,19 +359,13 @@ export function mountCompositionEditor(host, c, row) {
     updateMode();
   }
   function updateMode() {
-    const hybrid = host.dataset.commandMode === 'hybrid-party';
     host.querySelectorAll('.gm-compose-block').forEach(section => {
       const block = blocks[Number(section.dataset.block)];
       const fieldLabel = field => section.querySelector(`[data-field="${field}"]`)?.closest('label');
-      const scope = fieldLabel('scope');
       const perWindow = fieldLabel('perWindow');
-      const repeat = fieldLabel('repeat');
       const party = fieldLabel('partyId');
       const parallel = fieldLabel('parallel');
-      const split = fieldLabel('leaderSplit');
-      if (scope) scope.hidden = hybrid;
       if (perWindow) {
-        perWindow.hidden = hybrid;
         const toggle = perWindow.querySelector('input');
         const unsupported = block.steps.some(
           step => !['keys', 'wait', 'point', 'screen', 'resize'].includes(step.type)
@@ -384,69 +376,21 @@ export function mountCompositionEditor(host, c, row) {
         toggle.title =
           unsupported && !block.perWindow ? 'Для обхода по окнам оставьте только клавиши, паузы, клики и размеры.' : '';
       }
-      if (repeat) repeat.hidden = hybrid && (block.repeat ?? 1) === 1;
-      if (party)
-        party.hidden = hybrid
-          ? block.scope !== 'party'
-          : block.scope === 'managed' && !['leader', 'others'].includes(block.target);
-      if (parallel) parallel.hidden = Number(section.dataset.block) === 0 || (hybrid && !block.parallel);
-      if (split) split.hidden = hybrid;
-      const note = section.querySelector('.gm-block-leader-note');
-      if (note) note.hidden = hybrid;
-      const extra = section.querySelector('.gm-more-library');
-      if (extra) extra.hidden = hybrid;
+      if (party) party.hidden = block.scope === 'managed' && !['leader', 'others'].includes(block.target);
+      if (parallel) parallel.hidden = Number(section.dataset.block) === 0;
       for (const button of section.querySelectorAll(
         '[data-add-type="focus"], [data-add-type="launch"], [data-add-type="pause"], [data-add-type="repeat"], [data-add-type="profile"]'
       )) {
         button.disabled = !!block.perWindow;
         button.title = button.disabled ? 'Выключите обход по окнам или добавьте действие в другую группу.' : '';
       }
-      const click = section.querySelector('[data-add-type="screen"]');
-      if (click) click.hidden = hybrid;
       for (const button of section.querySelectorAll(
         '[data-add-type="keys"], [data-add-type="wait"], [data-step-copy]'
       )) {
-        const limit = hybrid && block.steps.length >= 8;
-        button.disabled = limit;
-        button.title = limit
-          ? 'В гибридном режиме не более 8 шагов.'
-          : button.hasAttribute('data-step-copy')
-            ? 'Дублировать шаг'
-            : '';
+        button.disabled = false;
+        button.title = button.hasAttribute('data-step-copy') ? 'Дублировать шаг' : '';
       }
     });
-    const add = host.querySelector('[data-block-add]');
-    if (add) add.hidden = hybrid;
-    const incompatibleExamples = host.querySelectorAll('[data-template], [data-unpack-command]');
-    incompatibleExamples.forEach(button => {
-      button.hidden = hybrid;
-    });
-    host.querySelectorAll('.gm-examples-panel > details').forEach(details => {
-      details.hidden = hybrid;
-    });
-    const empty = blocks.length === 1 && blocks[0].steps.length === 0;
-    host.querySelectorAll('[data-preset]').forEach(button => {
-      button.disabled = hybrid && !empty;
-      button.title = button.disabled
-        ? 'Гибрид поддерживает одну группу; пример можно добавить только в пустую команду.'
-        : '';
-    });
-    const warning = host.querySelector('[data-hybrid-plan-warning]');
-    if (warning) {
-      warning.hidden = !hybrid;
-      const incompatible =
-        blocks.length !== 1 ||
-        blocks.some(
-          block =>
-            block.parallel ||
-            (block.repeat ?? 1) !== 1 ||
-            block.steps.length > 8 ||
-            block.steps.some(step => !['keys', 'wait'].includes(step.type))
-        );
-      warning.textContent = incompatible
-        ? 'Для гибрида оставьте одну группу, не более 8 шагов клавиш и пауз, без повтора и параллельности. Существующие действия не удалены: исправьте их или вернитесь в активный режим.'
-        : 'Гибрид: одна группа клавиш и пауз, до 8 шагов; пауза 50–3000 мс. Выполняется последовательно на участниках выбранной пати.';
-    }
   }
   host.onchange = e => {
     const field = e.target.dataset.field,
@@ -457,15 +401,8 @@ export function mountCompositionEditor(host, c, row) {
     if (e.target.matches('[data-recipient-class]')) {
       if (e.target.value) {
         const block = blocks[b];
-        const hybridMembers =
-          host.dataset.commandMode === 'hybrid-party'
-            ? partyMembers(state, block.scope === 'party' ? block.partyId || c.partyId : c.partyId)
-            : null;
         block.charIds = recipients(block)
-          .filter(
-            char =>
-              char.class === e.target.value && (!hybridMembers || hybridMembers.some(member => member.id === char.id))
-          )
+          .filter(char => char.class === e.target.value)
           .map(char => char.id);
         draw();
       }
@@ -725,11 +662,11 @@ export function mountCompositionEditor(host, c, row) {
     snapshot: () => structuredClone(blocks),
     restoreBlocks: next => {
       if (!Array.isArray(next) || next.length > 8) throw new Error('Некорректный черновик.');
-      blocks = structuredClone(next);
+      blocks = editableBlocks(structuredClone(next));
       draw();
     },
     setBlocks: next => {
-      blocks = normalizeComposition(next);
+      blocks = editableBlocks(normalizeComposition(next));
       draw();
     },
     setMode: mode => {

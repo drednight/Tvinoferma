@@ -332,7 +332,7 @@ pub fn game_macro_navigate(
         return Err("Untrusted window".into());
     }
     match action.as_str() {
-        "party-refresh" | "party-launch" | "party-close-all" => app
+        "party-refresh" | "party-launch" | "party-close-all" | "party-redecorate" => app
             .emit_to(
                 "main",
                 "game-overlay-party",
@@ -3119,7 +3119,9 @@ pub async fn game_macro_mirror(
     keyboard_timeout_ms: Option<u32>,
     hold_only: Option<bool>,
     keyboard_source: Option<Target>,
+    keyboard_leader: Option<Target>,
     keyboard_targets: Option<Vec<Target>>,
+    global_mouse: Option<bool>,
     source: Option<Target>,
     twins_modifier: Option<String>,
     active_modifier: Option<String>,
@@ -3148,7 +3150,9 @@ pub async fn game_macro_mirror(
                         timeout_ms: keyboard_timeout_ms.unwrap_or(25),
                         hold_only: hold_only.unwrap_or(false),
                         keyboard_source,
+                        keyboard_leader,
                         keyboard_targets,
+                        global_mouse: global_mouse.unwrap_or(false),
                         source,
                         twins_modifier,
                         active_modifier,
@@ -3178,7 +3182,9 @@ pub async fn game_macro_mirror(
             keyboard_timeout_ms,
             hold_only,
             keyboard_source,
+            keyboard_leader,
             keyboard_targets,
+            global_mouse,
             source,
             twins_modifier,
             active_modifier,

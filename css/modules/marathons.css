@@ -1533,6 +1533,49 @@ tr.is-syncing td {
 .tf-news-stage li {
   margin: 2px 0;
 }
+.tf-news-filter {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: rgba(110, 142, 248, 0.1);
+}
+.tf-news-filter-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+.tf-news-filter-toggle input {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+.tf-news-filter-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  line-height: 1.4;
+}
+.tf-news-filter-copy strong {
+  font-size: 0.9rem;
+}
+.tf-news-filter-copy small,
+.tf-news-filter-count {
+  color: var(--muted);
+  line-height: 1.45;
+}
+.tf-news-filter-count {
+  padding-left: 28px;
+}
+.tf-news-filter:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .tf-bonus-panel .toolbar {
   margin-bottom: 6px;
 }

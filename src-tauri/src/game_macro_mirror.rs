@@ -1,4 +1,5 @@
-//! Opt-in, volatile mirroring. Diagnostic events are bounded and in memory only; no global injection.
+//! Opt-in, volatile mirroring. Diagnostic events are bounded and in memory only; the
+//! experimental cache-hybrid route can inject real global keyboard/mouse input.
 use super::{compatible_integrity, Target};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -56,6 +57,7 @@ struct Mouse {
     button: u8,
     flags: u32,
     double: bool,
+    exclusive: bool,
 }
 struct Context {
     tx: SyncSender<Key>,
@@ -65,6 +67,7 @@ struct Context {
     mouse: bool,
     keyboard: bool,
     keyboard_source: Option<usize>,
+    keyboard_leader: Option<usize>,
     source: Option<usize>,
     last_mouse: Option<(usize, u8, i32, i32, u64)>,
     twins_modifier: u8,
@@ -472,6 +475,7 @@ unsafe extern "system" fn mouse_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESU
                         button,
                         flags,
                         double,
+                        exclusive,
                     }),
                 };
                 if ctx.tx.try_send(key).is_err() {
@@ -703,11 +707,15 @@ struct HybridClient {
 }
 struct HybridState {
     clients: HashMap<usize, HybridClient>,
+    // SendInput changes the single system-wide key state. Track one injection per
+    // physical press, not one injection for every recipient window.
+    global_keys: HashMap<u32, Key>,
 }
 impl HybridState {
     fn new() -> Self {
         Self {
             clients: HashMap::new(),
+            global_keys: HashMap::new(),
         }
     }
     unsafe fn activate(&mut self, hwnd: usize) -> Result<(), u8> {
@@ -733,93 +741,124 @@ impl HybridState {
         client.mode = window_mode(hwnd);
         Ok(())
     }
-    unsafe fn press(&mut self, hwnd: usize, key: Key, repeat: bool) -> Result<(), u8> {
+    unsafe fn press(
+        &mut self,
+        hwnd: usize,
+        key: Key,
+        repeat: bool,
+        inject_global: bool,
+    ) -> Result<(), u8> {
         self.activate(hwnd)?;
-        let client = self.clients.get_mut(&hwnd).ok_or(7)?;
-        let state = client.keys.get(&key.vk).map(|item| item.released);
+        let state = self
+            .clients
+            .get(&hwnd)
+            .and_then(|client| client.keys.get(&key.vk))
+            .map(|item| item.released);
         match state {
-            // The key is already held in both channels: only the window cache is refreshed.
-            Some(false) => {
-                hybrid_post(hwnd, key, false, true)?;
-                Ok(())
-            }
+            // The key is already held for this recipient: only refresh its window cache.
+            Some(false) => hybrid_post(hwnd, key, false, true),
             // The source pressed the key again before the hold window ended.
             Some(true) => {
                 hybrid_post(hwnd, key, false, false)?;
-                if let Some(item) = client.keys.get_mut(&key.vk) {
+                if let Some(item) = self
+                    .clients
+                    .get_mut(&hwnd)
+                    .and_then(|client| client.keys.get_mut(&key.vk))
+                {
                     item.released = false;
                     item.deadline = Instant::now() + Duration::from_millis(HYBRID_HOLD_MS);
                 }
                 Ok(())
             }
             None => {
-                // Fixed order of the candidate: the global key first, then the window message.
-                if !hybrid_inject(key, false) {
-                    return Err(11);
+                // Global state is shared by all recipients: inject at most once for this
+                // physical key, then address each selected window. A PL source is excluded
+                // from synthetic input because it already receives the physical key.
+                let injected = inject_global && !self.global_keys.contains_key(&key.vk);
+                if injected {
+                    if !hybrid_inject(key, false) {
+                        return Err(11);
+                    }
+                    self.global_keys.insert(key.vk, key);
                 }
-                if let Err(reason) = hybrid_post(hwnd, key, false, repeat) {
-                    // Never leave a global key pressed after a rejected window message.
-                    let _ = hybrid_inject(key, true);
-                    return Err(reason);
-                }
-                client.keys.insert(
-                    key.vk,
-                    HybridKey {
-                        key,
-                        deadline: Instant::now() + Duration::from_millis(HYBRID_HOLD_MS),
-                        released: false,
-                    },
-                );
+                hybrid_post(hwnd, key, false, repeat)?;
+                self.clients
+                    .get_mut(&hwnd)
+                    .ok_or(7)?
+                    .keys
+                    .insert(
+                        key.vk,
+                        HybridKey {
+                            key,
+                            deadline: Instant::now() + Duration::from_millis(HYBRID_HOLD_MS),
+                            released: false,
+                        },
+                    );
                 Ok(())
             }
         }
     }
     unsafe fn logical_release(&mut self, hwnd: usize, vk: u32) -> Result<(), u8> {
         let now = Instant::now();
-        let Some(client) = self.clients.get_mut(&hwnd) else {
-            return Ok(());
-        };
-        let due = match client.keys.get_mut(&vk) {
-            Some(item) => {
-                item.released = true;
-                now >= item.deadline
+        let due = {
+            let Some(client) = self.clients.get_mut(&hwnd) else {
+                return Ok(());
+            };
+            match client.keys.get_mut(&vk) {
+                Some(item) => {
+                    item.released = true;
+                    now >= item.deadline
+                }
+                None => return Ok(()),
             }
-            None => return Ok(()),
         };
         if due {
-            let item = client.keys.remove(&vk).expect("checked key");
-            if let Err(reason) = hybrid_release_key(hwnd, &item.key, true) {
+            let item = self
+                .clients
+                .get_mut(&hwnd)
+                .and_then(|client| client.keys.remove(&vk))
+                .expect("checked key");
+            if let Err(reason) = hybrid_release_window_key(hwnd, &item.key, true) {
                 // Keep the key for the emergency cleanup of a possibly stuck global key.
-                client.keys.insert(vk, item);
+                self.clients
+                    .get_mut(&hwnd)
+                    .expect("known client")
+                    .keys
+                    .insert(vk, item);
                 return Err(reason);
             }
+            self.release_global_if_idle(vk)?;
         }
         self.finish_episode(hwnd)
     }
-    // Releases the keys whose hold window is over and restores the activation state
-    // of a windowed client once no mirrored key is held any more.
+    // Releases window messages after their hold window, then releases the shared global
+    // key only after every selected recipient has completed that same physical press.
     unsafe fn tick(&mut self, clients: &[Client], now: Instant) -> Result<(), u8> {
-        let hwnds: Vec<usize> = self.clients.keys().copied().collect();
-        for hwnd in hwnds {
-            let client = self.clients.get_mut(&hwnd).expect("known client");
-            let mut ready: Vec<(u32, Key)> = client
-                .keys
-                .iter()
-                .filter(|(_, item)| item.released && now >= item.deadline)
-                .map(|(vk, item)| (*vk, item.key))
-                .collect();
-            // Release ordinary keys before their modifiers.
-            ready.sort_by_key(|(_, key)| modifier_release_order(key.vk));
-            if ready.is_empty() {
-                continue;
-            }
+        let mut ready: Vec<(usize, u32, Key)> = self
+            .clients
+            .iter()
+            .flat_map(|(hwnd, client)| {
+                client
+                    .keys
+                    .iter()
+                    .filter(|(_, item)| item.released && now >= item.deadline)
+                    .map(|(vk, item)| (*hwnd, *vk, item.key))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        // Release ordinary keys before their modifiers, across all recipients.
+        ready.sort_by_key(|(_, _, key)| modifier_release_order(key.vk));
+        for (hwnd, vk, key) in ready {
             let verified = clients
                 .iter()
                 .any(|client| client.hwnd == hwnd && verify(client));
-            for (vk, key) in ready {
-                if let Err(reason) = hybrid_release_key(hwnd, &key, verified) {
-                    // Keep the key for the emergency cleanup of a possibly stuck global key.
-                    client.keys.insert(
+            if let Err(reason) = hybrid_release_window_key(hwnd, &key, verified) {
+                // Keep the key for the emergency cleanup of a possibly stuck global key.
+                self.clients
+                    .get_mut(&hwnd)
+                    .expect("known client")
+                    .keys
+                    .insert(
                         vk,
                         HybridKey {
                             key,
@@ -827,13 +866,30 @@ impl HybridState {
                             released: true,
                         },
                     );
-                    return Err(reason);
-                }
-                client.keys.remove(&vk);
+                return Err(reason);
             }
+            self.clients
+                .get_mut(&hwnd)
+                .expect("known client")
+                .keys
+                .remove(&vk);
+            self.release_global_if_idle(vk)?;
         }
         for hwnd in self.clients.keys().copied().collect::<Vec<_>>() {
             self.finish_episode(hwnd)?;
+        }
+        Ok(())
+    }
+    unsafe fn release_global_if_idle(&mut self, vk: u32) -> Result<(), u8> {
+        if self.clients.values().any(|client| client.keys.contains_key(&vk)) {
+            return Ok(());
+        }
+        let Some(key) = self.global_keys.remove(&vk) else {
+            return Ok(());
+        };
+        if !hybrid_inject(key, true) {
+            self.global_keys.insert(vk, key);
+            return Err(11);
         }
         Ok(())
     }
@@ -860,42 +916,59 @@ impl HybridState {
         }
         Ok(())
     }
-    // Emergency cleanup: the global key is always released, the window message only
-    // when the recipient is still the verified client.
+    // Emergency cleanup: release every shared global key, and send addressable UP
+    // messages only to recipients that are still the verified client.
     unsafe fn release_all(&mut self, clients: &[Client]) -> Result<(), u8> {
-        let mut failure = Ok(());
+        let mut failure = None;
         for hwnd in self.clients.keys().copied().collect::<Vec<_>>() {
-            let client = self.clients.get_mut(&hwnd).expect("known client");
-            let mut items: Vec<Key> = client.keys.values().map(|item| item.key).collect();
+            let (mut items, active, mode) = {
+                let client = self.clients.get_mut(&hwnd).expect("known client");
+                let items = client.keys.values().map(|item| item.key).collect::<Vec<_>>();
+                client.keys.clear();
+                let active = client.active;
+                client.active = false;
+                (items, active, client.mode)
+            };
             items.sort_by_key(|key| modifier_release_order(key.vk));
-            client.keys.clear();
             let verified = clients
                 .iter()
                 .any(|client| client.hwnd == hwnd && verify(client));
-            for key in items {
-                if let Err(reason) = hybrid_release_key(hwnd, &key, verified) {
-                    failure = Err(reason);
-                }
-            }
-            if client.active {
-                let mode = client.mode;
-                client.active = false;
-                if mode.restores_activity() {
-                    let thread = GetWindowThreadProcessId(HWND(hwnd as *mut _), None);
-                    if mirror_notify(
-                        hwnd as *mut std::ffi::c_void,
-                        WM_ACTIVATEAPP,
-                        0,
-                        thread as isize,
-                    ) == 0
-                    {
-                        failure = Err(9);
+            if verified {
+                for key in items {
+                    if let Err(reason) = hybrid_release_window_key(hwnd, &key, true) {
+                        failure = Some(reason);
                     }
                 }
             }
+            if active && mode.restores_activity() {
+                let thread = GetWindowThreadProcessId(HWND(hwnd as *mut _), None);
+                if mirror_notify(
+                    hwnd as *mut std::ffi::c_void,
+                    WM_ACTIVATEAPP,
+                    0,
+                    thread as isize,
+                ) == 0
+                {
+                    failure = Some(9);
+                }
+            }
+        }
+        let mut global: Vec<(u32, Key)> = self
+            .global_keys
+            .iter()
+            .map(|(vk, key)| (*vk, *key))
+            .collect();
+        global.sort_by_key(|(_, key)| modifier_release_order(key.vk));
+        for (vk, key) in global {
+            if hybrid_inject(key, true) {
+                self.global_keys.remove(&vk);
+            } else {
+                // Keep failed releases for the final cleanup pass after the worker stops.
+                failure = Some(11);
+            }
         }
         self.clients.clear();
-        failure
+        failure.map_or(Ok(()), Err)
     }
 }
 // Global injection of one key. It reaches the focused window, never a chosen recipient.
@@ -925,16 +998,87 @@ unsafe fn hybrid_inject(key: Key, up: bool) -> bool {
     .unwrap_or(0)
         == 1
 }
-unsafe fn hybrid_release_key(hwnd: usize, key: &Key, post: bool) -> Result<(), u8> {
-    // The global key is released first: a stuck global modifier is worse than a
-    // missing window message.
-    if !hybrid_inject(*key, true) {
-        return Err(11);
+unsafe fn hybrid_release_window_key(hwnd: usize, key: &Key, post: bool) -> Result<(), u8> {
+    if post {
+        hybrid_post(hwnd, *key, true, false)
+    } else {
+        Ok(())
     }
-    if !post {
+}
+
+unsafe fn global_mouse_inject(mouse: Mouse, up: bool) -> bool {
+    let dw_flags = match (mouse.button, up) {
+        (0, false) => MOUSEEVENTF_LEFTDOWN,
+        (0, true) => MOUSEEVENTF_LEFTUP,
+        (1, false) => MOUSEEVENTF_RIGHTDOWN,
+        (1, true) => MOUSEEVENTF_RIGHTUP,
+        (2, false) => MOUSEEVENTF_MIDDLEDOWN,
+        (2, true) => MOUSEEVENTF_MIDDLEUP,
+        (3 | 4, false) => MOUSEEVENTF_XDOWN,
+        (3 | 4, true) => MOUSEEVENTF_XUP,
+        _ => return false,
+    };
+    let event = INPUT {
+        r#type: INPUT_MOUSE,
+        Anonymous: INPUT_0 {
+            mi: MOUSEINPUT {
+                dwFlags: dw_flags,
+                mouseData: if mouse.button >= 3 {
+                    u32::from(mouse.button - 2)
+                } else {
+                    0
+                },
+                ..Default::default()
+            },
+        },
+    };
+    crate::input_arbiter::dispatch(up, || {
+        SendInput(&[event], std::mem::size_of::<INPUT>() as i32)
+    })
+    .unwrap_or(0)
+        == 1
+}
+
+unsafe fn global_mouse_event(
+    buttons: &mut HashMap<u8, Mouse>,
+    mouse: Mouse,
+    up: bool,
+) -> Result<(), u8> {
+    if up {
+        let Some(held) = buttons.remove(&mouse.button) else {
+            return Ok(());
+        };
+        if !global_mouse_inject(held, true) {
+            buttons.insert(mouse.button, held);
+            return Err(13);
+        }
         return Ok(());
     }
-    hybrid_post(hwnd, *key, true, false)
+    if buttons.contains_key(&mouse.button) {
+        return Ok(());
+    }
+    let mut point = windows::Win32::Foundation::POINT::default();
+    if GetCursorPos(&mut point).is_err() || point.x != mouse.x || point.y != mouse.y {
+        return Err(13);
+    }
+    if !global_mouse_inject(mouse, false) {
+        return Err(13);
+    }
+    buttons.insert(mouse.button, mouse);
+    Ok(())
+}
+
+unsafe fn release_global_mouse(buttons: &mut HashMap<u8, Mouse>) -> Result<(), u8> {
+    let mut pending: Vec<Mouse> = std::mem::take(buttons).into_values().collect();
+    pending.sort_by_key(|mouse| mouse.button);
+    let mut failure = None;
+    for mouse in pending {
+        if !global_mouse_inject(mouse, true) {
+            buttons.insert(mouse.button, mouse);
+            failure = Some(13);
+        }
+    }
+    failure.map_or(Ok(()), Err)
 }
 // The addressable window message of the candidate. It goes through the same input
 // arbiter as the ordinary protocol: a cancelled operation refuses the delivery.
@@ -1025,29 +1169,55 @@ fn release(
     clients: &[Client],
     held: &mut HashMap<usize, HashMap<u32, (Key, Instant)>>,
     hybrid: &mut HybridState,
+    global_mouse_buttons: &mut HashMap<u8, Mouse>,
+    control: &Control,
     method: KeyboardMethod,
     timeout_ms: u32,
 ) {
+    let mut failure = None;
     if method.cache_hybrid() {
-        // The global key of the candidate is released by its own state, not by the
-        // addressable window messages of the ordinary protocol.
-        held.clear();
-        unsafe {
-            let _ = hybrid.release_all(clients);
-        }
-        return;
-    }
-    for (hwnd, keys) in held.drain() {
-        if clients.iter().any(|c| c.hwnd == hwnd && verify(c)) {
-            let mut releases: Vec<_> = keys.into_values().collect();
-            // Release ordinary keys before their modifiers, including emergency cleanup.
-            releases.sort_by_key(|(key, _)| modifier_release_order(key.vk));
-            for (key, _) in releases {
-                unsafe {
-                    let _ = post(hwnd, key, true, false, method, timeout_ms);
+        for (hwnd, keys) in held.drain() {
+            if !clients.iter().any(|client| client.hwnd == hwnd && verify(client)) {
+                continue;
+            }
+            let mut mouse_releases: Vec<Key> = keys
+                .into_values()
+                .map(|(key, _)| key)
+                .filter(|key| key.mouse.is_some())
+                .collect();
+            mouse_releases.sort_by_key(|key| modifier_release_order(key.vk));
+            for key in mouse_releases {
+                let up = Key { up: true, ..key };
+                if let Err(reason) = unsafe { post(hwnd, up, true, false, method, timeout_ms) } {
+                    failed_input(control, up);
+                    failure.get_or_insert(reason);
                 }
             }
         }
+        if let Err(reason) = unsafe { hybrid.release_all(clients) } {
+            failure.get_or_insert(reason);
+        }
+    } else {
+        for (hwnd, keys) in held.drain() {
+            if clients.iter().any(|client| client.hwnd == hwnd && verify(client)) {
+                let mut releases: Vec<_> = keys.into_values().collect();
+                // Release ordinary keys before their modifiers, including emergency cleanup.
+                releases.sort_by_key(|(key, _)| modifier_release_order(key.vk));
+                for (key, _) in releases {
+                    let up = Key { up: true, ..key };
+                    if let Err(reason) = unsafe { post(hwnd, up, true, false, method, timeout_ms) } {
+                        failed_input(control, up);
+                        failure.get_or_insert(reason);
+                    }
+                }
+            }
+        }
+    }
+    if let Err(reason) = unsafe { release_global_mouse(global_mouse_buttons) } {
+        failure.get_or_insert(reason);
+    }
+    if let Some(reason) = failure {
+        halt(control, reason);
     }
 }
 fn failed_input(control: &Control, key: Key) {
@@ -1112,9 +1282,22 @@ struct KeyboardRouting {
     timeout_ms: u32,
     hold_only: bool,
     targets: Option<Vec<usize>>,
+    keyboard_leader: Option<usize>,
+    mouse_source: Option<usize>,
+    global_mouse: bool,
 }
 fn keyboard_recipient(targets: Option<&[usize]>, hwnd: usize) -> bool {
     targets.is_none_or(|rows| rows.contains(&hwnd))
+}
+fn global_keyboard_input_allowed(source: usize, leader: Option<usize>) -> bool {
+    // The active source already receives the physical key. In particular, do not inject
+    // a second global key into the party leader while the leader is the source.
+    leader != Some(source)
+}
+fn global_mouse_input_allowed(source: usize, selected_source: Option<usize>, mouse: Mouse) -> bool {
+    // A party-leader source already receives the physical click. Never defeat a captured
+    // twins-only click by injecting it globally into its source.
+    selected_source != Some(source) && !mouse.exclusive
 }
 fn forward(
     rx: Receiver<Key>,
@@ -1129,6 +1312,9 @@ fn forward(
         timeout_ms,
         hold_only,
         targets: keyboard_targets,
+        keyboard_leader,
+        mouse_source,
+        global_mouse,
     } = routing;
     let mut trace = TraceLog {
         app,
@@ -1139,6 +1325,7 @@ fn forward(
     };
     let mut held: HashMap<usize, HashMap<u32, (Key, Instant)>> = HashMap::new();
     let mut hybrid = HybridState::new();
+    let mut global_mouse_buttons: HashMap<u8, Mouse> = HashMap::new();
     let mut previous = 0;
     while !control.stop.load(Ordering::SeqCst) {
         if crate::input_arbiter::cancelled() {
@@ -1159,7 +1346,18 @@ fn forward(
         }
         let foreground = unsafe { GetForegroundWindow().0 as usize };
         if foreground != previous {
-            release(&clients, &mut held, &mut hybrid, method, timeout_ms);
+            release(
+                &clients,
+                &mut held,
+                &mut hybrid,
+                &mut global_mouse_buttons,
+                &control,
+                method,
+                timeout_ms,
+            );
+            if control.stop.load(Ordering::SeqCst) {
+                break;
+            }
             previous = foreground;
         }
         if method.cache_hybrid() {
@@ -1180,19 +1378,69 @@ fn forward(
             break;
         }
         if key.vk == 0 {
-            release(&clients, &mut held, &mut hybrid, method, timeout_ms);
+            release(
+                &clients,
+                &mut held,
+                &mut hybrid,
+                &mut global_mouse_buttons,
+                &control,
+                method,
+                timeout_ms,
+            );
+            if control.stop.load(Ordering::SeqCst) {
+                break;
+            }
             continue;
         }
         if key.source != unsafe { GetForegroundWindow().0 as usize } {
-            release(&clients, &mut held, &mut hybrid, method, timeout_ms);
+            release(
+                &clients,
+                &mut held,
+                &mut hybrid,
+                &mut global_mouse_buttons,
+                &control,
+                method,
+                timeout_ms,
+            );
+            if control.stop.load(Ordering::SeqCst) {
+                break;
+            }
             continue;
         }
-        if !clients.iter().any(|c| c.hwnd == key.source && verify(c)) {
+        if !clients.iter().any(|client| client.hwnd == key.source && verify(client)) {
             halt(&control, 3);
             break;
         }
+
+        if let Some(mouse) = key.mouse.filter(|mouse| {
+            global_mouse && global_mouse_input_allowed(key.source, mouse_source, *mouse)
+        }) {
+            if !key.up {
+                let point = windows::Win32::Foundation::POINT { x: mouse.x, y: mouse.y };
+                let ready = clients
+                    .iter()
+                    .filter(|client| client.hwnd != key.source)
+                    .all(|client| {
+                        verify(client) && unsafe { mouse_destination_ready(client, point) }
+                    });
+                if !ready {
+                    failed_input(&control, key);
+                    trace.record(key, 0);
+                    halt(&control, 6);
+                    break;
+                }
+            }
+            if let Err(reason) = unsafe { global_mouse_event(&mut global_mouse_buttons, mouse, key.up) }
+            {
+                failed_input(&control, key);
+                trace.record(key, 0);
+                halt(&control, reason);
+                break;
+            }
+        }
+
         let mut delivered = 0;
-        for client in clients.iter().filter(|c| c.hwnd != key.source) {
+        for client in clients.iter().filter(|client| client.hwnd != key.source) {
             if control.stop.load(Ordering::SeqCst) {
                 break;
             }
@@ -1200,10 +1448,16 @@ fn forward(
                 halt(&control, 3);
                 break;
             }
-            if control.stop.load(Ordering::SeqCst)
-                || key.source != unsafe { GetForegroundWindow().0 as usize }
-            {
-                release(&clients, &mut held, &mut hybrid, method, timeout_ms);
+            if key.source != unsafe { GetForegroundWindow().0 as usize } {
+                release(
+                    &clients,
+                    &mut held,
+                    &mut hybrid,
+                    &mut global_mouse_buttons,
+                    &control,
+                    method,
+                    timeout_ms,
+                );
                 break;
             }
             if now().saturating_sub(key.at) > 250 {
@@ -1211,8 +1465,7 @@ fn forward(
                 halt(&control, 1);
                 break;
             }
-            if key.mouse.is_none() && !keyboard_recipient(keyboard_targets.as_deref(), client.hwnd)
-            {
+            if key.mouse.is_none() && !keyboard_recipient(keyboard_targets.as_deref(), client.hwnd) {
                 continue;
             }
             let keys = held.entry(client.hwnd).or_default();
@@ -1232,13 +1485,16 @@ fn forward(
                 keys.insert(key.vk, (key, Instant::now()));
             }
             let result = if method.cache_hybrid() && key.mouse.is_none() {
-                // The candidate sends the press and the release itself: the global key is
-                // held for one frame window before it is released.
                 unsafe {
                     if key.up {
                         hybrid.logical_release(client.hwnd, key.vk)
                     } else {
-                        hybrid.press(client.hwnd, key, repeat)
+                        hybrid.press(
+                            client.hwnd,
+                            key,
+                            repeat,
+                            global_keyboard_input_allowed(key.source, keyboard_leader),
+                        )
                     }
                 }
             } else {
@@ -1257,7 +1513,15 @@ fn forward(
         trace.record(key, delivered);
     }
     trace.flush(true);
-    release(&clients, &mut held, &mut hybrid, method, timeout_ms);
+    release(
+        &clients,
+        &mut held,
+        &mut hybrid,
+        &mut global_mouse_buttons,
+        &control,
+        method,
+        timeout_ms,
+    );
 }
 pub fn stop(id: &str) -> Result<bool, String> {
     let mut guard = SESSION.lock().map_err(|_| "Mirror lock failed")?;
@@ -1287,7 +1551,9 @@ pub struct Options {
     pub timeout_ms: u32,
     pub hold_only: bool,
     pub keyboard_source: Option<Target>,
+    pub keyboard_leader: Option<Target>,
     pub keyboard_targets: Option<Vec<Target>>,
+    pub global_mouse: bool,
     pub source: Option<Target>,
     pub twins_modifier: Option<String>,
     pub active_modifier: Option<String>,
@@ -1307,7 +1573,9 @@ pub fn start(
         timeout_ms,
         hold_only,
         keyboard_source,
+        keyboard_leader,
         keyboard_targets,
+        global_mouse,
         source,
         twins_modifier,
         active_modifier,
@@ -1398,6 +1666,11 @@ pub fn start(
     } else {
         source_hwnd
     };
+    let keyboard_leader_hwnd = if keyboard {
+        keyboard_leader.as_ref().map(resolve_keyboard).transpose()?
+    } else {
+        None
+    };
     let keyboard_target_hwnds = keyboard_targets
         .as_ref()
         .map(|targets| {
@@ -1434,6 +1707,7 @@ pub fn start(
                 mouse,
                 keyboard,
                 keyboard_source: keyboard_source_hwnd,
+                keyboard_leader: keyboard_leader_hwnd,
                 source: source_hwnd,
                 last_mouse: None,
                 twins_modifier,
@@ -1477,6 +1751,9 @@ pub fn start(
                             timeout_ms,
                             hold_only,
                             targets: keyboard_target_hwnds,
+                            keyboard_leader: keyboard_leader_hwnd,
+                            mouse_source: source_hwnd,
+                            global_mouse,
                         },
                     )
                 });
@@ -1536,6 +1813,34 @@ mod tests {
         assert!(keyboard_recipient(Some(&[123, 456]), 123));
         assert!(!keyboard_recipient(Some(&[123]), 456));
         assert!(!keyboard_recipient(Some(&[]), 123));
+    }
+    #[test]
+    fn global_keyboard_input_does_not_duplicate_a_party_leader_source() {
+        assert!(!global_keyboard_input_allowed(10, Some(10)));
+        assert!(global_keyboard_input_allowed(20, Some(10)));
+        assert!(global_keyboard_input_allowed(10, None));
+    }
+    #[test]
+    fn global_mouse_input_respects_the_selected_source_and_twins_only_gesture() {
+        let ordinary = Mouse {
+            x: 1,
+            y: 2,
+            button: 0,
+            flags: 0,
+            double: false,
+            exclusive: false,
+        };
+        assert!(!global_mouse_input_allowed(10, Some(10), ordinary));
+        assert!(global_mouse_input_allowed(20, Some(10), ordinary));
+        assert!(global_mouse_input_allowed(10, None, ordinary));
+        assert!(!global_mouse_input_allowed(
+            20,
+            None,
+            Mouse {
+                exclusive: true,
+                ..ordinary
+            }
+        ));
     }
     #[test]
     fn cleanup_releases_chord_key_before_modifiers() {

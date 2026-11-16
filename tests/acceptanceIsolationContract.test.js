@@ -65,6 +65,8 @@ it('local and CI scripts opt into both config and feature and keep artifacts sep
   expect(local).toContain('src-tauri\\target\\acceptance');
   expect(workflow).toContain('${{ github.workspace }}/src-tauri/target/acceptance');
   expect(local).toContain('isolationVerified = $false');
+  expect(local).toContain("isolatedProfile = ($Profile -eq 'Isolated')");
+  expect(local).toContain('sourceFingerprint = $sourceSnapshot.Fingerprint');
 });
 
 it('requires an explicitly selected shared build, matching stable data namespace and disabling updater', () => {
@@ -84,7 +86,7 @@ it('requires an explicitly selected shared build, matching stable data namespace
   expect(profile).toContain('com.tvinoferma.desktop.cloud.simple-key');
   expect(app).toContain('context.config().product_name.as_deref()');
   expect(local).toContain("[string]$Profile = 'Isolated'");
-  expect(local).toContain("$Profile -eq 'Shared' -and -not $SharedProfileConfirmed");
+  expect(local).toContain("$SharedProfileConfirmation -cne 'I_HAVE_BACKUP_AND_ACCEPT_SHARED_DATA'");
   expect(local).toContain('tauri.acceptance-shared.conf.json');
   expect(local).toContain('Tvinoferma-SHARED-TEST.exe');
   expect(local).toContain('SHARED PRODUCTION PROFILE');

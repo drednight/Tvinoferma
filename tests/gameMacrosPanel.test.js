@@ -359,39 +359,49 @@ it('groups execution controls together and separates repeat configuration in a n
   const group = document.querySelector('.gm-repeat-modal');
   expect(group.querySelector('[data-repeat-keyboard] legend').textContent).toContain('Повтор клавиатуры');
   expect(group.querySelector('[data-repeat-mouse] legend').textContent).toContain('Повтор мыши');
-  expect(group.querySelector('[data-repeat-keyboard] [data-gm-keyboard-method]')).not.toBeNull();
+  expect(group.querySelector('[data-repeat-keyboard] [data-gm-keyboard-global-input]')).not.toBeNull();
+  expect(group.querySelector('[data-repeat-keyboard] [data-gm-keyboard-method]')).toBeNull();
+  expect(group.querySelector('[data-repeat-keyboard] [data-gm-keyboard-timeout]')).toBeNull();
+  expect(group.querySelector('[data-repeat-mouse] [data-gm-mouse-global-input]')).not.toBeNull();
   expect(group.querySelector('[data-repeat-mouse] [data-gm-mirror-source]')).not.toBeNull();
   expect(group.contains(document.querySelector('[data-gm-mirror-source]'))).toBe(true);
   expect(group.contains(document.querySelector('[data-gm-twins-modifier]'))).toBe(true);
 });
 
-it('persists a bounded experimental keyboard timeout independently of mouse settings', async () => {
+it('requires explicit per-save consent for experimental keyboard global input', async () => {
   document.querySelector('[data-gm-repeat-config]').click();
-  const timeout = document.querySelector('[data-gm-keyboard-timeout]');
-  expect(timeout.value).toBe('25');
-  timeout.value = '100';
-  document.querySelector('.modal-footer .primary').click();
-  await vi.waitFor(() => expect(state.settings.gameMacros.mirrorKeyboardTimeoutMs).toBe(100));
-});
-
-it('warns about the global input leak and requires an explicit consent for the candidate', async () => {
-  document.querySelector('[data-gm-repeat-config]').click();
-  const method = document.querySelector('[data-gm-keyboard-method]');
+  const input = document.querySelector('[data-gm-keyboard-global-input]');
   const warning = document.querySelector('[data-gm-hybrid-warning]');
+  const consentRow = document.querySelector('[data-gm-hybrid-consent-row]');
   const consent = document.querySelector('[data-gm-hybrid-consent]');
-  expect(consent.tagName).toBe('INPUT');
-  expect([...method.options].map(option => option.value)).toContain('cache-hybrid');
-  expect(warning.hidden).toBe(true);
-  method.value = 'cache-hybrid';
-  method.dispatchEvent(new Event('change'));
-  expect(warning.hidden).toBe(false);
-  expect(warning.textContent).toContain('активное окно');
+  expect(input.checked).toBe(false);
+  expect(warning.textContent).toContain('секретов');
+  expect(consentRow.hidden).toBe(true);
+  input.checked = true;
+  input.dispatchEvent(new Event('change'));
+  expect(consentRow.hidden).toBe(false);
   document.querySelector('.modal-footer .primary').click();
-  await vi.waitFor(() => expect(state.settings.gameMacros.mirrorKeyboardMethod).not.toBe('cache-hybrid'));
-  expect(state.settings.gameMacros.mirrorKeyboardMethod).toBeUndefined();
+  await vi.waitFor(() => expect(document.querySelector('#toast-root').textContent).toContain('Подтвердите'));
+  expect(state.settings.gameMacros.mirrorKeyboardGlobalInput).toBeUndefined();
   consent.checked = true;
   document.querySelector('.modal-footer .primary').click();
-  await vi.waitFor(() => expect(state.settings.gameMacros.mirrorKeyboardMethod).toBe('cache-hybrid'));
+  await vi.waitFor(() => expect(state.settings.gameMacros.mirrorKeyboardGlobalInput).toBe(true));
+});
+
+it('requires separate consent for experimental mouse global input', async () => {
+  document.querySelector('[data-gm-repeat-config]').click();
+  const input = document.querySelector('[data-gm-mouse-global-input]');
+  const consent = document.querySelector('[data-gm-mouse-global-consent]');
+  expect(input.checked).toBe(false);
+  input.checked = true;
+  input.dispatchEvent(new Event('change'));
+  expect(document.querySelector('[data-gm-mouse-global-consent-row]').hidden).toBe(false);
+  document.querySelector('.modal-footer .primary').click();
+  await vi.waitFor(() => expect(document.querySelector('#toast-root').textContent).toContain('Подтвердите'));
+  expect(state.settings.gameMacros.mirrorMouseGlobalInput).toBeUndefined();
+  consent.checked = true;
+  document.querySelector('.modal-footer .primary').click();
+  await vi.waitFor(() => expect(state.settings.gameMacros.mirrorMouseGlobalInput).toBe(true));
 });
 
 it('filters commands without executing them', () => {

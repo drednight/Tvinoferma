@@ -30,7 +30,7 @@ it('stores a separate manual mirror observation with conditions, never a fabrica
   );
   const saved = normalizeTrials([row])[0];
   expect(saved).toMatchObject({
-    method: 'mirror-post',
+    method: 'mirror-cache-hybrid',
     conditions: { purpose: 'game', chat: 'closed' },
     technical: { state: 'manual-observation', trace: null, runId: '' }
   });
@@ -66,7 +66,7 @@ it('manual observation requires confirmation, saves once and does not switch inp
   document.querySelector('.modal-footer .primary').click();
   await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1));
   expect(c.backgroundTrials[0]).toMatchObject({
-    method: 'mirror-post',
+    method: 'mirror-cache-hybrid',
     conditions: { purpose: 'chat', chat: 'open' },
     verdict: 'worked'
   });

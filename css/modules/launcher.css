@@ -147,6 +147,13 @@
   accent-color: var(--accent);
   cursor: pointer;
 }
+.gcm-only-account {
+  max-width: 230px;
+  white-space: normal;
+}
+.gcm-only-account input {
+  flex: none;
+}
 .gcm-shown {
   font-size: 0.78rem;
   white-space: nowrap;
@@ -227,18 +234,80 @@
 }
 
 .gcm-bind {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 10px;
+}
+.gcm-bind-main {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
-  gap: 8px;
   flex-wrap: wrap;
-  margin-bottom: 6px;
+  gap: 8px;
+  min-width: 0;
 }
-.gcm-bind .select {
+.gcm-bind-main > .select {
+  flex: 0 1 240px;
   min-width: 160px;
+  max-width: 320px;
 }
 .gcm-acc {
+  min-width: 0;
   font-size: 0.82rem;
   color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+.gcm-gameacc {
+  grid-column: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(180px, 260px);
+  align-items: center;
+  gap: 10px 14px;
+  padding: 8px 10px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.gcm-gameacc-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.gcm-gameacc-title {
+  font-weight: 650;
+}
+.gcm-gameacc small {
+  color: var(--text-dim);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+.gcm-gameacc .select {
+  width: 100%;
+  min-width: 180px;
+  max-width: 260px;
+}
+.gcm-bind-actions {
+  grid-column: 2;
+  align-self: center;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+.gcm-bind-actions > .btn {
+  flex: none;
+}
+.gcm-bind:not(.has-gameacc) .gcm-bind-actions {
+  grid-column: 1 / -1;
+  justify-self: start;
 }
 .gcm-gameacc {
   display: inline-flex;
@@ -282,7 +351,30 @@
       'account account'
       'actions actions';
   }
+  .gcm-bind {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .gcm-gameacc {
+    grid-column: 1;
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 260px);
+  }
+  .gcm-bind-actions {
+    grid-column: 1;
+    justify-self: start;
+  }
+  .gcm-bind:not(.has-gameacc) .gcm-bind-actions {
+    grid-column: 1;
+  }
   .gcm-filters #gcm-party {
+    max-width: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .gcm-gameacc {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .gcm-gameacc .select {
     max-width: none;
   }
 }

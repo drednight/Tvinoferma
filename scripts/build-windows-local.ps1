@@ -9,7 +9,7 @@ param(
     [string]$Checks = 'Quick',
     [ValidateSet('Isolated', 'Shared')]
     [string]$Profile = 'Isolated',
-    [switch]$SharedProfileConfirmed,
+    [string]$SharedProfileConfirmation = '',
     [switch]$SkipInstall,
     [switch]$AllowDirty
 )
@@ -41,10 +41,44 @@ function Read-Git {
     return ($lines -join "`n").Trim()
 }
 
+function Get-SourceSnapshot {
+    $status = Read-Git -Arguments @('status', '--porcelain', '--untracked-files=normal')
+    $trackedDiff = & git diff --binary HEAD
+    if ($LASTEXITCODE -ne 0) { throw 'Git source diff inspection failed.' }
+    $untracked = & git ls-files --others --exclude-standard
+    if ($LASTEXITCODE -ne 0) { throw 'Git untracked file inspection failed.' }
+
+    $source = New-Object System.Text.StringBuilder
+    [void]$source.Append(($trackedDiff -join "`n"))
+    foreach ($path in $untracked) {
+        if (-not $path) { continue }
+        $fullPath = Join-Path $root $path
+        if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
+            throw "Untracked source is not a regular file: $path"
+        }
+        $hash = (Get-FileHash -LiteralPath $fullPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        [void]$source.Append("`nUNTRACKED:")
+        [void]$source.Append($path)
+        [void]$source.Append(':')
+        [void]$source.Append($hash)
+    }
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($source.ToString())
+        $fingerprint = [BitConverter]::ToString($sha.ComputeHash($bytes)).Replace('-', '').ToLowerInvariant()
+    } finally {
+        $sha.Dispose()
+    }
+    return [pscustomobject]@{ Status = $status; Fingerprint = $fingerprint }
+}
+
 Push-Location $root
 try {
-    if ($Profile -eq 'Shared' -and -not $SharedProfileConfirmed) {
-        throw 'Shared profile modifies production data and vault. Make backups and pass -SharedProfileConfirmed explicitly.'
+    if (
+        $Profile -eq 'Shared' -and
+        $SharedProfileConfirmation -cne 'I_HAVE_BACKUP_AND_ACCEPT_SHARED_DATA'
+    ) {
+        throw 'Shared profile reads and modifies production data and vault. Back up first and pass -SharedProfileConfirmation I_HAVE_BACKUP_AND_ACCEPT_SHARED_DATA explicitly.'
     }
     if ($env:OS -ne 'Windows_NT') { throw 'This script must run on Windows x64 with the MSVC Rust toolchain.' }
     foreach ($program in @('git', 'node', 'npm.cmd', 'cargo', 'rustc')) {
@@ -71,12 +105,15 @@ try {
 
     $source = Read-Git -Arguments @('rev-parse', 'HEAD')
     $branch = Read-Git -Arguments @('rev-parse', '--abbrev-ref', 'HEAD')
-    $status = Read-Git -Arguments @('status', '--porcelain', '--untracked-files=normal')
-    $dirty = [bool]$status
+    $sourceSnapshot = Get-SourceSnapshot
+    $dirty = [bool]$sourceSnapshot.Status
     if ($dirty -and -not $AllowDirty) {
-        throw 'Working tree has changes. Commit/review them first, or explicitly use -AllowDirty (source identity will be marked DIRTY). No files were reset.'
+        throw 'Working tree has changes. Commit/review them first, or explicitly use -AllowDirty (the exact source fingerprint will be recorded). No files were reset.'
     }
     Write-Host "Source: $source ($branch); dirty=$dirty"
+    if ($dirty) {
+        Write-Warning "Building reviewed local changes; source fingerprint: $($sourceSnapshot.Fingerprint)"
+    }
     if ($Profile -eq 'Shared') {
         Write-Warning 'SHARED PROFILE: this test executable reads and modifies production data, vault and cloud settings. Close stable and back up first.'
     } else {
@@ -136,7 +173,11 @@ try {
         }
     }
     if ((Read-Git -Arguments @('rev-parse', 'HEAD')) -ne $source) { throw 'HEAD changed during build; output was not packaged.' }
-    if (-not $AllowDirty -and (Read-Git -Arguments @('status', '--porcelain', '--untracked-files=normal'))) {
+    $finalSourceSnapshot = Get-SourceSnapshot
+    if (
+        $finalSourceSnapshot.Status -ne $sourceSnapshot.Status -or
+        $finalSourceSnapshot.Fingerprint -ne $sourceSnapshot.Fingerprint
+    ) {
         throw 'Source tree changed during build; output was not packaged.'
     }
     $executable = Join-Path $env:CARGO_TARGET_DIR "$target\release\tvinoferma.exe"
@@ -150,10 +191,10 @@ try {
     "$hash  $exeName" | Set-Content -Encoding ascii -LiteralPath (Join-Path $output 'SHA256SUMS.txt')
     $version = (Get-Content -LiteralPath 'src-tauri/tauri.conf.json' -Raw | ConvertFrom-Json).version
     $manifest = [ordered]@{
-        source = $source; branch = $branch; dirty = $dirty; version = $version
+        source = $source; branch = $branch; dirty = $dirty; sourceFingerprint = $sourceSnapshot.Fingerprint; version = $version
         builtAt = [DateTime]::UtcNow.ToString('o'); target = $target; checks = $Checks
         dependencyInstallSkipped = [bool]$SkipInstall; sha256 = $hash
-        lto = $false; codegenUnits = 16; signed = $false; profile = $feature; sharedProductionProfile = ($Profile -eq 'Shared'); isolatedProfile = $false; isolationVerified = $false
+        lto = $false; codegenUnits = 16; signed = $false; profile = $feature; sharedProductionProfile = ($Profile -eq 'Shared'); isolatedProfile = ($Profile -eq 'Isolated'); isolationVerified = $false
     }
     $manifest | ConvertTo-Json | Set-Content -Encoding utf8 -LiteralPath (Join-Path $output 'BUILD-INFO.json')
     $profileWarning = if ($Profile -eq 'Shared') {
@@ -175,7 +216,8 @@ Do NOT run alongside another version or against your working profile.
 UNSIGNED TEST BUILD - NOT A STABLE UPDATE
 Source: $source
 Branch: $branch
-Working tree dirty: $dirty (if true, commit alone does not identify the source)
+Working tree dirty: $dirty (if true, see the non-secret sourceFingerprint in BUILD-INFO.json)
+Source fingerprint: $($sourceSnapshot.Fingerprint)
 Embedded version: $version (does NOT distinguish this build from stable)
 Profile: $feature
 Checks: $Checks; dependency install skipped: $SkipInstall

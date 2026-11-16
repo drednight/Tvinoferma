@@ -251,6 +251,7 @@ async function init() {
     partySelect.value = selected || '';
     document.getElementById('party-launch').disabled = !!data.busy || !partySelect.value;
     document.getElementById('party-refresh').disabled = !!data.busy;
+    document.getElementById('party-decorate').disabled = !!data.busy;
     document.getElementById('window-notice').textContent = data.windowNotice || 'Нажмите «Обновить окна».';
     const signature = JSON.stringify(data.windows || []);
     if (windowSignature !== signature) {
@@ -445,6 +446,7 @@ async function init() {
     partyBusy = true;
     document.getElementById('party-launch').disabled = true;
     document.getElementById('party-refresh').disabled = true;
+    document.getElementById('party-decorate').disabled = true;
     document.getElementById('party-close-all').disabled = true;
     try {
       await invoke('game_macro_navigate', {
@@ -456,6 +458,7 @@ async function init() {
       document.getElementById('window-notice').textContent =
         'Не удалось отправить запрос. Откройте главное приложение.';
       document.getElementById('party-refresh').disabled = false;
+      document.getElementById('party-decorate').disabled = false;
       document.getElementById('party-close-all').disabled = false;
       document.getElementById('party-launch').disabled = !document.getElementById('party-select').value;
     } finally {
@@ -488,6 +491,7 @@ async function init() {
     return partyRequest('party-close-all', { closeMode, closeTargets });
   };
   document.getElementById('party-refresh').onclick = () => partyRequest('party-refresh');
+  document.getElementById('party-decorate').onclick = () => partyRequest('party-redecorate');
   const togglePanel = () => {
     const controls = document.getElementById('overlay-controls');
     controls.hidden = !controls.hidden;

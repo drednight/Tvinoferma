@@ -791,6 +791,36 @@ export async function verifyLaunchedDecor(results, deps = {}) {
   return redecorateText(res);
 }
 
+export const LAUNCHED_DECOR_RECHECK_MS = 60_000;
+
+/**
+ * Запланировать повторную проверку оформления примерно через минуту после запуска последнего окна.
+ *
+ * Отсчёт идёт от `launchedAt`, а не от окончания запуска всей пати: при длинной очереди
+ * последняя проверка не должна откладываться ещё на минуту после уже прошедшей минуты.
+ * @param {Array<any>} results
+ * @param {{ launchedAt?: number, delayMs?: number, now?: () => number, setTimeoutFn?: Function, verify?: Function, onComplete?: Function }} [opts]
+ * @returns {any|null} таймер либо null, если нет успешно запущенных окон с ожидаемым оформлением
+ */
+export function scheduleLaunchedDecorRecheck(results, opts = {}) {
+  if (!(results || []).some(row => row?.ok && row.clientPid && row.decor?.windowTitle)) return null;
+  const launchedAt = Number(opts.launchedAt ?? Date.now());
+  const delayMs = Number.isFinite(opts.delayMs) ? Math.max(0, opts.delayMs) : LAUNCHED_DECOR_RECHECK_MS;
+  const now = opts.now || Date.now;
+  const remaining = Math.max(0, delayMs - Math.max(0, now() - launchedAt));
+  const setTimer = opts.setTimeoutFn || setTimeout;
+  const verify = opts.verify || verifyLaunchedDecor;
+  const onComplete = opts.onComplete || (() => {});
+  return setTimer(() => {
+    Promise.resolve()
+      .then(() => verify(results))
+      .then(
+        note => onComplete({ note, error: null }),
+        error => onComplete({ note: '', error })
+      );
+  }, remaining);
+}
+
 /**
  * Ожидаемый заголовок и значки окна для персонажа — то же, что ставится при запуске.
  * @param {any} character
