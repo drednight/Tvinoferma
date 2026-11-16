@@ -186,6 +186,7 @@ async function init() {
 
     pauseButton.textContent = data.paused ? '▶ Продолжить' : 'Ⅱ Пауза';
     pauseButton.setAttribute('aria-pressed', String(!!data.paused));
+    pauseButton.dataset.state = data.paused ? 'paused' : 'on';
     reconnectButton.disabled = !!data.busy || !!data.mirrorPending;
     updateRepeatButton(keyboardToggle, 'keyboard', data);
     keyboardToggle.disabled = keyboardDisabled();
@@ -251,7 +252,6 @@ async function init() {
     partySelect.value = selected || '';
     document.getElementById('party-launch').disabled = !!data.busy || !partySelect.value;
     document.getElementById('party-refresh').disabled = !!data.busy;
-    document.getElementById('party-decorate').disabled = !!data.busy;
     document.getElementById('window-notice').textContent = data.windowNotice || 'Нажмите «Обновить окна».';
     const signature = JSON.stringify(data.windows || []);
     if (windowSignature !== signature) {
@@ -259,7 +259,39 @@ async function init() {
       document.getElementById('windows').replaceChildren(
         ...(data.windows || []).map(row => {
           const li = document.createElement('li');
-          li.textContent = `${row.name} · PID ${row.pid}${row.known ? ` · ${{ manual: 'ручная привязка', title: 'из заголовка', launcher: 'запуск Твинофермой' }[row.ownershipSource] || 'распознано'}` : ' · не распознано'}`;
+          li.className = 'wrow';
+          const icon = document.createElement('span');
+          icon.className = 'wicon';
+          icon.textContent = row.icon || '🖥';
+          const wrap = document.createElement('span');
+          wrap.className = 'pwrap';
+          const pname = document.createElement('span');
+          pname.className = 'pname';
+          pname.textContent = row.name;
+          const pmeta = document.createElement('span');
+          pmeta.className = 'pmeta';
+          pmeta.textContent = `PID ${row.pid}${row.known ? ` · ${{ manual: 'ручная привязка', title: 'из заголовка', launcher: 'запуск Твинофермой' }[row.ownershipSource] || 'распознано'}` : ' · не распознано'}`;
+          wrap.append(pname, pmeta);
+          const rebind = document.createElement('button');
+          rebind.type = 'button';
+          rebind.className = 'wpin';
+          rebind.textContent = '🏷';
+          rebind.title = 'Переподключить окно и сменить иконку';
+          rebind.setAttribute('aria-label', rebind.title);
+          rebind.disabled = !row.pid;
+          rebind.onclick = async () => {
+            rebind.disabled = true;
+            try {
+              await emitTo('main', 'game-overlay-rebind', { pid: row.pid, hwnd: row.hwnd, startedAt: row.startedAt });
+              const icons = ['🖥', '🪟', '🖥'];
+              const next = icons[(icons.indexOf(icon.textContent) + 1) % icons.length];
+              icon.textContent = icon.textContent === next ? '🪟' : next;
+            } catch {
+              document.getElementById('status').textContent = 'Не удалось переподключить окно.';
+            } finally {
+              rebind.disabled = false;
+            }
+          };
           const checkbox = document.createElement('input');
           checkbox.type = 'checkbox';
           checkbox.dataset.closeWindow = '';
@@ -267,6 +299,7 @@ async function init() {
           checkbox.disabled = !row.startedAt || !row.hwnd;
           checkbox.setAttribute('aria-label', `Выбрать окно ${row.name}, PID ${row.pid}`);
           li.prepend(checkbox);
+          li.append(icon, wrap, rebind);
           return li;
         })
       );
@@ -326,31 +359,33 @@ async function init() {
                 : 'Хоткеи выключены / недоступны');
     document.getElementById('commands').replaceChildren(
       ...(data.commands || []).map(row => {
-        const li = document.createElement('li'),
-          key = document.createElement('kbd');
+        const li = document.createElement('li');
+        li.className = 'cmd';
+        const key = document.createElement('kbd');
+        key.textContent = String(row.hotkey || 'Не назначена');
         const name = document.createElement('span');
+        name.className = 'name';
         name.textContent = String(row.name || '');
         name.style.minWidth = '0';
-        const play = document.createElement('button');
-        play.type = 'button';
-        play.className = 'command-run';
-        play.textContent = '▶';
-        play.title = `Запустить: ${row.name || 'команда'}`;
-        play.setAttribute('aria-label', play.title);
-        play.disabled = !row.id || (!!data.busy && !row.allowWhileBusy);
-        play.onclick = async () => {
-          play.disabled = true;
+        const quick = document.createElement('button');
+        quick.type = 'button';
+        quick.className = 'cmd-run';
+        quick.textContent = '▶';
+        quick.title = `Запустить: ${row.name || 'команда'}`;
+        quick.setAttribute('aria-label', quick.title);
+        quick.disabled = !row.id || (!!data.busy && !row.allowWhileBusy);
+        li.append(key, name, quick);
+        li.onclick = async () => {
+          if (!row.id || (!!data.busy && !row.allowWhileBusy)) return;
+          quick.disabled = true;
           try {
             await emitTo('main', 'game-overlay-run', row.id);
           } catch {
             document.getElementById('status').textContent = 'Не удалось отправить запрос запуска команды.';
           } finally {
-            play.disabled = !row.id || (!!data.busy && !row.allowWhileBusy);
+            quick.disabled = !row.id || (!!data.busy && !row.allowWhileBusy);
           }
         };
-        li.append(play, name);
-        key.textContent = String(row.hotkey || 'Не назначена');
-        li.append(key);
         return li;
       })
     );
@@ -392,17 +427,40 @@ async function init() {
       });
     }
   });
+  const viewLabels = {
+    shortcuts: 'Комбинации',
+    recipients: 'Получатели',
+    party: 'Партия',
+    journal: 'Журнал',
+    appearance: 'Настройки'
+  };
+  const closeMenu = () => {
+    const menu = document.getElementById('menu');
+    if (menu) menu.hidden = true;
+  };
   const showView = view => {
     for (const id of ['shortcuts', 'journal', 'party', 'appearance', 'recipients'])
       document.getElementById(`${id}-screen`).hidden = id !== view;
+    const where = document.getElementById('where');
+    if (where) where.textContent = viewLabels[view] || view;
     if (view === 'party') void partyRequest('party-refresh');
     if (view === 'recipients' && !recipientRevision) void recipientRequest({ action: 'refresh' });
     document.querySelectorAll('[data-view]').forEach(button => {
       if (button.dataset.view === view) button.setAttribute('aria-current', 'page');
       else button.removeAttribute('aria-current');
     });
+    closeMenu();
   };
-  document.querySelectorAll('[data-view]').forEach(button => (button.onclick = () => showView(button.dataset.view)));
+  document.querySelectorAll('[data-view]').forEach(
+    button =>
+      (button.onclick = () => {
+        if (button.dataset.view === '__fold') {
+          void foldClick();
+          return;
+        }
+        showView(button.dataset.view);
+      })
+  );
   const extraNames = {
     pink: 'Розовый',
     cyan: 'Бирюзовый',
@@ -446,7 +504,6 @@ async function init() {
     partyBusy = true;
     document.getElementById('party-launch').disabled = true;
     document.getElementById('party-refresh').disabled = true;
-    document.getElementById('party-decorate').disabled = true;
     document.getElementById('party-close-all').disabled = true;
     try {
       await invoke('game_macro_navigate', {
@@ -458,7 +515,6 @@ async function init() {
       document.getElementById('window-notice').textContent =
         'Не удалось отправить запрос. Откройте главное приложение.';
       document.getElementById('party-refresh').disabled = false;
-      document.getElementById('party-decorate').disabled = false;
       document.getElementById('party-close-all').disabled = false;
       document.getElementById('party-launch').disabled = !document.getElementById('party-select').value;
     } finally {
@@ -468,19 +524,16 @@ async function init() {
   document.getElementById('party-select').onchange = () =>
     (document.getElementById('party-launch').disabled = partyBusy || !document.getElementById('party-select').value);
   document.getElementById('party-launch').onclick = () => partyRequest('party-launch');
-  document.getElementById('party-close-all').onclick = () => {
-    document.getElementById('close-confirm').hidden = false;
-  };
-  document.getElementById('close-confirm-no').onclick = () => {
-    document.getElementById('close-confirm').hidden = true;
-  };
-  document.getElementById('close-confirm-yes').onclick = () => {
-    document.getElementById('close-confirm').hidden = true;
-    const closeMode = document.getElementById('close-mode').value;
-    if (closeMode === 'all') return partyRequest('party-close-all');
+  const closeButton = document.getElementById('party-close-all');
+  const closeDropdown = document.getElementById('close-dropdown');
+  const closeWindows = mode => {
+    if (mode === 'all') {
+      void partyRequest('party-close-all');
+      return;
+    }
     const closeTargets = [
       ...document.querySelectorAll(
-        closeMode === 'selected' ? '[data-close-window]:checked' : '[data-close-window]:not(:disabled)'
+        mode === 'selected' ? '[data-close-window]:checked' : '[data-close-window]:not(:disabled)'
       )
     ].map(input => JSON.parse(input.value));
     if (!closeTargets.length) {
@@ -488,19 +541,82 @@ async function init() {
         'Отметьте актуальные окна в списке. Для режима «кроме ПЛ» сначала обновите окна.';
       return;
     }
-    return partyRequest('party-close-all', { closeMode, closeTargets });
+    void partyRequest('party-close-all', { closeMode: mode, closeTargets });
   };
+  if (closeButton && closeDropdown) {
+    closeButton.onclick = event => {
+      event.stopPropagation();
+      const open = closeDropdown.hidden;
+      closeDropdown.hidden = !open;
+      closeButton.setAttribute('aria-expanded', String(open));
+    };
+    closeDropdown.querySelectorAll('[data-close-mode]').forEach(option => {
+      option.onclick = () => {
+        closeDropdown.hidden = true;
+        closeButton.setAttribute('aria-expanded', 'false');
+        closeWindows(option.dataset.closeMode);
+      };
+    });
+    document.addEventListener('click', event => {
+      if (closeDropdown.hidden) return;
+      if (!event.target.closest('.close-wrap')) closeDropdown.hidden = true;
+    });
+  }
   document.getElementById('party-refresh').onclick = () => partyRequest('party-refresh');
-  document.getElementById('party-decorate').onclick = () => partyRequest('party-redecorate');
-  const togglePanel = () => {
-    const controls = document.getElementById('overlay-controls');
-    controls.hidden = !controls.hidden;
-    document.querySelectorAll('[data-service-heading]').forEach(el => (el.hidden = controls.hidden));
-    for (const id of ['info-toggle', 'floating-panel-toggle'])
-      document.getElementById(id).setAttribute('aria-expanded', String(!controls.hidden));
+  const menuBtn = document.getElementById('menu-btn');
+  const menu = document.getElementById('menu');
+  const toggleMenu = () => {
+    const open = menu.hidden;
+    menu.hidden = !open;
+    if (menuBtn) menuBtn.setAttribute('aria-expanded', String(open));
   };
-  document.getElementById('info-toggle').onclick = togglePanel;
-  document.getElementById('floating-panel-toggle').onclick = togglePanel;
+  if (menuBtn) menuBtn.onclick = toggleMenu;
+  document.addEventListener('click', event => {
+    if (menu.hidden) return;
+    const target = event.target;
+    if (target.closest('#menu') || target.closest('#menu-btn')) return;
+    closeMenu();
+  });
+
+  const hideHeader = document.getElementById('hide-header');
+  if (hideHeader) hideHeader.onchange = event => document.body.classList.toggle('header-hidden', event.target.checked);
+
+  const themeGrid = document.getElementById('theme-grid');
+  if (themeGrid) {
+    themeGrid.onclick = event => {
+      const opt = event.target.closest('[data-theme]');
+      if (!opt) return;
+      document.documentElement.setAttribute('data-theme', opt.dataset.theme);
+      themeGrid.querySelectorAll('.theme-opt').forEach(o => o.classList.toggle('sel', o === opt));
+    };
+  }
+  const sizeGrid = document.getElementById('size-grid');
+  if (sizeGrid) {
+    sizeGrid.onclick = event => {
+      const opt = event.target.closest('[data-size]');
+      if (!opt) return;
+      const size = opt.dataset.size;
+      document.documentElement.setAttribute('data-size', size);
+    };
+  }
+  const ghost = document.getElementById('ghost');
+  let ghostPrevAlpha = null;
+  if (ghost) {
+    ghost.onclick = () => {
+      const ov = document.getElementById('ov');
+      const on = ghost.classList.toggle('on');
+      if (ov) ov.classList.toggle('ghost', on);
+      if (on) {
+        ghostPrevAlpha = Number(getComputedStyle(document.documentElement).getPropertyValue('--alpha')) || 0.9;
+        document.documentElement.style.setProperty('--alpha', '0.12');
+        ghost.title = 'Призрачный режим: почти прозрачно (клик — вернуть)';
+      } else {
+        document.documentElement.style.setProperty('--alpha', String(ghostPrevAlpha != null ? ghostPrevAlpha : 0.9));
+        ghost.title = 'Призрачный режим (почти прозрачно)';
+      }
+      ghost.setAttribute('aria-label', ghost.title);
+    };
+  }
   document.getElementById('opacity').oninput = event => {
     document.getElementById('alpha-value').textContent = event.target.value + '%';
     document.documentElement.style.setProperty('--alpha', String(Number(event.target.value) / 100));
@@ -541,27 +657,23 @@ async function init() {
   };
   let collapsed = false;
   const fold = document.getElementById('fold');
-  const repeatControls = document.querySelector('.repeat-controls');
-  const repeatAnchor = document.createComment('repeat-controls');
-  repeatControls.before(repeatAnchor);
-  fold.onclick = async () => {
+  async function foldClick() {
     fold.disabled = true;
     try {
       await invoke('game_macro_overlay_fold', { collapsed: !collapsed });
       collapsed = !collapsed;
       document.body.classList.toggle('folded', collapsed);
-      if (collapsed) document.querySelector('header').append(repeatControls);
-      else repeatAnchor.after(repeatControls);
       fold.setAttribute('aria-expanded', String(!collapsed));
-      fold.title = collapsed ? 'Развернуть оверлей' : 'Свернуть до верхней полосы';
+      fold.title = collapsed ? 'Развернуть оверлей' : 'Свернуть до кнопок';
       fold.setAttribute('aria-label', fold.title);
-      fold.textContent = collapsed ? '▾' : '▴';
+      fold.textContent = collapsed ? '▴' : '▾';
     } catch {
       document.getElementById('status').textContent = 'Не удалось изменить размер оверлея.';
     } finally {
       fold.disabled = false;
     }
-  };
+  }
+  fold.onclick = foldClick;
   document.getElementById('close').onclick = () => current.close();
   await emitTo('main', 'game-overlay-ready', null);
 }
