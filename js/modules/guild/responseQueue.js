@@ -86,13 +86,17 @@ export function createResponseQueue({
       }
       if (!enabled()) return;
       let report;
+      let verifyError = '';
       for (let attempt = 0; attempt < 2; attempt++) {
         await pause(3000);
         if (!enabled()) return;
         try {
           report = await read();
-        } catch {
-          // Keep the last successful observation if a later verification read fails.
+          verifyError = '';
+        } catch (error) {
+          // Keep the last successful observation if a later verification read fails;
+          // remember the reason so a dead session is reported actionably.
+          verifyError = String(error?.message || error || '');
         }
         if (
           snapshot.every(row =>
@@ -110,13 +114,17 @@ export function createResponseQueue({
           !snapshot.includes(row) ? [row] : confirmed(row) ? [] : [{ ...row, failed: true }]
         )
       );
+      const sessionMessage =
+        'Сессия окна клана в приложении не активна. Откройте сайт клана через приложение и войдите на нём, затем нажмите выбранный ответ.';
       task.finish(
-        missing
-          ? `Не подтверждено ответов: ${missing}. Нажмите выбранный ответ для повтора.`
-          : getEntries().some(row => !row.failed)
-            ? 'Пакет обработан. Новые ответы ожидают переноса.'
-            : 'Ответы подтверждены сайтом',
-        missing ? 'warn' : 'done'
+        verifyError === 'login'
+          ? sessionMessage
+          : missing
+            ? `Не подтверждено ответов: ${missing}. Нажмите выбранный ответ для повтора.`
+            : getEntries().some(row => !row.failed)
+              ? 'Пакет обработан. Новые ответы ожидают переноса.'
+              : 'Ответы подтверждены сайтом',
+        verifyError === 'login' || missing ? 'warn' : 'done'
       );
     } catch {
       // Preserve intentions even when storage, a script-log dependency or verification fails.

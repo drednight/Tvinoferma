@@ -134,7 +134,7 @@ describe('отложенный перенос ответов в кланер', (
     await queue.enqueue('1', 'yes');
     await vi.advanceTimersByTimeAsync(13000);
     expect(entries).toEqual([{ eventId: '1', response: 'yes', failed: true }]);
-    expect(task.finish).toHaveBeenCalledWith(expect.stringContaining('Не подтверждено'), 'warn');
+    expect(task.finish).toHaveBeenCalledWith(expect.stringContaining('Сессия окна клана'), 'warn');
     await vi.advanceTimersByTimeAsync(60000);
     expect(send).toHaveBeenCalledTimes(1);
     read.mockResolvedValue({ events: [{ id: '1', response: 'yes' }] });
