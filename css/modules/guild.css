@@ -156,32 +156,39 @@
   font-size: 0.84rem;
 }
 
-/* Список открытых опросов со страницы polls.php: каждый опрос — отдельный компактный
-   блок-карточка, скапливаемый один под другим, без растягивания страницы вниз. */
+/* Список открытых опросов: каждый опрос — отдельный блок-карточка. Карточки
+   выстраиваются в ряд; если место на строке заканчивается — следующий опрос
+   переносится на следующую строку. */
 .guild-polls {
   margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
 }
 
+/* Заголовок и подсказка — на своей отдельной строке, فوق рядом карточек. */
 .guild-polls h3 {
+  flex: 0 0 100%;
   margin: 0 0 2px;
   font-size: 0.95rem;
 }
 
 .guild-polls-hint {
-  margin: 0 0 8px;
+  flex: 0 0 100%;
+  margin: 0;
   font-size: 0.84rem;
 }
 
 .guild-polls .guild-poll {
-  margin-top: 12px;
+  flex: 1 1 280px;
+  min-width: 260px;
+  max-width: 100%;
+  margin-top: 0;
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface);
-}
-
-.guild-polls .guild-poll:first-of-type {
-  margin-top: 10px;
 }
 
 .guild-poll-options {
