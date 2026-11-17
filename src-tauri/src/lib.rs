@@ -210,6 +210,7 @@ pub fn run() {
             guild::guild_window_exists,
             guild::guild_sync,
             guild::guild_set_response,
+            guild::guild_set_responses,
             guild::guild_vote_poll,
             // скрипты сайта
             automation::promo::activate_promo,

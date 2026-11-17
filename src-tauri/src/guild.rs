@@ -340,7 +340,7 @@ async fn send_response(
 
 /// Одна запись пакета отметок: номер события и выбранный ответ.
 #[derive(serde::Deserialize)]
-struct GuildEventChoice {
+pub struct GuildEventChoice {
     #[serde(rename = "eventId")]
     event_id: String,
     response: String,
