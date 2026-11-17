@@ -406,7 +406,7 @@ it('prevents incompatible actions in per-window groups while letting saved confl
   editor.dispose();
 });
 
-it('limits hybrid subset choices to the selected party while preserving and allowing removal of old outsiders', () => {
+it('normalizes saved hybrid blocks on load, draft restore, and setBlocks', () => {
   state.parties = [
     { id: 'p', name: 'Пати' },
     { id: 'q', name: 'Другая' }
@@ -418,31 +418,33 @@ it('limits hybrid subset choices to the selected party while preserving and allo
   ];
   document.body.innerHTML = '<div id="editor"></div>';
   const host = document.getElementById('editor');
+  const legacy = {
+    name: 'Группа',
+    scope: 'managed',
+    target: 'subset',
+    charIds: ['a', 'b'],
+    delivery: 'background',
+    backgroundMethod: 'hybrid-party',
+    steps: [{ type: 'keys', value: 'F1' }]
+  };
   const editor = mountCompositionEditor(
     host,
     { partyId: 'p', commands: [], points: [], profiles: [] },
-    {
-      blocks: [
-        {
-          name: 'Группа',
-          scope: 'managed',
-          target: 'subset',
-          charIds: ['a', 'b'],
-          steps: [{ type: 'keys', value: 'F1' }]
-        }
-      ]
-    }
+    { blocks: [legacy] }
   );
-  editor.setMode('hybrid-party');
+  const active = { delivery: 'foreground', backgroundMethod: 'post' };
+  expect(editor.snapshot()[0]).toMatchObject(active);
   expect(host.querySelector('[data-character="a"]')).not.toBeNull();
   expect(host.querySelector('[data-character="b"]').checked).toBe(true);
-  expect(host.textContent).toContain('вне выбранной пати');
-  expect(host.querySelector('[data-character="c"]')).toBeNull();
+  expect(host.querySelector('[data-character="c"]')).not.toBeNull();
+  expect(host.textContent).not.toContain('вне выбранной пати');
+  editor.restoreBlocks([legacy]);
+  expect(editor.snapshot()[0]).toMatchObject(active);
+  editor.setBlocks([legacy]);
+  expect(editor.snapshot()[0]).toMatchObject(active);
   const classes = host.querySelector('[data-recipient-class]');
   classes.value = 'Воин';
   classes.dispatchEvent(new Event('change', { bubbles: true }));
-  expect(editor.snapshot()[0].charIds).toEqual(['a']);
-  editor.setMode('standard');
-  expect(host.querySelector('[data-character="c"]')).not.toBeNull();
+  expect(editor.snapshot()[0].charIds).toEqual(['a', 'b', 'c']);
   editor.dispose();
 });

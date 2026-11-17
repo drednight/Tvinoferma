@@ -123,9 +123,14 @@ describe('мастер: поиск новости о марафоне (issue #72
     mocks.list = parseNewsList(fixture('news_list_p2.html'));
     openMarathonWizard();
     click('[data-src="site"]');
+    expect($('[data-act="find-news"]').classList.contains('primary')).toBe(true);
+    expect($('[data-act="parse-news"]').classList.contains('primary')).toBe(false);
     click('[data-act="find-news"]');
     await vi.waitFor(() => expect(document.querySelectorAll('[data-pick-news]').length).toBe(3));
     expect($('.tf-news-search').textContent).toContain('Летний марафон');
+    expect($('.tf-news-filter-copy strong').textContent).toBe('Показать все новости в найденном списке');
+    expect($('.tf-news-filter-copy small').textContent).toContain('Без галочки');
+    expect($('.tf-news-filter-count').textContent).toContain('15 новостей');
     expect($('.tf-news-search').textContent).not.toContain('День смеха');
     // «показать все»
     const all = $('[data-news-all]');

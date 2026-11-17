@@ -70,7 +70,7 @@ const targetLabel = row =>
         row.target
       ];
 const repeatSettingsHtml = c =>
-  `<p>Режимы включаются независимо. Смена настроек не гарантирует обработку игрой. Экстренная остановка: Ctrl+Alt+Pause.</p><div class="gm-repeat-settings-grid"><fieldset class="gm-repeat-device" data-repeat-keyboard><legend>⌨ Повтор клавиатуры</legend><p>Копирует клавиши; чат не распознаётся, включая ввод секретов.</p><label class="gm-field">Способ клавиатурного повтора<select data-gm-keyboard-method><option value="post" ${c.mirrorKeyboardMethod === 'post' ? 'selected' : ''}>PostMessage — обычный</option><option value="activity-notify" ${c.mirrorKeyboardMethod === 'activity-notify' ? 'selected' : ''}>Только activity-notify — эксперимент</option><option value="combined" ${c.mirrorKeyboardMethod === 'combined' ? 'selected' : ''}>PostMessage + activity-notify — эксперимент</option><option value="cache-hybrid" ${c.mirrorKeyboardMethod === 'cache-hybrid' ? 'selected' : ''}>Глобальный ввод + WM_KEYDOWN — эксперимент</option></select><small>Только повтор, не команды и не мышь. В совмещённом режиме две отправки могут вызвать двойное действие. Чат автоматически не определяется. Сначала проверяйте безопасные действия на одном твине.</small></label><p class="gm-hybrid-warning" data-gm-hybrid-warning hidden>Экспериментальный метод внедряет клавиши в систему как настоящий ввод: они приходят в реально активное окно, а окну получателя уходит WM_KEYDOWN. Возможны двойное действие в окне-источнике, ввод в постороннее приложение и зависшая клавиша при сбое. Не вводите в чат, пароли и секреты. Метод не подтверждён в игре.</p><label class="gm-field" data-gm-hybrid-consent-row hidden><input type="checkbox" data-gm-hybrid-consent> Разрешаю глобальный ввод в активное окно<small>Подтверждение нужно каждый раз при сохранении этого метода. Проверяйте одну безопасную клавишу на одном получателе.</small></label><label class="gm-field">Ожидание activity-notify<select data-gm-keyboard-timeout><option value="25" ${c.mirrorKeyboardTimeoutMs === 25 ? 'selected' : ''}>25 мс — по умолчанию</option><option value="100" ${c.mirrorKeyboardTimeoutMs === 100 ? 'selected' : ''}>100 мс — эксперимент</option></select><small>Только для activity-notify и совмещённого метода. При медленном клиенте может помочь, но повышает задержку и риск накопления событий; защита остановит повтор. Ошибка не доказывает, что клавиша не дошла. Не повторяйте расходное действие вслепую.</small></label><label class="gm-field"><input type="checkbox" data-gm-hold-only ${c.mirrorHoldOnly ? 'checked' : ''}> Удержание без автоповтора клавиш<small>При удержании: один DOWN и один UP. Сочетания сохраняются; автоповторные DOWN не отправляются. Игра может не распознать удержание через оконные сообщения.</small></label><label class="gm-field">Источник только клавиатуры<select data-gm-keyboard-source>${[
+  `<p>Режимы включаются независимо. Смена настроек не гарантирует обработку игрой. Экстренная остановка: Ctrl+Alt+Pause.</p><div class="gm-repeat-settings-grid"><fieldset class="gm-repeat-device" data-repeat-keyboard><legend>⌨ Повтор клавиатуры</legend><p>Копирует клавиши; чат не распознаётся, включая ввод секретов.</p><p class="gm-field">Способ клавиатурного повтора: <strong>Глобальный ввод + WM_KEYDOWN — эксперимент</strong>. Другие способы повтора скрыты.</p><label class="gm-field"><input type="checkbox" data-gm-keyboard-global-input ${c.mirrorKeyboardGlobalInput ? 'checked' : ''}> Включить глобальный ввод клавиатуры<small>Настройка выключена по умолчанию. При включении настоящий системный ввод приходит в активное окно; получателям дополнительно отправляется WM_KEYDOWN. Активное окно-источник может получить дубликат; при смене фокуса ввод может попасть в постороннее приложение. Для источника-ПЛ выбранной пати дополнительная инъекция подавляется. Работа в игре не подтверждена.</small></label><p class="gm-hybrid-warning" data-gm-hybrid-warning>Не включайте повтор в чате, при вводе паролей/секретов или для расходных действий. Сначала проверьте одну безопасную клавишу на одном твине.</p><label class="gm-field" data-gm-hybrid-consent-row ${c.mirrorKeyboardGlobalInput ? '' : 'hidden'}><input type="checkbox" data-gm-hybrid-consent> Подтверждаю глобальный ввод в активное окно<small>Подтверждение запрашивается при каждом сохранении включённого эксперимента.</small></label><label class="gm-field">Источник только клавиатуры<select data-gm-keyboard-source>${[
     ['shared', 'Как общий источник'],
     ['any', 'Любое распознанное игровое окно'],
     ['leader', 'Только ПЛ выбранной пати']
@@ -85,7 +85,7 @@ const repeatSettingsHtml = c =>
     .map(([value, label]) => option(value, label, c.mirrorKeyboardTargets))
     .join(
       ''
-    )}</select><small>Источник никогда не получает свою копию. Для ввода только ПЛ из окна твина выберите источник «Любое окно» и получателя «Только ПЛ». Настройки мыши не меняются.</small></label></fieldset><fieldset class="gm-repeat-device" data-repeat-mouse><legend>🖱 Повтор мыши</legend><p>Координаты абсолютные: каждое окно-получатель должно содержать эту экранную точку. Возможен расход ресурсов.</p><label class="gm-field">Источник мыши (также источник клавиатуры при выборе «Как общий источник»)<select data-gm-mirror-source><option value="any" ${c.mirrorSource === 'any' ? 'selected' : ''}>Любое распознанное игровое окно</option><option value="leader" ${c.mirrorSource === 'leader' ? 'selected' : ''}>Только ПЛ выбранной пати</option></select><small>Получатели — все остальные проверенные клиенты. Изменение настроек обновляет повтор, не сбрасывая выбранные режимы.</small></label><label class="gm-field">ЛКМ только твинам — модификатор<select data-gm-twins-modifier>${[
+    )}</select><small>Адресная WM_KEYDOWN не возвращается в окно-источник. При включённом глобальном вводе SendInput попадает в реально активное окно и может продублировать физическое нажатие; для источника-ПЛ выбранной пати дополнительная инъекция подавляется. Для ввода только ПЛ из окна твина выберите источник «Любое окно» и получателя «Только ПЛ». Настройки мыши не меняются.</small></label></fieldset><fieldset class="gm-repeat-device" data-repeat-mouse><legend>🖱 Повтор мыши</legend><p>Координаты абсолютные: каждое окно-получатель должно содержать эту экранную точку. Возможен расход ресурсов.</p><label class="gm-field"><input type="checkbox" data-gm-mouse-global-input ${c.mirrorMouseGlobalInput ? 'checked' : ''}> Глобальный ввод мыши + оконные сообщения — эксперимент<small>SendInput нажимает кнопку в реальном активном окне у текущего указателя, а получателям также отправляются оконные сообщения. Активное окно может сработать повторно; курсор должен оставаться в точке события. В игре не проверено.</small></label><label class="gm-field" data-gm-mouse-global-consent-row ${c.mirrorMouseGlobalInput ? '' : 'hidden'}><input type="checkbox" data-gm-mouse-global-consent> Подтверждаю глобальный ввод мыши<small>Подтверждение запрашивается при каждом сохранении включённого эксперимента.</small></label><label class="gm-field">Источник мыши (также источник клавиатуры при выборе «Как общий источник»)<select data-gm-mirror-source><option value="any" ${c.mirrorSource === 'any' ? 'selected' : ''}>Любое распознанное игровое окно</option><option value="leader" ${c.mirrorSource === 'leader' ? 'selected' : ''}>Только ПЛ выбранной пати</option></select><small>Получатели — все остальные проверенные клиенты. Изменение настроек обновляет повтор, не сбрасывая выбранные режимы.</small></label><label class="gm-field">ЛКМ только твинам — модификатор<select data-gm-twins-modifier>${[
     ['', 'Выключено'],
     ['CTRL', 'Ctrl'],
     ['ALT', 'Alt'],
@@ -271,9 +271,8 @@ export function mountGameMacros(host) {
   });
   host.querySelector('[data-gm-repeat-config]').onclick = () => {
     const keys = [
-      'mirrorKeyboardMethod',
-      'mirrorKeyboardTimeoutMs',
-      'mirrorHoldOnly',
+      'mirrorKeyboardGlobalInput',
+      'mirrorMouseGlobalInput',
       'mirrorKeyboardSource',
       'mirrorKeyboardTargets',
       'mirrorSource',
@@ -299,17 +298,20 @@ export function mountGameMacros(host) {
           return false;
         }
         const value = selector => modal.querySelector(selector).value;
-        if (value('[data-gm-keyboard-method]') === 'cache-hybrid') {
-          if (!modal.querySelector('[data-gm-hybrid-consent]').checked) {
-            toast('Подтвердите глобальный ввод в активное окно.', 'error');
-            return false;
-          }
+        const keyboardGlobalInput = modal.querySelector('[data-gm-keyboard-global-input]').checked;
+        const mouseGlobalInput = modal.querySelector('[data-gm-mouse-global-input]').checked;
+        if (keyboardGlobalInput && !modal.querySelector('[data-gm-hybrid-consent]').checked) {
+          toast('Подтвердите экспериментальный глобальный ввод клавиатуры.', 'error');
+          return false;
+        }
+        if (mouseGlobalInput && !modal.querySelector('[data-gm-mouse-global-consent]').checked) {
+          toast('Подтвердите экспериментальный глобальный ввод мыши.', 'error');
+          return false;
         }
         try {
           await save({
-            mirrorKeyboardMethod: value('[data-gm-keyboard-method]'),
-            mirrorKeyboardTimeoutMs: Number(value('[data-gm-keyboard-timeout]')),
-            mirrorHoldOnly: modal.querySelector('[data-gm-hold-only]').checked,
+            mirrorKeyboardGlobalInput: keyboardGlobalInput,
+            mirrorMouseGlobalInput: mouseGlobalInput,
             mirrorKeyboardSource: value('[data-gm-keyboard-source]'),
             mirrorKeyboardTargets: value('[data-gm-keyboard-targets]'),
             mirrorSource: value('[data-gm-mirror-source]'),
@@ -322,16 +324,16 @@ export function mountGameMacros(host) {
         }
       }
     });
-    const methodSelect = modal?.querySelector('[data-gm-keyboard-method]');
-    const hybridWarning = modal?.querySelector('[data-gm-hybrid-warning]');
-    const hybridConsentRow = modal?.querySelector('[data-gm-hybrid-consent-row]');
-    const syncHybridNotice = () => {
-      const hybrid = methodSelect?.value === 'cache-hybrid';
-      if (hybridWarning) hybridWarning.hidden = !hybrid;
-      if (hybridConsentRow) hybridConsentRow.hidden = !hybrid;
-    };
-    methodSelect?.addEventListener('change', syncHybridNotice);
-    syncHybridNotice();
+    const keyboardGlobalInput = modal?.querySelector('[data-gm-keyboard-global-input]');
+    const keyboardConsentRow = modal?.querySelector('[data-gm-hybrid-consent-row]');
+    const mouseGlobalInput = modal?.querySelector('[data-gm-mouse-global-input]');
+    const mouseConsentRow = modal?.querySelector('[data-gm-mouse-global-consent-row]');
+    keyboardGlobalInput?.addEventListener('change', () => {
+      if (keyboardConsentRow) keyboardConsentRow.hidden = !keyboardGlobalInput.checked;
+    });
+    mouseGlobalInput?.addEventListener('change', () => {
+      if (mouseConsentRow) mouseConsentRow.hidden = !mouseGlobalInput.checked;
+    });
   };
   host.querySelector('[data-gm-multi-trial]').onclick = () =>
     openMultiInputTrial({ state, run: runMultiInputTrial, stop });

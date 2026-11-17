@@ -22,6 +22,7 @@ import {
   launchContext,
   launchWarnings,
   verifyLaunchedDecor,
+  scheduleLaunchedDecorRecheck,
   launchStageSummary,
   launchDelayMs,
   decorateEnabled,
@@ -419,6 +420,7 @@ export async function launchGroup(title, characters, opts = {}) {
     }
 
     const startedAt = Date.now();
+    let lastDecorClientAt = 0;
     task.progress(0, ready.length);
     preflightLog(pre).forEach(l => task.log(l.text, l.level));
 
@@ -444,6 +446,7 @@ export async function launchGroup(title, characters, opts = {}) {
           );
         },
         onDone: (e, done, total) => {
+          if (e.ok && e.info?.clientPid) lastDecorClientAt = Date.now();
           task.log(`${e.nick}: ${e.ok ? 'клиент игры запущен' : `ошибка — ${e.error}`}`, e.ok ? 'ok' : 'error');
           launchWarnings(e.info).forEach(w => task.log(`${e.nick}: ${w}`, 'warn'));
           counts.launched += Number(!!e.ok);
@@ -478,6 +481,7 @@ export async function launchGroup(title, characters, opts = {}) {
           onStage: (c, stage) => characterStage(c, `повтор — ${stage}`),
           onStart: c => characterStage(c, 'повтор…'),
           onDone: e => {
+            if (e.ok && e.info?.clientPid) lastDecorClientAt = Date.now();
             task.log(
               `${e.nick}: повтор — ${e.ok ? 'клиент игры запущен' : `снова ошибка — ${e.error}`}`,
               e.ok ? 'ok' : 'error'
@@ -500,6 +504,23 @@ export async function launchGroup(title, characters, opts = {}) {
       if (decorNote) task.log(decorNote, 'warn');
     } catch (e) {
       console.warn('[LAUNCH] decorate verify failed:', e);
+    }
+    if (lastDecorClientAt) {
+      scheduleLaunchedDecorRecheck(results, {
+        launchedAt: lastDecorClientAt,
+        onComplete: ({ note, error }) => {
+          if (error) {
+            task.log(`Повторная проверка оформления через минуту не удалась: ${errText(error)}`, 'warn');
+          } else {
+            task.log(
+              note
+                ? `Отложенная проверка названий и значков: ${note}`
+                : 'Отложенная проверка названий и значков завершена; оформление актуально.',
+              note ? 'warn' : 'info'
+            );
+          }
+        }
+      });
     }
     const ok = results.filter(r => r.ok).length;
     const failed = results.filter(r => !r.ok && !r.cancelled).length;

@@ -158,7 +158,7 @@ it('saves and reopens an existing managed key command changed from all to except
   openCommandEditor(config, save, saved);
   expect(document.querySelector('[data-field="target"]').value).toBe('others');
 });
-it('preserves a saved party-leader hybrid mode in the main mode selector', async () => {
+it('converts a saved party-hybrid sequence to active delivery when edited', async () => {
   const source = normalizeGameMacros({
     commands: [
       {
@@ -178,23 +178,21 @@ it('preserves a saved party-leader hybrid mode in the main mode selector', async
   config.commands = [source];
   openCommandEditor(config, save, source);
   const mode = document.querySelector('[name="commandInputMode"]');
-  expect(mode.closest('.gm-editor-basics')).not.toBeNull();
-  mode.value = 'hybrid-party';
-  document.querySelector('[name="hybridConsent"]').checked = true;
+  expect([...mode.options].map(option => option.value)).toEqual(['standard']);
+  expect(mode.value).toBe('standard');
+  expect(document.querySelector('[name="hybridConsent"]')).toBeNull();
   submit();
   await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1));
   const saved = normalizeGameMacros(save.mock.calls[0][0]).commands[0];
   expect(saved).toMatchObject({
     action: 'sequence',
-    delivery: 'background',
-    backgroundMethod: 'hybrid-party',
-    hybridConsent: true,
+    delivery: 'foreground',
+    backgroundMethod: 'post',
+    hybridConsent: false,
     target: 'others',
     sequence: 'CTRL+1\nALT+2',
     hotkey: 'F8'
   });
-  openCommandEditor(config, save, saved);
-  expect(document.querySelector('[name="commandInputMode"]').value).toBe('hybrid-party');
 });
 
 it('saves the assist example with the requested keys and party except the leader', async () => {
@@ -226,49 +224,28 @@ it('does not overwrite a typed command name when applying an example', () => {
   expect(save).not.toHaveBeenCalled();
 });
 
-it('offers active and hybrid mode up front and saves a new hybrid party command only with consent', async () => {
+it('offers only active mode for new plans and saves a normal editable composition', async () => {
   openCommandEditor(config, save);
   const form = document.querySelector('[data-gm-form]');
   const mode = form.elements.namedItem('commandInputMode');
   expect(mode.closest('.gm-editor-basics')).not.toBeNull();
-  expect([...mode.options].map(o => o.value)).toEqual(['standard', 'hybrid-party']);
+  expect([...mode.options].map(option => option.value)).toEqual(['standard']);
   expect(mode.value).toBe('standard');
+  expect(form.elements.namedItem('hybridConsent')).toBeNull();
   form.elements.namedItem('name').value = 'Ассист';
   form.querySelector('[data-add-type="keys"]').click();
   const key = form.querySelector('[data-step="0"] [data-field="value"]');
   key.value = 'SHIFT+1';
   key.dispatchEvent(new Event('input', { bubbles: true }));
-  mode.value = 'hybrid-party';
-  mode.dispatchEvent(new Event('change', { bubbles: true }));
-  expect(form.elements.namedItem('hybridConsent').closest('label').hidden).toBe(false);
-  submit();
-  await vi.waitFor(() => expect(document.querySelector('[data-gm-form-error]').hidden).toBe(false));
-  expect(save).not.toHaveBeenCalled();
-  form.elements.namedItem('hybridConsent').checked = true;
   submit();
   await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1));
-  expect(save.mock.calls[0][0].commands[0]).toMatchObject({
+  const saved = save.mock.calls[0][0].commands[0];
+  expect(saved).toMatchObject({
     name: 'Ассист',
-    action: 'sequence',
-    delivery: 'background',
-    backgroundMethod: 'hybrid-party',
-    scope: 'party',
-    target: 'all',
-    sequence: 'SHIFT+1',
-    hybridConsent: true
+    action: 'composite',
+    delivery: 'foreground',
+    blocks: [{ delivery: 'foreground', steps: [{ type: 'keys', value: 'SHIFT+1' }] }]
   });
-});
-
-it('refuses incompatible hybrid plans without saving or executing', async () => {
-  openCommandEditor(config, save);
-  const form = document.querySelector('[data-gm-form]');
-  form.elements.namedItem('name').value = 'Несовместимая';
-  form.querySelector('[data-add-type="screen"]').click();
-  form.elements.namedItem('commandInputMode').value = 'hybrid-party';
-  form.elements.namedItem('hybridConsent').checked = true;
-  submit();
-  await vi.waitFor(() => expect(document.querySelector('[data-gm-form-error]').hidden).toBe(false));
-  expect(save).not.toHaveBeenCalled();
 });
 
 it('preserves existing background transport unless active mode is explicitly selected', async () => {
@@ -296,7 +273,7 @@ it('preserves existing background transport unless active mode is explicitly sel
   expect(save.mock.calls[0][0].commands[0]).toMatchObject({ delivery: 'foreground', sequence: 'F2' });
 });
 
-it('shows a hybrid plan as hybrid in the non-executing review', async () => {
+it('shows the active delivery plan in review without executing it', async () => {
   openCommandEditor(config, save);
   const form = document.querySelector('[data-gm-form]');
   form.elements.namedItem('name').value = 'Тест';
@@ -304,15 +281,13 @@ it('shows a hybrid plan as hybrid in the non-executing review', async () => {
   const key = form.querySelector('[data-field="value"]');
   key.value = 'F2';
   key.dispatchEvent(new Event('input', { bubbles: true }));
-  form.elements.namedItem('commandInputMode').value = 'hybrid-party';
-  form.elements.namedItem('commandInputMode').dispatchEvent(new Event('change', { bubbles: true }));
   await vi.waitFor(() =>
-    expect(document.querySelector('[data-editor-review]').textContent).toContain('гибридный из активного ПЛ')
+    expect(document.querySelector('[data-editor-review]').textContent).toContain('с активацией окна')
   );
   expect(save).not.toHaveBeenCalled();
 });
 
-it('rejects a hybrid plan exceeding eight steps and preserves the original data', async () => {
+it('does not apply the legacy eight-step hybrid limit to active compositions', async () => {
   openCommandEditor(config, save);
   const form = document.querySelector('[data-gm-form]');
   form.elements.namedItem('name').value = 'Длинная';
@@ -322,54 +297,27 @@ it('rejects a hybrid plan exceeding eight steps and preserves the original data'
     key.value = 'F2';
     key.dispatchEvent(new Event('input', { bubbles: true }));
   }
-  form.elements.namedItem('commandInputMode').value = 'hybrid-party';
-  form.elements.namedItem('hybridConsent').checked = true;
-  submit();
-  await vi.waitFor(() => expect(document.querySelector('[data-gm-form-error]').textContent).toContain('8'));
-  expect(save).not.toHaveBeenCalled();
-});
-
-it('offers only compatible additions and relevant settings in hybrid mode without losing active-mode edits', () => {
-  openCommandEditor(config, save);
-  const form = document.querySelector('[data-gm-form]');
-  const mode = form.elements.namedItem('commandInputMode');
-  form.querySelector('[data-add-type="screen"]').click();
-  mode.value = 'hybrid-party';
-  mode.dispatchEvent(new Event('change', { bubbles: true }));
-  expect(form.querySelector('[data-add-type="screen"]').hidden).toBe(true);
-  expect(form.querySelector('.gm-more-library').hidden).toBe(true);
-  expect(form.querySelector('[data-block-add]').hidden).toBe(true);
-  expect(form.querySelector('[data-field="perWindow"]').closest('label').hidden).toBe(true);
-  expect(form.querySelector('[data-field="scope"]').closest('label').hidden).toBe(true);
-  expect(form.querySelector('[data-field="repeat"]').closest('label').hidden).toBe(true);
-  expect(form.querySelector('[data-field="target"]').closest('label').hidden).toBe(false);
-  expect(form.querySelector('[data-step-type="screen"]')).not.toBeNull();
-  expect(form.querySelector('[data-hybrid-plan-warning]').textContent).toContain('Существующие действия не удалены');
-  mode.value = 'standard';
-  mode.dispatchEvent(new Event('change', { bubbles: true }));
-  expect(form.querySelector('[data-add-type="screen"]').hidden).toBe(false);
-  expect(form.querySelector('[data-step-type="screen"]')).not.toBeNull();
-  expect(form.querySelector('[data-field="perWindow"]').closest('label').hidden).toBe(false);
-});
-
-it('allows fixing a pre-existing repeat setting in hybrid mode and limits additions to eight steps', () => {
-  openCommandEditor(config, save);
-  const form = document.querySelector('[data-gm-form]');
-  const count = form.querySelector('[data-field="repeat"]');
-  count.value = '2';
-  count.dispatchEvent(new Event('input', { bubbles: true }));
-  const mode = form.elements.namedItem('commandInputMode');
-  mode.value = 'hybrid-party';
-  mode.dispatchEvent(new Event('change', { bubbles: true }));
-  const repeat = form.querySelector('[data-field="repeat"]');
-  expect(repeat.closest('label').hidden).toBe(false);
-  repeat.value = '1';
-  repeat.dispatchEvent(new Event('input', { bubbles: true }));
-  expect(repeat.closest('label').hidden).toBe(true);
-  for (let i = 0; i < 8; i++) form.querySelector('[data-add-type="wait"]').click();
-  expect(form.querySelector('[data-add-type="keys"]').disabled).toBe(true);
-  expect(form.querySelector('[data-step="7"] [data-step-copy]').disabled).toBe(true);
-  expect(form.querySelector('[data-step="7"]').textContent).toContain('от 50 до 3000 мс');
-  form.querySelector('[data-step="7"] [data-step-delete]').click();
   expect(form.querySelector('[data-add-type="keys"]').disabled).toBe(false);
+  submit();
+  await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  expect(save.mock.calls[0][0].commands[0].blocks[0].steps).toHaveLength(9);
+});
+
+it('keeps active editing controls available and no longer renders hybrid-only restrictions', () => {
+  openCommandEditor(config, save);
+  const form = document.querySelector('[data-gm-form]');
+  const mode = form.elements.namedItem('commandInputMode');
+  expect([...mode.options].map(option => option.value)).toEqual(['standard']);
+  form.querySelector('[data-add-type="screen"]').click();
+  expect(form.querySelector('[data-add-type="screen"]').hidden).toBe(false);
+  expect(form.querySelector('.gm-more-library').hidden).toBe(false);
+  expect(form.querySelector('[data-block-add]').hidden).toBe(false);
+  expect(form.querySelector('[data-field="perWindow"]').closest('label').hidden).toBe(false);
+  expect(form.querySelector('[data-field="scope"]').closest('label').hidden).toBe(false);
+  expect(form.querySelector('[data-field="delivery"]').closest('label').hasAttribute('data-gm-legacy-delivery')).toBe(
+    true
+  );
+  expect(form.querySelector('[data-field="repeat"]').closest('label').hidden).toBe(false);
+  expect(form.querySelector('[data-step-type="screen"]')).not.toBeNull();
+  expect(form.querySelector('[data-hybrid-plan-warning]')).toBeNull();
 });

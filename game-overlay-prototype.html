@@ -7,7 +7,7 @@
     <style>
       :root {
         color-scheme: dark;
-        --font: 14px system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+        --font: 14px system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
         --text: #eef2ff;
         --text-dim: #aab1c6;
         --text-mute: #7a8299;
@@ -34,8 +34,7 @@
         margin: 0;
         background:
           radial-gradient(1200px 600px at 15% -10%, #1a2340 0%, transparent 60%),
-          radial-gradient(900px 500px at 100% 0%, #2a1f3d 0%, transparent 55%),
-          #0a0d16;
+          radial-gradient(900px 500px at 100% 0%, #2a1f3d 0%, transparent 55%), #0a0d16;
         color: var(--text);
         font: var(--font);
         min-height: 100vh;
@@ -64,7 +63,7 @@
         transition: opacity 0.2s ease;
       }
       .overlay-window::before {
-        content: "";
+        content: '';
         position: absolute;
         inset: 0;
         background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 30%);
@@ -144,8 +143,15 @@
         animation: pulse 1.6s ease-in-out infinite;
       }
       @keyframes pulse {
-        0%, 100% { opacity: 0.35; transform: scale(0.85); }
-        50% { opacity: 1; transform: scale(1.1); }
+        0%,
+        100% {
+          opacity: 0.35;
+          transform: scale(0.85);
+        }
+        50% {
+          opacity: 1;
+          transform: scale(1.1);
+        }
       }
       .ov-status .sep {
         opacity: 0.4;
@@ -178,7 +184,7 @@
         color: var(--text-dim);
         background: rgba(255, 255, 255, 0.04);
       }
-      .ov-tab[aria-current="page"] {
+      .ov-tab[aria-current='page'] {
         color: var(--accent);
         background: var(--glass-2);
         border-color: var(--line);
@@ -265,7 +271,7 @@
         white-space: nowrap;
       }
       .target-badge::before {
-        content: "◎";
+        content: '◎';
         font-size: 10px;
       }
       /* ---- section card ---- */
@@ -334,7 +340,7 @@
         font-size: 11px;
       }
       .kbd {
-        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
         font-size: 11px;
         font-weight: 700;
         color: var(--accent);
@@ -363,7 +369,7 @@
       .recip-row:last-child {
         margin-bottom: 0;
       }
-      .recip-row input[type="checkbox"] {
+      .recip-row input[type='checkbox'] {
         width: 17px;
         height: 17px;
         accent-color: var(--accent-2);
@@ -431,7 +437,7 @@
       .win-row:last-child {
         margin-bottom: 0;
       }
-      .win-row input[type="checkbox"] {
+      .win-row input[type='checkbox'] {
         width: 16px;
         height: 16px;
         accent-color: var(--danger);
@@ -474,13 +480,13 @@
         font-size: 12.5px;
         color: var(--text-dim);
       }
-      input[type="range"] {
+      input[type='range'] {
         accent-color: var(--accent);
         flex: 1;
       }
       /* ---- journal ---- */
       .journal {
-        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
         font-size: 11.5px;
         line-height: 1.55;
         background: rgba(0, 0, 0, 0.3);
@@ -581,10 +587,18 @@
       <div class="ov-body">
         <!-- targeted control chips -->
         <div class="chips">
-          <button class="chip on" data-chip="mouse"><span class="ico">🖱</span> Повтор мыши<span class="state">ВКЛ</span></button>
-          <button class="chip" data-chip="keyboard"><span class="ico">⌨</span> Повтор клавиатуры<span class="state">выкл</span></button>
-          <button class="chip" data-chip="hotkeys"><span class="ico">⚡</span> Сочетания<span class="state">выкл</span></button>
-          <button class="chip" data-chip="pause"><span class="ico">⏸</span> Пауза<span class="state">работает</span></button>
+          <button class="chip on" data-chip="mouse">
+            <span class="ico">🖱</span> Повтор мыши<span class="state">ВКЛ</span>
+          </button>
+          <button class="chip" data-chip="keyboard">
+            <span class="ico">⌨</span> Повтор клавиатуры<span class="state">выкл</span>
+          </button>
+          <button class="chip" data-chip="hotkeys">
+            <span class="ico">⚡</span> Сочетания<span class="state">выкл</span>
+          </button>
+          <button class="chip" data-chip="pause">
+            <span class="ico">⏸</span> Пауза<span class="state">работает</span>
+          </button>
         </div>
 
         <!-- ===== KEYS view ===== -->
@@ -667,7 +681,8 @@
                 </div>
               </div>
               <div style="margin-top: 10px">
-                <label class="field">ПЛ для специальных команд
+                <label class="field"
+                  >ПЛ для специальных команд
                   <select>
                     <option>Не менять: Артём</option>
                     <option>Не назначать ПЛ</option>
@@ -688,7 +703,8 @@
               <span class="target-badge">цель: игровые окна</span>
             </div>
             <div class="card-body">
-              <label class="field" style="margin-bottom: 10px">Пати для запуска
+              <label class="field" style="margin-bottom: 10px"
+                >Пати для запуска
                 <select>
                   <option>Этернал</option>
                   <option>Восход</option>
@@ -740,11 +756,12 @@
                 <button class="btn ghost">Копировать весь лог</button>
                 <button class="btn ghost">Очистить лог</button>
               </div>
-              <div class="journal"><span class="ok">[ok]</span> Баф пати запущен · 3 получателя
-<span class="c">[cmd]</span> F6→F1 отправлено в 3 окна
-<span class="ok">[ok]</span> Рес полной пати · 3/3
-<span class="t">[err]</span> Окно ПЛ не отвечает · переподключение ввода
-<span class="c">[cmd]</span> Ctrl+колесо → координаты откалиброваны</div>
+              <div class="journal">
+                <span class="ok">[ok]</span> Баф пати запущен · 3 получателя <span class="c">[cmd]</span> F6→F1
+                отправлено в 3 окна <span class="ok">[ok]</span> Рес полной пати · 3/3 <span class="t">[err]</span> Окно
+                ПЛ не отвечает · переподключение ввода <span class="c">[cmd]</span> Ctrl+колесо → координаты
+                откалиброваны
+              </div>
             </div>
           </div>
         </section>
@@ -757,7 +774,8 @@
               <span class="target-badge">цель: внешность</span>
             </div>
             <div class="card-body">
-              <label class="field" style="margin-bottom: 12px">Непрозрачность <output id="alphaVal">92%</output>
+              <label class="field" style="margin-bottom: 12px"
+                >Непрозрачность <output id="alphaVal">92%</output>
                 <input id="opacity" type="range" min="10" max="100" value="92" />
               </label>
               <label class="field" style="margin-bottom: 12px">
@@ -767,17 +785,17 @@
               <div style="margin-bottom: 10px">
                 <div class="note" style="margin-bottom: 4px">Цвет текста</div>
                 <div class="swatches" data-group="text">
-                  <span class="swatch sel" data-val="light"><i style="background:#eef2ff"></i>Светлый</span>
-                  <span class="swatch" data-val="warm"><i style="background:#f5d98c"></i>Тёплый</span>
-                  <span class="swatch" data-val="mint"><i style="background:#91e2bd"></i>Мятный</span>
+                  <span class="swatch sel" data-val="light"><i style="background: #eef2ff"></i>Светлый</span>
+                  <span class="swatch" data-val="warm"><i style="background: #f5d98c"></i>Тёплый</span>
+                  <span class="swatch" data-val="mint"><i style="background: #91e2bd"></i>Мятный</span>
                 </div>
               </div>
               <div style="margin-bottom: 10px">
                 <div class="note" style="margin-bottom: 4px">Цвет клавиш</div>
                 <div class="swatches" data-group="key">
-                  <span class="swatch sel" data-val="gold"><i style="background:#f5cc76"></i>Золотой</span>
-                  <span class="swatch" data-val="blue"><i style="background:#9ccaff"></i>Голубой</span>
-                  <span class="swatch" data-val="white"><i style="background:#eef2ff"></i>Белый</span>
+                  <span class="swatch sel" data-val="gold"><i style="background: #f5cc76"></i>Золотой</span>
+                  <span class="swatch" data-val="blue"><i style="background: #9ccaff"></i>Голубой</span>
+                  <span class="swatch" data-val="white"><i style="background: #eef2ff"></i>Белый</span>
                 </div>
               </div>
               <div style="margin-bottom: 12px">
@@ -785,7 +803,9 @@
                 <input type="range" min="10" max="24" value="14" id="fontSize" />
               </div>
               <button class="btn primary" style="width: 100%">Сохранить</button>
-              <p class="note" style="margin-top: 8px">Прототип: изменения в мок-интерфейсе не сохраняются в приложение.</p>
+              <p class="note" style="margin-top: 8px">
+                Прототип: изменения в мок-интерфейсе не сохраняются в приложение.
+              </p>
             </div>
           </div>
         </section>

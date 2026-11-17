@@ -147,11 +147,15 @@ export function normalizeGameMacros(input = {}) {
     ].slice(0, 200),
     enabled: input.enabled === true,
     mirrorMouse: input.mirrorMouse === true,
-    mirrorKeyboardMethod: ['combined', 'activity-notify', 'cache-hybrid'].includes(input.mirrorKeyboardMethod)
-      ? input.mirrorKeyboardMethod
-      : 'post',
-    mirrorKeyboardTimeoutMs: Number(input.mirrorKeyboardTimeoutMs) === 100 ? 100 : 25,
-    mirrorHoldOnly: input.mirrorHoldOnly === true,
+    // The supported repeat route is the experimental global-input + WM_KEYDOWN candidate only.
+    mirrorKeyboardMethod: 'cache-hybrid',
+    // Preserve the earlier explicit cache-hybrid opt-in, but never enable global input for
+    // users whose old configuration selected a non-global method (or had no method at all).
+    mirrorKeyboardGlobalInput:
+      typeof input.mirrorKeyboardGlobalInput === 'boolean'
+        ? input.mirrorKeyboardGlobalInput
+        : input.mirrorKeyboardMethod === 'cache-hybrid',
+    mirrorMouseGlobalInput: input.mirrorMouseGlobalInput === true,
     mirrorKeyboardSource: ['any', 'leader'].includes(input.mirrorKeyboardSource)
       ? input.mirrorKeyboardSource
       : 'shared',

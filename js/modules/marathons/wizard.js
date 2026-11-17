@@ -208,8 +208,8 @@ export function openMarathonWizard(opts = {}) {
             <h4>📰 Новость <small class="muted">— рекомендуется: в ней задания, цели, награды, бонусы и полные описания</small></h4>
             <div class="row gap">
               <input class="input tf-grow" data-news-url placeholder="https://pwonline.ru/news.php?article=…" value="${escapeHtml(n.url)}"/>
-              <button type="button" class="btn primary" data-act="parse-news" ${n.loading || n.search.loading ? 'disabled' : ''}>${n.loading ? '⏳ Разбираю…' : hasNews ? '📰 Разобрать заново' : '📰 Разобрать новость'}</button>
-              <button type="button" class="btn" data-act="find-news" title="Просмотреть первые ${NEWS_LIST_PAGES} страницы архива событий pwonline.ru" ${n.loading || n.search.loading ? 'disabled' : ''}>${n.search.loading ? '⏳ Ищу…' : '🔎 Найти новость'}</button>
+              <button type="button" class="btn" data-act="parse-news" ${n.loading || n.search.loading ? 'disabled' : ''}>${n.loading ? '⏳ Разбираю…' : hasNews ? '📰 Разобрать заново' : '📰 Разобрать новость'}</button>
+              <button type="button" class="btn primary" data-act="find-news" title="Просмотреть первые ${NEWS_LIST_PAGES} страницы архива событий pwonline.ru" ${n.loading || n.search.loading ? 'disabled' : ''}>${n.search.loading ? '⏳ Ищу…' : '🔎 Найти новость'}</button>
             </div>
             ${newsSearchHtml(n.search)}
             <label class="tf-radio tf-small"><input type="checkbox" data-news-verify ${n.verify ? 'checked' : ''}/> После новости сверить со страницей отметок (нужен персонаж со входом)</label>
@@ -471,7 +471,16 @@ export function openMarathonWizard(opts = {}) {
         ${
           sr.items
             ? `
-          <label class="tf-radio tf-small"><input type="checkbox" data-news-all ${sr.all ? 'checked' : ''}/> Показать все новости, не только со словом «марафон» (просмотрено ${sr.items.length})</label>
+          <div class="tf-news-filter">
+            <label class="tf-news-filter-toggle">
+              <input type="checkbox" data-news-all ${sr.all ? 'checked' : ''}/>
+              <span class="tf-news-filter-copy">
+                <strong>Показать все новости в найденном списке</strong>
+                <small>Без галочки видны только заголовки со словом «марафон». Включите, чтобы увидеть остальные найденные новости.</small>
+              </span>
+            </label>
+            <small class="tf-news-filter-count">Просмотрено ${sr.items.length} новостей на первых ${NEWS_LIST_PAGES} страницах архива.</small>
+          </div>
           ${
             found.length
               ? `<div class="tf-list">${found

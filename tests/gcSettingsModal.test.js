@@ -148,12 +148,50 @@ describe('окно «GameCenter и персонажи»', () => {
         option => option.textContent
       );
     expect(values('a')).toEqual(['', 'a-1', 'a-2']);
-    expect(names('a')).toEqual(['не выбирать автоматически', 'Альфа 1', 'Альфа 2']);
+    expect(names('a')).toEqual(['Выбрать вручную при запуске', 'Альфа 1', 'Альфа 2']);
     expect(values('b')).toEqual(['', 'b-1', 'b-2']);
-    expect(names('b')).toEqual(['не выбирать автоматически', 'Бета 1', 'Бета 2']);
+    expect(names('b')).toEqual(['Выбрать вручную при запуске', 'Бета 1', 'Бета 2']);
     expect(
       invokeMock.mock.calls.filter(([cmd]) => cmd === 'launcher_saved_game_accounts').map(([, args]) => args.charId)
     ).toEqual(expect.arrayContaining(['a@gc-1', 'b@gc-1']));
+    const row = document.querySelector('[data-char="a"] .gcm-bind[data-gc="gc-1"]');
+    expect(row.querySelector('.gcm-gameacc-title').textContent).toBe('Игровой аккаунт для запуска');
+    expect(row.querySelector('.gcm-gameacc small').textContent).toContain('выберете вручную');
+    expect(row.querySelector('.gcm-bind-actions [data-act="cap"]')).not.toBeNull();
+    const css = readFileSync('css/modules/launcher.css', 'utf8');
+    const actionRules = css.match(/\.gcm-bind-actions\s*\{([^}]+)\}/)?.[1] || '';
+    expect(actionRules).toContain('flex-wrap: nowrap;');
+  });
+
+  it('фильтрует персонажей, которым ещё нужно выбрать один из игровых аккаунтов', async () => {
+    const accountsA = [
+      { id: 'a-1', name: 'Альфа 1' },
+      { id: 'a-2', name: 'Альфа 2' }
+    ];
+    const accountsB = [
+      { id: 'b-1', name: 'Бета 1' },
+      { id: 'b-2', name: 'Бета 2' }
+    ];
+    for (const char of state.characters) {
+      char.launch.gcIds = ['gc-1'];
+      char.launch.gcAccounts['gc-1'] = { nick: 'Twin' };
+    }
+    state.characters[0].launch.gcGameAccounts = { 'gc-1': accountsA[0] };
+    invokeMock.mockImplementation(async (cmd, args) => {
+      if (cmd === 'launcher_gc_info') return { nick: 'Twin', loggedIn: true };
+      if (cmd === 'launcher_saved_game_accounts') return args.charId === 'a@gc-1' ? accountsA : accountsB;
+      return null;
+    });
+
+    openGameCentersModal();
+    await until(() => document.querySelectorAll('[data-act="game-acc"]').length === 2);
+    expect(document.querySelectorAll('.gcm-char')).toHaveLength(2);
+
+    const filter = document.getElementById('gcm-account-needed');
+    filter.checked = true;
+    filter.dispatchEvent(new Event('change', { bubbles: true }));
+    expect([...document.querySelectorAll('.gcm-char')].map(char => char.getAttribute('data-char'))).toEqual(['b']);
+    expect(document.getElementById('gcm-shown').textContent).toBe('Показано: 1 из 2');
   });
 
   it('не показывает выбор, если для сохранённого входа остался один игровой персонаж', async () => {
@@ -183,7 +221,11 @@ describe('окно «GameCenter и персонажи»', () => {
     const sel = document.querySelector('[data-char="a"] select[data-act="game-acc"]');
     // Пока список не пришёл из launcher_gc_info, выбора нет; после ответа — оба аккаунта
     expect([...sel.options].map(o => o.value)).toEqual(['', '49635696', '59424880']);
-    expect([...sel.options].map(o => o.textContent)).toEqual(['не выбирать автоматически', 'WheeIman', 'hotdevilcom']);
+    expect([...sel.options].map(o => o.textContent)).toEqual([
+      'Выбрать вручную при запуске',
+      'WheeIman',
+      'hotdevilcom'
+    ]);
     sel.value = '59424880';
     sel.dispatchEvent(new Event('change', { bubbles: true }));
     await tick();

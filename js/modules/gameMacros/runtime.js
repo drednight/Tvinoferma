@@ -48,7 +48,6 @@ let mirroring = false,
   mirrorPending = false,
   mirrorEpoch = 0,
   mirrorSession = '',
-  mirrorTimeoutMs = 25,
   mirrorTimer,
   mirrorInit;
 let paused = false,
@@ -1891,6 +1890,7 @@ const mirrorArgs = (operation, sessionId = mirrorSession, extra = {}) => ({
   targets: [],
   shortcuts: [],
   mouse: false,
+  globalMouse: false,
   source: null,
   ...extra
 });
@@ -1932,13 +1932,14 @@ function ensureMirror() {
         3: 'Игровое окно изменилось: повтор остановлен.',
         4: 'PostMessage не принят: повтор остановлен.',
         7: 'Не принято уведомление активности: повтор остановлен.',
-        8: `Отправка клавиши через SendMessageTimeout не завершилась за ${mirrorTimeoutMs} мс или вернула ошибку: повтор остановлен. Состояние на части окон неизвестно; не повторяйте действие вслепую.`,
+        8: 'Отправка клавиши через SendMessageTimeout не завершилась за 25 мс или вернула ошибку: повтор остановлен. Состояние на части окон неизвестно; не повторяйте действие вслепую.',
         9: 'Не принято восстановление уведомлений активности: повтор остановлен.',
         10: 'Активное окно изменилось при отправке: повтор остановлен.',
         5: 'Клавиша удерживалась более 60 секунд без повтора: режим выключен защитой.',
         6: 'Точка мыши вне игровой области или недоступна: повтор остановлен.',
         11: 'Глобальная инъекция клавиши отклонена: повтор остановлен. Клавиша могла остаться нажатой в активном окне.',
-        12: 'Внутренняя ошибка порядка доставки: повтор остановлен.'
+        12: 'Внутренняя ошибка порядка доставки: повтор остановлен.',
+        13: 'Глобальный ввод мыши отклонён или указатель переместился: повтор остановлен. Проверьте состояние кнопки мыши в активном окне.'
       };
       const failed = event.payload.failedInput;
       const label = inputLabel(failed?.vk);
@@ -1961,8 +1962,8 @@ function mirrorFingerprint() {
     enabled: c.enabled,
     source: c.mirrorSource,
     keyboardMethod: c.mirrorKeyboardMethod,
-    keyboardTimeoutMs: c.mirrorKeyboardTimeoutMs,
-    holdOnly: c.mirrorHoldOnly,
+    keyboardGlobalInput: c.mirrorKeyboardGlobalInput,
+    mouseGlobalInput: c.mirrorMouseGlobalInput,
     keyboardSource: c.mirrorKeyboardSource,
     keyboardTargets: c.mirrorKeyboardTargets,
     keyboardParty: c.mirrorKeyboardTargets !== 'all' ? partyMembers(state, c.partyId).map(char => char.id) : [],
@@ -2020,8 +2021,20 @@ async function applyMirrorToggle(kind = 'keyboard', commandName = '', refreshMod
   kind = kind === 'mouse' ? 'mouse' : 'keyboard';
   if (mirrorPending) return;
   const turningOff = kind === 'keyboard' ? mirrorKeys : mirrorMouse;
-  const desiredKeys = refreshModes ? refreshModes.keys : kind === 'keyboard' ? !mirrorKeys : mirrorKeys,
-    desiredMouse = refreshModes ? refreshModes.mouse : kind === 'mouse' ? !mirrorMouse : mirrorMouse;
+  let desiredKeys = refreshModes ? refreshModes.keys : kind === 'keyboard' ? !mirrorKeys : mirrorKeys;
+  const desiredMouse = refreshModes ? refreshModes.mouse : kind === 'mouse' ? !mirrorMouse : mirrorMouse;
+  const c = config();
+  if (desiredKeys && !c.mirrorKeyboardGlobalInput) {
+    if (mirrorKeys) {
+      // A saved change can disable the experiment while keyboard repeat is running.
+      desiredKeys = false;
+    } else {
+      notice = 'Экспериментальный глобальный ввод клавиатуры выключен. Включите его в настройках повтора.';
+      log(notice, commandName, true);
+      void broadcast();
+      return;
+    }
+  }
   if ((busy || paused) && !refreshModes && !turningOff) {
     log('Сначала остановите команду и снимите паузу.');
     return;
@@ -2056,13 +2069,13 @@ async function applyMirrorToggle(kind = 'keyboard', commandName = '', refreshMod
     if (rows.length < 2 || rows.length > 30 || new Set(rows.map(r => r.charId)).size !== rows.length)
       throw new Error('Для повтора нужны 2–30 однозначно распознанных игровых окон. Неизвестные клиенты исключены.');
     if (epoch !== mirrorEpoch) return;
-    const c = config();
     const sourceRow = c.mirrorSource === 'leader' ? rows.find(row => row.charId === c.leaders[c.partyId]) : null;
     if (c.mirrorSource === 'leader' && !sourceRow && (desiredMouse || c.mirrorKeyboardSource === 'shared'))
       throw new Error('Для повтора только из ПЛ выберите пати, назначьте ПЛ и запустите его распознанное окно.');
     const keyboardSourceMode = c.mirrorKeyboardSource === 'shared' ? c.mirrorSource : c.mirrorKeyboardSource;
     const keyboardSourceRow =
       keyboardSourceMode === 'leader' ? rows.find(row => row.charId === c.leaders[c.partyId]) : null;
+    const keyboardLeaderRow = c.partyId ? rows.find(row => row.charId === c.leaders[c.partyId]) : null;
     const keyboardMembers = partyMembers(state, c.partyId);
     if (
       desiredKeys &&
@@ -2104,7 +2117,6 @@ async function applyMirrorToggle(kind = 'keyboard', commandName = '', refreshMod
     )
       throw new Error('Для ЛКМ только твинам назначьте ПЛ выбранной пати и проверьте его окно.');
     mirrorSession = id;
-    mirrorTimeoutMs = c.mirrorKeyboardTimeoutMs;
     const active = await native(
       'game_macro_mirror',
       mirrorArgs('start', id, {
@@ -2114,11 +2126,12 @@ async function applyMirrorToggle(kind = 'keyboard', commandName = '', refreshMod
           ? { pid: twinsLeader.pid, startedAt: twinsLeader.startedAt, hwnd: twinsLeader.hwnd }
           : null,
         mouse: desiredMouse,
+        globalMouse: desiredMouse && c.mirrorMouseGlobalInput,
         keyboard: desiredKeys,
-        combined: desiredKeys && c.mirrorKeyboardMethod === 'combined',
         keyboardMethod: c.mirrorKeyboardMethod,
-        keyboardTimeoutMs: c.mirrorKeyboardTimeoutMs,
-        holdOnly: desiredKeys && c.mirrorHoldOnly,
+        keyboardLeader: keyboardLeaderRow
+          ? { pid: keyboardLeaderRow.pid, startedAt: keyboardLeaderRow.startedAt, hwnd: keyboardLeaderRow.hwnd }
+          : null,
         keyboardSource: keyboardSourceRow
           ? { pid: keyboardSourceRow.pid, startedAt: keyboardSourceRow.startedAt, hwnd: keyboardSourceRow.hwnd }
           : null,
@@ -2178,28 +2191,17 @@ async function applyMirrorToggle(kind = 'keyboard', commandName = '', refreshMod
       log(
         `Клавиатура: источник ${keyboardSourceRow ? 'ПЛ выбранной пати' : 'любое распознанное окно'}; получатели ${c.mirrorKeyboardTargets}: ${keyboardRows.map(row => state.characters.find(char => char.id === row.charId)?.nick || row.charId).join(', ')}. Исходное окно исключается.`
       );
-    if (desiredKeys && ['activity-notify', 'combined'].includes(c.mirrorKeyboardMethod))
-      log(
-        `Activity-notify: ожидание одного сообщения до ${c.mirrorKeyboardTimeoutMs} мс; автоматического повтора после ошибки нет.`
-      );
-    if (desiredKeys && c.mirrorHoldOnly)
-      log('Удержание без автоповтора: один DOWN и один UP; сочетания передаются по событиям.');
-    if (desiredKeys && c.mirrorKeyboardMethod === 'cache-hybrid')
-      log(
-        'Клавиатурный повтор: эксперимент с глобальным вводом. Порядок: WM_ACTIVATEAPP(TRUE) → нажатие клавиши в системе → WM_KEYDOWN в окно получателя → удержание 250 мс → отпускание → WM_ACTIVATEAPP(FALSE) только в оконном режиме. Клавиши вводятся по-настоящему и приходят в активное окно: возможны двойное действие в источнике и ввод в постороннее приложение. Работа в игре не подтверждена.'
-      );
     if (desiredKeys)
       log(
-        c.mirrorKeyboardMethod === 'activity-notify'
-          ? 'Клавиатурный повтор: только activity-notify, без PostMessage. Состояние чата не определяется. Команды не изменены.'
-          : c.mirrorKeyboardMethod === 'combined'
-            ? 'Клавиатурный повтор: эксперимент PostMessage + activity-notify. Двойные действия возможны; чат не определяется. Команды не изменены.'
-            : c.mirrorKeyboardMethod === 'cache-hybrid'
-              ? 'Клавиатурный повтор: только выбранный экспериментальный способ доставки. Состояние чата не определяется. Команды не изменены.'
-              : 'Клавиатурный повтор: PostMessage с scan-code источника; это не activity-notify. Текст в чате и игровые горячие клавиши могут обрабатываться по-разному. Состояние чата программа не определяет.'
+        `Клавиатурный повтор: эксперимент «глобальный ввод + WM_KEYDOWN». Источник ${keyboardSourceRow ? 'ПЛ выбранной пати' : 'любое распознанное окно'}; получатели ${c.mirrorKeyboardTargets}: ${keyboardRows.map(row => state.characters.find(char => char.id === row.charId)?.nick || row.charId).join(', ')}. При источнике-ПЛ дополнительный SendInput пропускается, чтобы не дублировать физическое нажатие в ПЛ; иначе глобальный ввод может сработать повторно в активном окне. Адресный WM_KEYDOWN идёт только выбранным получателям. При смене фокуса SendInput может попасть в другое приложение. Чат не распознаётся; проверка игры не выполнена.`
+      );
+    if (desiredMouse && c.mirrorMouseGlobalInput)
+      log(
+        'Мышь: включён экспериментальный SendInput + оконные сообщения. Глобальный клик действует в активном окне у курсора и может повторить действие/потратить ресурс; при источнике-ПЛ глобальный дубль подавляется. Курсор должен оставаться в точке события. Совместимость с игрой не подтверждена.'
       );
     log(
-      `Повтор ВКЛЮЧЁН (клавиатура: ${mirrorKeys ? 'да' : 'нет'}, мышь: ${mirrorMouse ? 'да' : 'нет'}): ${rows.length} проверенных окон, общий источник/мышь: ${sourceRow ? 'ПЛ выбранной пати' : 'любая распознанная игра'}. ${mirrorMouse ? 'Кнопки мыши: абсолютные экранные точки.' : 'Мышь не передаётся.'} Ctrl+Alt+Pause — выключить. Обработка сообщений игрой не подтверждена.`,
+      `Повтор ВКЛЮЧЁН (клавиатура: ${mirrorKeys ? 'да' : 'нет'}, мышь: ${mirrorMouse ? 'да' : 'нет'}): ${rows.length} проверенных окон, общий источник/мышь: ${sourceRow ? 'ПЛ выбранной пати' : 'любая распознанная игра'}. ${mirrorMouse ? `Кнопки мыши: абсолютные экранные точки${c.mirrorMouseGlobalInput ? ' + экспериментальный глобальный ввод' : ''}.` : 'Мышь не передаётся.'} Ctrl+Alt+Pause — выключить. Обработка сообщений игрой не подтверждена.`,
+
       commandName
     );
   } catch (error) {
@@ -2447,7 +2449,7 @@ export async function overlayRecipientAction(request) {
 
 // Native bridge accepts requests only from main/overlay. Resolve IDs against current user data.
 export async function overlayPartyAction(request) {
-  if (!['party-refresh', 'party-launch', 'party-close-all'].includes(request?.action)) return;
+  if (!['party-refresh', 'party-launch', 'party-close-all', 'party-redecorate'].includes(request?.action)) return;
   if (busy) {
     overlayWindowNotice = 'Сначала завершите текущую команду.';
     await broadcast();
@@ -2456,7 +2458,8 @@ export async function overlayPartyAction(request) {
   busy = true;
   cancelled = false;
   launchProgress = null;
-  overlayWindowNotice = 'Проверка окон…';
+  overlayWindowNotice = request.action === 'party-redecorate' ? 'Обновляем оформление окон…' : 'Проверка окон…';
+  let completionNotice = '';
   void broadcast();
   try {
     if (request.action === 'party-close-all') {
@@ -2505,6 +2508,18 @@ export async function overlayPartyAction(request) {
       if (!result || result.some(r => r.ok === false || r.cancelled))
         throw new Error('Запуск пати не завершён. Проверьте журнал скриптов.');
     }
+    if (request.action === 'party-redecorate') {
+      const windows = await listMacroWindows();
+      const { redecorateRunningWindows, redecorateText } = await import('../launcher/launch.js');
+      const report = await redecorateRunningWindows(windows);
+      const summary = redecorateText(report);
+      completionNotice = report.denied
+        ? `Windows не дал доступ к части окон. ${summary || report.details.join('; ')}`
+        : summary ||
+          (report.details.length
+            ? report.details.join('; ')
+            : `Оформление проверено: без изменений (${report.ok} окон актуальны).`);
+    }
     const rows = await listMacroWindows();
     overlayWindows = rows.map(row => ({
       name: row.nick || 'Нераспознанное окно',
@@ -2516,7 +2531,7 @@ export async function overlayPartyAction(request) {
     }));
     overlayWindowNotice = cancelled
       ? 'Остановлено пользователем.'
-      : `Найдено окон: ${rows.length}. Обновите список после входа персонажей.`;
+      : completionNotice || `Найдено окон: ${rows.length}. Обновите список после входа персонажей.`;
   } catch (error) {
     overlayWindowNotice = macroErrorText(error);
   } finally {
