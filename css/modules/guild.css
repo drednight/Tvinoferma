@@ -181,12 +181,14 @@
 }
 
 .guild-polls .guild-poll {
-  flex: 1 1 280px;
-  min-width: 260px;
+  /* Не разрастаться по ширине: flex-grow 0 — карточка остаётся своей шириной,
+     рядом с другими, и переходит на следующую строку при нехватке места. */
+  flex: 0 1 280px;
+  min-width: 240px;
   max-width: 100%;
   margin-top: 0;
   padding: 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--surface);
 }
