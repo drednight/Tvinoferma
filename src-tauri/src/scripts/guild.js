@@ -363,15 +363,15 @@
           selected.some((value) => !validId(value)) || new Set(selected).size !== selected.length) {
         throw new Error('Выберите корректные варианты ответа.');
       }
-      const currentPoll = () => clean(document.querySelector('#mainPoll')?.getAttribute('data-poll-id'));
-      if (currentPoll() !== id) throw new Error('Опрос изменился. Обновите сводку клана.');
+      // Опрос может прийти и из профиля (#mainPoll), и из списка (polls.php).
+      // Проверяем его актуальность через fetchPoll (текущие варианты и тип), а не через
+      // #mainPoll на странице профиля: опрос из списка в профиле вовсе не отображается.
       const poll = await fetchPoll(id);
       const available = new Set(poll.options.map((option) => String(option.id)));
       if (selected.some((value) => !available.has(value)) ||
           (poll.poll.poll_type !== 'multiple' && selected.length !== 1)) {
         throw new Error('Варианты опроса изменились. Обновите сводку клана.');
       }
-      if (!isGuildOrigin() || currentPoll() !== id) throw new Error('Опрос изменился. Обновите сводку клана.');
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 12000);
       try {
