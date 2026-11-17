@@ -15,19 +15,21 @@ import { escapeHtml as esc, copyToClipboard } from '../../core/utils.js';
 import { isTauri, assertStateWriteAvailable } from '../../core/storage.js';
 import { getClassIconSrcByStem, getClassIconSrc, CLASSES } from '../../core/constants.js';
 import { createResponseQueue } from './responseQueue.js';
+import { createPollVoteQueue } from './pollVoteQueue.js';
 import {
   setGuildLeaderOverride,
   readPendingResponses,
   writePendingResponses,
+  readPendingPollVotes,
+  writePendingPollVotes,
   guildEnabled,
   readGuildData,
-  writeGuildData,
-  rememberGuildPollVote
+  writeGuildData
 } from './state.js';
 import { syncClanEntries } from './plannerBridge.js';
 import { summaryText, responseText, partyNicks, allPartyNicks, isSelfNick, RESPONSE_YES, RESPONSE_NO } from './core.js';
 import { openGuild, syncGuildFromSite, respondToEvent, voteInGuildPoll } from './window.js';
-import { guildPollHtml, safePollLink } from './poll.js';
+import { guildPollHtml, safePollLink, withPendingPollState } from './poll.js';
 
 /** Первая проверка после старта приложения: через минуту, чтобы не мешать запуску. */
 const START_DELAY_MS = 60 * 1000;
@@ -62,7 +64,10 @@ function renderTodayNow() {
 
 /** Показывает или прячет панель клана на «Сегодня» по флагу. */
 export function applyGuildVisibility() {
-  if (backgroundStarted) responses.resume();
+  if (backgroundStarted) {
+    responses.resume();
+    pollVotes.resume();
+  }
   renderTodayNow();
 }
 
@@ -122,16 +127,15 @@ async function onClick(e) {
     // голос уходит кнопкой «Голосовать выбранными».
     togglePollOption(btn);
   } else if (act === 'poll-vote') {
-    // Одно нажатие на вариант одиночного опроса — один голос: приложение само
-    // отправляет выбор на сайт и перепроверяет его. Для многовариантного опроса
-    // эта кнопка отправляет уже переключённые варианты.
+    // Нажатие на вариант — выбор ставится сразу локально (оптимизм), а голос
+    // отправляется через паузу фоновым шагом очереди, как у ответов на события.
     const pollId = btn.dataset.poll;
     const data = readGuildData();
     const poll = data.polls.find(p => p.id === String(pollId));
     if (poll?.type === 'multiple' && !btn.dataset.option) {
-      await run(btn, () => sendPollVote(pollId, selectedPollOptions(btn), poll));
+      await run(btn, () => enqueuePollVote(pollId, selectedPollOptions(btn), poll));
     } else {
-      await run(btn, () => sendPollVote(pollId, [btn.dataset.option], poll));
+      await run(btn, () => enqueuePollVote(pollId, [btn.dataset.option], poll));
     }
   } else if (act === 'copy-nicks') {
     // Вне run(): перерисовка сразу стёрла бы надпись «✔ Скопировано» на кнопке.
@@ -178,12 +182,11 @@ function selectedPollOptions(btn) {
 }
 
 /**
- * Голос отправляется одной кнопкой, как кнопка «Пойду» у события: приложение само
- * отправляет выбор на нужную страницу сайта и перепроверяет его. `poll` — опрос
- * из кэша сводки (только список polls.php): выбор валидации всегда проходит
- * через сайт, а не через DOM окна.
+ * Валидирует выбор по кэшу сводки (только список polls.php) и отдаёт голос в
+ * очередь: выбор показывается сразу, отправка на сайт — фоновый шаг после паузы,
+ * как у ответов на события. Опрос и варианты перепроверяет сам сайт при отправке.
  */
-async function sendPollVote(pollId, optionIds, poll) {
+async function enqueuePollVote(pollId, optionIds, poll) {
   const data = readGuildData();
   const current = poll || data.polls.find(p => p.id === String(pollId));
   if (!current || current.loadError) {
@@ -200,45 +203,11 @@ async function sendPollVote(pollId, optionIds, poll) {
     toast('Варианты опроса изменились. Обновите сводку клана.', 'warning');
     return;
   }
-  let accepted = false;
   try {
-    const result = await voteInGuildPoll(pollId, selected);
-    if (!result?.ok) {
-      toast(result?.message || 'Сайт не принял голос.', 'error');
-      return;
-    }
-    accepted = true;
-    let fresh = false;
-    try {
-      fresh = await syncGuild({ silent: true });
-    } catch {
-      // Голос уже принят: не заявляем, что отправка не удалась, из-за ошибки сохранения.
-    }
-    if (!fresh) {
-      try {
-        await rememberGuildPollVote(pollId, selected);
-      } catch {
-        // Ответ принят сайтом, но кэш недоступен; повторное обновление покажет его.
-      }
-      toast('Голос учтён, но обновить сводку не удалось. Обновите её позже.', 'warning');
-    } else if (readGuildData().polls.some(p => p.id === String(pollId) && p.loadError)) {
-      toast('Голос учтён, но варианты не удалось перечитать. Обновите сводку позже.', 'warning');
-    } else {
-      toast('Голос учтён.', 'success');
-    }
-  } catch (error) {
-    const code = String(error?.message || error);
-    const message =
-      code === 'login'
-        ? 'Нужно войти на сайт клана через кнопку «Открыть сайт».'
-        : code === 'busy'
-          ? 'Обновление клана уже идёт. Попробуйте ещё раз.'
-          : code === 'wrong_site'
-            ? 'Вернитесь к профилю в окне клана и обновите сводку.'
-            : 'Не удалось подтвердить голос. Обновите сводку перед повторной попыткой.';
-    toast(message, 'warning');
-  } finally {
-    if (accepted) renderTodayNow();
+    await pollVotes.enqueue(pollId, selected);
+    toast('Голос записан, отправка через пару секунд.', 'info');
+  } catch {
+    toast('Не удалось сохранить голос. Нажмите вариант для повтора.', 'warning');
   }
 }
 
@@ -275,6 +244,7 @@ export async function syncGuild({ silent = false, retries = 3 } = {}) {
     if (!writesAvailable()) return false;
     await writeGuildData(report);
     await responses.reconcile(report);
+    await pollVotes.reconcile(report);
     if (!silent) toast('Сводка обновлена', 'success');
     return true;
   }
@@ -333,6 +303,7 @@ function scheduleMidnightSync() {
 export function startGuildDailySync() {
   backgroundStarted = true;
   responses.resume();
+  pollVotes.resume();
   setTimeout(autoSync, START_DELAY_MS);
   scheduleMidnightSync();
 }
@@ -357,6 +328,27 @@ const responses = createResponseQueue({
   }
 });
 
+/** Очередь голосов в опросы: выбор показывается сразу, отправка — фоновый шаг. */
+const pollVotes = createPollVoteQueue({
+  getEntries: readPendingPollVotes,
+  saveEntries: writePendingPollVotes,
+  enabled: () => isTauri() && guildEnabled() && writesAvailable(),
+  changed: renderTodayNow,
+  send: voteInGuildPoll,
+  read: async () => {
+    const report = await syncGuildFromSite();
+    if (!writesAvailable()) throw new Error('protected');
+    await writeGuildData(report);
+    await syncClanEntries(readGuildData());
+    renderTodayNow();
+    return report;
+  },
+  begin: async () => {
+    const { startTask } = await import('../../core/taskLog.js');
+    return startTask('Переносятся голоса в опросы');
+  }
+});
+
 /** Immediate local choice. Confirmation is deliberately a separate background step. */
 export async function respond(eventId, response) {
   try {
@@ -366,7 +358,10 @@ export async function respond(eventId, response) {
     return false;
   }
 }
-export const touchGuildResponses = () => responses.touch();
+export const touchGuildResponses = () => {
+  responses.touch();
+  pollVotes.touch();
+};
 
 /**
  * Копирует ники одной строкой через пробел — ровно так же, как кнопка «Копировать» на сайте:
@@ -469,7 +464,7 @@ function partiesHtml(data) {
 
 /** Список открытых опросов со страницы polls.php: все, в которые можно проголосовать. */
 function pollsHtml(data) {
-  const polls = data.polls || [];
+  const polls = withPendingPollState(data.polls || [], readPendingPollVotes());
   if (!polls.length) return '';
   return `
     <section class="guild-polls" aria-labelledby="guild-polls-title">

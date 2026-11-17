@@ -15,6 +15,7 @@ import { SOUND_TONES, DEFAULT_TONE } from '../../desktop/sound.js';
 const SOUND_TONE_IDS = new Set(SOUND_TONES.map(t => t.id));
 import { normalizeGameCenters } from '../../modules/launcher/gameCenters.js';
 import { normalizePendingResponses } from '../../modules/guild/responseQueue.js';
+import { normalizePendingPollVotes } from '../../modules/guild/pollVoteQueue.js';
 import { normalizeGuildData } from '../../modules/guild/core.js';
 import { normalizePreflightMode } from '../../modules/launcher/preflight.js';
 import { normalizeSectionsSettings } from '../sections.js';
@@ -30,7 +31,8 @@ function normalizeGuildSettings(input = {}) {
   return {
     ...normalizeGuildData(input),
     enabled: input?.enabled === true,
-    pendingResponses: normalizePendingResponses(input?.pendingResponses)
+    pendingResponses: normalizePendingResponses(input?.pendingResponses),
+    pendingPollVotes: normalizePendingPollVotes(input?.pendingPollVotes)
   };
 }
 

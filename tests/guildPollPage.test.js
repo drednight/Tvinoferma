@@ -15,6 +15,9 @@ vi.mock('../js/modules/guild/window.js', () => ({
   voteInGuildPoll: vi.fn()
 }));
 vi.mock('../js/core/linkBrowser.js', () => ({ openWebLink: vi.fn(async () => {}) }));
+vi.mock('../js/core/taskLog.js', () => ({
+  startTask: () => ({ waitTurn: async () => {}, progress: vi.fn(), log: vi.fn(), finish: vi.fn() })
+}));
 
 import { state } from '../js/core/state.js';
 import { toast } from '../js/core/ui.js';
@@ -31,10 +34,8 @@ const poll = () => ({
     { id: '502', text: [{ text: 'Второй' }], selected: false }
   ]
 });
-const optionButton = id =>
-  document.querySelector(`.guild-poll-options button[data-option="${id}"]`);
-const submit = () =>
-  document.querySelector('.guild-poll-submit button');
+const optionButton = id => document.querySelector(`.guild-poll-options button[data-option="${id}"]`);
+const submit = () => document.querySelector('.guild-poll-submit button');
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -46,53 +47,55 @@ beforeEach(() => {
 });
 
 describe('голосование в панели клана', () => {
-  it('без выбора не позволяет отправить голос многовариантного опроса', () => {
+  it('сразу ставит выбор локально, а голос отправляет через паузу', async () => {
+    vi.useFakeTimers();
+    voteInGuildPoll.mockResolvedValue({ ok: true });
+    syncGuildFromSite.mockResolvedValue({
+      events: [],
+      parties: [],
+      selfNick: '',
+      polls: [{ ...poll(), options: [{ id: '501', text: [{ text: 'Первый' }], selected: true }, { id: '502', text: [{ text: 'Второй' }], selected: false }] }]
+    });
+    optionButton('501').click();
+    // Выбор виден сразу: вариант выделен, статус «ожидает отправки».
+    expect(optionButton('501').getAttribute('aria-pressed')).toBe('true');
+    expect(toast).toHaveBeenCalledWith('Голос записан, отправка через пару секунд.', 'info');
+    expect(voteInGuildPoll).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(voteInGuildPoll).toHaveBeenCalledWith('901', ['501']);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(state.settings.guild.syncedAt).toBeGreaterThan(123);
+    expect(optionButton('501').getAttribute('aria-pressed')).toBe('true');
+    vi.useRealTimers();
+  });
+
+  it('без выбора ничего не отправляет', () => {
     expect(submit().disabled).toBe(true);
     submit().click();
     expect(voteInGuildPoll).not.toHaveBeenCalled();
-    expect(toast).not.toHaveBeenCalledWith(expect.stringContaining('Голос учтён'), expect.anything());
   });
 
-  it('после подтверждения голосования обновляет сводку и показывает сохранённый выбор сайта', async () => {
+  it('многовариантный опрос отправляет выбранные варианты кнопкой', async () => {
+    vi.useFakeTimers();
     voteInGuildPoll.mockResolvedValue({ ok: true });
-    const updated = poll();
-    updated.options[1].selected = true;
-    syncGuildFromSite.mockResolvedValue({ events: [], parties: [], selfNick: '', polls: [updated] });
-    optionButton('502').click();
-    expect(submit().disabled).toBe(false);
-    submit().click();
-    await vi.waitFor(() => expect(toast).toHaveBeenCalledWith('Голос учтён.', 'success'));
-    expect(voteInGuildPoll).toHaveBeenCalledWith('901', ['502']);
-    expect(syncGuildFromSite).toHaveBeenCalledTimes(1);
-    expect(optionButton('502').getAttribute('aria-pressed')).toBe('true');
-    expect(state.settings.guild.syncedAt).toBeGreaterThan(123);
-  });
-
-  it('если сайт принял голос, но повторная сводка не удалась, не подделывает время полной синхронизации', async () => {
-    voteInGuildPoll.mockResolvedValue({ ok: true });
-    syncGuildFromSite.mockRejectedValue('timeout');
+    syncGuildFromSite.mockResolvedValue({
+      events: [],
+      parties: [],
+      selfNick: '',
+      polls: [poll()]
+    });
     optionButton('501').click();
-    submit().click();
-    await vi.waitFor(() => expect(toast).toHaveBeenCalledWith(expect.stringContaining('Голос учтён, но'), 'warning'));
-    expect(state.settings.guild.syncedAt).toBe(123);
-    expect(state.settings.guild.polls[0].options[0].selected).toBe(true);
-    expect(optionButton('501').getAttribute('aria-pressed')).toBe('true');
-  });
-
-  it('не выдаёт неясный результат за успешный и не запускает повторное голосование', async () => {
-    voteInGuildPoll.mockRejectedValue('timeout');
     optionButton('502').click();
-    submit().click();
-    await vi.waitFor(() =>
-      expect(toast).toHaveBeenCalledWith(expect.stringContaining('Не удалось подтвердить голос'), 'warning')
-    );
-    expect(voteInGuildPoll).toHaveBeenCalledTimes(1);
-    expect(syncGuildFromSite).not.toHaveBeenCalled();
-    expect(optionButton('502').getAttribute('aria-pressed')).toBe('true');
     expect(submit().disabled).toBe(false);
+    submit().click();
+    expect(voteInGuildPoll).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(voteInGuildPoll).toHaveBeenCalledWith('901', ['501', '502']);
+    vi.useRealTimers();
   });
 
-  it('в одиночном опросе клик по варианту сразу отправляет голос', async () => {
+  it('в одиночном опросе клик по варианту ставит выбор и уходит в очередь', async () => {
+    vi.useFakeTimers();
     state.settings.guild = {
       enabled: true,
       events: [],
@@ -106,8 +109,10 @@ describe('голосование в панели клана', () => {
     renderGuildToday();
     const single = document.querySelector('.guild-poll[data-poll-id="901"] .guild-poll-options button');
     single.click();
-    await vi.waitFor(() => expect(voteInGuildPoll).toHaveBeenCalledWith('901', ['501']));
-    expect(toast).toHaveBeenCalledWith('Голос учтён.', 'success');
+    expect(single.getAttribute('aria-pressed')).toBe('true');
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(voteInGuildPoll).toHaveBeenCalledWith('901', ['501']);
+    vi.useRealTimers();
   });
 
   it('ссылку открывает через системный браузер, а не в окне приложения', async () => {

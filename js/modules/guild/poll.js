@@ -109,20 +109,41 @@ export function pollPartsHtml(parts) {
 }
 
 /**
+ * Объединяет локальный выбор (ожидает отправки) с опросами из сводки для отрисовки.
+ * Пока голос лежит в очереди, его варианты уже выделены — выбор виден сразу,
+ * а отправка уходит фоново после паузы, как у ответов на события.
+ */
+export function withPendingPollState(polls, pendingVotes) {
+  const byId = new Map((pendingVotes || []).map(vote => [String(vote.pollId), vote]));
+  return (polls || []).map(poll => {
+    const vote = byId.get(String(poll.id));
+    if (!vote) return poll;
+    const selected = new Set(vote.optionIds);
+    return {
+      ...poll,
+      options: poll.options.map(option => ({ ...option, selected: option.selected || selected.has(option.id) })),
+      voteState: vote.failed ? 'failed' : 'pending'
+    };
+  });
+}
+
+/**
  * Никакого блока при отсутствии опроса. Варианты — кнопки, как кнопки «Пойду/Не пойду»
- * у предстоящих событий: нажатие на вариант сразу отправляет голос через сессию
- * кланового окна, а приложение само перепроверяет его на сайте.
- * Уже отмеченный вариант выделяется, как «Пойду» у события.
+ * у предстоящих событий: нажатие на вариант сразу отрисовывает выбор, а голос
+ * отправляется через паузу фоновым шагом. Уже выбранный вариант выделяется,
+ * как «Пойду» у события.
  */
 export function guildPollHtml(raw) {
   const poll = normalizeGuildPoll(raw);
   if (!poll) return '';
   const multiple = poll.type === 'multiple';
+  const pending = poll.voteState === 'pending';
+  const failed = poll.voteState === 'failed';
   const voted = poll.options.some(option => option.selected);
   const options = poll.options
     .map(option => {
       // Одно нажатие = один голос, как у кнопок отметки события:
-      // для одиночного опроса вариант сразу отправляется, для многовариантного —
+      // для одиночного опроса вариант сразу входит в очередь, для многовариантного —
       // переключается, а голос уходит кнопкой «Голосовать выбранными».
       const action = multiple ? 'poll-toggle' : 'poll-vote';
       return `<button type="button" class="btn small ${option.selected ? 'primary' : 'secondary'}"
@@ -137,13 +158,21 @@ export function guildPollHtml(raw) {
       : multiple
         ? 'Можно выбрать несколько вариантов.'
         : 'Нажмите вариант, чтобы проголосовать.';
-  const state = voted ? 'Голос учтён' : multiple ? 'Выберите варианты' : 'Выберите вариант';
+  const state = pending
+    ? 'Ожидает отправки'
+    : failed
+      ? 'Не подтверждён · нажмите вариант для повтора'
+      : voted
+        ? 'Голос учтён'
+        : multiple
+          ? 'Выберите варианты'
+          : 'Выберите вариант';
   // Кнопка отправки нужна только многовариантному опросу: у одиночного голос уходит сразу.
   const submit = multiple
     ? `<button class="btn small primary" type="button" data-guild="poll-vote" data-poll="${poll.id}" disabled>Голосовать выбранными</button>`
     : '';
   return `
-    <section class="guild-poll${voted ? ' is-voted' : ''}" data-poll-id="${poll.id}" aria-labelledby="guild-poll-title">
+    <section class="guild-poll${voted || pending ? ' is-voted' : ''}" data-poll-id="${poll.id}" aria-labelledby="guild-poll-title">
       <div class="guild-poll-main">
         <h3 id="guild-poll-title">Опрос</h3>
         <div class="guild-poll-title">${pollPartsHtml(poll.title) || 'Голосование'}</div>

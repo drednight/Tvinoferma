@@ -10,7 +10,8 @@ import { connectedTodayState, runTodayAction, nativeToday } from './todayRuntime
 import { promoDeadlineState } from '../automation/promoDeadlineLabel.js';
 import { getClassIconSrcByStem } from '../../core/constants.js';
 import { partyNicks } from '../guild/core.js';
-import { guildPollHtml } from '../guild/poll.js';
+import { guildPollHtml, withPendingPollState } from '../guild/poll.js';
+import { readPendingPollVotes } from '../guild/state.js';
 import { widgetIcon } from './widgetCatalog.js';
 import { renderShowcaseWidgets } from './showcaseWidgets.js';
 const assets = import.meta.env?.BASE_URL
@@ -138,7 +139,10 @@ export function renderReferenceToday(input) {
            .join('') || '<p>Расписание ещё не получено.</p>'
        }</div><aside><small>Моя пати</small>${clanParties.map((p, i) => `<div class="rt-party-heading"><b>${esc(p.name)}</b><button type="button" class="lg-button rt-copy-party" data-today-copy-party="${i}" title="Скопировать ники, кроме своего" aria-label="Скопировать ники, кроме своего"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></svg></button></div><div class="rt-people">${p.members.map(member).join('')}</div>`).join('')}</aside></div>${
         (s.guild?.polls || []).length
-          ? `<section class="guild-polls" aria-labelledby="guild-polls-title"><h3 id="guild-polls-title">Опросы</h3><p class="muted guild-polls-hint">Только открытые опросы с сайта клана.</p>${(s.guild.polls || [])
+          ? `<section class="guild-polls" aria-labelledby="guild-polls-title"><h3 id="guild-polls-title">Опросы</h3><p class="muted guild-polls-hint">Только открытые опросы с сайта клана.</p>${withPendingPollState(
+              s.guild.polls,
+              readPendingPollVotes()
+            )
               .map(poll => guildPollHtml(poll))
               .join('')}</section>`
           : ''

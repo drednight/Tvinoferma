@@ -7,6 +7,7 @@
 import { state } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
 import { normalizeGuildData } from './core.js';
+import { normalizePendingPollVotes } from './pollVoteQueue.js';
 
 /** Раздел настроек клана; создаётся при первом обращении. */
 function guildSettings() {
@@ -38,29 +39,15 @@ export function readGuildData() {
  * от прежней схемы обновления не должны в нём копиться.
  */
 export async function writeGuildData(data) {
-  const { enabled, pendingResponses, leaderOverrides } = guildSettings();
+  const { enabled, pendingResponses, pendingPollVotes, leaderOverrides } = guildSettings();
   state.settings.guild = {
     ...normalizeGuildData({ ...data, leaderOverrides: leaderOverrides || [] }),
     pendingResponses: pendingResponses || [],
+    pendingPollVotes: pendingPollVotes || [],
     syncedAt: Date.now(),
     ...(enabled !== undefined ? { enabled } : {})
   };
   await persist();
-}
-
-/** Если голос принят, а сводку перечитать не удалось, сохраняем только сам ответ. */
-export async function rememberGuildPollVote(pollId, optionIds) {
-  const data = readGuildData();
-  const selected = new Set(optionIds.map(String));
-  const withVote = poll =>
-    poll ? { ...poll, options: poll.options.map(option => ({ ...option, selected: selected.has(option.id) })) } : null;
-  // Все опросы — из списка открытых опросов (polls.php); профильный опрос не берётся.
-  const polls = data.polls.map(poll => (poll.id === String(pollId) ? withVote(poll) : poll));
-  if (!polls.some(poll => poll.id === String(pollId))) return false;
-  // syncedAt остаётся временем последней настоящей сводки, а не неудачного обновления.
-  state.settings.guild = { ...guildSettings(), polls };
-  await persist();
-  return true;
 }
 
 /** Durable local intentions; never advance syncedAt or write them into the verified report. */
@@ -69,6 +56,15 @@ export function readPendingResponses() {
 }
 export async function writePendingResponses(pendingResponses) {
   state.settings.guild = { ...guildSettings(), pendingResponses };
+  await persist();
+}
+
+/** Локальный выбор в опросах: показывается сразу, отправка — отложенный фоновый шаг. */
+export function readPendingPollVotes() {
+  return normalizePendingPollVotes(guildSettings().pendingPollVotes);
+}
+export async function writePendingPollVotes(pollVotes) {
+  state.settings.guild = { ...guildSettings(), pendingPollVotes };
   await persist();
 }
 

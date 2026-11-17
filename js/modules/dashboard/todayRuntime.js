@@ -100,7 +100,7 @@ export function connectedTodayState(preview) {
     )
   };
 }
-export async function runTodayAction(action, { partyId, eventId, response, date, title, time, kind, onProgress, pollId, optionIds } = {}) {
+export async function runTodayAction(action, { partyId, eventId, response, date, title, time, kind, onProgress } = {}) {
   if (!nativeToday())
     return {
       ok: false,
@@ -132,12 +132,6 @@ export async function runTodayAction(action, { partyId, eventId, response, date,
   } else if (action === 'clan-vote') {
     if (!(await (await import('../guild/page.js')).respond(eventId, response)))
       return { ok: false, message: 'Не удалось сохранить выбранный ответ.' };
-  } else if (action === 'clan-poll-vote') {
-    const { voteInGuildPoll } = await import('../guild/window.js');
-    const { syncGuild } = await import('../guild/page.js');
-    if (!(await voteInGuildPoll(pollId, optionIds)))
-      return { ok: false, message: 'Не удалось отправить голос.' };
-    await syncGuild({ silent: true }).catch(() => {});
   } else if (action === 'todo') {
     const entry = state.plannerEntries.find(e => e.id === eventId);
     if (entry) {
