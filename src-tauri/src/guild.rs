@@ -241,8 +241,9 @@ async fn wait_for_report_with_login_retry(
         match wait_for_report(win).await {
             Ok(report) => return Ok(report),
             Err(error) => {
+                let is_login = error == "login";
                 last = Err(error);
-                if error != "login" || attempt + 1 >= attempts {
+                if !is_login || attempt + 1 >= attempts {
                     break;
                 }
                 crate::parsers::tf_log(
