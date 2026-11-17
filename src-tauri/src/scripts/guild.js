@@ -334,11 +334,19 @@
         json = JSON.parse(text.replace(/^\uFEFF/, ''));
       } catch (e) { /* ответ не JSON — вердикт по нему прочитать нельзя */ }
       const verdict = json && typeof json === 'object' ? json : null;
+      // Любое явное «нет» — отказ; форма успеха может быть любой из распространённых.
       const refused = verdict && (verdict.status === 'error' || verdict.success === false || verdict.ok === false);
-      // A login page or an unknown 2xx body is not an acknowledgement. The app
-      // verifies ambiguous results against a freshly fetched profile.
-      result.ok = reply.ok && !refused && !!verdict &&
-        (verdict.status === 'success' || verdict.success === true || verdict.ok === true);
+      const confirmed =
+        !!verdict &&
+        (verdict.status === 'success' ||
+          verdict.status === 'ok' ||
+          verdict.result === 'success' ||
+          verdict.result === 'ok' ||
+          verdict.success === true ||
+          verdict.ok === true);
+      // Страница входа или неразборный 2xx не подтверждают. Приложение сверит
+      // отметку со свежей страницей профиля — она и есть авторитетный вердикт.
+      result.ok = reply.ok && !refused && confirmed;
       result.message = clean(verdict?.message || '');
       result.detail = clean(text).slice(0, 200);
     } catch (e) {
