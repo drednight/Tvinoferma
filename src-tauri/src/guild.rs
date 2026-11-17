@@ -183,11 +183,13 @@ async fn wait_for_window_ready(win: &WebviewWindow) -> Result<(), String> {
     let deadline = Instant::now() + Duration::from_secs(SYNC_TIMEOUT_SECS);
     while Instant::now() < deadline {
         tokio::time::sleep(Duration::from_millis(300)).await;
-        let Ok(ready) = win.eval("document.readyState === 'complete' && typeof window.__tfGuildVote === 'function'")
-        else {
+        // eval_js возвращает результат выражения; eval бросает значение в них.
+        let Ok(ready) = win.eval_js(
+            "document.readyState === 'complete' && typeof window.__tfGuildVote === 'function'".to_string(),
+        ) else {
             continue;
         };
-        if ready.trim() == "true" {
+        if ready == serde_json::Value::Bool(true) {
             return Ok(());
         }
     }
