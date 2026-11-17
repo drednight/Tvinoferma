@@ -19,6 +19,10 @@ use tauri::webview::NewWindowResponse;
 use tauri::{command, AppHandle, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 const GUILD_LABEL: &str = "guild-win";
+/// Метка видимого окна клана, которое открывает кнопка «Открыть сайт».
+/// Отдельно от скрытого окна (`GUILD_LABEL`): кнопка должна запускать новое видимое
+/// окно, а не поднимать скрытое, которое вспыхило для фонового обмена данными.
+const GUILD_VIEW_LABEL: &str = "guild-view";
 /// Адрес кланового сайта. Это настоящий домен, а не название раздела: при переименовании
 /// модуля `eternals` → `guild` его уже однажды задели, и окно открывало несуществующий сайт.
 const GUILD_URL: &str = "https://pw-eternals.ru/index.php";
@@ -61,32 +65,17 @@ fn clan_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window(GUILD_LABEL)
 }
 
-/// Держит окно клана живым: если его нет — создаёт скрытое и отдаёт его.
-///
-/// Окно НЕ удаляется после операции: сессионные cookie сайта живут в памяти окна,
-/// а при каждом пересоздании окна скрипт начинал «с нуля» и POST уходил на страницу
-/// входа. За один прогрев окно остаётся загруженным, вход сохраняется, и отметки
-/// уходят автоматически — без того, чтобы пользователь держал окно открытым.
-/// Возвращает `(окно, создано ли сейчас)`: если только что создано — первое действие
-/// дожидается разбора страницы.
-fn ensure_clan_window(app: &AppHandle) -> Result<(WebviewWindow, bool), String> {
-    match clan_window(app) {
-        Some(win) => Ok((win, false)),
-        None => Ok((create_clan_window(app, false)?, true)),
-    }
-}
-
 /// Создаёт окно клана. `visible = false` — скрытое окно для фонового обновления.
 ///
 /// Создаётся только из `async` команд: на Windows создание окна из синхронной команды приводит
 /// к взаимной блокировке, и `invoke` тогда не возвращается.
-fn create_clan_window(app: &AppHandle, visible: bool) -> Result<WebviewWindow, String> {
+fn create_clan_window(app: &AppHandle, label: &str, visible: bool) -> Result<WebviewWindow, String> {
     let url = Url::parse(GUILD_URL).map_err(|e| e.to_string())?;
     let origin =
         serde_json::to_string(&url.origin().ascii_serialization()).map_err(|e| e.to_string())?;
     let script = format!("window.__tfGuildOrigin = {};\n{}", origin, GUILD_SCRIPT);
     let handle = app.clone();
-    WebviewWindowBuilder::new(app, GUILD_LABEL, WebviewUrl::External(url))
+    WebviewWindowBuilder::new(app, label, WebviewUrl::External(url))
         .title("Клан")
         .inner_size(1100.0, 800.0)
         .resizable(true)
@@ -96,7 +85,7 @@ fn create_clan_window(app: &AppHandle, visible: bool) -> Result<WebviewWindow, S
         .on_new_window(move |url, _features| {
             // Ссылки, которые сайт открывает в новом окне, показываем в этом же окне
             if matches!(url.scheme(), "http" | "https") {
-                if let Some(win) = handle.get_webview_window(GUILD_LABEL) {
+                if let Some(win) = handle.get_webview_window(label) {
                     tauri::async_runtime::spawn(async move {
                         let _ = win.navigate(url);
                     });
@@ -108,32 +97,23 @@ fn create_clan_window(app: &AppHandle, visible: bool) -> Result<WebviewWindow, S
         .map_err(|e| e.to_string())
 }
 
-/// Открывает окно клана или поднимает уже открытое.
+/// Открывает видимое окно клана (кнопка «Открыть сайт»): запускает новое видимое окно,
+/// а не поднимает скрытое, которое могло вспыхнуть для фонового обмена данными.
 #[command]
 pub async fn open_guild_window(app: AppHandle) -> Result<(), String> {
-    if let Some(win) = clan_window(&app) {
+    if let Some(win) = app.get_webview_window(GUILD_VIEW_LABEL) {
         win.show().map_err(|e| e.to_string())?;
         win.set_focus().map_err(|e| e.to_string())?;
         return Ok(());
     }
-    create_clan_window(&app, true).map(|_| ())
+    create_clan_window(&app, GUILD_VIEW_LABEL, true).map(|_| ())
 }
 
-/// Закрывает окно клана.
+/// Закрывает видимое окно клана.
 #[command]
 pub async fn close_guild_window(app: AppHandle) -> Result<(), String> {
-    if let Some(win) = clan_window(&app) {
+    if let Some(win) = app.get_webview_window(GUILD_VIEW_LABEL) {
         win.close().map_err(|e| e.to_string())?;
-    }
-    Ok(())
-}
-
-/// Прячет окно клана, но держит его живым: сессия сайта остаётся в памяти,
-/// и отметки продолжают уходить автоматически после того, как пользователь вошёл.
-#[command]
-pub async fn hide_guild_window(app: AppHandle) -> Result<(), String> {
-    if let Some(win) = clan_window(&app) {
-        win.hide().map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -141,7 +121,7 @@ pub async fn hide_guild_window(app: AppHandle) -> Result<(), String> {
 /// Открыто ли окно клана (видимое или скрытое).
 #[command]
 pub fn guild_window_exists(app: AppHandle) -> bool {
-    clan_window(&app).is_some()
+    clan_window(&app).is_some() || app.get_webview_window(GUILD_VIEW_LABEL).is_some()
 }
 
 /// Обновляет сводку клана: события и пати.
@@ -162,10 +142,17 @@ pub async fn guild_sync(app: AppHandle) -> Result<serde_json::Value, String> {
 }
 
 async fn run_sync(app: &AppHandle) -> Result<serde_json::Value, String> {
-    // Окно клана живёт постоянно (скрыто, если пользователь его не открыл):
-    // не трогаем и не скрываем видимое — только свежую сводку считываем.
-    let (win, _created) = ensure_clan_window(app)?;
-    wait_for_report(&win).await
+    // Скрытое окно открывается только на время обмена: если видимого окна нет —
+    // вспыхиваем скрытое, берём сводку и закрываем. Не держим его постоянно.
+    match clan_window(app) {
+        Some(win) => wait_for_report(&win).await,
+        None => {
+            let win = create_clan_window(app, GUILD_LABEL, false)?;
+            let result = wait_for_report(&win).await;
+            let _ = win.destroy();
+            result
+        }
+    }
 }
 
 /// Ждёт payload в hash окна. `read_hash_payload` отдаёт `(ошибка, данные)`: ошибка `login`
@@ -257,9 +244,14 @@ async fn run_respond(
     event_id: &str,
     response: &str,
 ) -> Result<serde_json::Value, String> {
-    match ensure_clan_window(app) {
-        Ok((win, fresh)) => send_response(&win, event_id, response, fresh).await,
-        Err(error) => Err(error),
+    match clan_window(app) {
+        Some(win) => send_response(&win, event_id, response, false).await,
+        None => {
+            let win = create_clan_window(app, GUILD_LABEL, false)?;
+            let result = send_response(&win, event_id, response, true).await;
+            let _ = win.destroy();
+            result
+        }
     }
 }
 
@@ -325,8 +317,15 @@ async fn run_vote(
     poll_id: &str,
     option_ids: &[String],
 ) -> Result<serde_json::Value, String> {
-    let (win, fresh) = ensure_clan_window(app)?;
-    send_vote(&win, poll_id, option_ids, fresh).await
+    match clan_window(app) {
+        Some(win) => send_vote(&win, poll_id, option_ids, false).await,
+        None => {
+            let win = create_clan_window(app, GUILD_LABEL, false)?;
+            let result = send_vote(&win, poll_id, option_ids, true).await;
+            let _ = win.destroy();
+            result
+        }
+    }
 }
 
 /// Видимое окно могло перейти по ссылке на другой сайт. Не отправляем данные или

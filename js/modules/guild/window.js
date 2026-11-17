@@ -33,12 +33,6 @@ export async function closeGuild(deps = {}) {
   return serial('close_guild_window', undefined, deps);
 }
 
-/** Прячет окно клана, но держит его живым: сессия сайта остаётся в памяти, и отметки
- *  продолжают уходить автоматически после входа. */
-export async function hideGuild(deps = {}) {
-  return serial('hide_guild_window', undefined, deps);
-}
-
 /** Открыто ли окно (видимое или скрытое). */
 export async function isGuildOpen(deps = {}) {
   return (deps.invoke || callRust)('guild_window_exists');

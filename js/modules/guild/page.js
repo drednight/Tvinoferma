@@ -28,7 +28,7 @@ import {
 } from './state.js';
 import { syncClanEntries } from './plannerBridge.js';
 import { summaryText, responseText, partyNicks, allPartyNicks, isSelfNick, RESPONSE_YES, RESPONSE_NO } from './core.js';
-import { openGuild, hideGuild, syncGuildFromSite, respondToEvent, voteInGuildPoll } from './window.js';
+import { openGuild, syncGuildFromSite, respondToEvent, voteInGuildPoll } from './window.js';
 import { guildPollHtml, safePollLink, withPendingPollState } from './poll.js';
 
 /** Первая проверка после старта приложения: через минуту, чтобы не мешать запуску. */
@@ -241,8 +241,9 @@ export async function syncGuild({ silent = false, retries = 3 } = {}) {
         continue;
       }
       if (code === 'login' && !loginPromptShown) {
-        // Сессия окна клана не активна: поднимаем окно, чтобы пользователь вошёл один раз.
-        // После входа окно скроется, но останется живым — отметки уйдут автоматически.
+        // Сессия окна клана не активна: поднимаем видимое окно, чтобы пользователь
+        // вошёл один раз. После входа окно остаётся открытым, скрытое для обмена
+        // делит с ним профиль и получает сессию.
         loginPromptShown = true;
         await openGuild().catch(() => {});
       }
@@ -253,11 +254,8 @@ export async function syncGuild({ silent = false, retries = 3 } = {}) {
     await writeGuildData(report);
     await responses.reconcile(report);
     await pollVotes.reconcile(report);
-    if (loginPromptShown) {
-      // Вход выполнен: прячем окно клана, но держим его живым для автоматических отметок.
-      loginPromptShown = false;
-      await hideGuild().catch(() => {});
-    }
+    // Вход выполнен: сбросим отметку, чтобы при истёкшей сессии снова поднять окно.
+    loginPromptShown = false;
     if (!silent) toast('Сводка обновлена', 'success');
     return true;
   }
