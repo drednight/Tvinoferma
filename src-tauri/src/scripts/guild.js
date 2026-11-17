@@ -214,14 +214,13 @@
     return polls;
   }
 
-  // Единая сборка сводки: профиль (events/parties/poll) + список открытых опросов.
+  // Единая сборка сводки: профиль (events/parties) + список открытых опросов.
+  // Опрос с профиля (#mainPoll) не берётся: все открытые опросы идут только со
+  // страницы списка polls.php, чтобы везде были одинаковыми блоками-карточками.
   async function buildReport(doc) {
     const data = parseProfile(doc);
+    data.poll = null;
     data.polls = await loadPolls().catch(() => []);
-    if (data.poll) {
-      try { data.poll = applyPollOptions(data.poll, await fetchPoll(data.poll.id)); }
-      catch { data.poll.loadError = true; }
-    }
     return data;
   }
 

@@ -175,6 +175,25 @@ async fn wait_for_report(win: &WebviewWindow) -> Result<serde_json::Value, Strin
     wait_for_hash(win, REPORT_HASH, Duration::from_secs(SYNC_TIMEOUT_SECS)).await
 }
 
+/// Ждёт, чтобы страница в окне клана отгрузилась, а скрипт с функциями был готов.
+/// Не требует успешной сводки профиля: проверка входа через fetch index.php могла бы
+/// ложно сработать, хотя сеанс жив. Голос сам проверит опрос и отправит запрос;
+/// если сеанс действительно неактуален — придёт понятная ошибка от сайта, не «login».
+async fn wait_for_window_ready(win: &WebviewWindow) -> Result<(), String> {
+    let deadline = Instant::now() + Duration::from_secs(SYNC_TIMEOUT_SECS);
+    while Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let Ok(ready) = win.eval("document.readyState === 'complete' && typeof window.__tfGuildVote === 'function'")
+        else {
+            continue;
+        };
+        if ready.trim() == "true" {
+            return Ok(());
+        }
+    }
+    Err("timeout".into())
+}
+
 /// Отмечает ивент на сайте (`yes` — «Пойду», `no` — «Не пойду»).
 ///
 /// Работает и без открытого окна: если его нет, поднимается скрытое окно с сохранённым
@@ -312,8 +331,9 @@ async fn send_vote(
     if !fresh_window {
         ensure_guild_origin(win)?;
     }
-    // Дожидаемся профиля и проверяем вход; на странице входа вернётся `login`.
-    wait_for_report(win).await?;
+    // Ждём готовности страницы и скрипта, но не требуем профильной сводки:
+    // проверка входа через fetch index.php могла бы ложно сработать, хотя сеанс жив.
+    wait_for_window_ready(win).await?;
     ensure_guild_origin(win)?;
     let origin = Url::parse(GUILD_URL)
         .map_err(|e| e.to_string())?

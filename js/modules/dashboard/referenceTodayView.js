@@ -136,10 +136,9 @@ export function renderReferenceToday(input) {
                  .join('')}</div></article>`
            )
            .join('') || '<p>Расписание ещё не получено.</p>'
-       }</div><aside><small>Моя пати</small>${clanParties.map((p, i) => `<div class="rt-party-heading"><b>${esc(p.name)}</b><button type="button" class="lg-button rt-copy-party" data-today-copy-party="${i}" title="Скопировать ники, кроме своего" aria-label="Скопировать ники, кроме своего"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></svg></button></div><div class="rt-people">${p.members.map(member).join('')}</div>`).join('')}</aside></div>${guildPollHtml(s.guild?.poll)}${
-        (s.guild?.polls || []).filter(poll => poll.id !== (s.guild?.poll && s.guild.poll.id)).length
+       }</div><aside><small>Моя пати</small>${clanParties.map((p, i) => `<div class="rt-party-heading"><b>${esc(p.name)}</b><button type="button" class="lg-button rt-copy-party" data-today-copy-party="${i}" title="Скопировать ники, кроме своего" aria-label="Скопировать ники, кроме своего"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></svg></button></div><div class="rt-people">${p.members.map(member).join('')}</div>`).join('')}</aside></div>${
+        (s.guild?.polls || []).length
           ? `<section class="guild-polls" aria-labelledby="guild-polls-title"><h3 id="guild-polls-title">Опросы</h3><p class="muted guild-polls-hint">Только открытые опросы с сайта клана.</p>${(s.guild.polls || [])
-              .filter(poll => poll.id !== (s.guild?.poll && s.guild.poll.id))
               .map(poll => guildPollHtml(poll))
               .join('')}</section>`
           : ''

@@ -54,15 +54,10 @@ export async function rememberGuildPollVote(pollId, optionIds) {
   const selected = new Set(optionIds.map(String));
   const withVote = poll =>
     poll ? { ...poll, options: poll.options.map(option => ({ ...option, selected: selected.has(option.id) })) } : null;
-  if (data.poll && data.poll.id === String(pollId)) {
-    // syncedAt остаётся временем последней настоящей сводки, а не неудачного обновления.
-    state.settings.guild = { ...guildSettings(), poll: withVote(data.poll) };
-    await persist();
-    return true;
-  }
-  // Опрос может прийти только из списка открытых опросов (polls.php), а не с профиля.
+  // Все опросы — из списка открытых опросов (polls.php); профильный опрос не берётся.
   const polls = data.polls.map(poll => (poll.id === String(pollId) ? withVote(poll) : poll));
   if (!polls.some(poll => poll.id === String(pollId))) return false;
+  // syncedAt остаётся временем последней настоящей сводки, а не неудачного обновления.
   state.settings.guild = { ...guildSettings(), polls };
   await persist();
   return true;

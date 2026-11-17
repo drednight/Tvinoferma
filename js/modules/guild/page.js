@@ -437,9 +437,9 @@ function partiesHtml(data) {
     <div class="guild-parties">${data.parties.map(p => partyHtml(p, data.selfNick, data.leaderOverrides, data.parties.filter(other => other.name === p.name).length === 1)).join('')}</div>`;
 }
 
-/** Список открытых опросов со страницы polls.php: только те, в которые можно проголосовать. */
+/** Список открытых опросов со страницы polls.php: все, в которые можно проголосовать. */
 function pollsHtml(data) {
-  const polls = (data.polls || []).filter(poll => poll.id !== (data.poll && data.poll.id));
+  const polls = data.polls || [];
   if (!polls.length) return '';
   return `
     <section class="guild-polls" aria-labelledby="guild-polls-title">
@@ -476,7 +476,6 @@ export function renderGuildToday() {
         <div class="guild-col">${events}</div>
         <div class="guild-col guild-col--parties">${partiesHtml(data)}</div>
       </div>
-      ${guildPollHtml(data.poll)}
       ${pollsHtml(data)}
     </section>`;
 }
