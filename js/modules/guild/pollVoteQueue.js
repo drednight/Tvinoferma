@@ -42,7 +42,8 @@ export function createPollVoteQueue({
   read,
   begin,
   changed = () => {},
-  enabled = () => true
+  enabled = () => true,
+  onLogin = () => {}
 }) {
   let timer,
     running = false,
@@ -105,12 +106,25 @@ export function createPollVoteQueue({
         // поэтому сравниваем не по ссылке, а по pollId.
         if (!getEntries().some(r => r.pollId === row.pollId)) continue;
         task.progress(index, snapshot.length, 'Переносятся голоса в опросы');
-        try {
-          const reply = await send(row.pollId, row.optionIds);
-          if (!reply?.ok) task.log(`Опрос ${row.pollId}: проверяем результат по сводке сайта`, 'warn');
-        } catch {
+        // `busy` — в окне клана уже идёт синхронизация: POST ещё не ушёл, повторяем.
+        let reply;
+        let sendError = '';
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            reply = await send(row.pollId, row.optionIds);
+            sendError = '';
+            break;
+          } catch (error) {
+            sendError = String(error?.message || error || '');
+            if (sendError !== 'busy' || attempt === 2 || !enabled()) break;
+            await pause(1200);
+          }
+        }
+        if (sendError) {
           // Неполученное подтверждение не доказывает отказ: проверяем сайт.
           task.log(`Опрос ${row.pollId}: голос не получен, проверяем сайт`, 'warn');
+        } else if (!reply?.ok) {
+          task.log(`Опрос ${row.pollId}: проверяем результат по сводке сайта`, 'warn');
         }
       }
       if (!enabled()) return;
@@ -120,8 +134,10 @@ export function createPollVoteQueue({
         if (!enabled()) return;
         try {
           report = await read();
-        } catch {
+        } catch (error) {
           // Сохраняем последнее успешное наблюдение, если перечитывание не удалось.
+          const code = String(error?.message || error || '');
+          if (code === 'login') onLogin();
         }
         if (snapshot.every(row => confirmed(row, report))) break;
       }

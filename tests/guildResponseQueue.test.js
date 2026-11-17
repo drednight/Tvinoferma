@@ -158,6 +158,27 @@ describe('отложенный перенос ответов в кланер', (
     );
   });
 
+  it('при login в верификации вызывает onLogin (поднять окно для входа)', async () => {
+    const onLogin = vi.fn();
+    read.mockRejectedValue('login');
+    const loginQueue = createResponseQueue({
+      getEntries: () => entries,
+      saveEntries: async rows => {
+        entries = rows;
+      },
+      send,
+      read,
+      begin: async () => task,
+      changed,
+      enabled: () => allowed,
+      onLogin
+    });
+    await loginQueue.enqueue('1', 'yes');
+    await vi.advanceTimersByTimeAsync(13000);
+    expect(onLogin).toHaveBeenCalled();
+    expect(entries).toEqual([{ eventId: '1', response: 'yes', failed: true }]);
+  });
+
   it('подтверждает только совпавшие события, остальные сохраняет для повтора', async () => {
     read.mockResolvedValue({ events: [{ id: '1', response: 'yes' }] });
     await queue.enqueue('1', 'yes');

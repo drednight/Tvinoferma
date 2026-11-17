@@ -61,6 +61,21 @@ fn clan_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window(GUILD_LABEL)
 }
 
+/// Держит окно клана живым: если его нет — создаёт скрытое и отдаёт его.
+///
+/// Окно НЕ удаляется после операции: сессионные cookie сайта живут в памяти окна,
+/// а при каждом пересоздании окна скрипт начинал «с нуля» и POST уходил на страницу
+/// входа. За один прогрев окно остаётся загруженным, вход сохраняется, и отметки
+/// уходят автоматически — без того, чтобы пользователь держал окно открытым.
+/// Возвращает `(окно, создано ли сейчас)`: если только что создано — первое действие
+/// дожидается разбора страницы.
+fn ensure_clan_window(app: &AppHandle) -> Result<(WebviewWindow, bool), String> {
+    match clan_window(app) {
+        Some(win) => Ok((win, false)),
+        None => Ok((create_clan_window(app, false)?, true)),
+    }
+}
+
 /// Создаёт окно клана. `visible = false` — скрытое окно для фонового обновления.
 ///
 /// Создаётся только из `async` команд: на Windows создание окна из синхронной команды приводит
@@ -113,6 +128,16 @@ pub async fn close_guild_window(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Прячет окно клана, но держит его живым: сессия сайта остаётся в памяти,
+/// и отметки продолжают уходить автоматически после того, как пользователь вошёл.
+#[command]
+pub async fn hide_guild_window(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = clan_window(&app) {
+        win.hide().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// Открыто ли окно клана (видимое или скрытое).
 #[command]
 pub fn guild_window_exists(app: AppHandle) -> bool {
@@ -137,16 +162,10 @@ pub async fn guild_sync(app: AppHandle) -> Result<serde_json::Value, String> {
 }
 
 async fn run_sync(app: &AppHandle) -> Result<serde_json::Value, String> {
-    let (win, created) = match clan_window(app) {
-        Some(win) => (win, false),
-        None => (create_clan_window(app, false)?, true),
-    };
-    let result = wait_for_report(&win).await;
-    // Скрытое окно создали ради обновления — после ответа убираем его, видимое не трогаем
-    if created {
-        let _ = win.destroy();
-    }
-    result
+    // Окно клана живёт постоянно (скрыто, если пользователь его не открыл):
+    // не трогаем и не скрываем видимое — только свежую сводку считываем.
+    let (win, _created) = ensure_clan_window(app)?;
+    wait_for_report(&win).await
 }
 
 /// Ждёт payload в hash окна. `read_hash_payload` отдаёт `(ошибка, данные)`: ошибка `login`
@@ -238,14 +257,9 @@ async fn run_respond(
     event_id: &str,
     response: &str,
 ) -> Result<serde_json::Value, String> {
-    match clan_window(app) {
-        Some(win) => send_response(&win, event_id, response, false).await,
-        None => {
-            let win = create_clan_window(app, false)?;
-            let result = send_response(&win, event_id, response, true).await;
-            let _ = win.destroy();
-            result
-        }
+    match ensure_clan_window(app) {
+        Ok((win, fresh)) => send_response(&win, event_id, response, fresh).await,
+        Err(error) => Err(error),
     }
 }
 
@@ -311,15 +325,8 @@ async fn run_vote(
     poll_id: &str,
     option_ids: &[String],
 ) -> Result<serde_json::Value, String> {
-    let (win, created) = match clan_window(app) {
-        Some(win) => (win, false),
-        None => (create_clan_window(app, false)?, true),
-    };
-    let result = send_vote(&win, poll_id, option_ids, created).await;
-    if created {
-        let _ = win.destroy();
-    }
-    result
+    let (win, fresh) = ensure_clan_window(app)?;
+    send_vote(&win, poll_id, option_ids, fresh).await
 }
 
 /// Видимое окно могло перейти по ссылке на другой сайт. Не отправляем данные или

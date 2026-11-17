@@ -19,7 +19,8 @@ export function createResponseQueue({
   read,
   begin,
   changed = () => {},
-  enabled = () => true
+  enabled = () => true,
+  onLogin = () => {}
 }) {
   let timer,
     running = false,
@@ -111,6 +112,7 @@ export function createResponseQueue({
           // Keep the last successful observation if a later verification read fails;
           // remember the reason so a dead session is reported actionably.
           verifyError = String(error?.message || error || '');
+          if (verifyError === 'login') onLogin();
         }
         if (
           snapshot.every(row =>

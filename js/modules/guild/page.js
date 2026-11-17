@@ -28,7 +28,7 @@ import {
 } from './state.js';
 import { syncClanEntries } from './plannerBridge.js';
 import { summaryText, responseText, partyNicks, allPartyNicks, isSelfNick, RESPONSE_YES, RESPONSE_NO } from './core.js';
-import { openGuild, syncGuildFromSite, respondToEvent, voteInGuildPoll } from './window.js';
+import { openGuild, hideGuild, syncGuildFromSite, respondToEvent, voteInGuildPoll } from './window.js';
 import { guildPollHtml, safePollLink, withPendingPollState } from './poll.js';
 
 /** Первая проверка после старта приложения: через минуту, чтобы не мешать запуску. */
@@ -40,6 +40,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** Перерисовка всего «Сегодня» — её кладёт todayView.js: нужна, когда меняется календарь. */
 let refreshToday = null;
 let backgroundStarted = false;
+/** Окно клана было поднято приложением ради входа — после успешного входа его стоит спрятать. */
+let loginPromptShown = false;
 function writesAvailable() {
   try {
     assertStateWriteAvailable();
@@ -238,6 +240,12 @@ export async function syncGuild({ silent = false, retries = 3 } = {}) {
         await new Promise((resolve) => setTimeout(resolve, 4000));
         continue;
       }
+      if (code === 'login' && !loginPromptShown) {
+        // Сессия окна клана не активна: поднимаем окно, чтобы пользователь вошёл один раз.
+        // После входа окно скроется, но останется живым — отметки уйдут автоматически.
+        loginPromptShown = true;
+        await openGuild().catch(() => {});
+      }
       if (!silent) toast(syncErrorText(error), 'warning');
       return false;
     }
@@ -245,6 +253,11 @@ export async function syncGuild({ silent = false, retries = 3 } = {}) {
     await writeGuildData(report);
     await responses.reconcile(report);
     await pollVotes.reconcile(report);
+    if (loginPromptShown) {
+      // Вход выполнен: прячем окно клана, но держим его живым для автоматических отметок.
+      loginPromptShown = false;
+      await hideGuild().catch(() => {});
+    }
     if (!silent) toast('Сводка обновлена', 'success');
     return true;
   }
@@ -308,6 +321,14 @@ export function startGuildDailySync() {
   scheduleMidnightSync();
 }
 
+/** Поднимает окно клана один раз, чтобы пользователь вошёл. После входа окно скроется
+ *  (но останется живым), и отметки уйдут автоматически. */
+function promptGuildLogin() {
+  if (loginPromptShown) return;
+  loginPromptShown = true;
+  openGuild().catch(() => {});
+}
+
 const responses = createResponseQueue({
   getEntries: readPendingResponses,
   saveEntries: writePendingResponses,
@@ -322,6 +343,7 @@ const responses = createResponseQueue({
     renderTodayNow();
     return report;
   },
+  onLogin: promptGuildLogin,
   begin: async () => {
     const { startTask } = await import('../../core/taskLog.js');
     return startTask('Переносятся ответы в кланер');
@@ -343,6 +365,7 @@ const pollVotes = createPollVoteQueue({
     renderTodayNow();
     return report;
   },
+  onLogin: promptGuildLogin,
   begin: async () => {
     const { startTask } = await import('../../core/taskLog.js');
     return startTask('Переносятся голоса в опросы');
