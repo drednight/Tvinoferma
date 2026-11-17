@@ -1,0 +1,115 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Tvinoferma: Windows build (isolated)",
+      "detail": "Builds the current checkout with a separate app/data/vault namespace. The task allows a dirty worktree and records its fingerprint; Windows isolation still needs manual acceptance.",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\scripts\\build-windows-local.ps1",
+        "-Checks",
+        "Quick",
+        "-Profile",
+        "Isolated",
+        "-AllowDirty"
+      ],
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true,
+        "showReuseMessage": false
+      }
+    },
+    {
+      "label": "Tvinoferma: Run latest Windows build (isolated)",
+      "detail": "Starts only the latest isolated local build after checking its profile metadata and SHA-256.",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\scripts\\run-windows-local.ps1",
+        "-Profile",
+        "Isolated"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true,
+        "showReuseMessage": false
+      }
+    },
+    {
+      "label": "Tvinoferma: Windows build (shared current data)",
+      "detail": "Danger: uses the main account/data/vault profile. Requires typing the backup confirmation phrase; close the stable app before running the test EXE.",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\scripts\\build-windows-local.ps1",
+        "-Checks",
+        "Quick",
+        "-Profile",
+        "Shared",
+        "-SharedProfileConfirmation",
+        "${input:sharedProfileConfirmation}",
+        "-AllowDirty"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true,
+        "showReuseMessage": false
+      }
+    },
+    {
+      "label": "Tvinoferma: Run latest Windows build (shared current data)",
+      "detail": "Danger: starts an EXE that reads and can modify current data, vault and cloud settings. Requires a separate confirmation.",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\scripts\\run-windows-local.ps1",
+        "-Profile",
+        "Shared",
+        "-SharedProfileConfirmation",
+        "${input:sharedProfileConfirmation}"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true,
+        "showReuseMessage": false
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "sharedProfileConfirmation",
+      "type": "promptString",
+      "description": "This build uses the real profile and can modify its data/vault. Close the stable app and make independent backups first. Type exactly: I_HAVE_BACKUP_AND_ACCEPT_SHARED_DATA",
+      "default": ""
+    }
+  ]
+}
