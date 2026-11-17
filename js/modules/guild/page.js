@@ -109,6 +109,9 @@ async function onClick(e) {
     await run(btn, async () => {
       await openGuild();
       toast('Окно клана открыто. Войдите на сайте, если ещё не входили.', 'info');
+      // Не блокируем кнопку: синхронизируем в фоне с повтором — чтобы после входа
+      // сводка и опросы обновились сразу, без ручного нажатия «Обновить».
+      syncGuild({ retries: 3 }).catch(() => {});
     });
   } else if (act === 'refresh') {
     await run(btn, () => syncGuild());
@@ -212,7 +215,8 @@ async function onPollSubmit(e) {
 /** Понятный текст для ошибки обновления. */
 function syncErrorText(error) {
   const code = String(error?.message || error);
-  if (code === 'login') return 'Вход на сайте клана истёк. Нажмите «Открыть сайт клана» и войдите.';
+  if (code === 'login')
+    return 'Сессия окна клана в приложении не активна. Откройте сайт клана через приложение и войдите на нём.';
   if (code === 'timeout') return 'Сайт клана не ответил вовремя. Попробуйте позже.';
   if (code === 'busy') return 'Обновление уже идёт.';
   return `Не удалось обновить сводку: ${code}`;
@@ -221,20 +225,29 @@ function syncErrorText(error) {
 /**
  * Обновляет сводку и сохраняет её. Возвращает true при успехе.
  * `silent` — для проверки по расписанию: без сообщений об ошибке.
+ * При `login`/`page` повторяет попытку: сессия окна клана может ещё не установиться,
+ * пока пользователь входит — тогда сводка и опросы появятся сразу, без ручного «Обновить».
  */
-export async function syncGuild({ silent = false } = {}) {
-  let report;
-  try {
-    report = await syncGuildFromSite();
-  } catch (error) {
-    if (!silent) toast(syncErrorText(error), 'warning');
-    return false;
+export async function syncGuild({ silent = false, retries = 3 } = {}) {
+  for (let attempt = 0; ; attempt += 1) {
+    let report;
+    try {
+      report = await syncGuildFromSite();
+    } catch (error) {
+      const code = String(error?.message || error);
+      if ((code === 'login' || code === 'page') && attempt < retries) {
+        await new Promise((resolve) => setTimeout(resolve, 4000));
+        continue;
+      }
+      if (!silent) toast(syncErrorText(error), 'warning');
+      return false;
+    }
+    if (!writesAvailable()) return false;
+    await writeGuildData(report);
+    await responses.reconcile(report);
+    if (!silent) toast('Сводка обновлена', 'success');
+    return true;
   }
-  if (!writesAvailable()) return false;
-  await writeGuildData(report);
-  await responses.reconcile(report);
-  if (!silent) toast('Сводка обновлена', 'success');
-  return true;
 }
 
 /** Обновление по расписанию: молча, только при включённой панели клана. */
