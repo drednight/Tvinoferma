@@ -119,9 +119,13 @@ export function withPendingPollState(polls, pendingVotes) {
     const vote = byId.get(String(poll.id));
     if (!vote) return poll;
     const selected = new Set(vote.optionIds);
+    // Для одиночного опроса — только один вариант может быть выбран: локальный выбор
+    // заменяет прежнюю подпись с сайта, иначе при смене варианта горели бы и старый, и новый.
+    const selectedOption = option =>
+      poll.type === 'single' ? selected.has(option.id) : option.selected || selected.has(option.id);
     return {
       ...poll,
-      options: poll.options.map(option => ({ ...option, selected: option.selected || selected.has(option.id) })),
+      options: poll.options.map(option => ({ ...option, selected: selectedOption(option) })),
       voteState: vote.failed ? 'failed' : 'pending'
     };
   });

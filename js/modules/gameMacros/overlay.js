@@ -328,6 +328,11 @@ async function init() {
     document.documentElement.style.setProperty('--overlay-command', COMMAND_PRESETS[a.commandColor] || a.commandColor);
     document.documentElement.style.setProperty('--overlay-font', a.fontSize + 'px');
     document.body.classList.toggle('header-hidden', a.hideHeader);
+    const menuHeaderToggleLabel = document.getElementById('menu-header-toggle-label');
+    if (menuHeaderToggleLabel)
+      menuHeaderToggleLabel.textContent = a.hideHeader ? 'Показать заголовок и кнопки окна' : 'Скрыть заголовок и кнопки окна';
+    const menuHeaderToggleBtn = document.getElementById('menu-header-toggle');
+    if (menuHeaderToggleBtn) menuHeaderToggleBtn.setAttribute('aria-pressed', String(a.hideHeader));
     if (document.getElementById('appearance-screen').hidden) {
       for (const [id, value] of Object.entries({
         'text-color': a.textColor,
@@ -602,7 +607,26 @@ async function init() {
     const on = !document.body.classList.contains('header-hidden');
     document.body.classList.toggle('header-hidden', on);
     if (hideHeader) hideHeader.checked = on;
+    syncMenuHeaderToggle();
   };
+
+  // Кнопка в раскрывающемся меню: показать заголовок и кнопки окна, когда они скрыты
+  // (меню открывается плавающей кнопкой ☰, поэтому нужен способ вернуть хедер).
+  const menuHeaderToggle = document.getElementById('menu-header-toggle');
+  const syncMenuHeaderToggle = () => {
+    if (!menuHeaderToggle) return;
+    const hidden = document.body.classList.contains('header-hidden');
+    menuHeaderToggle.setAttribute('aria-pressed', String(hidden));
+    const label = document.getElementById('menu-header-toggle-label');
+    if (label) label.textContent = hidden ? 'Показать заголовок и кнопки окна' : 'Скрыть заголовок и кнопки окна';
+  };
+  if (menuHeaderToggle) menuHeaderToggle.onclick = () => {
+    const on = !document.body.classList.contains('header-hidden');
+    document.body.classList.toggle('header-hidden', on);
+    if (hideHeader) hideHeader.checked = on;
+    syncMenuHeaderToggle();
+  };
+  syncMenuHeaderToggle();
 
   const themeGrid = document.getElementById('theme-grid');
   if (themeGrid) {
