@@ -186,6 +186,7 @@ async function init() {
 
     pauseButton.textContent = data.paused ? '▶ Продолжить' : 'Ⅱ Пауза';
     pauseButton.setAttribute('aria-pressed', String(!!data.paused));
+    pauseButton.dataset.state = data.paused ? 'paused' : 'on';
     reconnectButton.disabled = !!data.busy || !!data.mirrorPending;
     updateRepeatButton(keyboardToggle, 'keyboard', data);
     keyboardToggle.disabled = keyboardDisabled();
@@ -251,7 +252,6 @@ async function init() {
     partySelect.value = selected || '';
     document.getElementById('party-launch').disabled = !!data.busy || !partySelect.value;
     document.getElementById('party-refresh').disabled = !!data.busy;
-    document.getElementById('party-decorate').disabled = !!data.busy;
     document.getElementById('window-notice').textContent = data.windowNotice || 'Нажмите «Обновить окна».';
     const signature = JSON.stringify(data.windows || []);
     if (windowSignature !== signature) {
@@ -259,7 +259,39 @@ async function init() {
       document.getElementById('windows').replaceChildren(
         ...(data.windows || []).map(row => {
           const li = document.createElement('li');
-          li.textContent = `${row.name} · PID ${row.pid}${row.known ? ` · ${{ manual: 'ручная привязка', title: 'из заголовка', launcher: 'запуск Твинофермой' }[row.ownershipSource] || 'распознано'}` : ' · не распознано'}`;
+          li.className = 'wrow';
+          const icon = document.createElement('span');
+          icon.className = 'wicon';
+          icon.textContent = row.icon || '🖥';
+          const wrap = document.createElement('span');
+          wrap.className = 'pwrap';
+          const pname = document.createElement('span');
+          pname.className = 'pname';
+          pname.textContent = row.name;
+          const pmeta = document.createElement('span');
+          pmeta.className = 'pmeta';
+          pmeta.textContent = `PID ${row.pid}${row.known ? ` · ${{ manual: 'ручная привязка', title: 'из заголовка', launcher: 'запуск Твинофермой' }[row.ownershipSource] || 'распознано'}` : ' · не распознано'}`;
+          wrap.append(pname, pmeta);
+          const rebind = document.createElement('button');
+          rebind.type = 'button';
+          rebind.className = 'wpin';
+          rebind.textContent = '🏷';
+          rebind.title = 'Переподключить окно и сменить иконку';
+          rebind.setAttribute('aria-label', rebind.title);
+          rebind.disabled = !row.pid;
+          rebind.onclick = async () => {
+            rebind.disabled = true;
+            try {
+              await emitTo('main', 'game-overlay-rebind', { pid: row.pid, hwnd: row.hwnd, startedAt: row.startedAt });
+              const icons = ['🖥', '🪟', '🖥'];
+              const next = icons[(icons.indexOf(icon.textContent) + 1) % icons.length];
+              icon.textContent = icon.textContent === next ? '🪟' : next;
+            } catch {
+              document.getElementById('status').textContent = 'Не удалось переподключить окно.';
+            } finally {
+              rebind.disabled = false;
+            }
+          };
           const checkbox = document.createElement('input');
           checkbox.type = 'checkbox';
           checkbox.dataset.closeWindow = '';
@@ -267,6 +299,7 @@ async function init() {
           checkbox.disabled = !row.startedAt || !row.hwnd;
           checkbox.setAttribute('aria-label', `Выбрать окно ${row.name}, PID ${row.pid}`);
           li.prepend(checkbox);
+          li.append(icon, wrap, rebind);
           return li;
         })
       );
@@ -290,19 +323,22 @@ async function init() {
         `${launch.percent}% · ${launch.stage}${launch.total ? ` · ${launch.done}/${launch.total}` : ''}`;
     }
     const a = normalizeAppearance(data.appearance);
-    document.documentElement.style.setProperty('--overlay-text', TEXT_PRESETS[a.textColor]);
-    document.documentElement.style.setProperty('--overlay-key', KEY_PRESETS[a.keyColor]);
-    document.documentElement.style.setProperty('--overlay-command', COMMAND_PRESETS[a.commandColor]);
+    document.documentElement.style.setProperty('--overlay-text', TEXT_PRESETS[a.textColor] || a.textColor);
+    document.documentElement.style.setProperty('--overlay-key', KEY_PRESETS[a.keyColor] || a.keyColor);
+    document.documentElement.style.setProperty('--overlay-command', COMMAND_PRESETS[a.commandColor] || a.commandColor);
     document.documentElement.style.setProperty('--overlay-font', a.fontSize + 'px');
     document.body.classList.toggle('header-hidden', a.hideHeader);
+    const menuHeaderToggleLabel = document.getElementById('menu-header-toggle-label');
+    if (menuHeaderToggleLabel)
+      menuHeaderToggleLabel.textContent = a.hideHeader ? 'Показать заголовок и кнопки окна' : 'Скрыть заголовок и кнопки окна';
+    const menuHeaderToggleBtn = document.getElementById('menu-header-toggle');
+    if (menuHeaderToggleBtn) menuHeaderToggleBtn.setAttribute('aria-pressed', String(a.hideHeader));
     if (document.getElementById('appearance-screen').hidden) {
-      document.getElementById('text-color').value = a.textColor;
-      document.getElementById('key-color').value = a.keyColor;
-      document.getElementById('command-color').value = a.commandColor;
-      for (const id of ['text-color', 'key-color', 'command-color'])
-        document
-          .querySelectorAll(`[name="${id}-choice"]`)
-          .forEach(input => (input.checked = input.value === document.getElementById(id).value));
+      for (const [id, value] of Object.entries({
+        'text-color': a.textColor,
+        'key-color': a.keyColor,
+        'command-color': a.commandColor
+      })) setColor(id, value);
       document.getElementById('font-size').value = String(a.fontSize);
       document.getElementById('hide-header').checked = a.hideHeader;
     }
@@ -326,31 +362,42 @@ async function init() {
                 : 'Хоткеи выключены / недоступны');
     document.getElementById('commands').replaceChildren(
       ...(data.commands || []).map(row => {
-        const li = document.createElement('li'),
-          key = document.createElement('kbd');
+        const li = document.createElement('li');
+        li.className = 'cmd';
+        const key = document.createElement('kbd');
+        key.textContent = String(row.hotkey || 'Не назначена');
         const name = document.createElement('span');
+        name.className = 'name';
         name.textContent = String(row.name || '');
         name.style.minWidth = '0';
-        const play = document.createElement('button');
-        play.type = 'button';
-        play.className = 'command-run';
-        play.textContent = '▶';
-        play.title = `Запустить: ${row.name || 'команда'}`;
-        play.setAttribute('aria-label', play.title);
-        play.disabled = !row.id || (!!data.busy && !row.allowWhileBusy);
-        play.onclick = async () => {
-          play.disabled = true;
+        const run = document.createElement('button');
+        run.type = 'button';
+        run.className = 'cmd-run';
+        run.textContent = '▶';
+        run.title = `Запустить: ${row.name || 'команда'}`;
+        run.setAttribute('aria-label', run.title);
+        run.disabled = !row.id || (!!data.busy && !row.allowWhileBusy);
+        run.onclick = async event => {
+          event.stopPropagation();
+          if (!row.id || (!!data.busy && !row.allowWhileBusy)) return;
+          run.disabled = true;
           try {
             await emitTo('main', 'game-overlay-run', row.id);
           } catch {
             document.getElementById('status').textContent = 'Не удалось отправить запрос запуска команды.';
           } finally {
-            play.disabled = !row.id || (!!data.busy && !row.allowWhileBusy);
+            run.disabled = !row.id || (!!data.busy && !row.allowWhileBusy);
           }
         };
-        li.append(play, name);
-        key.textContent = String(row.hotkey || 'Не назначена');
-        li.append(key);
+        li.append(key, name, run);
+        li.onclick = async () => {
+          if (!row.id || (!!data.busy && !row.allowWhileBusy)) return;
+          try {
+            await emitTo('main', 'game-overlay-run', row.id);
+          } catch {
+            document.getElementById('status').textContent = 'Не удалось отправить запрос запуска команды.';
+          }
+        };
         return li;
       })
     );
@@ -392,50 +439,82 @@ async function init() {
       });
     }
   });
+  const viewLabels = {
+    shortcuts: 'Комбинации',
+    recipients: 'Получатели',
+    party: 'Партия',
+    journal: 'Журнал',
+    appearance: 'Настройки'
+  };
+  const closeMenu = () => {
+    const menu = document.getElementById('menu');
+    if (menu) menu.hidden = true;
+  };
   const showView = view => {
     for (const id of ['shortcuts', 'journal', 'party', 'appearance', 'recipients'])
       document.getElementById(`${id}-screen`).hidden = id !== view;
+    const where = document.getElementById('where');
+    if (where) where.textContent = viewLabels[view] || view;
     if (view === 'party') void partyRequest('party-refresh');
     if (view === 'recipients' && !recipientRevision) void recipientRequest({ action: 'refresh' });
     document.querySelectorAll('[data-view]').forEach(button => {
       if (button.dataset.view === view) button.setAttribute('aria-current', 'page');
       else button.removeAttribute('aria-current');
     });
+    closeMenu();
   };
-  document.querySelectorAll('[data-view]').forEach(button => (button.onclick = () => showView(button.dataset.view)));
-  const extraNames = {
-    pink: 'Розовый',
-    cyan: 'Бирюзовый',
-    lime: 'Лаймовый',
-    coral: 'Коралловый',
-    silver: 'Серебристый',
-    lavender: 'Лавандовый'
+  document.querySelectorAll('[data-view]').forEach(button => (button.onclick = () => {
+    if (button.dataset.view === '__fold') { void foldClick(); return; }
+    showView(button.dataset.view);
+  }));
+
+  // Палитра цветов: пары основных пресетов + выбор произвольного цвета свайдами.
+  const COLOR_PALETTE = [
+    '#ff6b6b', '#ffb46b', '#f5cc76', '#7de4b4', '#83e8f5', '#b7c2ff',
+    '#c4a5ff', '#ffb3d9', '#d4ee85', '#eef1ff', '#cbd5e1', '#ffffff',
+    '#1a2233', '#000000'
+  ];
+  const colorPresets = {
+    'text-color': TEXT_PRESETS,
+    'key-color': KEY_PRESETS,
+    'command-color': COMMAND_PRESETS
   };
+  /** Устанавливает цвет (пресет по имени или hex) и применяет его сразу. */
+  function setColor(id, value) {
+    const hidden = document.getElementById(id);
+    if (hidden) hidden.value = value;
+    document.querySelectorAll(`[name="${id}-choice"]`).forEach(input => {
+      input.checked = input.value === value;
+    });
+    const row = document.querySelector(`[data-swatch-for="${id}"]`);
+    if (row) row.querySelectorAll('.swatch').forEach(s => s.classList.toggle('sel', s.dataset.color === value));
+    const color = colorPresets[id]?.[value] || value;
+    document.documentElement.style.setProperty('--overlay-' + id.replace('-color', ''), color);
+  }
+  // Заполняем палитру свайдами для каждого цвета.
   for (const id of ['text-color', 'key-color', 'command-color']) {
-    const fieldset = document.getElementById(id).closest('fieldset');
-    for (const [value, name] of Object.entries(extraNames)) {
-      const label = document.createElement('label'),
-        input = document.createElement('input'),
-        span = document.createElement('span');
-      input.type = 'radio';
-      input.name = `${id}-choice`;
-      input.value = value;
-      span.textContent = name;
-      label.append(input, span);
-      fieldset.append(label);
-    }
+    const row = document.querySelector(`[data-swatch-for="${id}"]`);
+    if (!row) continue;
+    COLOR_PALETTE.forEach(color => {
+      const swatch = document.createElement('button');
+      swatch.type = 'button';
+      swatch.className = 'swatch';
+      swatch.dataset.color = color;
+      swatch.style.background = color;
+      swatch.title = color;
+      swatch.setAttribute('aria-label', `Цвет ${color}`);
+      swatch.onclick = () => setColor(id, color);
+      row.append(swatch);
+    });
   }
   document.querySelectorAll('.color-options input[type=radio]').forEach(
     input =>
       (input.onchange = () => {
-        document.getElementById(input.name.replace('-choice', '')).value = input.value;
+        const id = input.name.replace('-choice', '');
+        setColor(id, input.value);
       })
   );
-  for (const [id, colors] of Object.entries({
-    'text-color': TEXT_PRESETS,
-    'key-color': KEY_PRESETS,
-    'command-color': COMMAND_PRESETS
-  }))
+  for (const [id, colors] of Object.entries(colorPresets))
     document
       .querySelectorAll(`[name="${id}-choice"]`)
       .forEach(input => (input.nextElementSibling.style.color = colors[input.value]));
@@ -446,7 +525,6 @@ async function init() {
     partyBusy = true;
     document.getElementById('party-launch').disabled = true;
     document.getElementById('party-refresh').disabled = true;
-    document.getElementById('party-decorate').disabled = true;
     document.getElementById('party-close-all').disabled = true;
     try {
       await invoke('game_macro_navigate', {
@@ -458,7 +536,6 @@ async function init() {
       document.getElementById('window-notice').textContent =
         'Не удалось отправить запрос. Откройте главное приложение.';
       document.getElementById('party-refresh').disabled = false;
-      document.getElementById('party-decorate').disabled = false;
       document.getElementById('party-close-all').disabled = false;
       document.getElementById('party-launch').disabled = !document.getElementById('party-select').value;
     } finally {
@@ -468,19 +545,13 @@ async function init() {
   document.getElementById('party-select').onchange = () =>
     (document.getElementById('party-launch').disabled = partyBusy || !document.getElementById('party-select').value);
   document.getElementById('party-launch').onclick = () => partyRequest('party-launch');
-  document.getElementById('party-close-all').onclick = () => {
-    document.getElementById('close-confirm').hidden = false;
-  };
-  document.getElementById('close-confirm-no').onclick = () => {
-    document.getElementById('close-confirm').hidden = true;
-  };
-  document.getElementById('close-confirm-yes').onclick = () => {
-    document.getElementById('close-confirm').hidden = true;
-    const closeMode = document.getElementById('close-mode').value;
-    if (closeMode === 'all') return partyRequest('party-close-all');
+  const closeButton = document.getElementById('party-close-all');
+  const closeDropdown = document.getElementById('close-dropdown');
+  const closeWindows = mode => {
+    if (mode === 'all') { void partyRequest('party-close-all'); return; }
     const closeTargets = [
       ...document.querySelectorAll(
-        closeMode === 'selected' ? '[data-close-window]:checked' : '[data-close-window]:not(:disabled)'
+        mode === 'selected' ? '[data-close-window]:checked' : '[data-close-window]:not(:disabled)'
       )
     ].map(input => JSON.parse(input.value));
     if (!closeTargets.length) {
@@ -488,22 +559,132 @@ async function init() {
         'Отметьте актуальные окна в списке. Для режима «кроме ПЛ» сначала обновите окна.';
       return;
     }
-    return partyRequest('party-close-all', { closeMode, closeTargets });
+    void partyRequest('party-close-all', { closeMode: mode, closeTargets });
   };
+  if (closeButton && closeDropdown) {
+    closeButton.onclick = event => {
+      event.stopPropagation();
+      const open = closeDropdown.hidden;
+      closeDropdown.hidden = !open;
+      closeButton.setAttribute('aria-expanded', String(open));
+    };
+    closeDropdown.querySelectorAll('[data-close-mode]').forEach(option => {
+      option.onclick = () => {
+        closeDropdown.hidden = true;
+        closeButton.setAttribute('aria-expanded', 'false');
+        closeWindows(option.dataset.closeMode);
+      };
+    });
+    document.addEventListener('click', event => {
+      if (closeDropdown.hidden) return;
+      if (!event.target.closest('.close-wrap')) closeDropdown.hidden = true;
+    });
+  }
   document.getElementById('party-refresh').onclick = () => partyRequest('party-refresh');
-  document.getElementById('party-decorate').onclick = () => partyRequest('party-redecorate');
-  const togglePanel = () => {
-    const controls = document.getElementById('overlay-controls');
-    controls.hidden = !controls.hidden;
-    document.querySelectorAll('[data-service-heading]').forEach(el => (el.hidden = controls.hidden));
-    for (const id of ['info-toggle', 'floating-panel-toggle'])
-      document.getElementById(id).setAttribute('aria-expanded', String(!controls.hidden));
+  const menuBtn = document.getElementById('menu-btn');
+  const menu = document.getElementById('menu');
+  const toggleMenu = () => {
+    const open = menu.hidden;
+    menu.hidden = !open;
+    if (menuBtn) menuBtn.setAttribute('aria-expanded', String(open));
   };
-  document.getElementById('info-toggle').onclick = togglePanel;
-  document.getElementById('floating-panel-toggle').onclick = togglePanel;
+  if (menuBtn) menuBtn.onclick = toggleMenu;
+  const floatingPanelToggle = document.getElementById('floating-panel-toggle');
+  if (floatingPanelToggle) floatingPanelToggle.onclick = () => { menu.hidden = false; };
+  document.addEventListener('click', event => {
+    if (menu.hidden) return;
+    const target = event.target;
+    if (target.closest('#menu') || target.closest('#menu-btn') || target.closest('#floating-panel-toggle')) return;
+    closeMenu();
+  });
+
+  const hideHeader = document.getElementById('hide-header');
+  if (hideHeader) hideHeader.onchange = event => document.body.classList.toggle('header-hidden', event.target.checked);
+
+  // Кнопка в хедере: скрыть/показать заголовок и кнопки окна (сразу, с синхронной чекбоксом).
+  const headerToggle = document.getElementById('header-toggle');
+  if (headerToggle) headerToggle.onclick = () => {
+    const on = !document.body.classList.contains('header-hidden');
+    document.body.classList.toggle('header-hidden', on);
+    if (hideHeader) hideHeader.checked = on;
+    syncMenuHeaderToggle();
+  };
+
+  // Кнопка в раскрывающемся меню: показать заголовок и кнопки окна, когда они скрыты
+  // (меню открывается плавающей кнопкой ☰, поэтому нужен способ вернуть хедер).
+  const menuHeaderToggle = document.getElementById('menu-header-toggle');
+  const syncMenuHeaderToggle = () => {
+    if (!menuHeaderToggle) return;
+    const hidden = document.body.classList.contains('header-hidden');
+    menuHeaderToggle.setAttribute('aria-pressed', String(hidden));
+    const label = document.getElementById('menu-header-toggle-label');
+    if (label) label.textContent = hidden ? 'Показать заголовок и кнопки окна' : 'Скрыть заголовок и кнопки окна';
+  };
+  if (menuHeaderToggle) menuHeaderToggle.onclick = () => {
+    const on = !document.body.classList.contains('header-hidden');
+    document.body.classList.toggle('header-hidden', on);
+    if (hideHeader) hideHeader.checked = on;
+    syncMenuHeaderToggle();
+  };
+  syncMenuHeaderToggle();
+
+  const themeGrid = document.getElementById('theme-grid');
+  if (themeGrid) {
+    themeGrid.onclick = event => {
+      const opt = event.target.closest('[data-theme]');
+      if (!opt) return;
+      document.documentElement.setAttribute('data-theme', opt.dataset.theme);
+      themeGrid.querySelectorAll('.theme-opt').forEach(o => o.classList.toggle('sel', o === opt));
+    };
+  }
+  const sizeGrid = document.getElementById('size-grid');
+  if (sizeGrid) {
+    const SIZE_PIXELS = {
+      S: { width: 360, height: 500 },
+      M: { width: 430, height: 580 },
+      L: { width: 520, height: 700 }
+    };
+    sizeGrid.onclick = async event => {
+      const opt = event.target.closest('[data-size]');
+      if (!opt) return;
+      const size = opt.dataset.size;
+      document.documentElement.setAttribute('data-size', size);
+      const px = SIZE_PIXELS[size];
+      try {
+        await invoke('game_macro_overlay_resize', {
+          width: px ? px.width : 0,
+          height: px ? px.height : 0
+        });
+      } catch {
+        /* размер уже применён или окно занято — игнорируем */
+      }
+    };
+  }
+  const ghost = document.getElementById('ghost');
+  let ghostPrevAlpha = null;
+  if (ghost) {
+    ghost.onclick = () => {
+      const ov = document.getElementById('ov');
+      const on = ghost.classList.toggle('on');
+      if (ov) ov.classList.toggle('ghost', on);
+      if (on) {
+        ghostPrevAlpha = Number(getComputedStyle(document.documentElement).getPropertyValue('--alpha')) || 0.9;
+        document.documentElement.style.setProperty('--alpha', '0.12');
+        ghost.title = 'Призрачный режим: почти прозрачно (клик — вернуть)';
+      } else {
+        document.documentElement.style.setProperty('--alpha', String(ghostPrevAlpha != null ? ghostPrevAlpha : 0.9));
+        ghost.title = 'Призрачный режим (почти прозрачно)';
+      }
+      ghost.setAttribute('aria-label', ghost.title);
+    };
+  }
   document.getElementById('opacity').oninput = event => {
     document.getElementById('alpha-value').textContent = event.target.value + '%';
     document.documentElement.style.setProperty('--alpha', String(Number(event.target.value) / 100));
+  };
+  document.getElementById('font-size').oninput = event => {
+    document.getElementById('font-size-out').textContent = event.target.value + 'px';
+    document.documentElement.style.setProperty('--overlay-font', event.target.value + 'px');
   };
   document.getElementById('save-appearance').onclick = async () => {
     const button = document.getElementById('save-appearance');
@@ -541,27 +722,23 @@ async function init() {
   };
   let collapsed = false;
   const fold = document.getElementById('fold');
-  const repeatControls = document.querySelector('.repeat-controls');
-  const repeatAnchor = document.createComment('repeat-controls');
-  repeatControls.before(repeatAnchor);
-  fold.onclick = async () => {
+  async function foldClick() {
     fold.disabled = true;
     try {
       await invoke('game_macro_overlay_fold', { collapsed: !collapsed });
       collapsed = !collapsed;
       document.body.classList.toggle('folded', collapsed);
-      if (collapsed) document.querySelector('header').append(repeatControls);
-      else repeatAnchor.after(repeatControls);
       fold.setAttribute('aria-expanded', String(!collapsed));
-      fold.title = collapsed ? 'Развернуть оверлей' : 'Свернуть до верхней полосы';
+      fold.title = collapsed ? 'Развернуть оверлей' : 'Свернуть до кнопок';
       fold.setAttribute('aria-label', fold.title);
-      fold.textContent = collapsed ? '▾' : '▴';
+      fold.textContent = collapsed ? '▴' : '▾';
     } catch {
       document.getElementById('status').textContent = 'Не удалось изменить размер оверлея.';
     } finally {
       fold.disabled = false;
     }
-  };
+  }
+  fold.onclick = foldClick;
   document.getElementById('close').onclick = () => current.close();
   await emitTo('main', 'game-overlay-ready', null);
 }

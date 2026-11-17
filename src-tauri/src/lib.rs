@@ -210,6 +210,7 @@ pub fn run() {
             guild::guild_window_exists,
             guild::guild_sync,
             guild::guild_set_response,
+            guild::guild_set_responses,
             guild::guild_vote_poll,
             // скрипты сайта
             automation::promo::activate_promo,
@@ -328,6 +329,7 @@ pub fn run() {
             game_macros::game_macro_overlay,
             game_macros::game_macro_navigate,
             game_macros::game_macro_overlay_fold,
+            game_macros::game_macro_overlay_resize,
             game_macros::game_macro_overlay_preferences,
             game_macros::game_macro_guide,
             game_macros::game_macro_guide_result,

@@ -1,0 +1,893 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Твиноферма — оверлей (тестовый прототип v1)</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --font: 14px system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+        --text: #eef2ff;
+        --text-dim: #aab1c6;
+        --text-mute: #7a8299;
+        --accent: #f5cc76;
+        --accent-2: #91e2bd;
+        --accent-3: #c7a7ff;
+        --danger: #f7768e;
+        --warn: #e6b86a;
+        --glass: rgba(16, 20, 30, 0.72);
+        --glass-2: rgba(24, 30, 44, 0.86);
+        --glass-3: rgba(33, 40, 58, 0.9);
+        --line: rgba(255, 255, 255, 0.1);
+        --line-2: rgba(255, 255, 255, 0.06);
+        --shadow: 0 18px 50px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+        --radius: 16px;
+        --radius-sm: 10px;
+        --alpha: 0.92;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background:
+          radial-gradient(1200px 600px at 15% -10%, #1a2340 0%, transparent 60%),
+          radial-gradient(900px 500px at 100% 0%, #2a1f3d 0%, transparent 55%), #0a0d16;
+        color: var(--text);
+        font: var(--font);
+        min-height: 100vh;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      /* simulate the desktop overlay: a floating glass window */
+      .overlay-window {
+        position: fixed;
+        top: 70px;
+        left: 90px;
+        width: min(440px, 92vw);
+        max-height: 82vh;
+        display: flex;
+        flex-direction: column;
+        background: var(--glass);
+        backdrop-filter: blur(22px) saturate(140%);
+        -webkit-backdrop-filter: blur(22px) saturate(140%);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+        color-scheme: dark;
+        opacity: var(--alpha);
+        transition: opacity 0.2s ease;
+      }
+      .overlay-window::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 30%);
+        pointer-events: none;
+      }
+      /* ---- header ---- */
+      .ov-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 14px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+        border-bottom: 1px solid var(--line-2);
+        cursor: move;
+        user-select: none;
+      }
+      .ov-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 700;
+        font-size: 15px;
+        letter-spacing: 0.2px;
+        flex: 1;
+        min-width: 0;
+      }
+      .ov-title .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--accent-2);
+        box-shadow: 0 0 12px var(--accent-2);
+      }
+      .ov-title .sub {
+        font-weight: 500;
+        font-size: 12px;
+        color: var(--text-mute);
+      }
+      .ov-winbtns {
+        display: flex;
+        gap: 6px;
+      }
+      .winbtn {
+        width: 30px;
+        height: 30px;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: var(--glass-3);
+        color: var(--text-dim);
+        cursor: pointer;
+        font-size: 14px;
+        transition: 0.15s;
+      }
+      .winbtn:hover {
+        color: var(--text);
+        border-color: var(--accent);
+        background: rgba(245, 204, 118, 0.12);
+      }
+      /* ---- status bar ---- */
+      .ov-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 14px;
+        font-size: 12.5px;
+        color: var(--text-dim);
+        background: rgba(0, 0, 0, 0.18);
+        border-bottom: 1px solid var(--line-2);
+      }
+      .pulse {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--accent-2);
+        animation: pulse 1.6s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 0.35;
+          transform: scale(0.85);
+        }
+        50% {
+          opacity: 1;
+          transform: scale(1.1);
+        }
+      }
+      .ov-status .sep {
+        opacity: 0.4;
+      }
+      .ov-status b {
+        color: var(--text);
+        font-weight: 600;
+      }
+      /* ---- tabs ---- */
+      .ov-tabs {
+        display: flex;
+        gap: 4px;
+        padding: 10px 12px 0;
+      }
+      .ov-tab {
+        flex: 1;
+        padding: 8px 6px;
+        border: 1px solid transparent;
+        border-bottom: none;
+        border-radius: 10px 10px 0 0;
+        background: transparent;
+        color: var(--text-mute);
+        cursor: pointer;
+        font: inherit;
+        font-size: 12.5px;
+        font-weight: 600;
+        transition: 0.15s;
+      }
+      .ov-tab:hover {
+        color: var(--text-dim);
+        background: rgba(255, 255, 255, 0.04);
+      }
+      .ov-tab[aria-current='page'] {
+        color: var(--accent);
+        background: var(--glass-2);
+        border-color: var(--line);
+      }
+      /* ---- body ---- */
+      .ov-body {
+        padding: 14px;
+        overflow: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .ov-body::-webkit-scrollbar {
+        width: 8px;
+      }
+      .ov-body::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.12);
+        border-radius: 8px;
+      }
+      /* ---- targeted control chips ---- */
+      .chips {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+      }
+      .chip {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 10px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        background: var(--glass-3);
+        cursor: pointer;
+        font-size: 12.5px;
+        font-weight: 600;
+        transition: 0.15s;
+        text-align: left;
+        color: var(--text);
+      }
+      .chip:hover {
+        border-color: rgba(255, 255, 255, 0.2);
+      }
+      .chip .ico {
+        font-size: 15px;
+      }
+      .chip .state {
+        margin-left: auto;
+        font-size: 10.5px;
+        font-weight: 700;
+        padding: 2px 7px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--text-mute);
+      }
+      .chip.on {
+        border-color: rgba(145, 226, 189, 0.5);
+        background: rgba(145, 226, 189, 0.1);
+      }
+      .chip.on .state {
+        background: rgba(145, 226, 189, 0.22);
+        color: var(--accent-2);
+      }
+      .chip.paused {
+        border-color: rgba(230, 184, 106, 0.5);
+        background: rgba(230, 184, 106, 0.1);
+      }
+      .chip.paused .state {
+        background: rgba(230, 184, 106, 0.22);
+        color: var(--warn);
+      }
+      /* ---- target badge ---- */
+      .target-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--accent-3);
+        background: rgba(199, 167, 255, 0.12);
+        border: 1px solid rgba(199, 167, 255, 0.28);
+        padding: 2px 8px;
+        border-radius: 20px;
+        white-space: nowrap;
+      }
+      .target-badge::before {
+        content: '◎';
+        font-size: 10px;
+      }
+      /* ---- section card ---- */
+      .card {
+        border: 1px solid var(--line-2);
+        border-radius: var(--radius-sm);
+        background: var(--glass-2);
+        overflow: hidden;
+      }
+      .card > .card-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line-2);
+        background: rgba(255, 255, 255, 0.03);
+      }
+      .card > .card-head h3 {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .card > .card-body {
+        padding: 10px 12px;
+      }
+      /* ---- commands ---- */
+      .cmd {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 10px;
+        border: 1px solid var(--line-2);
+        border-radius: var(--radius-sm);
+        background: var(--glass-3);
+        margin-bottom: 8px;
+      }
+      .cmd:last-child {
+        margin-bottom: 0;
+      }
+      .cmd .run {
+        width: 34px;
+        height: 30px;
+        display: grid;
+        place-items: center;
+        border: none;
+        border-radius: 8px;
+        background: linear-gradient(180deg, #2c3550, #232a3e);
+        color: var(--accent);
+        cursor: pointer;
+        font-size: 12px;
+        transition: 0.15s;
+      }
+      .cmd .run:hover {
+        background: linear-gradient(180deg, #3a4470, #2c3550);
+      }
+      .cmd .name {
+        font-size: 13px;
+        font-weight: 600;
+        min-width: 0;
+      }
+      .cmd .name small {
+        display: block;
+        font-weight: 500;
+        color: var(--text-mute);
+        font-size: 11px;
+      }
+      .kbd {
+        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--accent);
+        background: rgba(245, 204, 118, 0.1);
+        border: 1px solid rgba(245, 204, 118, 0.3);
+        border-radius: 6px;
+        padding: 3px 8px;
+        white-space: nowrap;
+      }
+      .kbd.none {
+        color: var(--text-mute);
+        background: rgba(255, 255, 255, 0.05);
+        border-color: var(--line-2);
+      }
+      /* ---- recipients ---- */
+      .recip-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 10px;
+        border: 1px solid var(--line-2);
+        border-radius: var(--radius-sm);
+        background: var(--glass-3);
+        margin-bottom: 7px;
+      }
+      .recip-row:last-child {
+        margin-bottom: 0;
+      }
+      .recip-row input[type='checkbox'] {
+        width: 17px;
+        height: 17px;
+        accent-color: var(--accent-2);
+      }
+      .recip-row .nick {
+        font-weight: 600;
+        font-size: 13px;
+      }
+      .recip-row .party {
+        font-size: 11px;
+        color: var(--text-mute);
+      }
+      .recip-row .lead {
+        margin-left: auto;
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--accent);
+        background: rgba(245, 204, 118, 0.12);
+        border: 1px solid rgba(245, 204, 118, 0.3);
+        padding: 2px 8px;
+        border-radius: 20px;
+      }
+      .recip-actions {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+      }
+      .btn {
+        padding: 7px 12px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: var(--glass-3);
+        color: var(--text);
+        cursor: pointer;
+        font: inherit;
+        font-size: 12.5px;
+        font-weight: 600;
+        transition: 0.15s;
+      }
+      .btn:hover {
+        border-color: var(--accent);
+        background: rgba(245, 204, 118, 0.1);
+      }
+      .btn.primary {
+        background: linear-gradient(180deg, #3a4470, #2c3550);
+        border-color: rgba(145, 226, 189, 0.4);
+        color: var(--accent-2);
+      }
+      .btn.ghost {
+        background: transparent;
+      }
+      /* ---- windows ---- */
+      .win-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 10px;
+        border: 1px solid var(--line-2);
+        border-radius: var(--radius-sm);
+        background: var(--glass-3);
+        margin-bottom: 7px;
+        font-size: 12.5px;
+      }
+      .win-row:last-child {
+        margin-bottom: 0;
+      }
+      .win-row input[type='checkbox'] {
+        width: 16px;
+        height: 16px;
+        accent-color: var(--danger);
+      }
+      .win-row .pname {
+        font-weight: 600;
+      }
+      .win-row .pmeta {
+        font-size: 11px;
+        color: var(--text-mute);
+      }
+      .progress {
+        height: 8px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.08);
+        overflow: hidden;
+        margin-top: 8px;
+      }
+      .progress > i {
+        display: block;
+        height: 100%;
+        width: 62%;
+        border-radius: 20px;
+        background: linear-gradient(90deg, var(--accent-2), var(--accent));
+      }
+      select {
+        width: 100%;
+        padding: 8px 10px;
+        background: var(--glass-3);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        font: inherit;
+        font-size: 12.5px;
+      }
+      label.field {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12.5px;
+        color: var(--text-dim);
+      }
+      input[type='range'] {
+        accent-color: var(--accent);
+        flex: 1;
+      }
+      /* ---- journal ---- */
+      .journal {
+        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+        font-size: 11.5px;
+        line-height: 1.55;
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid var(--line-2);
+        border-radius: var(--radius-sm);
+        padding: 10px 12px;
+        white-space: pre-wrap;
+        max-height: 240px;
+        overflow: auto;
+      }
+      .journal .t {
+        color: var(--danger);
+      }
+      .journal .c {
+        color: var(--accent);
+      }
+      .journal .ok {
+        color: var(--accent-2);
+      }
+      /* ---- appearance ---- */
+      .swatches {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 6px;
+      }
+      .swatch {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border: 1px solid var(--line-2);
+        border-radius: 9px;
+        background: var(--glass-3);
+        cursor: pointer;
+        font-size: 12px;
+        transition: 0.15s;
+      }
+      .swatch:hover {
+        border-color: var(--line);
+      }
+      .swatch.sel {
+        border-color: var(--accent);
+        background: rgba(245, 204, 118, 0.1);
+      }
+      .swatch i {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: inline-block;
+      }
+      .note {
+        font-size: 11.5px;
+        color: var(--text-mute);
+        line-height: 1.5;
+      }
+      .folded .ov-body {
+        display: none;
+      }
+      .folded .ov-status {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="overlay-window" id="ov">
+      <!-- header -->
+      <div class="ov-header" data-drag>
+        <div class="ov-title">
+          <span class="dot"></span>
+          <span>Управление пати</span>
+          <span class="sub">оверлей · тестовый прототип</span>
+        </div>
+        <div class="ov-winbtns">
+          <button class="winbtn" id="fold" title="Свернуть" aria-label="Свернуть">▾</button>
+          <button class="winbtn" id="close" title="Закрыть" aria-label="Закрыть">×</button>
+        </div>
+      </div>
+
+      <!-- status bar -->
+      <div class="ov-status">
+        <span class="pulse"></span>
+        <span>Повтор: <b>Клавиатура ВКЛ</b><span class="sep">·</span> <b>Мышь выкл</b></span>
+        <span class="sep">·</span>
+        <span>Ctrl+Alt+Pause — выключить</span>
+      </div>
+
+      <!-- tabs -->
+      <div class="ov-tabs" role="tablist">
+        <button class="ov-tab" data-view="keys" aria-current="page">Клавиши</button>
+        <button class="ov-tab" data-view="recipients">Получатели</button>
+        <button class="ov-tab" data-view="windows">Окна и пати</button>
+        <button class="ov-tab" data-view="journal">Журнал</button>
+        <button class="ov-tab" data-view="appearance">Настройки</button>
+      </div>
+
+      <!-- body -->
+      <div class="ov-body">
+        <!-- targeted control chips -->
+        <div class="chips">
+          <button class="chip on" data-chip="mouse">
+            <span class="ico">🖱</span> Повтор мыши<span class="state">ВКЛ</span>
+          </button>
+          <button class="chip" data-chip="keyboard">
+            <span class="ico">⌨</span> Повтор клавиатуры<span class="state">выкл</span>
+          </button>
+          <button class="chip" data-chip="hotkeys">
+            <span class="ico">⚡</span> Сочетания<span class="state">выкл</span>
+          </button>
+          <button class="chip" data-chip="pause">
+            <span class="ico">⏸</span> Пауза<span class="state">работает</span>
+          </button>
+        </div>
+
+        <!-- ===== KEYS view ===== -->
+        <section data-view="keys">
+          <div class="card">
+            <div class="card-head">
+              <h3>Назначенные клавиши</h3>
+              <span class="target-badge">цель: окна пати</span>
+            </div>
+            <div class="card-body">
+              <div class="cmd">
+                <button class="run" title="Запустить">▶</button>
+                <div class="name">Баф выбранной пати<small>Повтор по всем выбранным получателям</small></div>
+                <span class="kbd">F6 → F1</span>
+              </div>
+              <div class="cmd">
+                <button class="run" title="Запустить">▶</button>
+                <div class="name">Рес полной пати<small>Сброс и перезапуск рессурс</small></div>
+                <span class="kbd">F7 → F2</span>
+              </div>
+              <div class="cmd">
+                <button class="run" title="Запустить">▶</button>
+                <div class="name">Ассист лидера<small>Таргет на ПЛ текущей пати</small></div>
+                <span class="kbd">F9</span>
+              </div>
+              <div class="cmd">
+                <button class="run" title="Запустить">▶</button>
+                <div class="name">Следование за лидером<small>Переключение между окнами</small></div>
+                <span class="kbd none">не назначена</span>
+              </div>
+              <div class="cmd">
+                <button class="run" title="Запустить">▶</button>
+                <div class="name">Управление окошками<small>Клики и перемещение по координатам</small></div>
+                <span class="kbd">Ctrl + колесо</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== RECIPIENTS view ===== -->
+        <section data-view="recipients" hidden>
+          <div class="card">
+            <div class="card-head">
+              <h3>Получатели команд</h3>
+              <span class="target-badge">цель: персонажи</span>
+            </div>
+            <div class="card-body">
+              <div class="recip-actions">
+                <button class="btn ghost">↻ Обновить</button>
+                <button class="btn ghost">Выбрать всех</button>
+                <button class="btn ghost">Снять все</button>
+              </div>
+              <div class="recip-row">
+                <input type="checkbox" checked />
+                <div>
+                  <div class="nick">Артём</div>
+                  <div class="party">Пати «Этернал»</div>
+                </div>
+                <span class="lead">ПЛ</span>
+              </div>
+              <div class="recip-row">
+                <input type="checkbox" checked />
+                <div>
+                  <div class="nick">Марина</div>
+                  <div class="party">Пати «Этернал»</div>
+                </div>
+              </div>
+              <div class="recip-row">
+                <input type="checkbox" checked />
+                <div>
+                  <div class="nick">Сергей</div>
+                  <div class="party">Пати «Этернал»</div>
+                </div>
+              </div>
+              <div class="recip-row">
+                <input type="checkbox" />
+                <div>
+                  <div class="nick">Дмитрий</div>
+                  <div class="party">Пати «Восход»</div>
+                </div>
+              </div>
+              <div style="margin-top: 10px">
+                <label class="field"
+                  >ПЛ для специальных команд
+                  <select>
+                    <option>Не менять: Артём</option>
+                    <option>Не назначать ПЛ</option>
+                    <option>Марина</option>
+                  </select>
+                </label>
+              </div>
+              <button class="btn primary" style="margin-top: 10px; width: 100%">Сохранить выбор</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== WINDOWS view ===== -->
+        <section data-view="windows" hidden>
+          <div class="card">
+            <div class="card-head">
+              <h3>Пати и окна</h3>
+              <span class="target-badge">цель: игровые окна</span>
+            </div>
+            <div class="card-body">
+              <label class="field" style="margin-bottom: 10px"
+                >Пати для запуска
+                <select>
+                  <option>Этернал</option>
+                  <option>Восход</option>
+                </select>
+              </label>
+              <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px">
+                <button class="btn primary">▶ Запустить пати</button>
+                <button class="btn ghost">Обновить окна</button>
+                <button class="btn ghost">Закрыть окна ▾</button>
+              </div>
+              <div class="win-row">
+                <input type="checkbox" />
+                <div>
+                  <div class="pname">Perfect World · Артём</div>
+                  <div class="pmeta">PID 4821 · распознано · запуск Твинофермой</div>
+                </div>
+              </div>
+              <div class="win-row">
+                <input type="checkbox" />
+                <div>
+                  <div class="pname">Perfect World · Марина</div>
+                  <div class="pmeta">PID 4830 · распознано · из заголовка</div>
+                </div>
+              </div>
+              <div class="win-row">
+                <input type="checkbox" />
+                <div>
+                  <div class="pname">Perfect World · Сергей</div>
+                  <div class="pmeta">PID 4844 · распознано · ручная привязка</div>
+                </div>
+              </div>
+              <div style="margin-top: 10px">
+                <div class="note">Запуск пати · 62% · 3/5</div>
+                <div class="progress"><i></i></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== JOURNAL view ===== -->
+        <section data-view="journal" hidden>
+          <div class="card">
+            <div class="card-head">
+              <h3>Журнал текущего сеанса</h3>
+              <span class="target-badge">цель: сеанс</span>
+            </div>
+            <div class="card-body">
+              <div style="display: flex; gap: 6px; margin-bottom: 8px">
+                <button class="btn ghost">Копировать весь лог</button>
+                <button class="btn ghost">Очистить лог</button>
+              </div>
+              <div class="journal">
+                <span class="ok">[ok]</span> Баф пати запущен · 3 получателя <span class="c">[cmd]</span> F6→F1
+                отправлено в 3 окна <span class="ok">[ok]</span> Рес полной пати · 3/3 <span class="t">[err]</span> Окно
+                ПЛ не отвечает · переподключение ввода <span class="c">[cmd]</span> Ctrl+колесо → координаты
+                откалиброваны
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== APPEARANCE view ===== -->
+        <section data-view="appearance" hidden>
+          <div class="card">
+            <div class="card-head">
+              <h3>Настройки оверлея</h3>
+              <span class="target-badge">цель: внешность</span>
+            </div>
+            <div class="card-body">
+              <label class="field" style="margin-bottom: 12px"
+                >Непрозрачность <output id="alphaVal">92%</output>
+                <input id="opacity" type="range" min="10" max="100" value="92" />
+              </label>
+              <label class="field" style="margin-bottom: 12px">
+                <input type="checkbox" checked /> Поверх других окон
+              </label>
+
+              <div style="margin-bottom: 10px">
+                <div class="note" style="margin-bottom: 4px">Цвет текста</div>
+                <div class="swatches" data-group="text">
+                  <span class="swatch sel" data-val="light"><i style="background: #eef2ff"></i>Светлый</span>
+                  <span class="swatch" data-val="warm"><i style="background: #f5d98c"></i>Тёплый</span>
+                  <span class="swatch" data-val="mint"><i style="background: #91e2bd"></i>Мятный</span>
+                </div>
+              </div>
+              <div style="margin-bottom: 10px">
+                <div class="note" style="margin-bottom: 4px">Цвет клавиш</div>
+                <div class="swatches" data-group="key">
+                  <span class="swatch sel" data-val="gold"><i style="background: #f5cc76"></i>Золотой</span>
+                  <span class="swatch" data-val="blue"><i style="background: #9ccaff"></i>Голубой</span>
+                  <span class="swatch" data-val="white"><i style="background: #eef2ff"></i>Белый</span>
+                </div>
+              </div>
+              <div style="margin-bottom: 12px">
+                <div class="note" style="margin-bottom: 4px">Размер текста</div>
+                <input type="range" min="10" max="24" value="14" id="fontSize" />
+              </div>
+              <button class="btn primary" style="width: 100%">Сохранить</button>
+              <p class="note" style="margin-top: 8px">
+                Прототип: изменения в мок-интерфейсе не сохраняются в приложение.
+              </p>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <script>
+      // ---- tabs ----
+      const tabs = document.querySelectorAll('.ov-tab');
+      const sections = document.querySelectorAll('[data-view]');
+      tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          const view = tab.dataset.view;
+          tabs.forEach(t => (t.getAttribute('aria-current') === 'page' ? t.removeAttribute('aria-current') : 0));
+          tab.setAttribute('aria-current', 'page');
+          sections.forEach(s => {
+            s.hidden = s.dataset.view !== view;
+          });
+        });
+      });
+
+      // ---- chips toggle ----
+      document.querySelectorAll('[data-chip]').forEach(chip => {
+        chip.addEventListener('click', () => {
+          if (chip.dataset.chip === 'pause') {
+            chip.classList.toggle('paused');
+            const on = chip.classList.contains('paused');
+            chip.querySelector('.state').textContent = on ? 'пауза' : 'работает';
+            chip.querySelector('.ico').textContent = on ? '▶' : '⏸';
+            return;
+          }
+          chip.classList.toggle('on');
+          const on = chip.classList.contains('on');
+          chip.querySelector('.state').textContent = on ? 'ВКЛ' : 'выкл';
+        });
+      });
+
+      // ---- opacity ----
+      const opacity = document.getElementById('opacity');
+      const alphaVal = document.getElementById('alphaVal');
+      const ov = document.getElementById('ov');
+      opacity.addEventListener('input', () => {
+        alphaVal.textContent = opacity.value + '%';
+        ov.style.setProperty('--alpha', Number(opacity.value) / 100);
+      });
+
+      // ---- swatches ----
+      document.querySelectorAll('.swatches').forEach(group => {
+        group.querySelectorAll('.swatch').forEach(sw => {
+          sw.addEventListener('click', () => {
+            group.querySelectorAll('.swatch').forEach(s => s.classList.remove('sel'));
+            sw.classList.add('sel');
+          });
+        });
+      });
+
+      // ---- fold / close (mock) ----
+      document.getElementById('fold').addEventListener('click', () => {
+        ov.classList.toggle('folded');
+      });
+      document.getElementById('close').addEventListener('click', () => {
+        ov.style.opacity = '0';
+        setTimeout(() => (ov.style.opacity = ''), 300);
+      });
+
+      // ---- drag (mock) ----
+      const header = document.querySelector('.ov-header');
+      header.addEventListener('pointerdown', e => {
+        if (e.target.closest('button')) return;
+        const startX = e.clientX - ov.offsetLeft;
+        const startY = e.clientY - ov.offsetTop;
+        const move = ev => {
+          ov.style.left = ev.clientX - startX + 'px';
+          ov.style.top = ev.clientY - startY + 'px';
+        };
+        const up = () => {
+          window.removeEventListener('pointermove', move);
+          window.removeEventListener('pointerup', up);
+        };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+      });
+    </script>
+  </body>
+</html>

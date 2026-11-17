@@ -7,6 +7,7 @@
 import { state } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
 import { normalizeGuildData } from './core.js';
+import { normalizePendingPollVotes } from './pollVoteQueue.js';
 
 /** Раздел настроек клана; создаётся при первом обращении. */
 function guildSettings() {
@@ -38,29 +39,15 @@ export function readGuildData() {
  * от прежней схемы обновления не должны в нём копиться.
  */
 export async function writeGuildData(data) {
-  const { enabled, pendingResponses, leaderOverrides } = guildSettings();
+  const { enabled, pendingResponses, pendingPollVotes, leaderOverrides } = guildSettings();
   state.settings.guild = {
     ...normalizeGuildData({ ...data, leaderOverrides: leaderOverrides || [] }),
     pendingResponses: pendingResponses || [],
+    pendingPollVotes: pendingPollVotes || [],
     syncedAt: Date.now(),
     ...(enabled !== undefined ? { enabled } : {})
   };
   await persist();
-}
-
-/** Если голос принят, а сводку перечитать не удалось, сохраняем только сам ответ. */
-export async function rememberGuildPollVote(pollId, optionIds) {
-  const data = readGuildData();
-  if (!data.poll || data.poll.id !== String(pollId)) return false;
-  const selected = new Set(optionIds.map(String));
-  const poll = {
-    ...data.poll,
-    options: data.poll.options.map(option => ({ ...option, selected: selected.has(option.id) }))
-  };
-  // syncedAt остаётся временем последней настоящей сводки, а не неудачного обновления.
-  state.settings.guild = { ...guildSettings(), poll };
-  await persist();
-  return true;
 }
 
 /** Durable local intentions; never advance syncedAt or write them into the verified report. */
@@ -69,6 +56,15 @@ export function readPendingResponses() {
 }
 export async function writePendingResponses(pendingResponses) {
   state.settings.guild = { ...guildSettings(), pendingResponses };
+  await persist();
+}
+
+/** Локальный выбор в опросах: показывается сразу, отправка — отложенный фоновый шаг. */
+export function readPendingPollVotes() {
+  return normalizePendingPollVotes(guildSettings().pendingPollVotes);
+}
+export async function writePendingPollVotes(pollVotes) {
+  state.settings.guild = { ...guildSettings(), pendingPollVotes: pollVotes };
   await persist();
 }
 

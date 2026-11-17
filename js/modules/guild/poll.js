@@ -108,18 +108,51 @@ export function pollPartsHtml(parts) {
     .join('');
 }
 
-/** Никакого блока при отсутствии опроса; форма остаётся видимой при ошибке загрузки. */
+/**
+ * Объединяет локальный выбор (ожидает отправки) с опросами из сводки для отрисовки.
+ * Пока голос лежит в очереди, его варианты уже выделены — выбор виден сразу,
+ * а отправка уходит фоново после паузы, как у ответов на события.
+ */
+export function withPendingPollState(polls, pendingVotes) {
+  const byId = new Map((pendingVotes || []).map(vote => [String(vote.pollId), vote]));
+  return (polls || []).map(poll => {
+    const vote = byId.get(String(poll.id));
+    if (!vote) return poll;
+    const selected = new Set(vote.optionIds);
+    // Для одиночного опроса — только один вариант может быть выбран: локальный выбор
+    // заменяет прежнюю подпись с сайта, иначе при смене варианта горели бы и старый, и новый.
+    const selectedOption = option =>
+      poll.type === 'single' ? selected.has(option.id) : option.selected || selected.has(option.id);
+    return {
+      ...poll,
+      options: poll.options.map(option => ({ ...option, selected: selectedOption(option) })),
+      voteState: vote.failed ? 'failed' : 'pending'
+    };
+  });
+}
+
+/**
+ * Никакого блока при отсутствии опроса. Варианты — кнопки, как кнопки «Пойду/Не пойду»
+ * у предстоящих событий: нажатие на вариант сразу отрисовывает выбор, а голос
+ * отправляется через паузу фоновым шагом. Уже выбранный вариант выделяется,
+ * как «Пойду» у события.
+ */
 export function guildPollHtml(raw) {
   const poll = normalizeGuildPoll(raw);
   if (!poll) return '';
   const multiple = poll.type === 'multiple';
+  const pending = poll.voteState === 'pending';
+  const failed = poll.voteState === 'failed';
+  const voted = poll.options.some(option => option.selected);
   const options = poll.options
     .map(option => {
-      const id = `guild-poll-${poll.id}-${option.id}`;
-      return `<label class="guild-poll-option" for="${id}">
-        <input id="${id}" type="${multiple ? 'checkbox' : 'radio'}" name="guild-poll-option" value="${option.id}"${option.selected ? ' checked' : ''}>
-        <span>${pollPartsHtml(option.text)}</span>
-      </label>`;
+      // Одно нажатие = один голос, как у кнопок отметки события:
+      // для одиночного опроса вариант сразу входит в очередь, для многовариантного —
+      // переключается, а голос уходит кнопкой «Голосовать выбранными».
+      const action = multiple ? 'poll-toggle' : 'poll-vote';
+      return `<button type="button" class="btn small ${option.selected ? 'primary' : 'secondary'}"
+        data-guild="${action}" data-poll="${poll.id}" data-option="${option.id}"
+        aria-pressed="${option.selected}"${poll.loadError || !poll.options.length ? ' disabled' : ''}><span>${pollPartsHtml(option.text)}</span></button>`;
     })
     .join('');
   const hint = poll.loadError
@@ -128,15 +161,31 @@ export function guildPollHtml(raw) {
       ? 'Варианты пока недоступны. Обновите сводку клана.'
       : multiple
         ? 'Можно выбрать несколько вариантов.'
-        : 'Выберите один вариант.';
+        : 'Нажмите вариант, чтобы проголосовать.';
+  const state = pending
+    ? 'Ожидает отправки'
+    : failed
+      ? 'Не подтверждён · нажмите вариант для повтора'
+      : voted
+        ? 'Голос учтён'
+        : multiple
+          ? 'Выберите варианты'
+          : 'Выберите вариант';
+  // Кнопка отправки нужна только многовариантному опросу: у одиночного голос уходит сразу.
+  const submit = multiple
+    ? `<button class="btn small primary" type="button" data-guild="poll-vote" data-poll="${poll.id}" disabled>Голосовать выбранными</button>`
+    : '';
   return `
-    <section class="guild-poll" aria-labelledby="guild-poll-title">
-      <h3 id="guild-poll-title">Опрос</h3>
-      <div class="guild-poll-title">${pollPartsHtml(poll.title) || 'Голосование'}</div>
-      <form data-guild-poll data-poll-id="${poll.id}">
+    <section class="guild-poll${voted || pending ? ' is-voted' : ''}" data-poll-id="${poll.id}" aria-labelledby="guild-poll-title">
+      <div class="guild-poll-main">
+        <h3 id="guild-poll-title">Опрос</h3>
+        <div class="guild-poll-title">${pollPartsHtml(poll.title) || 'Голосование'}</div>
         <p class="muted guild-poll-hint">${hint}</p>
-        <fieldset class="guild-poll-options" aria-label="Варианты ответа">${options}</fieldset>
-        <button class="btn primary small" type="submit"${poll.loadError || !poll.options.length ? ' disabled' : ''}>${poll.options.some(option => option.selected) ? 'Изменить голос' : 'Проголосовать'}</button>
-      </form>
+      </div>
+      <div class="guild-poll-actions">
+        <div class="guild-poll-options">${options}</div>
+        ${submit ? `<div class="guild-poll-submit">${submit}</div>` : ''}
+        <span class="guild-state">${state}</span>
+      </div>
     </section>`;
 }

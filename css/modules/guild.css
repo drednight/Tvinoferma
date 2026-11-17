@@ -139,8 +139,18 @@
   border-top: 1px solid var(--border);
 }
 
+/* Заголовок и текст опроса сверху; действия (варианты, статус) — снизу */
+.guild-poll-main {
+  min-width: 0;
+}
+
+.guild-poll-main h3 {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
 .guild-poll-title {
-  margin: 0 0 8px;
+  margin: 2px 0 6px;
   font-weight: 650;
   line-height: 1.5;
   overflow-wrap: anywhere;
@@ -156,42 +166,76 @@
   font-size: 0.84rem;
 }
 
-.guild-poll-options {
-  display: grid;
-  gap: 6px;
-  max-height: 320px;
-  overflow-y: auto;
-  min-width: 0;
-  margin: 10px 0;
-  padding: 0;
-  border: 0;
-}
-
-.guild-poll-option {
+/* Действия опроса: варианты-кнопки, кнопка отправки (multiple) и статус внизу */
+.guild-poll-actions {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* Варианты — кнопки, как «Пойду/Не пойду» у событий: развёрнутый список,
+   каждая кнопка на своей строке, текст слева. */
+.guild-poll-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.guild-poll-options .btn {
+  flex: 1 1 100%;
+  text-align: left;
+}
+
+.guild-poll-submit .btn {
+  width: 100%;
+}
+
+/* Проголосованный опрос: подсветка как у события «Пойду» */
+.guild-poll.is-voted {
+  background: linear-gradient(90deg, var(--accent-soft), transparent 72%);
+  box-shadow: inset 3px 0 0 0 var(--accent);
+}
+
+/* Список открытых опросов: каждый опрос — отдельный блок-карточка. Карточки
+   выстраиваются в ряд; если место на строке заканчивается — следующий опрос
+   переносится на следующую строку. */
+.guild-polls {
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
   align-items: flex-start;
-  gap: 10px;
-  min-width: 0;
-  padding: 9px 10px;
-  border: 1px solid var(--border);
+}
+
+/* Заголовок и подсказка — на своей отдельной строке, فوق рядом карточек. */
+.guild-polls h3 {
+  flex: 0 0 100%;
+  margin: 0 0 2px;
+  font-size: 0.95rem;
+}
+
+.guild-polls-hint {
+  flex: 0 0 100%;
+  margin: 0;
+  font-size: 0.84rem;
+}
+
+.guild-polls .guild-poll {
+  /* Не разрастаться по ширине: flex-grow 0 — карточка остаётся своей шириной,
+     рядом с другими, и переходит на следующую строку при нехватке места. */
+  flex: 0 1 280px;
+  min-width: 240px;
+  max-width: 100%;
+  margin-top: 0;
+  padding: 12px;
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  cursor: pointer;
+  background: var(--surface);
 }
 
-.guild-poll-option:hover {
-  background: var(--surface-2);
-}
-
-.guild-poll-option input {
-  flex: 0 0 auto;
-  margin: 3px 0 0;
-  accent-color: var(--accent);
-}
-
-.guild-poll-option span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
+/* Старые стили для radio/checkbox-вариантов удалены: варианты теперь кнопки
+   (см. .guild-poll-options выше). */
 
 /* Пати с составом: название, размер и копирование ников */
 .guild-parties-head {

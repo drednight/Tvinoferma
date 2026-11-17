@@ -48,14 +48,17 @@ describe('разбор профиля', () => {
 
   it('читает события с их текущим ответом', () => {
     const events = profile().events;
-    expect(events.map(e => e.id)).toEqual(['462', '464']);
+    expect(events.map(e => e.id)).toEqual(['462', '464', '466']);
     expect(events[0]).toMatchObject({
       title: 'ГВГ атака - ГВГ ЧТ',
       when: '15 октября (четверг) в 22:00',
       comment: 'Сбор за 20 минут до начала!',
       response: RESPONSE_YES
     });
+    // 464: радио «Пойду» по умолчанию checked, но блок подтверждения скрыт — ответ не задан.
     expect(events[1]).toMatchObject({ title: 'Садеман - Садэман', response: '' });
+    // 466: на сайте стоит «Не пойду» (radio value="no" checked) — уже ответил.
+    expect(events[2]).toMatchObject({ title: 'Тренировка - Тренировка', response: RESPONSE_NO });
   });
 
   it('читает пати: название без «(5 чел.)», участники с иконкой класса', () => {
@@ -192,7 +195,7 @@ describe('список событий', () => {
       ...data,
       events: [...data.events, { id: '465', title: 'ГВГ деф', response: RESPONSE_NO }]
     });
-    expect(events.events.map(e => e.id)).toEqual(['462', '464', '465']);
+    expect(events.events.map(e => e.id)).toEqual(['462', '464', '466', '465']);
     expect(events.events[2].response).toBe(RESPONSE_NO);
     expect(unansweredEvents(events).map(e => e.id)).toEqual(['464']);
   });
@@ -204,7 +207,7 @@ describe('список событий', () => {
   });
 
   it('сводка называет ивенты и пати, но не состав', () => {
-    expect(summaryText(data)).toBe('ивентов 2, отмечен 1, ждёт ответа 1 · пати: МТВ - Пати 2, ГВГ атака - Пати 1');
+    expect(summaryText(data)).toBe('ивентов 3, отмечен 2, ждёт ответа 1 · пати: МТВ - Пати 2, ГВГ атака - Пати 1');
     expect(summaryText({ ...data, syncedAt: null })).toBe('');
   });
 });

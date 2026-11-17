@@ -5,20 +5,29 @@ import { guildPollHtml, normalizeGuildPoll, safePollLink } from '../js/modules/g
 
 const html = readFileSync('tests/fixtures/site-guild-poll.html', 'utf8');
 const response = JSON.parse(readFileSync('tests/fixtures/site-guild-poll-response.json', 'utf8'));
+// Страница списка опросов polls.php: один открытый опрос, как на сайте клана.
+const pollsListHtml =
+  '<div class="polls__grid"><div class="poll" data-poll-id="901"><h3 class="poll__title">Опрос 901</h3></div></div>';
 const script = readFileSync('src-tauri/src/scripts/guild.js', 'utf8');
 const reply = data => ({ ok: true, json: async () => structuredClone(data) });
+const replyText = text => ({ ok: true, text: async () => text });
 const report = prefix => JSON.parse(decodeURIComponent(window.location.hash.slice(prefix.length)));
 const waitHash = prefix => vi.waitFor(() => expect(window.location.hash.startsWith(prefix)).toBe(true));
 
-function install(fetchMock = vi.fn(async () => reply(response))) {
+function install(fetchMock) {
   document.body.innerHTML = new DOMParser().parseFromString(html, 'text/html').body.innerHTML;
   window.history.replaceState(null, '', '/index.php');
   delete window.__tfGuildInstalled;
   window.__tfGuildOrigin = window.location.origin;
-  vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal('fetch', fetchMock || defaultFetch);
   new Function(script)();
-  return fetchMock;
+  return fetchMock || defaultFetch;
 }
+// Скрипт читает polls.php (HTML-список) и handlers/get_poll.php (JSON вариантов).
+const defaultFetch = vi.fn(async url => {
+  if (String(url).includes('/polls.php')) return replyText(pollsListHtml);
+  return reply(response);
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -61,7 +70,8 @@ describe('структура опроса и безопасный рендере
     expect(container.querySelector('img')).toBeNull();
     expect(container.querySelectorAll('a')).toHaveLength(1);
     expect(container.querySelector('a').href).toBe('https://example.com/path');
-    expect(container.querySelector('input').checked).toBe(true);
+    // Выбранный вариант — кнопка с aria-pressed, как «Пойду» у события
+    expect(container.querySelector('.guild-poll-options button').getAttribute('aria-pressed')).toBe('true');
     expect(container.textContent).toContain('<img onerror=alert(1)>');
     expect(normalizeGuildPoll({ id: 'bad' })).toBeNull();
     expect(safePollLink('javascript:alert(1)')).toBe('');
@@ -81,13 +91,16 @@ describe('скрипт окна клана: API и голосование', () =
     document.body.innerHTML = '';
   });
 
-  it('асинхронно загружает варианты и выбранные ответы в том же формате, что модель', async () => {
+  it('асинхронно загружает опросы со списка polls.php и варианты из API в том же формате, что модель', async () => {
     const fetchMock = install();
     await waitHash('#TFETE1_');
     const result = report('#TFETE1_');
-    const poll = result.data.poll;
+    // Опрос с профиля (#mainPoll) не берётся: в сводке только список polls.php.
+    expect(result.data.poll).toBeNull();
+    const poll = result.data.polls[0];
     expect(result.error).toBeNull();
-    expect(poll.title).toEqual(parseProfileDocument(new DOMParser().parseFromString(html, 'text/html')).poll.title);
+    expect(poll.id).toBe('901');
+    expect(poll.title).toEqual([{ text: 'Опрос 901' }]);
     expect(poll.type).toBe('multiple');
     expect(poll.options.map(o => [o.id, o.selected])).toEqual([
       ['501', true],
@@ -106,9 +119,9 @@ describe('скрипт окна клана: API и голосование', () =
     const data = structuredClone(response);
     data.options[0].option_text =
       '<a href="/details">Подробнее</a><script>alert(1)</script><a href="javascript:alert(1)">опасно</a>';
-    install(vi.fn(async () => reply(data)));
+    install(vi.fn(async url => (String(url).includes('/polls.php') ? replyText(pollsListHtml) : reply(data))));
     await waitHash('#TFETE1_');
-    expect(report('#TFETE1_').data.poll.options[0].text).toEqual([
+    expect(report('#TFETE1_').data.polls[0].options[0].text).toEqual([
       { text: 'Подробнее', href: `${window.location.origin}/details` },
       { text: 'опасно' }
     ]);
@@ -116,12 +129,13 @@ describe('скрипт окна клана: API и голосование', () =
 
   it('при ошибке API сохраняет заголовок и показывает ошибку, не выдавая пустой опрос за отсутствие', async () => {
     install(
-      vi.fn(async () => {
+      vi.fn(async url => {
+        if (String(url).includes('/polls.php')) return replyText(pollsListHtml);
         throw new TypeError('failed');
       })
     );
     await waitHash('#TFETE1_');
-    expect(report('#TFETE1_').data.poll).toMatchObject({ id: '901', loadError: true, options: [] });
+    expect(report('#TFETE1_').data.polls[0]).toMatchObject({ id: '901', title: [{ text: 'Опрос 901' }], loadError: true, options: [] });
   });
 
   it('голосует только после проверки текущих вариантов и подтверждения сервера', async () => {
@@ -181,8 +195,8 @@ describe('скрипт окна клана: API и голосование', () =
     newer.user_vote = [502];
     pending[1](reply(newer));
     await waitHash('#TFETE1_');
-    pending[0](reply(response));
+    pending[0](replyText(pollsListHtml));
     await new Promise(resolve => setTimeout(resolve, 0));
-    expect(report('#TFETE1_').data.poll.options.find(o => o.id === '502').selected).toBe(true);
+    expect(report('#TFETE1_').data.polls[0].options.find(o => o.id === '502').selected).toBe(true);
   });
 });

@@ -19,6 +19,10 @@ use tauri::webview::NewWindowResponse;
 use tauri::{command, AppHandle, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 const GUILD_LABEL: &str = "guild-win";
+/// Метка видимого окна клана, которое открывает кнопка «Открыть сайт».
+/// Отдельно от скрытого окна (`GUILD_LABEL`): кнопка должна запускать новое видимое
+/// окно, а не поднимать скрытое, которое вспыхило для фонового обмена данными.
+const GUILD_VIEW_LABEL: &str = "guild-view";
 /// Адрес кланового сайта. Это настоящий домен, а не название раздела: при переименовании
 /// модуля `eternals` → `guild` его уже однажды задели, и окно открывало несуществующий сайт.
 const GUILD_URL: &str = "https://pw-eternals.ru/index.php";
@@ -30,10 +34,20 @@ const REPORT_HASH: &str = "#TFETE1_";
 const ACTION_HASH: &str = "#TFETA1_";
 /// Отдельный hash с результатом голосования в опросе.
 const VOTE_HASH: &str = "#TFETV1_";
+/// Отдельный hash с признаком готовности окна клана к голосованию.
+/// Опубликовывается самим окном (eval), а не сводкой профиля: готовность проверяют
+/// без требования успешной сводки, чтобы ложный «login» от index.php не блокировал голос.
+const READY_HASH: &str = "#TFETW1_";
 /// Сколько ждём страницу профиля при обновлении, секунд.
 const SYNC_TIMEOUT_SECS: u64 = 25;
 /// Сколько ждём ответ сайта на отметку, секунд.
 const RESPOND_TIMEOUT_SECS: u64 = 20;
+/// Сколько раз повторяем чтение профиля на свежем окне, если попали на страницу входа.
+/// На свежем окне первая загрузка index.php может прийти раньше, чем браузер подтянет
+/// сохранённые cookie входа — тогда парсер видит страницу входа, хотя сессия жива.
+const LOGIN_RETRY_ATTEMPTS: u32 = 3;
+/// Пауза между повторами «login», чтобы колодки успели устроиться.
+const LOGIN_RETRY_DELAY_SECS: u64 = 2;
 
 /// Идёт ли обновление: два запуска одновременно (кнопка и суточная проверка) не нужны.
 static SYNC_BUSY: AtomicBool = AtomicBool::new(false);
@@ -61,13 +75,15 @@ fn clan_window(app: &AppHandle) -> Option<WebviewWindow> {
 ///
 /// Создаётся только из `async` команд: на Windows создание окна из синхронной команды приводит
 /// к взаимной блокировке, и `invoke` тогда не возвращается.
-fn create_clan_window(app: &AppHandle, visible: bool) -> Result<WebviewWindow, String> {
+fn create_clan_window(app: &AppHandle, label: &str, visible: bool) -> Result<WebviewWindow, String> {
     let url = Url::parse(GUILD_URL).map_err(|e| e.to_string())?;
     let origin =
         serde_json::to_string(&url.origin().ascii_serialization()).map_err(|e| e.to_string())?;
     let script = format!("window.__tfGuildOrigin = {};\n{}", origin, GUILD_SCRIPT);
+    // label попадает в 'static-closure on_new_window — берём собственную копию.
+    let label = label.to_string();
     let handle = app.clone();
-    WebviewWindowBuilder::new(app, GUILD_LABEL, WebviewUrl::External(url))
+    WebviewWindowBuilder::new(app, label.clone(), WebviewUrl::External(url))
         .title("Клан")
         .inner_size(1100.0, 800.0)
         .resizable(true)
@@ -77,7 +93,7 @@ fn create_clan_window(app: &AppHandle, visible: bool) -> Result<WebviewWindow, S
         .on_new_window(move |url, _features| {
             // Ссылки, которые сайт открывает в новом окне, показываем в этом же окне
             if matches!(url.scheme(), "http" | "https") {
-                if let Some(win) = handle.get_webview_window(GUILD_LABEL) {
+                if let Some(win) = handle.get_webview_window(&label) {
                     tauri::async_runtime::spawn(async move {
                         let _ = win.navigate(url);
                     });
@@ -89,21 +105,22 @@ fn create_clan_window(app: &AppHandle, visible: bool) -> Result<WebviewWindow, S
         .map_err(|e| e.to_string())
 }
 
-/// Открывает окно клана или поднимает уже открытое.
+/// Открывает видимое окно клана (кнопка «Открыть сайт»): запускает новое видимое окно,
+/// а не поднимает скрытое, которое могло вспыхнуть для фонового обмена данными.
 #[command]
 pub async fn open_guild_window(app: AppHandle) -> Result<(), String> {
-    if let Some(win) = clan_window(&app) {
+    if let Some(win) = app.get_webview_window(GUILD_VIEW_LABEL) {
         win.show().map_err(|e| e.to_string())?;
         win.set_focus().map_err(|e| e.to_string())?;
         return Ok(());
     }
-    create_clan_window(&app, true).map(|_| ())
+    create_clan_window(&app, GUILD_VIEW_LABEL, true).map(|_| ())
 }
 
-/// Закрывает окно клана.
+/// Закрывает видимое окно клана.
 #[command]
 pub async fn close_guild_window(app: AppHandle) -> Result<(), String> {
-    if let Some(win) = clan_window(&app) {
+    if let Some(win) = app.get_webview_window(GUILD_VIEW_LABEL) {
         win.close().map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -112,7 +129,7 @@ pub async fn close_guild_window(app: AppHandle) -> Result<(), String> {
 /// Открыто ли окно клана (видимое или скрытое).
 #[command]
 pub fn guild_window_exists(app: AppHandle) -> bool {
-    clan_window(&app).is_some()
+    clan_window(&app).is_some() || app.get_webview_window(GUILD_VIEW_LABEL).is_some()
 }
 
 /// Обновляет сводку клана: события и пати.
@@ -133,16 +150,22 @@ pub async fn guild_sync(app: AppHandle) -> Result<serde_json::Value, String> {
 }
 
 async fn run_sync(app: &AppHandle) -> Result<serde_json::Value, String> {
-    let (win, created) = match clan_window(app) {
-        Some(win) => (win, false),
-        None => (create_clan_window(app, false)?, true),
-    };
-    let result = wait_for_report(&win).await;
-    // Скрытое окно создали ради обновления — после ответа убираем его, видимое не трогаем
-    if created {
-        let _ = win.destroy();
+    // Скрытое окно открывается только на время обмена: если видимого окна нет —
+    // вспыхиваем скрытое, берём сводку и закрываем. Не держим его постоянно.
+    match clan_window(app) {
+        Some(win) => wait_for_report(&win).await,
+        None => {
+            let win = create_clan_window(app, GUILD_LABEL, false)?;
+            let result = wait_for_report_with_login_retry(
+                &win,
+                LOGIN_RETRY_ATTEMPTS,
+                Duration::from_secs(LOGIN_RETRY_DELAY_SECS),
+            )
+            .await;
+            let _ = win.destroy();
+            result
+        }
     }
-    result
 }
 
 /// Ждёт payload в hash окна. `read_hash_payload` отдаёт `(ошибка, данные)`: ошибка `login`
@@ -173,6 +196,71 @@ async fn wait_for_report(win: &WebviewWindow) -> Result<serde_json::Value, Strin
          if (window.__tfGuildRefresh) window.__tfGuildRefresh();",
     );
     wait_for_hash(win, REPORT_HASH, Duration::from_secs(SYNC_TIMEOUT_SECS)).await
+}
+
+/// Ждёт, чтобы страница в окне клана отгрузилась, а скрипт с функциями был готов.
+/// Не требует успешной сводки профиля: проверка входа через fetch index.php могла бы
+/// ложно сработать, хотя сеанс жив. Голос сам проверит опрос и отправит запрос;
+/// если сеанс действительно неактуален — придёт понятная ошибка от сайта, не «login».
+async fn wait_for_window_ready(win: &WebviewWindow) -> Result<(), String> {
+    let deadline = Instant::now() + Duration::from_secs(SYNC_TIMEOUT_SECS);
+    // eval выполняет JS и возвращает только статус выполнения: результат выражения
+    // публикует сам скрипт в URL-hash (как сводку и голос), а Rust читает его через URL.
+    let ready_script = "(function(){var ready = document.readyState === 'complete' && typeof window.__tfGuildVote === 'function';\
+        history.replaceState(null, '', location.pathname + location.search + '#TFETW1_' + encodeURIComponent(JSON.stringify({data: ready, error: null})));})();";
+    while Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        if win.eval(ready_script).is_err() {
+            continue;
+        }
+        let Ok(url) = win.url() else { continue };
+        // Hash с готовностью может остаться от прошлого цикла: читаем его только
+        // после того, как скрипт заново опубликовал актуальное значение.
+        match crate::parsers::read_hash_payload(url.as_str(), READY_HASH) {
+            Some((None, serde_json::Value::Bool(true))) => return Ok(()),
+            _ => {}
+        }
+    }
+    Err("timeout".into())
+}
+
+/// Ждёт сводку профиля, но сначала даёт странице отгрузиться, а колодкам — устроиться.
+///
+/// На свежем скрытом окне первая загрузка `index.php` может прийти раньше, чем браузер
+/// подтянет сохранённые cookie входа: парсер тогда видит страницу входа (`login`), хотя
+/// сессия в профиле живая. Поэтому «login» пробуем повторить с паузами — повтор обычно
+/// даёт настоящую сводку. Любую другую ошибку (`timeout`, `page`) сразу возвращаем.
+async fn wait_for_report_with_login_retry(
+    win: &WebviewWindow,
+    attempts: u32,
+    delay: Duration,
+) -> Result<serde_json::Value, String> {
+    wait_for_window_ready(win).await?;
+    let mut last: Result<serde_json::Value, String> = Err("timeout".into());
+    for attempt in 0..attempts {
+        match wait_for_report(win).await {
+            Ok(report) => return Ok(report),
+            Err(error) => {
+                let is_login = error == "login";
+                last = Err(error);
+                if !is_login || attempt + 1 >= attempts {
+                    break;
+                }
+                crate::parsers::tf_log(
+                    win.app_handle(),
+                    "guild",
+                    "warn",
+                    format!(
+                        "Свежее окно клана попало на страницу входа, повтор чтения профиля ({}/{})",
+                        attempt + 1,
+                        attempts
+                    ),
+                );
+                tokio::time::sleep(delay).await;
+            }
+        }
+    }
+    Err(last.unwrap_err())
 }
 
 /// Отмечает ивент на сайте (`yes` — «Пойду», `no` — «Не пойду»).
@@ -211,7 +299,7 @@ async fn run_respond(
     match clan_window(app) {
         Some(win) => send_response(&win, event_id, response, false).await,
         None => {
-            let win = create_clan_window(app, false)?;
+            let win = create_clan_window(app, GUILD_LABEL, false)?;
             let result = send_response(&win, event_id, response, true).await;
             let _ = win.destroy();
             result
@@ -228,7 +316,14 @@ async fn send_response(
     if fresh_window {
         // Окно только что создано: скрипт ещё не успел встать. Ждём разбор страницы —
         // заодно убеждаемся, что вход на сайте живой (на странице входа придёт `login`).
-        wait_for_report(win).await?;
+        // На свежем окне колодки входа могут устроиться не сразу, поэтому «login»
+        // пробуем повторить (см. wait_for_report_with_login_retry).
+        wait_for_report_with_login_retry(
+            win,
+            LOGIN_RETRY_ATTEMPTS,
+            Duration::from_secs(LOGIN_RETRY_DELAY_SECS),
+        )
+        .await?;
     }
     // Старый ответ мог остаться в hash от прошлой отметки — иначе прочитаем его.
     let _ = win.eval(
@@ -241,6 +336,114 @@ async fn send_response(
     ))
     .map_err(|e| e.to_string())?;
     wait_for_hash(win, ACTION_HASH, Duration::from_secs(RESPOND_TIMEOUT_SECS)).await
+}
+
+/// Одна запись пакета отметок: номер события и выбранный ответ.
+#[derive(serde::Deserialize)]
+pub struct GuildEventChoice {
+    #[serde(rename = "eventId")]
+    event_id: String,
+    response: String,
+}
+
+/// Перенос пакета ответов в одно скрытое окно: открываем окно один раз, отмечаем в нём
+/// все события и возвращаем результат по каждому. Окно закрывается после пакета — не
+/// держим его постоянно. Пакет избегает создания по одному окну на каждый POST и даёт
+/// единую авторизованную сессию для всех отметок.
+#[command]
+pub async fn guild_set_responses(
+    app: AppHandle,
+    events: Vec<GuildEventChoice>,
+) -> Result<serde_json::Value, String> {
+    for choice in &events {
+        if choice.event_id.is_empty()
+            || choice.event_id.len() > 12
+            || !choice.event_id.chars().all(|c| c.is_ascii_digit())
+        {
+            return Err("Некорректный номер события".into());
+        }
+        if choice.response != "yes" && choice.response != "no" {
+            return Err("Некорректный ответ".into());
+        }
+    }
+    if events.is_empty() {
+        return Ok(serde_json::json!({ "ok": true, "results": [] }));
+    }
+    if SYNC_BUSY.swap(true, Ordering::SeqCst) {
+        return Err("busy".into());
+    }
+    let result = run_respond_batch(&app, &events).await;
+    SYNC_BUSY.store(false, Ordering::SeqCst);
+    result
+}
+
+async fn run_respond_batch(
+    app: &AppHandle,
+    events: &[GuildEventChoice],
+) -> Result<serde_json::Value, String> {
+    let (win, created) = match clan_window(app) {
+        Some(win) => (win, false),
+        None => {
+            let win = create_clan_window(app, GUILD_LABEL, false)?;
+            (win, true)
+        }
+    };
+    let result = send_responses(&win, events, created).await;
+    if created {
+        let _ = win.destroy();
+    }
+    result
+}
+
+async fn send_responses(
+    win: &WebviewWindow,
+    events: &[GuildEventChoice],
+    fresh_window: bool,
+) -> Result<serde_json::Value, String> {
+    if fresh_window {
+        wait_for_report_with_login_retry(
+            win,
+            LOGIN_RETRY_ATTEMPTS,
+            Duration::from_secs(LOGIN_RETRY_DELAY_SECS),
+        )
+        .await?;
+    }
+    let mut results = Vec::with_capacity(events.len());
+    for choice in events {
+        let event_id = &choice.event_id;
+        let response = &choice.response;
+        // Старый ответ мог остаться в hash от предыдущей отметки — сбрасываем перед новой.
+        let _ = win.eval(
+            "if (location.hash.indexOf('#TFETA1_') === 0) history.replaceState(null, '', location.pathname + location.search);",
+        );
+        win.eval(format!(
+            "if (window.__tfGuildRespond) window.__tfGuildRespond({}, {});",
+            serde_json::Value::String(event_id.clone()),
+            serde_json::Value::String(response.clone()),
+        ))
+        .map_err(|e| e.to_string())?;
+        match wait_for_hash(win, ACTION_HASH, Duration::from_secs(RESPOND_TIMEOUT_SECS)).await {
+            Ok(v) => {
+                let ok = v.get("ok").and_then(|o| o.as_bool()).unwrap_or(false);
+                let message = v.get("message").and_then(|m| m.as_str()).unwrap_or("");
+                results.push(serde_json::json!({
+                    "eventId": event_id,
+                    "response": response,
+                    "ok": ok,
+                    "message": message,
+                }));
+            }
+            Err(error) => {
+                results.push(serde_json::json!({
+                    "eventId": event_id,
+                    "response": response,
+                    "ok": false,
+                    "message": error,
+                }));
+            }
+        }
+    }
+    Ok(serde_json::json!({ "ok": true, "results": results }))
 }
 
 /// Проверяем ввод до передачи в веб-окно. Даже из повреждённого кэша нельзя подставить
@@ -281,15 +484,15 @@ async fn run_vote(
     poll_id: &str,
     option_ids: &[String],
 ) -> Result<serde_json::Value, String> {
-    let (win, created) = match clan_window(app) {
-        Some(win) => (win, false),
-        None => (create_clan_window(app, false)?, true),
-    };
-    let result = send_vote(&win, poll_id, option_ids, created).await;
-    if created {
-        let _ = win.destroy();
+    match clan_window(app) {
+        Some(win) => send_vote(&win, poll_id, option_ids, false).await,
+        None => {
+            let win = create_clan_window(app, GUILD_LABEL, false)?;
+            let result = send_vote(&win, poll_id, option_ids, true).await;
+            let _ = win.destroy();
+            result
+        }
     }
-    result
 }
 
 /// Видимое окно могло перейти по ссылке на другой сайт. Не отправляем данные или
@@ -312,8 +515,9 @@ async fn send_vote(
     if !fresh_window {
         ensure_guild_origin(win)?;
     }
-    // Дожидаемся профиля и проверяем вход; на странице входа вернётся `login`.
-    wait_for_report(win).await?;
+    // Ждём готовности страницы и скрипта, но не требуем профильной сводки:
+    // проверка входа через fetch index.php могла бы ложно сработать, хотя сеанс жив.
+    wait_for_window_ready(win).await?;
     ensure_guild_origin(win)?;
     let origin = Url::parse(GUILD_URL)
         .map_err(|e| e.to_string())?
@@ -339,7 +543,10 @@ mod tests {
         // Разные префиксы: окно клана не должно принять чужой hash за свой и наоборот
         assert_ne!(super::REPORT_HASH, super::ACTION_HASH);
         assert_ne!(super::REPORT_HASH, super::VOTE_HASH);
+        assert_ne!(super::REPORT_HASH, super::READY_HASH);
         assert_ne!(super::ACTION_HASH, super::VOTE_HASH);
+        assert_ne!(super::ACTION_HASH, super::READY_HASH);
+        assert_ne!(super::VOTE_HASH, super::READY_HASH);
         assert!(!super::REPORT_HASH.starts_with("#TF_"));
         assert!(!super::ACTION_HASH.starts_with("#TF_"));
         assert!(!super::REPORT_HASH.starts_with("#TFCOL"));

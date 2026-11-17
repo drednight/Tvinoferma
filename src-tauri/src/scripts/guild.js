@@ -65,13 +65,24 @@
   function parseEvents(doc) {
     return [...doc.querySelectorAll('.user__event')].map((el) => {
       const form = el.querySelector('form.event-response-form');
-      const checked = el.querySelector('input[type="radio"]:checked');
+      // Радио «Пойду» стоит по умолчанию в положении checked — он не показывает сохранённый
+      // ответ (сайт ставит его и для неподтверждённых событий). Настоящий признак —
+      // блок подтверждения (.user__event-confirmation) и класс user__event-active;
+      // «Не пойду» — радио value="no" в состоянии checked.
+      const noChecked = el.querySelector('input[type="radio"][value="no"]')?.checked === true;
+      const confirmation = el.querySelector('.user__event-confirmation');
+      const confirmedYes =
+        el.classList.contains('user__event-active') ||
+        (confirmation != null && confirmation.style.display !== 'none');
+      let response = '';
+      if (noChecked) response = 'no';
+      else if (confirmedYes) response = 'yes';
       return {
         id: clean(form?.dataset?.eventId),
         title: clean(el.querySelector('.user__event-title')?.textContent),
         when: clean(el.querySelector('.user__event-date')?.textContent),
         comment: clean(el.querySelector('.user__event-comment')?.textContent),
-        response: checked?.value === 'yes' || checked?.value === 'no' ? checked.value : ''
+        response
       };
     }).filter((e) => e.id);
   }
@@ -166,6 +177,64 @@
     return { id, title: pollTextParts(root.querySelector('.poll__title')), type: 'single', options: [], loadError: false };
   }
 
+  // Список опросов со страницы polls.php. Закрытые (надпись «Голосование закрыто»
+  // или класс closed) пропускаем — в приложение попадают только открытые.
+  function parsePollsList(doc) {
+    const grid = doc.querySelector('.polls__grid') || doc;
+    const closed = (el) =>
+      el.classList.contains('closed') ||
+      clean(el.querySelector('.poll__closed')?.textContent).includes('Голосование закрыто');
+    const seen = new Set();
+    return [...grid.querySelectorAll('.poll')]
+      .map((el) => {
+        const id = clean(el.getAttribute('data-poll-id'));
+        // Закрытый по классу или по надписи — не показываем. По id дедуплицируем,
+        // чтобы один опрос не встречался в списке дважды.
+        if (!validId(id) || closed(el) || seen.has(id)) return null;
+        seen.add(id);
+        return { id, title: pollTextParts(el.querySelector('.poll__title')) };
+      })
+      .filter(Boolean);
+  }
+
+  // Загружает polls.php и достаёт варианты для каждого открытого опроса.
+  async function loadPolls() {
+    if (!isGuildOrigin()) throw new Error('wrong_site');
+    const reply = await fetch(new URL('/polls.php', window.__tfGuildOrigin).href, {
+      credentials: 'include', cache: 'no-store'
+    });
+    if (!reply.ok) {
+      console.log('[TF clan] polls.php недоступен: HTTP', reply.status);
+      throw new Error('polls_unavailable');
+    }
+    const doc = new DOMParser().parseFromString(await reply.text(), 'text/html');
+    const list = parsePollsList(doc);
+    console.log('[TF clan] открытых опросов в списке:', list.length, list.map(p => p.id).join(','));
+    const polls = await Promise.all(
+      list.map(async (p) => {
+        try {
+          return applyPollOptions(p, await fetchPoll(p.id));
+        } catch (e) {
+          console.log('[TF clan] варианты опроса', p.id, 'не загрузились:', clean(e?.message || e));
+          return { ...p, type: 'single', options: [], loadError: true };
+        }
+      })
+    );
+    // Показываем ВСЕ открытые опросы, даже если варианты не загрузились:
+    // до момента закрытия опрос должен быть виден в приложении, а не пропадать.
+    return polls;
+  }
+
+  // Единая сборка сводки: профиль (events/parties) + список открытых опросов.
+  // Опрос с профиля (#mainPoll) не берётся: все открытые опросы идут только со
+  // страницы списка polls.php, чтобы везде были одинаковыми блоками-карточками.
+  async function buildReport(doc) {
+    const data = parseProfile(doc);
+    data.poll = null;
+    data.polls = await loadPolls().catch(() => []);
+    return data;
+  }
+
   // Варианты и уже выбранные ответы сайт возвращает отдельным JSON-запросом.
   async function fetchPoll(id) {
     if (!isGuildOrigin() || !validId(id)) throw new Error('wrong_site');
@@ -217,24 +286,23 @@
   // Повторный разбор отменяет публикацию предыдущего: медленный ответ API не должен
   // затереть более свежую сводку после нажатия «Обновить».
   let scrapeSequence = 0;
-  window.__tfGuildScrape = function () {
+  window.__tfGuildScrape = async function () {
     const sequence = ++scrapeSequence;
-    if (document.querySelector('.user__events, .user__col')) {
-      const data = parseProfile(document);
-      if (!data.poll) {
-        publish('TFETE1_', { data, error: null });
-      } else {
-        fetchPoll(data.poll.id)
-          .then((reply) => { data.poll = applyPollOptions(data.poll, reply); })
-          .catch(() => { data.poll.loadError = true; })
-          .finally(() => { if (sequence === scrapeSequence) publish('TFETE1_', { data, error: null }); });
-      }
-      return true;
-    }
     if (document.querySelector('input[type="password"]')) {
-      publish('TFETE1_', { data: null, error: 'login' });
+      if (sequence === scrapeSequence) publish('TFETE1_', { data: null, error: 'login' });
+      return false;
     }
-    return false;
+    if (!document.querySelector('.user__events, .user__col')) {
+      if (sequence === scrapeSequence) publish('TFETE1_', { data: null, error: 'page' });
+      return false;
+    }
+    try {
+      const data = await buildReport(document);
+      if (sequence === scrapeSequence) publish('TFETE1_', { data, error: null });
+    } catch (error) {
+      if (sequence === scrapeSequence) publish('TFETE1_', { data: null, error: clean(error?.message || error) });
+    }
+    return true;
   };
 
   // A visible window still contains its original DOM after a POST. Verification must
@@ -251,11 +319,7 @@
       const doc = new DOMParser().parseFromString(await reply.text(), 'text/html');
       if (!doc.querySelector('.user__events, .user__col'))
         throw new Error(doc.querySelector('input[type="password"]') ? 'login' : 'page');
-      const data = parseProfile(doc);
-      if (data.poll) {
-        try { data.poll = applyPollOptions(data.poll, await fetchPoll(data.poll.id)); }
-        catch { data.poll.loadError = true; }
-      }
+      const data = await buildReport(doc);
       if (sequence === scrapeSequence) publish('TFETE1_', { data, error: null });
     } catch (error) {
       if (sequence === scrapeSequence) publish('TFETE1_', { data: null, error: clean(error?.message || error) });
@@ -281,11 +345,19 @@
         json = JSON.parse(text.replace(/^\uFEFF/, ''));
       } catch (e) { /* ответ не JSON — вердикт по нему прочитать нельзя */ }
       const verdict = json && typeof json === 'object' ? json : null;
+      // Любое явное «нет» — отказ; форма успеха может быть любой из распространённых.
       const refused = verdict && (verdict.status === 'error' || verdict.success === false || verdict.ok === false);
-      // A login page or an unknown 2xx body is not an acknowledgement. The app
-      // verifies ambiguous results against a freshly fetched profile.
-      result.ok = reply.ok && !refused && !!verdict &&
-        (verdict.status === 'success' || verdict.success === true || verdict.ok === true);
+      const confirmed =
+        !!verdict &&
+        (verdict.status === 'success' ||
+          verdict.status === 'ok' ||
+          verdict.result === 'success' ||
+          verdict.result === 'ok' ||
+          verdict.success === true ||
+          verdict.ok === true);
+      // Страница входа или неразборный 2xx не подтверждают. Приложение сверит
+      // отметку со свежей страницей профиля — она и есть авторитетный вердикт.
+      result.ok = reply.ok && !refused && confirmed;
       result.message = clean(verdict?.message || '');
       result.detail = clean(text).slice(0, 200);
     } catch (e) {
@@ -309,15 +381,15 @@
           selected.some((value) => !validId(value)) || new Set(selected).size !== selected.length) {
         throw new Error('Выберите корректные варианты ответа.');
       }
-      const currentPoll = () => clean(document.querySelector('#mainPoll')?.getAttribute('data-poll-id'));
-      if (currentPoll() !== id) throw new Error('Опрос изменился. Обновите сводку клана.');
+      // Опрос может прийти и из профиля (#mainPoll), и из списка (polls.php).
+      // Проверяем его актуальность через fetchPoll (текущие варианты и тип), а не через
+      // #mainPoll на странице профиля: опрос из списка в профиле вовсе не отображается.
       const poll = await fetchPoll(id);
       const available = new Set(poll.options.map((option) => String(option.id)));
       if (selected.some((value) => !available.has(value)) ||
           (poll.poll.poll_type !== 'multiple' && selected.length !== 1)) {
         throw new Error('Варианты опроса изменились. Обновите сводку клана.');
       }
-      if (!isGuildOrigin() || currentPoll() !== id) throw new Error('Опрос изменился. Обновите сводку клана.');
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 12000);
       try {
