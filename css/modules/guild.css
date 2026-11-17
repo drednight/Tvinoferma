@@ -156,11 +156,10 @@
   font-size: 0.84rem;
 }
 
-/* Список открытых опросов со страницы polls.php: каждый опрос — как отдельный блок. */
+/* Список открытых опросов со страницы polls.php: каждый опрос — отдельный компактный
+   блок-карточка, скапливаемый один под другим, без растягивания страницы вниз. */
 .guild-polls {
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
+  margin-top: 14px;
 }
 
 .guild-polls h3 {
@@ -169,27 +168,29 @@
 }
 
 .guild-polls-hint {
-  margin: 0 0 4px;
+  margin: 0 0 8px;
   font-size: 0.84rem;
 }
 
 .guild-polls .guild-poll {
-  margin-top: 16px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
 }
 
 .guild-polls .guild-poll:first-of-type {
-  margin-top: 8px;
-  border-top: none;
-  padding-top: 0;
+  margin-top: 10px;
 }
 
 .guild-poll-options {
   display: grid;
-  gap: 6px;
-  max-height: 320px;
+  gap: 4px;
+  max-height: 260px;
   overflow-y: auto;
   min-width: 0;
-  margin: 10px 0;
+  margin: 8px 0;
   padding: 0;
   border: 0;
 }
@@ -197,9 +198,9 @@
 .guild-poll-option {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
-  padding: 9px 10px;
+  padding: 7px 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   cursor: pointer;
@@ -211,7 +212,7 @@
 
 .guild-poll-option input {
   flex: 0 0 auto;
-  margin: 3px 0 0;
+  margin: 2px 0 0;
   accent-color: var(--accent);
 }
 
