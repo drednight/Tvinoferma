@@ -30,6 +30,10 @@ const REPORT_HASH: &str = "#TFETE1_";
 const ACTION_HASH: &str = "#TFETA1_";
 /// Отдельный hash с результатом голосования в опросе.
 const VOTE_HASH: &str = "#TFETV1_";
+/// Отдельный hash с признаком готовности окна клана к голосованию.
+/// Опубликовывается самим окном (eval), а не сводкой профиля: готовность проверяют
+/// без требования успешной сводки, чтобы ложный «login» от index.php не блокировал голос.
+const READY_HASH: &str = "#TFETW1_";
 /// Сколько ждём страницу профиля при обновлении, секунд.
 const SYNC_TIMEOUT_SECS: u64 = 25;
 /// Сколько ждём ответ сайта на отметку, секунд.
@@ -181,16 +185,21 @@ async fn wait_for_report(win: &WebviewWindow) -> Result<serde_json::Value, Strin
 /// если сеанс действительно неактуален — придёт понятная ошибка от сайта, не «login».
 async fn wait_for_window_ready(win: &WebviewWindow) -> Result<(), String> {
     let deadline = Instant::now() + Duration::from_secs(SYNC_TIMEOUT_SECS);
+    // eval выполняет JS и возвращает только статус выполнения: результат выражения
+    // публикует сам скрипт в URL-hash (как сводку и голос), а Rust читает его через URL.
+    let ready_script = "(function(){var ready = document.readyState === 'complete' && typeof window.__tfGuildVote === 'function';\
+        history.replaceState(null, '', location.pathname + location.search + '#TFETW1_' + encodeURIComponent(JSON.stringify({data: ready, error: null})));})();";
     while Instant::now() < deadline {
         tokio::time::sleep(Duration::from_millis(300)).await;
-        // eval_js возвращает результат выражения; eval бросает значение в них.
-        let Ok(ready) = win.eval_js(
-            "document.readyState === 'complete' && typeof window.__tfGuildVote === 'function'".to_string(),
-        ) else {
+        if win.eval(ready_script).is_err() {
             continue;
-        };
-        if ready == serde_json::Value::Bool(true) {
-            return Ok(());
+        }
+        let Ok(url) = win.url() else { continue };
+        // Hash с готовностью может остаться от прошлого цикла: читаем его только
+        // после того, как скрипт заново опубликовал актуальное значение.
+        match crate::parsers::read_hash_payload(url.as_str(), READY_HASH) {
+            Some((None, serde_json::Value::Bool(true))) => return Ok(()),
+            _ => {}
         }
     }
     Err("timeout".into())
@@ -361,7 +370,10 @@ mod tests {
         // Разные префиксы: окно клана не должно принять чужой hash за свой и наоборот
         assert_ne!(super::REPORT_HASH, super::ACTION_HASH);
         assert_ne!(super::REPORT_HASH, super::VOTE_HASH);
+        assert_ne!(super::REPORT_HASH, super::READY_HASH);
         assert_ne!(super::ACTION_HASH, super::VOTE_HASH);
+        assert_ne!(super::ACTION_HASH, super::READY_HASH);
+        assert_ne!(super::VOTE_HASH, super::READY_HASH);
         assert!(!super::REPORT_HASH.starts_with("#TF_"));
         assert!(!super::ACTION_HASH.starts_with("#TF_"));
         assert!(!super::REPORT_HASH.starts_with("#TFCOL"));
