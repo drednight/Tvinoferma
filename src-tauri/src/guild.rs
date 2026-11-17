@@ -236,7 +236,7 @@ async fn wait_for_report_with_login_retry(
     delay: Duration,
 ) -> Result<serde_json::Value, String> {
     wait_for_window_ready(win).await?;
-    let mut last = Err("timeout".into());
+    let mut last: Result<serde_json::Value, String> = Err("timeout".into());
     for attempt in 0..attempts {
         match wait_for_report(win).await {
             Ok(report) => return Ok(report),
