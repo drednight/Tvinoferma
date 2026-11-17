@@ -173,10 +173,14 @@
     const closed = (el) =>
       el.classList.contains('closed') ||
       clean(el.querySelector('.poll__closed')?.textContent).includes('Голосование закрыто');
+    const seen = new Set();
     return [...grid.querySelectorAll('.poll')]
       .map((el) => {
         const id = clean(el.getAttribute('data-poll-id'));
-        if (!validId(id) || closed(el)) return null;
+        // Закрытый по классу или по надписи — не показываем. По id дедуплицируем,
+        // чтобы один опрос не встречался в списке дважды.
+        if (!validId(id) || closed(el) || seen.has(id)) return null;
+        seen.add(id);
         return { id, title: pollTextParts(el.querySelector('.poll__title')) };
       })
       .filter(Boolean);
@@ -188,19 +192,26 @@
     const reply = await fetch(new URL('/polls.php', window.__tfGuildOrigin).href, {
       credentials: 'include', cache: 'no-store'
     });
-    if (!reply.ok) throw new Error('polls_unavailable');
+    if (!reply.ok) {
+      console.log('[TF clan] polls.php недоступен: HTTP', reply.status);
+      throw new Error('polls_unavailable');
+    }
     const doc = new DOMParser().parseFromString(await reply.text(), 'text/html');
     const list = parsePollsList(doc);
+    console.log('[TF clan] открытых опросов в списке:', list.length, list.map(p => p.id).join(','));
     const polls = await Promise.all(
       list.map(async (p) => {
         try {
           return applyPollOptions(p, await fetchPoll(p.id));
         } catch (e) {
+          console.log('[TF clan] варианты опроса', p.id, 'не загрузились:', clean(e?.message || e));
           return { ...p, type: 'single', options: [], loadError: true };
         }
       })
     );
-    return polls.filter((p) => p.options.length || p.loadError);
+    // Показываем ВСЕ открытые опросы, даже если варианты не загрузились:
+    // до момента закрытия опрос должен быть виден в приложении, а не пропадать.
+    return polls;
   }
 
   // Единая сборка сводки: профиль (events/parties/poll) + список открытых опросов.
