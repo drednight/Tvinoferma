@@ -74,8 +74,10 @@ fn create_clan_window(app: &AppHandle, label: &str, visible: bool) -> Result<Web
     let origin =
         serde_json::to_string(&url.origin().ascii_serialization()).map_err(|e| e.to_string())?;
     let script = format!("window.__tfGuildOrigin = {};\n{}", origin, GUILD_SCRIPT);
+    // label попадает в 'static-closure on_new_window — берём собственную копию.
+    let label = label.to_string();
     let handle = app.clone();
-    WebviewWindowBuilder::new(app, label, WebviewUrl::External(url))
+    WebviewWindowBuilder::new(app, label.clone(), WebviewUrl::External(url))
         .title("Клан")
         .inner_size(1100.0, 800.0)
         .resizable(true)
@@ -85,7 +87,7 @@ fn create_clan_window(app: &AppHandle, label: &str, visible: bool) -> Result<Web
         .on_new_window(move |url, _features| {
             // Ссылки, которые сайт открывает в новом окне, показываем в этом же окне
             if matches!(url.scheme(), "http" | "https") {
-                if let Some(win) = handle.get_webview_window(label) {
+                if let Some(win) = handle.get_webview_window(&label) {
                     tauri::async_runtime::spawn(async move {
                         let _ = win.navigate(url);
                     });
