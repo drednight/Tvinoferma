@@ -139,8 +139,18 @@
   border-top: 1px solid var(--border);
 }
 
+/* Заголовок и текст опроса сверху; действия (варианты, статус) — снизу */
+.guild-poll-main {
+  min-width: 0;
+}
+
+.guild-poll-main h3 {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
 .guild-poll-title {
-  margin: 0 0 8px;
+  margin: 2px 0 6px;
   font-weight: 650;
   line-height: 1.5;
   overflow-wrap: anywhere;
@@ -154,6 +164,37 @@
 
 .guild-poll-hint {
   font-size: 0.84rem;
+}
+
+/* Действия опроса: варианты-кнопки, кнопка отправки (multiple) и статус внизу */
+.guild-poll-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* Варианты — кнопки, как «Пойду/Не пойду» у событий: развёрнутый список,
+   каждая кнопка на своей строке, текст слева. */
+.guild-poll-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.guild-poll-options .btn {
+  flex: 1 1 100%;
+  text-align: left;
+}
+
+.guild-poll-submit .btn {
+  width: 100%;
+}
+
+/* Проголосованный опрос: подсветка как у события «Пойду» */
+.guild-poll.is-voted {
+  background: linear-gradient(90deg, var(--accent-soft), transparent 72%);
+  box-shadow: inset 3px 0 0 0 var(--accent);
 }
 
 /* Список открытых опросов: каждый опрос — отдельный блок-карточка. Карточки
@@ -193,42 +234,8 @@
   background: var(--surface);
 }
 
-.guild-poll-options {
-  display: grid;
-  gap: 4px;
-  max-height: 260px;
-  overflow-y: auto;
-  min-width: 0;
-  margin: 8px 0;
-  padding: 0;
-  border: 0;
-}
-
-.guild-poll-option {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  min-width: 0;
-  padding: 7px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-
-.guild-poll-option:hover {
-  background: var(--surface-2);
-}
-
-.guild-poll-option input {
-  flex: 0 0 auto;
-  margin: 2px 0 0;
-  accent-color: var(--accent);
-}
-
-.guild-poll-option span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
+/* Старые стили для radio/checkbox-вариантов удалены: варианты теперь кнопки
+   (см. .guild-poll-options выше). */
 
 /* Пати с составом: название, размер и копирование ников */
 .guild-parties-head {

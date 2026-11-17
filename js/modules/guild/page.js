@@ -71,7 +71,6 @@ export function bindGuild() {
   if (document.body.dataset.guildBound) return;
   document.body.dataset.guildBound = 'true';
   document.addEventListener('click', onClick);
-  document.addEventListener('submit', onPollSubmit);
   document.addEventListener('change', onLeaderChange);
 }
 
@@ -118,6 +117,22 @@ async function onClick(e) {
   } else if (act === 'respond') {
     const { event, response } = btn.dataset;
     await run(btn, () => respond(event, response));
+  } else if (act === 'poll-toggle') {
+    // Многовариантный опрос: кнопка варианта переключает выбор локально,
+    // голос уходит кнопкой «Голосовать выбранными».
+    togglePollOption(btn);
+  } else if (act === 'poll-vote') {
+    // Одно нажатие на вариант одиночного опроса — один голос: приложение само
+    // отправляет выбор на сайт и перепроверяет его. Для многовариантного опроса
+    // эта кнопка отправляет уже переключённые варианты.
+    const pollId = btn.dataset.poll;
+    const data = readGuildData();
+    const poll = data.polls.find(p => p.id === String(pollId));
+    if (poll?.type === 'multiple' && !btn.dataset.option) {
+      await run(btn, () => sendPollVote(pollId, selectedPollOptions(btn), poll));
+    } else {
+      await run(btn, () => sendPollVote(pollId, [btn.dataset.option], poll));
+    }
   } else if (act === 'copy-nicks') {
     // Вне run(): перерисовка сразу стёрла бы надпись «✔ Скопировано» на кнопке.
     await copyNicks(btn);
@@ -136,38 +151,55 @@ async function run(btn, fn) {
   }
 }
 
-let votePending = false;
+/**
+ * Переключивает вариант многовариантного опроса в локальном контексте кнопки.
+ * Перерисовка не нужна: кнопки переключают aria-pressed и класс, а статус
+ * читается из кнопок при отправке.
+ */
+function togglePollOption(btn) {
+  const pollId = btn.dataset.poll;
+  const optionId = btn.dataset.option;
+  if (!pollId || !optionId) return;
+  const pressed = btn.getAttribute('aria-pressed') === 'true';
+  btn.setAttribute('aria-pressed', String(!pressed));
+  btn.classList.toggle('primary', !pressed);
+  btn.classList.toggle('secondary', pressed);
+  const submit = btn.closest('.guild-poll')?.querySelector('.guild-poll-submit button');
+  if (submit) submit.disabled = !selectedPollOptions(btn);
+}
 
-/** Голос отправляется только после выбора, через сессию кланового окна. */
-async function onPollSubmit(e) {
-  const form = e.target.closest?.('form[data-guild-poll]');
-  if (!form) return;
-  e.preventDefault();
-  if (!isTauri()) {
-    toast('Голосование доступно в установленной Твиноферме после входа на сайт клана.', 'info');
-    return;
-  }
-  if (votePending) return;
-  const pollId = form.dataset.pollId;
+/** Варианты, переключённые внутри кнопки-опроса (multiple). */
+function selectedPollOptions(btn) {
+  const poll = btn.closest('.guild-poll');
+  if (!poll) return [];
+  return [...poll.querySelectorAll('.guild-poll-options button[data-guild="poll-toggle"][aria-pressed="true"]')]
+    .map(option => option.dataset.option)
+    .filter(Boolean);
+}
+
+/**
+ * Голос отправляется одной кнопкой, как кнопка «Пойду» у события: приложение само
+ * отправляет выбор на нужную страницу сайта и перепроверяет его. `poll` — опрос
+ * из кэша сводки (только список polls.php): выбор валидации всегда проходит
+ * через сайт, а не через DOM окна.
+ */
+async function sendPollVote(pollId, optionIds, poll) {
   const data = readGuildData();
-  const poll = data.poll?.id === pollId ? data.poll : data.polls.find(p => p.id === pollId);
-  if (!poll || poll.loadError) {
+  const current = poll || data.polls.find(p => p.id === String(pollId));
+  if (!current || current.loadError) {
     toast('Опрос изменился. Обновите сводку клана.', 'warning');
     return;
   }
-  const selected = [...form.querySelectorAll('input[name="guild-poll-option"]:checked')].map(input => input.value);
+  const selected = (optionIds || []).map(String).filter(Boolean);
   if (!selected.length) {
     toast('Выберите вариант ответа.', 'warning');
     return;
   }
-  const available = new Set(poll.options.map(option => option.id));
-  if (selected.some(id => !available.has(id)) || (poll.type !== 'multiple' && selected.length !== 1)) {
+  const available = new Set(current.options.map(option => option.id));
+  if (selected.some(id => !available.has(id)) || (current.type !== 'multiple' && selected.length !== 1)) {
     toast('Варианты опроса изменились. Обновите сводку клана.', 'warning');
     return;
   }
-  votePending = true;
-  const controls = [...form.querySelectorAll('input, button')];
-  controls.forEach(control => (control.disabled = true));
   let accepted = false;
   try {
     const result = await voteInGuildPoll(pollId, selected);
@@ -189,7 +221,7 @@ async function onPollSubmit(e) {
         // Ответ принят сайтом, но кэш недоступен; повторное обновление покажет его.
       }
       toast('Голос учтён, но обновить сводку не удалось. Обновите её позже.', 'warning');
-    } else if (readGuildData().poll?.loadError) {
+    } else if (readGuildData().polls.some(p => p.id === String(pollId) && p.loadError)) {
       toast('Голос учтён, но варианты не удалось перечитать. Обновите сводку позже.', 'warning');
     } else {
       toast('Голос учтён.', 'success');
@@ -206,9 +238,7 @@ async function onPollSubmit(e) {
             : 'Не удалось подтвердить голос. Обновите сводку перед повторной попыткой.';
     toast(message, 'warning');
   } finally {
-    votePending = false;
     if (accepted) renderTodayNow();
-    else controls.forEach(control => (control.disabled = false));
   }
 }
 
