@@ -64,7 +64,7 @@ export function readPendingPollVotes() {
   return normalizePendingPollVotes(guildSettings().pendingPollVotes);
 }
 export async function writePendingPollVotes(pollVotes) {
-  state.settings.guild = { ...guildSettings(), pendingPollVotes };
+  state.settings.guild = { ...guildSettings(), pendingPollVotes: pollVotes };
   await persist();
 }
 

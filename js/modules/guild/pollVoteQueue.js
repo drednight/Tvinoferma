@@ -101,7 +101,9 @@ export function createPollVoteQueue({
       snapshot = getEntries().filter(row => !row.failed);
       for (const [index, row] of snapshot.entries()) {
         if (!enabled()) break;
-        if (!getEntries().includes(row)) continue;
+        // readPendingPollVotes нормализует и возвращает новые объекты каждый раз,
+        // поэтому сравниваем не по ссылке, а по pollId.
+        if (!getEntries().some(r => r.pollId === row.pollId)) continue;
         task.progress(index, snapshot.length, 'Переносятся голоса в опросы');
         try {
           const reply = await send(row.pollId, row.optionIds);
@@ -124,10 +126,10 @@ export function createPollVoteQueue({
         if (snapshot.every(row => confirmed(row, report))) break;
       }
       if (!enabled()) return;
-      const missing = snapshot.filter(row => getEntries().includes(row) && !confirmed(row, report)).length;
+      const missing = snapshot.filter(row => getEntries().some(r => r.pollId === row.pollId) && !confirmed(row, report)).length;
       await save(
         getEntries().flatMap(row =>
-          !snapshot.includes(row) ? [row] : confirmed(row, report) ? [] : [{ ...row, failed: true }]
+          !snapshot.some(s => s.pollId === row.pollId) ? [row] : confirmed(row, report) ? [] : [{ ...row, failed: true }]
         )
       );
       task.finish(
@@ -143,7 +145,7 @@ export function createPollVoteQueue({
       task?.finish('Не удалось подтвердить отправку. Голоса сохранены для повторной попытки.', 'warn');
       const rows = getEntries();
       try {
-        await save(rows.map(row => (snapshot.includes(row) || !snapshot.length ? { ...row, failed: true } : row)));
+        await save(rows.map(row => (snapshot.some(s => s.pollId === row.pollId) || !snapshot.length ? { ...row, failed: true } : row)));
       } catch {
         /* остаются в памяти */
       }

@@ -56,9 +56,14 @@ describe('голосование в панели клана', () => {
       selfNick: '',
       polls: [{ ...poll(), options: [{ id: '501', text: [{ text: 'Первый' }], selected: true }, { id: '502', text: [{ text: 'Второй' }], selected: false }] }]
     });
+    // Тоггл варианта — локальный выбор, голос пока не уходит.
     optionButton('501').click();
-    // Выбор виден сразу: вариант выделен, статус «ожидает отправки».
     expect(optionButton('501').getAttribute('aria-pressed')).toBe('true');
+    expect(voteInGuildPoll).not.toHaveBeenCalled();
+    // Голос уходит кнопкой «Голосовать выбранными», затем — через паузу.
+    submit().click();
+    // Тост ставится после await persist — даём микростепам отработать.
+    await vi.advanceTimersByTimeAsync(0);
     expect(toast).toHaveBeenCalledWith('Голос записан, отправка через пару секунд.', 'info');
     expect(voteInGuildPoll).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(8000);
@@ -66,6 +71,7 @@ describe('голосование в панели клана', () => {
     await vi.advanceTimersByTimeAsync(3000);
     expect(state.settings.guild.syncedAt).toBeGreaterThan(123);
     expect(optionButton('501').getAttribute('aria-pressed')).toBe('true');
+    await vi.runAllTimersAsync();
     vi.useRealTimers();
   });
 
@@ -89,8 +95,11 @@ describe('голосование в панели клана', () => {
     expect(submit().disabled).toBe(false);
     submit().click();
     expect(voteInGuildPoll).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(8000);
     expect(voteInGuildPoll).toHaveBeenCalledWith('901', ['501', '502']);
+    // Дренируем проверку подтверждения flush, чтобы не оставлять running=true для следующего теста.
+    await vi.runAllTimersAsync();
     vi.useRealTimers();
   });
 
@@ -107,10 +116,12 @@ describe('голосование в панели клана', () => {
     voteInGuildPoll.mockResolvedValue({ ok: true });
     syncGuildFromSite.mockResolvedValue({ events: [], parties: [], selfNick: '', polls: [poll()] });
     renderGuildToday();
+    document.querySelector('.guild-poll[data-poll-id="901"] .guild-poll-options button').click();
+    // Перерисовка заменяет кнопку: заново берём элемент после клика.
     const single = document.querySelector('.guild-poll[data-poll-id="901"] .guild-poll-options button');
-    single.click();
     expect(single.getAttribute('aria-pressed')).toBe('true');
-    await vi.advanceTimersByTimeAsync(8000);
+    // schedule() ставится в микростепах после await persist; прогоняем все таймеры и микростеппы.
+    await vi.runAllTimersAsync();
     expect(voteInGuildPoll).toHaveBeenCalledWith('901', ['501']);
     vi.useRealTimers();
   });
