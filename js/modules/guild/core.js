@@ -136,13 +136,23 @@ export function parseEvents(document) {
   return [...document.querySelectorAll('.user__event')]
     .map(el => {
       const form = el.querySelector('form.event-response-form');
-      const checked = el.querySelector('input[type="radio"]:checked');
+      // Радио «Пойду» стоит по умолчанию в положении checked — он не показывает сохранённый
+      // ответ. Настоящий признак — блок подтверждения и класс user__event-active;
+      // «Не пойду» — радио value="no" в состоянии checked.
+      const noChecked = el.querySelector('input[type="radio"][value="no"]')?.checked === true;
+      const confirmation = el.querySelector('.user__event-confirmation');
+      const confirmedYes =
+        el.classList.contains('user__event-active') ||
+        (confirmation != null && confirmation.style.display !== 'none');
+      let response = RESPONSE_NONE;
+      if (noChecked) response = RESPONSE_NO;
+      else if (confirmedYes) response = RESPONSE_YES;
       return {
         id: clean(form?.dataset?.eventId),
         title: clean(el.querySelector('.user__event-title')?.textContent),
         when: clean(el.querySelector('.user__event-date')?.textContent),
         comment: clean(el.querySelector('.user__event-comment')?.textContent),
-        response: checked?.value === RESPONSE_YES || checked?.value === RESPONSE_NO ? checked.value : RESPONSE_NONE
+        response
       };
     })
     .filter(e => e.id);
