@@ -144,6 +144,20 @@ describe('отложенный перенос ответов в кланер', (
     expect(send).toHaveBeenCalledTimes(2);
   });
 
+  it('при busy повторяет отправку, а не списывает ответ как неполученный', async () => {
+    read.mockResolvedValue({ events: [{ id: '1', response: 'yes' }] });
+    send.mockRejectedValueOnce('busy').mockResolvedValueOnce({ ok: true });
+    await queue.enqueue('1', 'yes');
+    await vi.advanceTimersByTimeAsync(16000);
+    // Первый бросок busy, повтор через паузу — POST ушёл.
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(entries).toEqual([]);
+    expect(task.log).not.toHaveBeenCalledWith(
+      expect.stringContaining('Событие 1: ответ не получен'),
+      'warn'
+    );
+  });
+
   it('подтверждает только совпавшие события, остальные сохраняет для повтора', async () => {
     read.mockResolvedValue({ events: [{ id: '1', response: 'yes' }] });
     await queue.enqueue('1', 'yes');

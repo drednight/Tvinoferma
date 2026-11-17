@@ -76,12 +76,26 @@ export function createResponseQueue({
         if (!enabled()) break;
         if (!getEntries().includes(row)) continue;
         task.progress(index, snapshot.length, 'Переносятся ответы в кланер');
-        try {
-          const reply = await send(row.eventId, row.response);
-          if (!reply?.ok) task.log(`Событие ${row.eventId}: проверяем результат по сводке сайта`, 'warn');
-        } catch {
+        // `busy` — в окне клана уже идёт синхронизация (guild_sync держит флаг). POST
+        // ещё не ушёл, поэтому повторяем через короткую паузу, а не списываем в loss.
+        let reply;
+        let sendError = '';
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            reply = await send(row.eventId, row.response);
+            sendError = '';
+            break;
+          } catch (error) {
+            sendError = String(error?.message || error || '');
+            if (sendError !== 'busy' || attempt === 2 || !enabled()) break;
+            await pause(1200);
+          }
+        }
+        if (sendError) {
           // A lost acknowledgement does not prove the write failed. Reconcile before reporting it.
           task.log(`Событие ${row.eventId}: ответ не получен, проверяем сайт`, 'warn');
+        } else if (!reply?.ok) {
+          task.log(`Событие ${row.eventId}: проверяем результат по сводке сайта`, 'warn');
         }
       }
       if (!enabled()) return;
