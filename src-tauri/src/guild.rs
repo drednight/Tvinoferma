@@ -42,6 +42,12 @@ const READY_HASH: &str = "#TFETW1_";
 const SYNC_TIMEOUT_SECS: u64 = 25;
 /// Сколько ждём ответ сайта на отметку, секунд.
 const RESPOND_TIMEOUT_SECS: u64 = 20;
+/// Сколько раз повторяем чтение профиля на свежем окне, если попали на страницу входа.
+/// На свежем окне первая загрузка index.php может прийти раньше, чем браузер подтянет
+/// сохранённые cookie входа — тогда парсер видит страницу входа, хотя сессия жива.
+const LOGIN_RETRY_ATTEMPTS: u32 = 3;
+/// Пауза между повторами «login», чтобы колодки успели устроиться.
+const LOGIN_RETRY_DELAY_SECS: u64 = 2;
 
 /// Идёт ли обновление: два запуска одновременно (кнопка и суточная проверка) не нужны.
 static SYNC_BUSY: AtomicBool = AtomicBool::new(false);
@@ -150,7 +156,12 @@ async fn run_sync(app: &AppHandle) -> Result<serde_json::Value, String> {
         Some(win) => wait_for_report(&win).await,
         None => {
             let win = create_clan_window(app, GUILD_LABEL, false)?;
-            let result = wait_for_report(&win).await;
+            let result = wait_for_report_with_login_retry(
+                &win,
+                LOGIN_RETRY_ATTEMPTS,
+                Duration::from_secs(LOGIN_RETRY_DELAY_SECS),
+            )
+            .await;
             let _ = win.destroy();
             result
         }
@@ -213,6 +224,44 @@ async fn wait_for_window_ready(win: &WebviewWindow) -> Result<(), String> {
     Err("timeout".into())
 }
 
+/// Ждёт сводку профиля, но сначала даёт странице отгрузиться, а колодкам — устроиться.
+///
+/// На свежем скрытом окне первая загрузка `index.php` может прийти раньше, чем браузер
+/// подтянет сохранённые cookie входа: парсер тогда видит страницу входа (`login`), хотя
+/// сессия в профиле живая. Поэтому «login» пробуем повторить с паузами — повтор обычно
+/// даёт настоящую сводку. Любую другую ошибку (`timeout`, `page`) сразу возвращаем.
+async fn wait_for_report_with_login_retry(
+    win: &WebviewWindow,
+    attempts: u32,
+    delay: Duration,
+) -> Result<serde_json::Value, String> {
+    wait_for_window_ready(win).await?;
+    let mut last = Err("timeout".into());
+    for attempt in 0..attempts {
+        match wait_for_report(win).await {
+            Ok(report) => return Ok(report),
+            Err(error) => {
+                last = Err(error);
+                if error != "login" || attempt + 1 >= attempts {
+                    break;
+                }
+                crate::parsers::tf_log(
+                    win.app_handle(),
+                    "guild",
+                    "warn",
+                    format!(
+                        "Свежее окно клана попало на страницу входа, повтор чтения профиля ({}/{})",
+                        attempt + 1,
+                        attempts
+                    ),
+                );
+                tokio::time::sleep(delay).await;
+            }
+        }
+    }
+    Err(last.unwrap_err())
+}
+
 /// Отмечает ивент на сайте (`yes` — «Пойду», `no` — «Не пойду»).
 ///
 /// Работает и без открытого окна: если его нет, поднимается скрытое окно с сохранённым
@@ -266,7 +315,14 @@ async fn send_response(
     if fresh_window {
         // Окно только что создано: скрипт ещё не успел встать. Ждём разбор страницы —
         // заодно убеждаемся, что вход на сайте живой (на странице входа придёт `login`).
-        wait_for_report(win).await?;
+        // На свежем окне колодки входа могут устроиться не сразу, поэтому «login»
+        // пробуем повторить (см. wait_for_report_with_login_retry).
+        wait_for_report_with_login_retry(
+            win,
+            LOGIN_RETRY_ATTEMPTS,
+            Duration::from_secs(LOGIN_RETRY_DELAY_SECS),
+        )
+        .await?;
     }
     // Старый ответ мог остаться в hash от прошлой отметки — иначе прочитаем его.
     let _ = win.eval(
@@ -279,6 +335,114 @@ async fn send_response(
     ))
     .map_err(|e| e.to_string())?;
     wait_for_hash(win, ACTION_HASH, Duration::from_secs(RESPOND_TIMEOUT_SECS)).await
+}
+
+/// Одна запись пакета отметок: номер события и выбранный ответ.
+#[derive(serde::Deserialize)]
+struct GuildEventChoice {
+    #[serde(rename = "eventId")]
+    event_id: String,
+    response: String,
+}
+
+/// Перенос пакета ответов в одно скрытое окно: открываем окно один раз, отмечаем в нём
+/// все события и возвращаем результат по каждому. Окно закрывается после пакета — не
+/// держим его постоянно. Пакет избегает создания по одному окну на каждый POST и даёт
+/// единую авторизованную сессию для всех отметок.
+#[command]
+pub async fn guild_set_responses(
+    app: AppHandle,
+    events: Vec<GuildEventChoice>,
+) -> Result<serde_json::Value, String> {
+    for choice in &events {
+        if choice.event_id.is_empty()
+            || choice.event_id.len() > 12
+            || !choice.event_id.chars().all(|c| c.is_ascii_digit())
+        {
+            return Err("Некорректный номер события".into());
+        }
+        if choice.response != "yes" && choice.response != "no" {
+            return Err("Некорректный ответ".into());
+        }
+    }
+    if events.is_empty() {
+        return Ok(serde_json::json!({ "ok": true, "results": [] }));
+    }
+    if SYNC_BUSY.swap(true, Ordering::SeqCst) {
+        return Err("busy".into());
+    }
+    let result = run_respond_batch(&app, &events).await;
+    SYNC_BUSY.store(false, Ordering::SeqCst);
+    result
+}
+
+async fn run_respond_batch(
+    app: &AppHandle,
+    events: &[GuildEventChoice],
+) -> Result<serde_json::Value, String> {
+    let (win, created) = match clan_window(app) {
+        Some(win) => (win, false),
+        None => {
+            let win = create_clan_window(app, GUILD_LABEL, false)?;
+            (win, true)
+        }
+    };
+    let result = send_responses(&win, events, created).await;
+    if created {
+        let _ = win.destroy();
+    }
+    result
+}
+
+async fn send_responses(
+    win: &WebviewWindow,
+    events: &[GuildEventChoice],
+    fresh_window: bool,
+) -> Result<serde_json::Value, String> {
+    if fresh_window {
+        wait_for_report_with_login_retry(
+            win,
+            LOGIN_RETRY_ATTEMPTS,
+            Duration::from_secs(LOGIN_RETRY_DELAY_SECS),
+        )
+        .await?;
+    }
+    let mut results = Vec::with_capacity(events.len());
+    for choice in events {
+        let event_id = &choice.event_id;
+        let response = &choice.response;
+        // Старый ответ мог остаться в hash от предыдущей отметки — сбрасываем перед новой.
+        let _ = win.eval(
+            "if (location.hash.indexOf('#TFETA1_') === 0) history.replaceState(null, '', location.pathname + location.search);",
+        );
+        win.eval(format!(
+            "if (window.__tfGuildRespond) window.__tfGuildRespond({}, {});",
+            serde_json::Value::String(event_id.clone()),
+            serde_json::Value::String(response.clone()),
+        ))
+        .map_err(|e| e.to_string())?;
+        match wait_for_hash(win, ACTION_HASH, Duration::from_secs(RESPOND_TIMEOUT_SECS)).await {
+            Ok(v) => {
+                let ok = v.get("ok").and_then(|o| o.as_bool()).unwrap_or(false);
+                let message = v.get("message").and_then(|m| m.as_str()).unwrap_or("");
+                results.push(serde_json::json!({
+                    "eventId": event_id,
+                    "response": response,
+                    "ok": ok,
+                    "message": message,
+                }));
+            }
+            Err(error) => {
+                results.push(serde_json::json!({
+                    "eventId": event_id,
+                    "response": response,
+                    "ok": false,
+                    "message": error,
+                }));
+            }
+        }
+    }
+    Ok(serde_json::json!({ "ok": true, "results": results }))
 }
 
 /// Проверяем ввод до передачи в веб-окно. Даже из повреждённого кэша нельзя подставить

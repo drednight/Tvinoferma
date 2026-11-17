@@ -16,6 +16,7 @@ export function createResponseQueue({
   getEntries,
   saveEntries,
   send,
+  sendBatch,
   read,
   begin,
   changed = () => {},
@@ -73,30 +74,62 @@ export function createResponseQueue({
       }
       if (!enabled()) return;
       snapshot = getEntries().filter(row => !row.failed);
-      for (const [index, row] of snapshot.entries()) {
-        if (!enabled()) break;
-        if (!getEntries().includes(row)) continue;
-        task.progress(index, snapshot.length, 'Переносятся ответы в кланер');
-        // `busy` — в окне клана уже идёт синхронизация (guild_sync держит флаг). POST
-        // ещё не ушёл, поэтому повторяем через короткую паузу, а не списываем в loss.
-        let reply;
-        let sendError = '';
+      if (sendBatch) {
+        // Один пакет в одно окно: единая авторизованная сессии для всех отметок и
+        // единая сводка для сверки. `busy` — в окне клана уже идёт синхронизация;
+        // повторяем через короткую паузу, а не списываем в loss.
+        let batch = null;
+        let batchError = '';
         for (let attempt = 0; attempt < 3; attempt += 1) {
           try {
-            reply = await send(row.eventId, row.response);
-            sendError = '';
+            batch = await sendBatch(snapshot.map(row => ({ eventId: row.eventId, response: row.response })));
+            batchError = '';
             break;
           } catch (error) {
-            sendError = String(error?.message || error || '');
-            if (sendError !== 'busy' || attempt === 2 || !enabled()) break;
+            batchError = String(error?.message || error || '');
+            if (batchError !== 'busy' || attempt === 2 || !enabled()) break;
             await pause(1200);
           }
         }
-        if (sendError) {
-          // A lost acknowledgement does not prove the write failed. Reconcile before reporting it.
-          task.log(`Событие ${row.eventId}: ответ не получен, проверяем сайт`, 'warn');
-        } else if (!reply?.ok) {
-          task.log(`Событие ${row.eventId}: проверяем результат по сводке сайта`, 'warn');
+        if (batchError) {
+          task.log(`Перенос ответов не удался: ${batchError}`, 'warn');
+        }
+        for (const [index, row] of snapshot.entries()) {
+          task.progress(index, snapshot.length, 'Переносятся ответы в кланер');
+          const r = (batch?.results || []).find(x => x.eventId === row.eventId);
+          if (!r?.ok) {
+            // A lost acknowledgement does not prove the write failed. Reconcile before reporting it.
+            task.log(`Событие ${row.eventId}: ответ не получен, проверяем сайт`, 'warn');
+          } else {
+            task.log(`Событие ${row.eventId}: отправлено`, 'info');
+          }
+        }
+      } else {
+        for (const [index, row] of snapshot.entries()) {
+          if (!enabled()) break;
+          if (!getEntries().includes(row)) continue;
+          task.progress(index, snapshot.length, 'Переносятся ответы в кланер');
+          // `busy` — в окне клана уже идёт синхронизация (guild_sync держит флаг). POST
+          // ещё не ушёл, поэтому повторяем через короткую паузу, а не списываем в loss.
+          let reply;
+          let sendError = '';
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            try {
+              reply = await send(row.eventId, row.response);
+              sendError = '';
+              break;
+            } catch (error) {
+              sendError = String(error?.message || error || '');
+              if (sendError !== 'busy' || attempt === 2 || !enabled()) break;
+              await pause(1200);
+            }
+          }
+          if (sendError) {
+            // A lost acknowledgement does not prove the write failed. Reconcile before reporting it.
+            task.log(`Событие ${row.eventId}: ответ не получен, проверяем сайт`, 'warn');
+          } else if (!reply?.ok) {
+            task.log(`Событие ${row.eventId}: проверяем результат по сводке сайта`, 'warn');
+          }
         }
       }
       if (!enabled()) return;

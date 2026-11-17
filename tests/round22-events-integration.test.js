@@ -8,11 +8,20 @@ vi.mock('../js/core/storage.js', async (importOriginal) => {
 vi.mock('../js/core/ui.js', () => ({ toast: vi.fn() }));
 const winMocks = vi.hoisted(() => ({
   send: vi.fn(async () => ({ ok: true })),
+  sendBatch: vi.fn(async (events) => {
+    const results = [];
+    for (const e of events) {
+      const reply = await winMocks.send(e.eventId, e.response);
+      results.push({ eventId: e.eventId, response: e.response, ok: reply?.ok !== false, message: '' });
+    }
+    return { ok: true, results };
+  }),
   read: vi.fn(async () => ({ events: [{ id: '1', response: 'yes' }], parties: [], selfNick: '', polls: [] }))
 }));
 vi.mock('../js/modules/guild/window.js', () => ({
   openGuild: vi.fn(),
   respondToEvent: winMocks.send,
+  respondToEvents: winMocks.sendBatch,
   syncGuildFromSite: winMocks.read,
   voteInGuildPoll: vi.fn()
 }));

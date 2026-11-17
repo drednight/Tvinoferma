@@ -59,6 +59,20 @@ export async function respondToEvent(eventId, response, deps = {}) {
   return setGuildResponse(eventId, response, deps);
 }
 
+/**
+ * Пакет отметок: один вызов Rust — одно скрытое окно для всех событий. Избегает
+ * создания по одному окну на каждый POST и даёт единую авторизованную сессию
+ * для всех отметок, а также единую сводку для сверки. Возвращает
+ * `{ ok, results: [{ eventId, response, ok, message }] }`.
+ */
+export async function respondToEvents(events, deps = {}) {
+  return serial(
+    'guild_set_responses',
+    { events: events.map(e => ({ eventId: String(e.eventId), response: e.response })) },
+    deps
+  );
+}
+
 /** Голосование через сохранённую сессию окна клана; Rust перепроверяет опрос и варианты. */
 export async function voteInGuildPoll(pollId, optionIds, deps = {}) {
   return serial(

@@ -28,7 +28,7 @@ import {
 } from './state.js';
 import { syncClanEntries } from './plannerBridge.js';
 import { summaryText, responseText, partyNicks, allPartyNicks, isSelfNick, RESPONSE_YES, RESPONSE_NO } from './core.js';
-import { openGuild, syncGuildFromSite, respondToEvent, voteInGuildPoll } from './window.js';
+import { openGuild, syncGuildFromSite, respondToEvent, respondToEvents, voteInGuildPoll } from './window.js';
 import { guildPollHtml, safePollLink, withPendingPollState } from './poll.js';
 
 /** Первая проверка после старта приложения: через минуту, чтобы не мешать запуску. */
@@ -333,6 +333,7 @@ const responses = createResponseQueue({
   enabled: () => isTauri() && guildEnabled() && writesAvailable(),
   changed: renderTodayNow,
   send: respondToEvent,
+  sendBatch: respondToEvents,
   read: async () => {
     const report = await syncGuildFromSite();
     if (!writesAvailable()) throw new Error('protected');

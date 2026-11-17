@@ -11,6 +11,10 @@ vi.mock('../js/core/ui.js', () => ({ toast: vi.fn() }));
 vi.mock('../js/modules/guild/window.js', () => ({
   openGuild: vi.fn(),
   respondToEvent: vi.fn(async () => ({ ok: true })),
+  respondToEvents: vi.fn(async (events) => ({
+    ok: true,
+    results: events.map(e => ({ eventId: e.eventId, response: e.response, ok: true, message: '' }))
+  })),
   syncGuildFromSite: vi.fn(async () => ({ events: [], parties: [], selfNick: '', polls: [] })),
   voteInGuildPoll: vi.fn()
 }));
