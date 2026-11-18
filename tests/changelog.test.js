@@ -12,11 +12,11 @@ describe('разбор CHANGELOG.md', () => {
     expect(releases.length).toBeGreaterThanOrEqual(15);
     expect(releases[0].version).toBe('Unreleased');
     expect(releases[0].date).toBe('');
-    expect(releases[0].lead).toContain('Изменения после стабильного выпуска 2.3.0');
+    expect(releases[0].lead).toContain('Изменения после стабильного выпуска 3.0.0');
     // «В разработке» всегда сверху; первый пронумерованный выпуск — последний стабильный.
-    const latest = releases.find(r => r.version === '2.3.0');
-    expect(latest?.date).toBe('2026-11-04');
-    expect(latest?.lead).toContain('Изменения после стабильного выпуска 2.2.0');
+    const latest = releases.find(r => r.version === '3.0.0');
+    expect(latest?.date).toBe('2026-11-16');
+    expect(latest?.lead).toContain('Изменения после стабильного выпуска 2.3.0');
 
     const v220 = releases.find(r => r.version === '2.2.0');
     expect(v220?.date).toBe('2026-10-20');
