@@ -1,6 +1,6 @@
 import { leaderSuggestion } from './recipients.js';
 import { confirmModal } from '../../core/ui.js';
-import { updateRepeatButton } from './repeatButton.js';
+import { updateRepeatButton, updateToggleButton } from './repeatButton.js';
 import { copyJournal } from './journal.js';
 import { normalizeAppearance, TEXT_PRESETS, KEY_PRESETS, COMMAND_PRESETS } from './appearance.js';
 import { listen, emitTo } from '@tauri-apps/api/event';
@@ -177,16 +177,20 @@ async function init() {
     repeatState = data;
     const hotkeysOn = !!data.hotkeysEnabled;
     const hotkeysConflict = hotkeysOn && (!data.registered || data.hotkeyFailures?.length);
-    hotkeysToggle.textContent = `Сочетания: ${hotkeysOn ? 'ВКЛ' : 'ВЫКЛ'}`;
-    hotkeysToggle.dataset.state = hotkeysConflict ? 'paused' : hotkeysOn ? 'on' : 'off';
-    hotkeysToggle.setAttribute('aria-pressed', String(hotkeysOn));
-    hotkeysToggle.title = `${hotkeysOn ? 'Выключить' : 'Включить'} сочетания клавиш${hotkeysConflict ? ' · есть незарегистрированные сочетания, см. журнал' : ''}`;
-    hotkeysToggle.setAttribute('aria-label', hotkeysToggle.title);
+    updateToggleButton(hotkeysToggle, {
+      icon: '⚡',
+      name: 'сочетания клавиш',
+      enabled: hotkeysOn,
+      paused: hotkeysConflict,
+      detail: hotkeysConflict ? ' · есть незарегистрированные сочетания, см. журнал' : ''
+    });
     hotkeysToggle.disabled = hotkeysDisabled();
 
-    pauseButton.textContent = data.paused ? '▶ Продолжить' : 'Ⅱ Пауза';
-    pauseButton.setAttribute('aria-pressed', String(!!data.paused));
-    pauseButton.dataset.state = data.paused ? 'paused' : 'on';
+    updateToggleButton(pauseButton, {
+      icon: '⏸',
+      name: 'паузу',
+      enabled: !!data.paused
+    });
     reconnectButton.disabled = !!data.busy || !!data.mirrorPending;
     updateRepeatButton(keyboardToggle, 'keyboard', data);
     keyboardToggle.disabled = keyboardDisabled();

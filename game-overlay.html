@@ -105,14 +105,53 @@
         box-shadow: var(--shadow); overflow: hidden; color: var(--overlay-text, var(--text));
         font: var(--font); color: var(--overlay-text, var(--text));
       }
-      .ov.ghost { border-color: var(--line-2); box-shadow: 0 8px 24px rgba(0,0,0,0.25); }
-      /* призрачный режим: фон назначенных клавиш — прозрачный, кнопки слегка полупрозрачны (обводки видны) */
-      .ov.ghost kbd { background: transparent; border-color: transparent; }
+      .ov.ghost { border-color: transparent; box-shadow: 0 8px 24px rgba(0,0,0,0.25); }
+      /* призрачный режим: обводки и фоны всех блоков убраны — виден только текст и кнопки.
+         Кнопки остаются непрозрачными, остальные блоки (карты, списки, меню, шапка) — прозрачны. */
+      .ov.ghost,
       .ov.ghost .chip,
       .ov.ghost .winbtn,
       .ov.ghost .menu-btn,
       .ov.ghost .btn,
-      .ov.ghost .cmd-run { background-color: color-mix(in srgb, var(--panel-3) 45%, transparent); }
+      .ov.ghost .card,
+      .ov.ghost .chead,
+      .ov.ghost .cmd,
+      .ov.ghost .rrow,
+      .ov.ghost .wrow,
+      .ov.ghost .target,
+      .ov.ghost .menu,
+      .ov.ghost .color-options,
+      .ov.ghost .theme-opt,
+      .ov.ghost .field,
+      .ov.ghost .backbar button,
+      .ov.ghost .cmd-run,
+      .ov.ghost .swatch,
+      .ov.ghost .close-dropdown,
+      .ov.ghost .ov-header,
+      .ov.ghost .repeat-strip,
+      .ov.ghost .ov-status,
+      .ov.ghost .backbar,
+      .ov.ghost kbd { border-color: transparent !important; }
+      .ov.ghost .card,
+      .ov.ghost .chead,
+      .ov.ghost .cmd,
+      .ov.ghost .rrow,
+      .ov.ghost .wrow,
+      .ov.ghost .menu,
+      .ov.ghost .color-options,
+      .ov.ghost .theme-opt,
+      .ov.ghost .ov-header,
+      .ov.ghost .repeat-strip,
+      .ov.ghost .ov-status,
+      .ov.ghost .backbar,
+      .ov.ghost #logs { background: transparent !important; }
+      .ov.ghost kbd { background: transparent; }
+      /* кнопки остаются непрозрачными */
+      .ov.ghost .chip,
+      .ov.ghost .winbtn,
+      .ov.ghost .menu-btn,
+      .ov.ghost .btn,
+      .ov.ghost .cmd-run { background-color: var(--panel-3); }
 
       /* header */
       .ov-header {
@@ -156,13 +195,13 @@
 
       /* ---- strip контрольных кнопок (всегда виден, и в свёрнутом виде) ---- */
       .repeat-strip {
-        display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px;
+        display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;
         padding: 8px; background: rgba(0,0,0,0.14); border-bottom: 1px solid var(--line-2);
       }
-      /* Блок с включением сочетания клавиш: переподключение ввода лежит рядом с «Сочетания» и «Пауза» */
+      /* Блок переподключения ввода: лежит под рядом переключателей (повтор, сочетания, пауза) */
       .repeat-controls {
-        display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px;
-        grid-column: span 3;
+        display: grid; grid-template-columns: repeat(1, 1fr); gap: 5px;
+        grid-column: span 4;
       }
       .chip {
         display: flex; align-items: center; gap: 6px; padding: 7px 6px;
@@ -177,7 +216,7 @@
       .chip[data-state="paused"] { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 13%, var(--panel-3)); }
       .chip[data-state="paused"] .state { background: color-mix(in srgb, var(--warn) 26%, transparent); color: var(--warn); }
       .chip[data-state="pending"] { border-color: var(--accent-3); }
-      .chip.reconnect { grid-column: span 3; }
+      .chip.reconnect { grid-column: span 1; }
       .chip:disabled { opacity: .45; cursor: default; }
 
       /* status */
@@ -394,9 +433,9 @@
       <div class="repeat-strip">
         <button type="button" class="chip" id="mouse-repeat-toggle" aria-pressed="false" data-state="off" disabled><span>🖱</span> Мышь<span class="state">выкл</span></button>
         <button type="button" class="chip" id="keyboard-repeat-toggle" aria-pressed="false" data-state="off" disabled><span>⌨</span> Клавиатура<span class="state">выкл</span></button>
+        <button type="button" class="chip" id="hotkeys-toggle" aria-pressed="false" data-state="off" disabled><span>⚡</span> Сочетания<span class="state">выкл</span></button>
+        <button type="button" class="chip" id="pause-macros"><span>⏸</span> Пауза<span class="state">выкл</span></button>
         <div class="repeat-controls">
-          <button type="button" class="chip" id="hotkeys-toggle" aria-pressed="false" data-state="off" disabled><span>⚡</span> Сочетания<span class="state">выкл</span></button>
-          <button type="button" class="chip" id="pause-macros"><span>⏸</span> Пауза<span class="state">работает</span></button>
           <button type="button" class="chip reconnect" id="reconnect-input" disabled><span>↻</span> Переподключить ввод<span class="state">клик</span></button>
         </div>
       </div>

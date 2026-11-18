@@ -39,3 +39,20 @@ export function updateRepeatButton(button, device, data) {
   button.title = `${enabled ? 'Выключить' : 'Включить'} повтор ${name}${detail}`;
   button.setAttribute('aria-label', button.title);
 }
+
+/**
+ * Общая кнопка-переключатель (как кнопки вкл/выкл повтора клавиатуры и мышки):
+ * иконка + ВКЛ/ВЫКЛ + состояние. Используется для сочетаний клавиш и паузы,
+ * чтобы они находились и выглядели так же, как переключатели повтора.
+ */
+export function updateToggleButton(button, { icon, name, enabled, pending = false, paused = false, detail }) {
+  const state = pending ? 'pending' : paused ? 'paused' : enabled ? 'on' : 'off';
+  const stateText = pending ? '…' : paused ? 'Ⅱ' : enabled ? 'ВКЛ' : 'ВЫКЛ';
+  button.textContent = `${icon} ${stateText}`;
+  button.dataset.state = state;
+  button.setAttribute('aria-pressed', String(enabled));
+  button.setAttribute('aria-busy', String(pending));
+  const titleDetail = detail != null ? detail : pending ? ' · обновление' : paused ? ' · приостановлен' : '';
+  button.title = `${enabled ? 'Выключить' : 'Включить'} ${name}${titleDetail}`;
+  button.setAttribute('aria-label', button.title);
+}
