@@ -58,6 +58,7 @@ mod injection;
 mod input_arbiter;
 mod input_receiver;
 mod launcher;
+mod telegram;
 mod layout_sync;
 mod marathons;
 mod notify;
@@ -222,6 +223,7 @@ pub fn run() {
             automation::transfer::read_server_status,
             automation::transfer::transfer_items,
             auth::check_login_status_http,
+            telegram::telegram_send_message,
             balance::fetch_and_parse_balance_v4,
             marathons::fetch_marathon_progress_v1,
             marathons::get_available_marathon_titles,

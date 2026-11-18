@@ -767,6 +767,62 @@
   }
 }
 
+/* Кнопка-ссылка на VK: фирменный синий, с логотипом слева */
+.vk-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  background: #2a5885;
+  color: #fff;
+  border-color: #2a5885;
+}
+.vk-btn:hover {
+  background: #1f476e;
+  border-color: #1f476e;
+}
+.vk-btn:active {
+  background: #173756;
+}
+.vk-icon {
+  flex: none;
+}
+
+/* Панель настроек Telegram: вложенная карточка внутри панели «Связь и статус» */
+.telegram-panel {
+  margin-top: 14px;
+  background: var(--surface-2, var(--bg));
+  border: 1px solid var(--border);
+  box-shadow: none;
+}
+.telegram-panel .panel-head {
+  margin-bottom: 4px;
+}
+.telegram-panel .panel-head h3 {
+  margin: 0 0 2px;
+  font-size: 1rem;
+}
+.telegram-panel .setting-row {
+  align-items: flex-start;
+}
+.telegram-panel .row.gap {
+  width: 100%;
+}
+.telegram-panel .input {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.telegram-panel textarea.input {
+  width: 100%;
+  resize: vertical;
+}
+#telegram-status-text.ok {
+  color: var(--success);
+}
+#telegram-status-text.err {
+  color: var(--danger);
+}
+
 .update-changelog {
   margin-top: 16px;
   display: grid;

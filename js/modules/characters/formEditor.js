@@ -333,9 +333,6 @@ export function openCharacterForm(char = null) {
     submitText: isEdit ? 'Сохранить изменения' : 'Создать персонажа',
     cancelText: 'Отмена',
     async onSubmit(formData, { setError }) {
-      const gameCenterLogin =
-        document.querySelector('#modal-root [name="site-gamecenter"]')?.checked ??
-        formData.get('site-gamecenter') === 'on';
       try {
         const getSafeStr = name => String(formData.get(name) || '').trim();
 
@@ -394,7 +391,7 @@ export function openCharacterForm(char = null) {
             name: getSafeStr('sky-name') || null,
             level: formData.get('sky-level') ? parseInt(formData.get('sky-level'), 10) : null
           },
-          siteLogin: { mode: gameCenterLogin ? 'gamecenter' : 'standard' },
+          siteLogin: { mode: 'standard' },
           contacts: {
             email: getSafeStr('contact-email'),
             password: getSafeStr('contact-password'),
@@ -469,15 +466,5 @@ export function openCharacterForm(char = null) {
     'afterbegin',
     '<button type="button" class="btn secondary" id="btn-stats-ocr" title="Выбрать скриншот окна с характеристиками: значения подставятся в поля">📷 Заполнить со скриншота</button>'
   );
-  const loginMode = document.createElement('label');
-  loginMode.className = 'character-login-switch';
-  loginMode.title = 'Вход на сайт через GameCenter (эксперимент). Выключено — обычный вход.';
-  loginMode.innerHTML = `<input type="checkbox" role="switch" name="site-gamecenter" ${currentChar.siteLogin?.mode === 'gamecenter' ? 'checked' : ''}><i aria-hidden="true"></i><span>Вход через GameCenter</span>`;
-  const form = document.querySelector('#modal-root form');
-  if (form) {
-    if (!form.id) form.id = 'character-edit-form';
-    loginMode.querySelector('input').setAttribute('form', form.id);
-  }
-  footer?.prepend(loginMode);
   bindStatsOcr();
 }
