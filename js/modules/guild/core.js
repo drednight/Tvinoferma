@@ -63,7 +63,7 @@ const SELF_NICK = '#updateUserInfoForm input[name="username"]';
 const LEADER_SUFFIX = /\(\s*ПЛ\s*\)\s*$/iu;
 const NICK_SUFFIX = /\s*\([^)]*\)\s*$/;
 /** Имя файла иконки класса: `assets/img/classes/luk.png` → `luk`. */
-const ICON_STEM = /\/classes\/([a-z0-9_-]+)\.[a-z0-9]+$/i;
+const ICON_STEM = /([a-z0-9_-]+)\.(?:png|webp|jpe?g|gif|svg|ico)$/i;
 
 const clean = s =>
   String(s ?? '')
