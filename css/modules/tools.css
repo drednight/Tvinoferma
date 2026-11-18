@@ -1679,7 +1679,7 @@
 }
 /* Плашка в навигации: компактная, фиксированно встроена в строку заголовка.
    Заголовок — приоритет: не сжимается. Плашка берёт оставшееся место,
-   может обрываться эллипсисом и не выходит за границу блока. */
+   обрывается эллипсисом и не выходит за границу блока. */
 .next-nav-title,
 .next-sidebar-bottom .next-nav-title {
   display: flex;
@@ -1699,8 +1699,9 @@
   margin-left: 0;
   flex: 0 1 auto;
   min-width: 0;
-  padding: 1px 7px;
-  font-size: 0.64rem;
+  max-width: 55%;
+  padding: 1px 6px;
+  font-size: 0.58rem;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
