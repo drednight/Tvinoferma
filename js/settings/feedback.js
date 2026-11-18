@@ -13,9 +13,6 @@ const ISSUES_NEW = 'https://github.com/drednight/Tvinoferma/issues/new';
 /** Диагностика целиком уходит в параметр URL; у ссылки есть практический предел, поэтому обрезка. */
 const LOGS_LIMIT = 3000;
 
-/** Публичная ссылка на Telegram для связи (например, бот). Пустая строка скрывает карточку. */
-export const TELEGRAM_URL = '';
-
 /** Ссылка на форму ошибки с предзаполненными версией и диагностикой. */
 export function bugReportUrl({ version = '', logs = '' } = {}) {
   const q = new URLSearchParams({ template: 'bug_report.yml' });
@@ -36,13 +33,6 @@ function openExternal(url) {
 }
 
 export function bindFeedback() {
-  const tgRow = document.getElementById('feedback-telegram-row');
-  const tgLink = document.getElementById('feedback-telegram-link');
-  if (tgRow && tgLink && TELEGRAM_URL) {
-    tgLink.href = TELEGRAM_URL;
-    tgRow.hidden = false;
-  }
-
   document.getElementById('feedback-bug-btn')?.addEventListener('click', async () => {
     const version = document.getElementById('app-version')?.textContent?.trim() || '';
     const logs = buildDiagnostics();

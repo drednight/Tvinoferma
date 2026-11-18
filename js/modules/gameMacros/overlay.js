@@ -286,10 +286,9 @@ async function init() {
           rebind.onclick = async () => {
             rebind.disabled = true;
             try {
+              // Переподключение выполняется в главном окне: оно переименует окно
+              // и поставит значок класса, затем отправит обновлённый список окон.
               await emitTo('main', 'game-overlay-rebind', { pid: row.pid, hwnd: row.hwnd, startedAt: row.startedAt });
-              const icons = ['🖥', '🪟', '🖥'];
-              const next = icons[(icons.indexOf(icon.textContent) + 1) % icons.length];
-              icon.textContent = icon.textContent === next ? '🪟' : next;
             } catch {
               document.getElementById('status').textContent = 'Не удалось переподключить окно.';
             } finally {

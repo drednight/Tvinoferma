@@ -1651,6 +1651,33 @@ export async function initGameMacros() {
   await listen('game-overlay-reconnect', () => {
     void reconnectInput().catch(error => log(macroErrorText(error)));
   });
+  await listen('game-overlay-rebind', async event => {
+    const pid = Number(event.payload?.pid);
+    if (!pid) return;
+    try {
+      const { applyWindowStyle, windowTitle, applyStyleText } = await import('../launcher/launch.js');
+      // Переподключить окно: переименовать в «Ник — Класс» и поставить значок класса.
+      // Данные окна (ник, класс) берём из свежего списка — оверлей передаёт только pid.
+      const rows = await listMacroWindows();
+      const row = rows.find(r => r.pid === pid);
+      if (!row) {
+        overlayWindowNotice = 'Окно не найдено: возможно, оно уже закрыто. Обновите список окон.';
+        await broadcast();
+        return;
+      }
+      const character = row.charId
+        ? state.characters.find(c => String(c.id) === String(row.charId))
+        : null;
+      const title = windowTitle(character || { nick: row.nick, class: row.cls });
+      const result = await applyWindowStyle({ pid, title, class: row.cls || null });
+      overlayWindowNotice = applyStyleText(result) || `Окно ${row.nick || pid} переподключено.`;
+      overlayWindows = (await listMacroWindows()).map(toOverlayWindow);
+      await broadcast();
+    } catch (error) {
+      overlayWindowNotice = macroErrorText(error);
+      await broadcast();
+    }
+  });
   await listen('game-overlay-opened', event => {
     if (event.payload?.requestId !== overlayOpenRequest || !overlayOpenRequest) return;
     clearTimeout(overlayOpenTimer);
@@ -2447,6 +2474,25 @@ export async function overlayRecipientAction(request) {
   }
 }
 
+/**
+ * Строка оверлейного списка окна из строки {@link listMacroWindows}.
+ * `icon` — значок в оверлее: 🪟, если у окна есть класс (значок класса применён),
+ * иначе 🖥 (обычный значок игры). `cls` нужен, чтобы при переподключении
+ * построить название «Ник — Класс» и значок класса.
+ */
+function toOverlayWindow(row) {
+  return {
+    name: row.nick || 'Нераспознанное окно',
+    pid: row.pid,
+    startedAt: row.startedAt,
+    hwnd: row.hwnd,
+    known: !!row.known,
+    ownershipSource: row.ownershipSource,
+    cls: row.cls || '',
+    icon: row.cls ? '🪟' : '🖥'
+  };
+}
+
 // Native bridge accepts requests only from main/overlay. Resolve IDs against current user data.
 export async function overlayPartyAction(request) {
   if (!['party-refresh', 'party-launch', 'party-close-all', 'party-redecorate'].includes(request?.action)) return;
@@ -2481,14 +2527,7 @@ export async function overlayPartyAction(request) {
       }
       overlayWindowNotice = closeSelectedText(report);
       const rows = await listMacroWindows();
-      overlayWindows = rows.map(row => ({
-        name: row.nick || 'Нераспознанное окно',
-        pid: row.pid,
-        startedAt: row.startedAt,
-        hwnd: row.hwnd,
-        known: !!row.known,
-        ownershipSource: row.ownershipSource
-      }));
+      overlayWindows = rows.map(toOverlayWindow);
       return;
     }
     if (request.action === 'party-launch') {
@@ -2521,14 +2560,7 @@ export async function overlayPartyAction(request) {
             : `Оформление проверено: без изменений (${report.ok} окон актуальны).`);
     }
     const rows = await listMacroWindows();
-    overlayWindows = rows.map(row => ({
-      name: row.nick || 'Нераспознанное окно',
-      pid: row.pid,
-      startedAt: row.startedAt,
-      hwnd: row.hwnd,
-      known: !!row.known,
-      ownershipSource: row.ownershipSource
-    }));
+    overlayWindows = rows.map(toOverlayWindow);
     overlayWindowNotice = cancelled
       ? 'Остановлено пользователем.'
       : completionNotice || `Найдено окон: ${rows.length}. Обновите список после входа персонажей.`;

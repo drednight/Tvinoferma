@@ -36,7 +36,6 @@ import { DANGER_ACTIONS, clearParties, clearMarathons, clearCharacters } from '.
 import { balanceSettingsColumns } from './columns.js';
 import { bindGuides } from './guides.js';
 import { bindFeedback } from './feedback.js';
-import { bindTelegramSettings } from './telegram.js';
 import { openExportDialog } from '../data/export.js';
 import { openImportDialog } from '../data/import.js';
 import '../core/taskLog.js'; // подключает вид логов «Скрипты» к единому модулю логов
@@ -724,7 +723,6 @@ export function bindSettings() {
     }
   });
   bindFeedback();
-  bindTelegramSettings();
   balanceSettingsColumns();
   bindSettingInputs();
   initSettingsSections();
