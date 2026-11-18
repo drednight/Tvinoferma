@@ -1,12 +1,20 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 const invoke = vi.fn();
+const listeners = vi.hoisted(() => ({}));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args) => invoke(...args) }));
-vi.mock('@tauri-apps/api/event', () => ({ emitTo: vi.fn(async () => {}), listen: vi.fn(async () => () => {}) }));
+vi.mock('@tauri-apps/api/event', () => ({
+  emitTo: vi.fn(async () => {}),
+  listen: vi.fn(async (name, cb) => {
+    listeners[name] = cb;
+    return () => {};
+  })
+}));
 let runtime, state;
 const client = { pid: 10, startedAt: 1000, hwnd: 100, elevated: false, title: 'Alpha — Жрец' };
 beforeEach(async () => {
   vi.resetModules();
   invoke.mockReset();
+  for (const key of Object.keys(listeners)) delete listeners[key];
   window.__TAURI_INTERNALS__ = {};
   ({ state } = await import('../js/core/state.js'));
   state.characters = [{ id: 'a', nick: 'Alpha', partyIds: ['p'] }];
@@ -619,10 +627,26 @@ it('does not send the first key if stop was requested while native activation wa
 it('refreshes the overlay window list without activating game windows or sending input', async () => {
   await runtime.overlayPartyAction({ action: 'party-refresh' });
   expect(runtime.snapshot().windows).toEqual([
-    { name: 'Alpha', pid: 10, startedAt: 1000, hwnd: 100, known: true, ownershipSource: 'title' }
+    { name: 'Alpha', pid: 10, startedAt: 1000, hwnd: 100, known: true, ownershipSource: 'title', cls: '', icon: '🖥' }
   ]);
   expect(invoke.mock.calls.some(([c]) => c === 'game_macro_action')).toBe(false);
   expect(runtime.snapshot().busy).toBe(false);
+});
+it('rebinds an overlay window: renames it and applies the window style', async () => {
+  await runtime.initGameMacros();
+  await listeners['game-overlay-rebind']({ payload: { pid: 10 } });
+  const applyCall = invoke.mock.calls.find(([command]) => command === 'launcher_apply_window_style');
+  expect(applyCall).toBeTruthy();
+  expect(applyCall[1]).toMatchObject({ pid: 10, title: 'Alpha', class: null, clearIcon: false });
+  expect(runtime.snapshot().windows[0]).toMatchObject({ name: 'Alpha', pid: 10, icon: '🖥' });
+  expect(runtime.snapshot().windowNotice).toBeTruthy();
+  expect(runtime.snapshot().busy).toBe(false);
+});
+it('reports a rebind for a closed window without touching any style', async () => {
+  await runtime.initGameMacros();
+  await listeners['game-overlay-rebind']({ payload: { pid: 999 } });
+  expect(invoke.mock.calls.some(([command]) => command === 'launcher_apply_window_style')).toBe(false);
+  expect(runtime.snapshot().windowNotice).toContain('Окно не найдено');
 });
 it('rejects a deleted or fabricated party before launching anything', async () => {
   state.parties = [];

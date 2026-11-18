@@ -17,9 +17,11 @@ describe('разметка раздела «Предложения»', () => {
     expect(hrefs.some(h => h.endsWith('/issues'))).toBe(true);
   });
 
-  it('карточка Telegram по умолчанию скрыта: она появится, когда автор впишет ссылку', () => {
-    expect(section.querySelector('#feedback-telegram-row').hasAttribute('hidden')).toBe(true);
-    expect(section.querySelector('#feedback-telegram-link')).not.toBeNull();
+  it('раздел связи не содержит интеграции Telegram', () => {
+    expect(section.querySelector('#feedback-telegram-row')).toBeNull();
+    expect(section.querySelector('#feedback-telegram-link')).toBeNull();
+    expect(section.querySelector('.telegram-panel')).toBeNull();
+    expect(section.textContent.toLowerCase()).not.toContain('telegram');
   });
 });
 

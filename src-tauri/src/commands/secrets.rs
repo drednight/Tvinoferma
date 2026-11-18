@@ -18,16 +18,6 @@ fn user(key: &str) -> String {
     format!("contacts:{}", key)
 }
 
-/// Читает секрет по ключу (публичное для других модулей — например, Telegram).
-/// Отсутствующая запись читается как `None`, прочитанная — как `Some(значение)`.
-pub(crate) fn read_secret(key: &str) -> Result<Option<String>, String> {
-    match entry(key)?.get_password() {
-        Ok(value) => Ok(Some(value)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(format!("{}: {}", key, e)),
-    }
-}
-
 async fn blocking<T: Send + 'static>(
     f: impl FnOnce() -> Result<T, String> + Send + 'static,
 ) -> Result<T, String> {
