@@ -137,7 +137,6 @@
       .ov.ghost .cmd,
       .ov.ghost .rrow,
       .ov.ghost .wrow,
-      .ov.ghost .menu,
       .ov.ghost .color-options,
       .ov.ghost .theme-opt,
       .ov.ghost .ov-header,
@@ -146,6 +145,8 @@
       .ov.ghost .backbar,
       .ov.ghost #logs { background: transparent !important; }
       .ov.ghost kbd { background: transparent; }
+      /* Раскрывающееся меню остаётся непрозрачным (фон --panel-2), чтобы пункты
+         были видны; только обводка снимается, как у остальных блоков призрачного режима. */
       /* кнопки остаются непрозрачными */
       .ov.ghost .chip,
       .ov.ghost .winbtn,
