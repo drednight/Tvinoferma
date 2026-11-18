@@ -493,6 +493,23 @@ describe('ход выполнения в полном логе', () => {
     expect(document.querySelector('.tf-overlay')).toBeNull();
     task.finish('Готово');
   });
+  it('в строки журнала пишется процент выполнения проверки', async () => {
+    const { startTask } = await import('../js/core/taskLog.js');
+    const task = startTask('Проверка входа', { total: 4, dock: false });
+    task.progress(1, 4, 'Ауразак');
+    task.progress(2, 4, 'Тиия');
+    // Повтор с тем же процентом не засоривает лог
+    task.progress(2, 4, 'Тиия');
+    const messages = task.entries.map(e => e.message).join('\n');
+    expect(messages).toContain('Проверка входа: Ауразак — 25%');
+    expect(messages).toContain('Проверка входа: Тиия — 50%');
+    // Повтор с тем же 25%/50% произошёл один раз
+    expect(messages.match(/50%/g)).toHaveLength(1);
+    // Записи уровня progress не считаются как ошибки/предупреждения
+    expect(task.errors).toBe(0);
+    expect(task.warnings).toBe(0);
+    task.finish('Готово');
+  });
 });
 
 describe('частота перерисовки полного журнала', () => {
