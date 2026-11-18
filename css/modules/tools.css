@@ -1677,14 +1677,30 @@
   letter-spacing: 0.01em;
   white-space: nowrap;
 }
-/* Плашка в навигации: компактная, выравнивается по заголовку таба */
+/* Плашка в навигации: компактная, фиксированно встроена в строку заголовка
+   и не выходит за границу блока (не сдвигает ряд) */
+.next-nav-title,
+.next-sidebar-bottom .next-nav-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+.next-nav-title strong {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .next-nav .gm-experiment-badge,
 .next-sidebar-bottom .gm-experiment-badge {
-  margin-left: 8px;
-  padding: 1px 8px;
-  font-size: 0.66rem;
+  margin-left: 0;
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  font-size: 0.64rem;
   font-weight: 600;
-  align-self: center;
 }
 .gm-hero-copy > small {
   display: block;
