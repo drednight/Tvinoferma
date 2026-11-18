@@ -1677,8 +1677,9 @@
   letter-spacing: 0.01em;
   white-space: nowrap;
 }
-/* Плашка в навигации: компактная, фиксированно встроена в строку заголовка
-   и не выходит за границу блока (не сдвигает ряд) */
+/* Плашка в навигации: компактная, фиксированно встроена в строку заголовка.
+   Заголовок — приоритет: не сжимается. Плашка берёт оставшееся место,
+   может обрываться эллипсисом и не выходит за границу блока. */
 .next-nav-title,
 .next-sidebar-bottom .next-nav-title {
   display: flex;
@@ -1686,21 +1687,24 @@
   gap: 6px;
   min-width: 0;
   flex-wrap: nowrap;
+  overflow: hidden;
 }
 .next-nav-title strong {
+  flex: 0 0 auto;
   min-width: 0;
-  flex: 1 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .next-nav .gm-experiment-badge,
 .next-sidebar-bottom .gm-experiment-badge {
   margin-left: 0;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
   padding: 1px 7px;
   font-size: 0.64rem;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .gm-hero-copy > small {
   display: block;
