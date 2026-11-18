@@ -154,6 +154,11 @@ export function mergeSettings(input = {}) {
     },
     gameMacros: normalizeGameMacros(installMirrorPreset(installAhkPresets(input.gameMacros))),
     security: { ...DEFAULT_SETTINGS.security, ...(input.security || {}) },
+    telegram: {
+      ...DEFAULT_SETTINGS.telegram,
+      ...(input.telegram || {}),
+      chatId: typeof input.telegram?.chatId === 'string' ? input.telegram.chatId : ''
+    },
     scripts: { ...DEFAULT_SETTINGS.scripts, ...(input.scripts || {}) },
     notifications: normalizeNotificationSettings(input.notifications),
     browser: {

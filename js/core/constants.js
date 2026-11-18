@@ -159,6 +159,10 @@ export const DEFAULT_SETTINGS = {
   security: {
     useVault: true
   },
+  // Telegram: бот для отправки сообщений и предложений по оптимизации (токен бота — в хранилище ОС)
+  telegram: {
+    chatId: ''
+  },
   // Очередь фоновых скриптов (вход, балансы)
   scripts: {
     concurrency: 3, // одновременно открытых скрытых окон
