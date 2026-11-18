@@ -2729,7 +2729,7 @@ mod win {
                     }
                     std::thread::sleep(Duration::from_millis(timing.switch_ms.min(500)));
                 }
-                "key-background" => Ok(None),
+                "key-background" => {}
                 "key" => {
                     if GetForegroundWindow() != hwnd {
                         return Err("Focus changed; command stopped".into());
