@@ -151,6 +151,19 @@ export function openTransferDialog({ ids = [] } = {}) {
   const selectedChars = () => state.characters.filter(c => selected.has(c.id)).sort(byNick);
   const picksOf = () => prefs.picks;
 
+  /**
+   * Блокировка «Далее»: для каждого выбранного браузера нужен сервер и получатель.
+   * Авто-получателя (единственный персонаж на сервере) считается выбранным.
+   */
+  const recipientsReady = () =>
+    selectedChars().every(c => {
+      const sid = rowServer(c);
+      if (!sid) return false;
+      const list = charsOnServer(rosters[c.id], sid);
+      if (!list.length) return false;
+      return list.length === 1 || !!prefs.picks?.[c.id]?.[sid];
+    });
+
   /* ---------------------------- форма ---------------------------- */
 
   function visibleChars() {
@@ -361,7 +374,7 @@ export function openTransferDialog({ ids = [] } = {}) {
       checkBtn.textContent =
         selected.size > 1 ? `🔍 Проверить персонажей (${selected.size})` : '🔍 Проверить персонажа';
     const planBtn = dlg.foot.querySelector('#tr-plan-btn');
-    if (planBtn) planBtn.disabled = !selected.size || running || confirming;
+    if (planBtn) planBtn.disabled = !selected.size || running || confirming || !recipientsReady();
     const canRun = plans.some(p => p.run);
     const dry = dlg.foot.querySelector('[data-act="dry"]');
     if (dry) dry.disabled = !canRun;

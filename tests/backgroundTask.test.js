@@ -11,7 +11,7 @@ it('journals background start, steps and finish without occupying the script que
   task.log('Чтение');
   task.finish('Готово');
   await vi.waitFor(() => expect(mocks.finish).toHaveBeenCalledWith('Готово', 'done'));
-  expect(mocks.startTask).toHaveBeenCalledWith('Фоновая задача: Проверка серверов', { dock: false });
+  expect(mocks.startTask).toHaveBeenCalledWith('Фоновая задача: Проверка серверов', { dock: false, category: 'background' });
   expect(mocks.log).toHaveBeenCalledWith('Чтение');
 });
 it('does not fail the background reader when the journal is unavailable', async () => {

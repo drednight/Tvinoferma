@@ -401,9 +401,14 @@ export function openShopDialog({ ids = [] } = {}) {
     const desc = found
       ? `<details class="shop-desc"><summary>Описание</summary>${it.desc ? `<div>${escapeHtml(it.desc).replace(/\n/g, '<br>')}</div>` : ''}<p class="shop-muted">${escapeHtml(generalLimit)}</p></details>`
       : '';
+    // Знаки доблести/единства — сундучки: сайт даёт превью в рамке с тёмным фоном,
+    // поэтому показываем их покладистый значок без рамки и фона.
+    const iconHtml = def.chest
+      ? `<span class="site-item-icon" aria-hidden="true">${escapeHtml(def.icon)}</span>`
+      : siteItemIconHtml(it?.image, def.name);
     return `<div class="shop-card${locked ? ' shop-locked' : ''}${picked.has(def.key) ? ' shop-picked' : ''}" data-card="${def.key}">
       <label class="shop-pick"><input type="checkbox" data-item="${def.key}" ${picked.has(def.key) ? 'checked' : ''} ${locked ? 'disabled' : ''}>
-        ${siteItemIconHtml(it?.image, def.name)}<b>${escapeHtml(def.name)}</b><span class="shop-card-check" aria-hidden="true">✓</span></label>
+        ${iconHtml}<b>${escapeHtml(def.name)}</b><span class="shop-card-check" aria-hidden="true">✓</span></label>
       <div class="shop-price">${escapeHtml(price)}</div>
       ${hint ? `<div class="shop-muted">${escapeHtml(hint)}</div>` : ''}${desc}</div>`;
   }

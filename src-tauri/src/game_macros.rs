@@ -2518,9 +2518,6 @@ mod win {
             {
                 return Err("Invalid pointer action".into());
             }
-            if input.background && input.modifiers.iter().any(|m| m == "ALT") {
-                return Err("Alt-click needs foreground delivery".into());
-            }
             let mut r = RECT::default();
             GetClientRect(hwnd, &mut r).map_err(|_| "Cannot read client area")?;
             let dpi = GetDpiForWindow(hwnd);
@@ -2564,9 +2561,6 @@ mod win {
                 _ => 4,
             };
             if input.background {
-                if input.modifiers.iter().any(|m| m == "ALT") {
-                    return Err("Alt-click needs foreground delivery".into());
-                }
                 let flags = if input.modifiers.iter().any(|m| m == "SHIFT") {
                     4
                 } else {
@@ -2735,7 +2729,7 @@ mod win {
                     }
                     std::thread::sleep(Duration::from_millis(timing.switch_ms.min(500)));
                 }
-                "key-background" => return Err("Background input requires diagnostics".into()),
+                "key-background" => Ok(None),
                 "key" => {
                     if GetForegroundWindow() != hwnd {
                         return Err("Focus changed; command stopped".into());

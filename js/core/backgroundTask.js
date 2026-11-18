@@ -2,7 +2,7 @@
 // Journal failures must never block the actual read. Only caller-owned fixed messages are logged.
 export function backgroundTask(title) {
   const pending = import('./taskLog.js')
-    .then(({ startTask }) => startTask(`Фоновая задача: ${title}`, { dock: false }))
+    .then(({ startTask }) => startTask(`Фоновая задача: ${title}`, { dock: false, category: 'background' }))
     .catch(() => null);
   return {
     log(text) {
