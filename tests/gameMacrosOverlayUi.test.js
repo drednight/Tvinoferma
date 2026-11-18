@@ -434,7 +434,7 @@ it('toggles persisted hotkey intent independently of keyboard/mouse repeat, even
   const update = mocks.handlers.get('game-macro-snapshot'),
     button = document.getElementById('hotkeys-toggle');
   update({ payload: { hotkeysEnabled: false, registered: false } });
-  expect(button.textContent).toBe('Сочетания: ВЫКЛ');
+  expect(button.textContent).toBe('⚡ ВЫКЛ');
   expect(button.dataset.state).toBe('off');
   document.getElementById('info-toggle').click();
   expect(button.closest('[hidden]')).toBeNull();
@@ -466,7 +466,7 @@ it('keeps hotkey controls honest on transport failure and disables them during c
   await vi.waitFor(() =>
     expect(document.getElementById('status').textContent).toContain('Не удалось изменить сочетания')
   );
-  expect(button.textContent).toBe('Сочетания: ВЫКЛ');
+  expect(button.textContent).toBe('⚡ ВЫКЛ');
   expect(button.disabled).toBe(false);
 });
 it('offers scoped close requests and preserves explicit checks on unrelated snapshots', async () => {
