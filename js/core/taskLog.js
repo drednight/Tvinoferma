@@ -28,7 +28,7 @@ const DOCK_AUTOHIDE_MS = 8000;
 // идут log/progress, поэтому 3 минуты тишины — это точно застрявший скрипт.
 const STALE_MS = 3 * 60 * 1000;
 
-const LEVEL_ICON = { info: '•', step: '▶', ok: '✅', warn: '⚠️', error: '❌', summary: '▦' };
+const LEVEL_ICON = { info: '•', step: '▶', progress: '📊', ok: '✅', warn: '⚠️', error: '❌', summary: '▦' };
 
 export { ERROR_TEXT, errorText };
 
@@ -310,9 +310,22 @@ class Task {
   }
   progress(done, total, step) {
     this.updatedAt = nowIso();
-    this.done = done;
-    if (total != null) this.total = total;
+    const nextDone = Math.max(0, Number(done) || 0);
+    const nextTotal = Number(total) > 0 ? Math.max(this.total, Number(total)) : this.total;
+    this.done = nextDone;
+    this.total = nextTotal;
     if (step) this.step = step;
+    // Показывать процент выполнения в журнале логов (проверки персонажей, вторая проходка и т.п.).
+    // Запись пишется только при реальном изменении процента — чтобы не засорять лог
+    // повторными вызовами с тем же done/total (например, при переподсчёте балансов).
+    if (nextTotal > 0) {
+      const percent = Math.round((nextDone / nextTotal) * 100);
+      if (percent !== this._loggedPercent) {
+        this._loggedPercent = percent;
+        const what = step ? `${step} — ${percent}%` : `${percent}%`;
+        this.log(`${this.title}: ${what}`, 'progress', this.scope);
+      }
+    }
     notify(this);
     return this;
   }
