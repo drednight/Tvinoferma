@@ -416,7 +416,11 @@ function eventsHtml(data) {
   if (!list.length) return '<p class="muted">Предстоящих событий нет.</p>';
   const rows = list
     .map(ev => {
-      const pending = readPendingResponses().find(row => row.eventId === ev.id);
+      // Сайт — источник истины: при определённом ответе с сайта (yes/no) показываем его,
+      // а не локальное pending-намерение. Pending переживает только при отсутствии
+      // ответа на сайте, пока идёт перенос на сайт.
+      const siteDefinite = ev.response === RESPONSE_YES || ev.response === RESPONSE_NO;
+      const pending = siteDefinite ? null : readPendingResponses().find(row => row.eventId === ev.id);
       const response = pending?.response || ev.response;
       const going = response === RESPONSE_YES;
       const out = response === RESPONSE_NO;
