@@ -1677,6 +1677,15 @@
   letter-spacing: 0.01em;
   white-space: nowrap;
 }
+/* Плашка в навигации: компактная, выравнивается по заголовку таба */
+.next-nav .gm-experiment-badge,
+.next-sidebar-bottom .gm-experiment-badge {
+  margin-left: 8px;
+  padding: 1px 8px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  align-self: center;
+}
 .gm-hero-copy > small {
   display: block;
   margin-top: 12px;
