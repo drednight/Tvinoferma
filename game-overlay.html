@@ -159,6 +159,11 @@
         display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px;
         padding: 8px; background: rgba(0,0,0,0.14); border-bottom: 1px solid var(--line-2);
       }
+      /* Блок с включением сочетания клавиш: переподключение ввода лежит рядом с «Сочетания» и «Пауза» */
+      .repeat-controls {
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px;
+        grid-column: span 3;
+      }
       .chip {
         display: flex; align-items: center; gap: 6px; padding: 7px 6px;
         border: 1px solid var(--line); border-radius: var(--radius-sm);
@@ -356,7 +361,7 @@
       /* ============ ADAPTIVE ============ */
       @media (max-width: 520px) {
         .repeat-strip { grid-template-columns: repeat(2, 1fr); }
-        .chip.reconnect { grid-column: span 2; }
+        .repeat-controls { grid-column: span 2; }
       }
       @media (max-height: 560px) {
         .ov-status { display: none; }
@@ -389,9 +394,11 @@
       <div class="repeat-strip">
         <button type="button" class="chip" id="mouse-repeat-toggle" aria-pressed="false" data-state="off" disabled><span>🖱</span> Мышь<span class="state">выкл</span></button>
         <button type="button" class="chip" id="keyboard-repeat-toggle" aria-pressed="false" data-state="off" disabled><span>⌨</span> Клавиатура<span class="state">выкл</span></button>
-        <button type="button" class="chip" id="hotkeys-toggle" aria-pressed="false" data-state="off" disabled><span>⚡</span> Сочетания<span class="state">выкл</span></button>
-        <button type="button" class="chip" id="pause-macros"><span>⏸</span> Пауза<span class="state">работает</span></button>
-        <button type="button" class="chip reconnect" id="reconnect-input" disabled><span>↻</span> Переподключить ввод<span class="state">клик</span></button>
+        <div class="repeat-controls">
+          <button type="button" class="chip" id="hotkeys-toggle" aria-pressed="false" data-state="off" disabled><span>⚡</span> Сочетания<span class="state">выкл</span></button>
+          <button type="button" class="chip" id="pause-macros"><span>⏸</span> Пауза<span class="state">работает</span></button>
+          <button type="button" class="chip reconnect" id="reconnect-input" disabled><span>↻</span> Переподключить ввод<span class="state">клик</span></button>
+        </div>
       </div>
 
       <div class="ov-status">

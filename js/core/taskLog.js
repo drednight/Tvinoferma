@@ -107,6 +107,7 @@ class Task {
     this.id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random());
     this.title = title;
     this.kind = opts.kind || 'task';
+    this.category = opts.category || 'task'; // 'task' — явные скрипты; 'background' — фоновые проверки (вход, баланс, серверы, новости)
     this.dock = opts.dock !== false;
     this.startedAt = nowIso();
     this.updatedAt = this.startedAt; // последний признак жизни: по нему ищем зависшие задачи
@@ -988,16 +989,39 @@ registerLogSource({
   title: 'Скрипты',
   icon: '📄',
   list: () =>
-    tasks.map(t => ({
-      key: t.id,
-      at: t.startedAt,
-      title: t.title,
-      status: logStatus(t),
-      summary: t.summary || (t.status === 'running' ? `${t.percent}% · ${t.step}` : '')
-    })),
+    tasks
+      .filter(t => t.category !== 'background')
+      .map(t => ({
+        key: t.id,
+        at: t.startedAt,
+        title: t.title,
+        status: logStatus(t),
+        summary: t.summary || (t.status === 'running' ? `${t.percent}% · ${t.step}` : '')
+      })),
   open: item => openTaskLog(item.key),
   clear: clearTaskJournal,
   clearConfirm: 'Очистить логи скриптов? Завершённые записи будут удалены.',
+  subscribe: onTaskChange
+});
+
+/** Фоновые проверки: вход, баланс, серверы, новости, клан — отдельно от явных скриптов. */
+registerLogSource({
+  id: 'background',
+  title: 'Фоновые проверки',
+  icon: '🔍',
+  list: () =>
+    tasks
+      .filter(t => t.category === 'background')
+      .map(t => ({
+        key: t.id,
+        at: t.startedAt,
+        title: t.title,
+        status: logStatus(t),
+        summary: t.summary || (t.status === 'running' ? `${t.percent}% · ${t.step}` : '')
+      })),
+  open: item => openTaskLog(item.key),
+  clear: clearTaskJournal,
+  clearConfirm: 'Очистить логи фоновых проверок? Завершённые записи будут удалены.',
   subscribe: onTaskChange
 });
 

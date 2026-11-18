@@ -344,7 +344,7 @@ export async function runAuthChecks(
 ) {
   const { retries, retryDelayMs } = scriptSettings();
   const task =
-    silent && chars.length === 1 ? null : startTask(title, { total: chars.length, cancelable: chars.length > 1 });
+    silent && chars.length === 1 ? null : startTask(title, { total: chars.length, cancelable: chars.length > 1, category: 'background' });
   // Ждём своей очереди: пока идёт другой скрипт, работу не начинаем
   await task?.waitTurn();
   if (task?.cancelled) {
@@ -505,7 +505,8 @@ export async function refreshAllBalances(
   // Заголовок задачи попадает в док и журнал через escapeHtml — разметка в нём показывается кодом, поэтому эмодзи
   const task = startTask(title || `🪙 Обновление балансов (${list.length} акк.)`, {
     total: list.length,
-    cancelable: list.length > 1
+    cancelable: list.length > 1,
+    category: 'background'
   });
   const signal = { cancelled: false };
   task.onCancel(() => {

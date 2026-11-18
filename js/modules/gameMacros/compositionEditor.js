@@ -213,7 +213,7 @@ export function mountCompositionEditor(host, c, row) {
             block.delivery
           )}</label>${
             block.delivery === 'background'
-              ? `<label data-gm-legacy-delivery>Способ для клавиш ${select(
+              ? `<label data-gm-legacy-delivery hidden>Способ для клавиш ${select(
                   'backgroundMethod',
                   [
                     ['activity-notify', BACKGROUND_METHODS['activity-notify']],

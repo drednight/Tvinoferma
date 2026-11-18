@@ -86,7 +86,7 @@ export function openMarathonWizard(opts = {}) {
       task: null,
       error: null,
       verify: state.settings.browser?.marathonFollowCheckLinks !== false,
-      search: { loading: false, items: null, all: false, task: null, error: null }
+      search: { loading: false, items: null, all: false, task: null, error: null, chosen: new Set() }
     },
     parsed: { news: null, site: null }, // сырые результаты разбора; в W.site.raw лежит их объединение
     rwNews: { open: false, url: '', loading: false, task: null },
@@ -324,6 +324,9 @@ export function openMarathonWizard(opts = {}) {
     ov.body.querySelectorAll('[data-pick-news]').forEach(b =>
       b.addEventListener('click', () => {
         W.news.url = b.dataset.pickNews;
+        // Выбранная новость сразу уходит из списка: разбор этой новости — на экране, остальное не мешает
+        W.news.search.chosen.add(W.news.url);
+        render();
         doParseNews();
       })
     );
@@ -460,10 +463,12 @@ export function openMarathonWizard(opts = {}) {
     render();
   }
 
-  /** Результаты поиска: найденные новости с кнопкой «Выбрать». */
+  /** Результаты поиска: найденные новости с кнопкой «Выбрать». Выбранные новости из списка скрыты. */
   function newsSearchHtml(sr) {
     if (!sr.task && !sr.items && !sr.error) return '';
-    const found = sr.items ? filterNews(sr.items, { all: sr.all }) : [];
+    const found = sr.items
+      ? filterNews(sr.items, { all: sr.all }).filter(x => !sr.chosen?.has(x.url))
+      : [];
     return `
       <div class="tf-news-search">
         ${sr.task && sr.loading ? taskCardHtml(sr.task) : ''}
@@ -479,7 +484,7 @@ export function openMarathonWizard(opts = {}) {
                 <small>Без галочки видны только заголовки со словом «марафон». Включите, чтобы увидеть остальные найденные новости.</small>
               </span>
             </label>
-            <small class="tf-news-filter-count">Просмотрено ${sr.items.length} новостей на первых ${NEWS_LIST_PAGES} страницах архива.</small>
+            <small class="tf-news-filter-count">Просмотрено ${sr.items.length} новостей на первых ${NEWS_LIST_PAGES} страницах архива${sr.chosen?.size ? ` · выбрано и скрыто: ${sr.chosen.size}` : ''}.</small>
           </div>
           ${
             found.length
@@ -492,7 +497,9 @@ export function openMarathonWizard(opts = {}) {
             </div>`
                   )
                   .join('')}</div>`
-              : '<p class="muted">Новостей о марафоне на первых страницах нет. Включите «Показать все» или вставьте ссылку вручную.</p>'
+              : sr.chosen?.size
+                ? `<p class="muted">Все найденные новости выбраны и скрыты из списка. Разбор выбранной новости — в блоке выше; найдите ещё новости «Найти новость» или вставьте ссылку вручную.</p>`
+                : '<p class="muted">Новостей о марафоне на первых страницах нет. Включите «Показать все» или вставьте ссылку вручную.</p>'
           }`
             : ''
         }
@@ -505,6 +512,9 @@ export function openMarathonWizard(opts = {}) {
       toast('Нужна ссылка вида https://pwonline.ru/news.php?article=…', 'warning');
       return;
     }
+    // И выбранная из списка, и введённая ссылка — одна и та же новость:
+    // убираем её из списка результатов поиска, чтобы список не нагромождался
+    n.search.chosen.add(n.url);
     n.loading = true;
     n.error = null;
     const pending = loadNewsPage(n.url, {
