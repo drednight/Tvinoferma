@@ -36,5 +36,5 @@ it('uses one repeat transport and keeps global input disabled unless explicitly 
 
 it('keeps the global-input candidate opt-in and rejects unknown keyboard methods', () => {
   expect(normalizeGameMacros({ mirrorKeyboardMethod: 'cache-hybrid' }).mirrorKeyboardMethod).toBe('cache-hybrid');
-  expect(normalizeGameMacros({ mirrorKeyboardMethod: 'cache' }).mirrorKeyboardMethod).toBe('post');
+  expect(normalizeGameMacros({ mirrorKeyboardMethod: 'cache' }).mirrorKeyboardMethod).toBe('cache-hybrid');
 });

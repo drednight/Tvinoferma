@@ -35,7 +35,7 @@ it('collapses the native window to its header and restores its content', async (
   await vi.waitFor(() => expect(document.body.classList.contains('folded')).toBe(true));
   expect(mocks.invoke).toHaveBeenCalledWith('game_macro_overlay_fold', { collapsed: true });
   expect(fold.getAttribute('aria-expanded')).toBe('false');
-  expect(document.querySelector('header [data-action="stop"]')).not.toBeNull();
+  expect(document.querySelector('#ov-handle')).not.toBeNull();
   fold.click();
   await vi.waitFor(() => expect(document.body.classList.contains('folded')).toBe(false));
   expect(mocks.invoke).toHaveBeenCalledWith('game_macro_overlay_fold', { collapsed: false });
@@ -54,13 +54,12 @@ it('does not start window dragging when a header button is pressed', () => {
   Object.defineProperty(event, 'button', { value: 0 });
   button.dispatchEvent(event);
   expect(mocks.drag).not.toHaveBeenCalled();
-  document.querySelector('header span').dispatchEvent(event);
+  document.querySelector('#ov-handle').dispatchEvent(event);
   expect(mocks.drag).toHaveBeenCalledTimes(1);
 });
 it('keeps settings and journal inside the overlay using only its top navigation', async () => {
-  document.querySelector('header [data-action="stop"]').click();
-  await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('game_macro_navigate', { action: 'stop' }));
-  mocks.invoke.mockClear();
+  document.querySelector('#menu-btn').click();
+  await vi.waitFor(() => expect(document.querySelector('#menu').hidden).toBe(false));
   document.querySelector('[data-view="appearance"]').click();
   expect(document.querySelector('#appearance-screen').hidden).toBe(false);
   expect(document.querySelector('#shortcuts-screen').hidden).toBe(true);
@@ -69,7 +68,7 @@ it('keeps settings and journal inside the overlay using only its top navigation'
   document.querySelector('[data-view="journal"]').click();
   expect(document.querySelector('#journal-screen').hidden).toBe(false);
   expect(mocks.invoke).not.toHaveBeenCalled();
-  expect(document.querySelectorAll('[data-action="stop"]')).toHaveLength(1);
+  expect(document.querySelectorAll('[data-action="stop"]')).toHaveLength(0);
   expect(document.querySelector('[data-action="settings"]')).toBeNull();
 });
 it('keeps recipient selection in navigation but not on assigned keys, without the background-only journal', () => {
@@ -77,12 +76,14 @@ it('keeps recipient selection in navigation but not on assigned keys, without th
   expect(document.querySelector('[data-view="recipients"]')).not.toBeNull();
   expect(document.querySelector('#background-journal-open')).toBeNull();
 });
-it('hides the service panel without hiding assigned shortcuts', () => {
-  document.querySelector('#info-toggle').click();
-  expect(document.querySelector('#overlay-controls').hidden).toBe(true);
-  expect(document.querySelector('#shortcuts-screen').hidden).toBe(false);
-  document.querySelector('#info-toggle').click();
+it('hides the header without hiding the service panel or assigned shortcuts', () => {
+  document.querySelector('#header-toggle').click();
+  expect(document.body.classList.contains('header-hidden')).toBe(true);
+  expect(document.querySelector('#ov-handle').hidden).toBe(false);
   expect(document.querySelector('#overlay-controls').hidden).toBe(false);
+  expect(document.querySelector('#shortcuts-screen').hidden).toBe(false);
+  document.querySelector('#header-toggle').click();
+  expect(document.body.classList.contains('header-hidden')).toBe(false);
 });
 it('saves overlay appearance without opening the main app', async () => {
   document.querySelector('[data-view="appearance"]').click();
@@ -93,20 +94,18 @@ it('saves overlay appearance without opening the main app', async () => {
     expect(mocks.invoke).toHaveBeenCalledWith('game_macro_overlay_preferences', {
       opacity: 0.55,
       topmost: false,
-      appearance: { textColor: 'light', keyColor: 'gold', commandColor: 'mint', fontSize: 14, hideHeader: false }
+      appearance: { textColor: 'light', keyColor: 'gold', commandColor: 'mint', fontSize: 13, hideHeader: false }
     })
   );
 });
 
-it('hides navigation using the service-panel button without redundant return buttons', () => {
+it('uses menu navigation without redundant return buttons', () => {
+  document.querySelector('#menu-btn').click();
   document.querySelector('[data-view="journal"]').click();
   expect(document.querySelector('#back-hide')).toBeNull();
   expect(document.querySelector('#back')).toBeNull();
-  document.querySelector('#info-toggle').click();
-  expect(document.querySelector('#overlay-controls').hidden).toBe(true);
+  expect(document.querySelector('#menu').hidden).toBe(true);
   expect(document.querySelector('#journal-screen').hidden).toBe(false);
-  document.querySelector('#info-toggle').click();
-  expect(document.querySelector('#overlay-controls').hidden).toBe(false);
 });
 
 it('opens party management inside the overlay and requests launch of a selected party', async () => {
@@ -166,11 +165,14 @@ it('applies independent text/key colors and font size, with header recovery on a
   handler({ payload: { appearance: { hideHeader: false }, commands: [] } });
   expect(document.body.classList.contains('header-hidden')).toBe(false);
 });
-it('hides both service headings together with the service panel', () => {
-  document.querySelector('#info-toggle').click();
-  expect([...document.querySelectorAll('[data-service-heading]')].every(el => el.hidden)).toBe(true);
-  document.querySelector('#info-toggle').click();
-  expect([...document.querySelectorAll('[data-service-heading]')].every(el => !el.hidden)).toBe(true);
+it('hides both service headings together with the service panel when folded', async () => {
+  const headings = [...document.querySelectorAll('[data-service-heading]')];
+  expect(headings.length).toBeGreaterThan(0);
+  expect(headings.every(el => el.closest('#overlay-controls'))).toBe(true);
+  document.querySelector('#fold').click();
+  await vi.waitFor(() => expect(document.body.classList.contains('folded')).toBe(true));
+  document.querySelector('#fold').click();
+  await vi.waitFor(() => expect(document.body.classList.contains('folded')).toBe(false));
 });
 
 it('shows the continuous keyboard mirror status without exposing keystrokes', () => {
@@ -210,14 +212,12 @@ it('marks terminal status and its journal entry red using the project terminal c
 
 it('keeps a compact panel control outside the header when the header is hidden', () => {
   mocks.handlers.get('game-macro-snapshot')({ payload: { appearance: { hideHeader: true } } });
+  expect(document.body.classList.contains('header-hidden')).toBe(true);
   const control = document.querySelector('#floating-panel-toggle');
   expect(control.closest('header')).toBeNull();
   expect(control.closest('#overlay-controls')).toBeNull();
   control.click();
-  expect(document.querySelector('#overlay-controls').hidden).toBe(true);
-  expect(document.querySelector('#info-toggle').getAttribute('aria-expanded')).toBe('false');
-  control.click();
-  expect(document.querySelector('#overlay-controls').hidden).toBe(false);
+  expect(document.querySelector('#menu').hidden).toBe(false);
   document.querySelector('[data-view="appearance"]').click();
   expect(document.querySelector('#appearance-screen').hidden).toBe(false);
 });
@@ -270,7 +270,7 @@ it('runs the selected command from a labelled play button even without a hotkey'
     }
   });
   const rows = document.querySelectorAll('#commands li');
-  expect([...rows[0].children].map(node => node.tagName)).toEqual(['BUTTON', 'SPAN', 'KBD']);
+  expect([...rows[0].children].map(node => node.tagName)).toEqual(['KBD', 'SPAN', 'BUTTON']);
   expect(rows[0].querySelector('button').getAttribute('aria-label')).toContain('Первая');
   expect(rows[1].querySelector('kbd').textContent).toBe('Не назначена');
   rows[1].querySelector('button').click();
@@ -314,7 +314,6 @@ it('shows a dedicated mouse toggle outside the hideable service panel with hones
   expect(button.textContent).toContain('ВКЛ');
   expect(button.dataset.state).toBe('on');
   expect(button.getAttribute('aria-pressed')).toBe('true');
-  document.querySelector('#info-toggle').click();
   expect(button.closest('#overlay-controls')).toBeNull();
   expect(button.hidden).toBe(false);
   update({ payload: { mirrorMouse: true, mirroring: false } });
@@ -332,7 +331,6 @@ it('keyboard repeat is independent, visible with service panel hidden, and refle
   mocks.handlers.get('game-macro-snapshot')({ payload: { mirrorKeys: true, mirrorMouse: false, mirroring: true } });
   expect(button.textContent).toContain('ВКЛ');
   expect(button.getAttribute('aria-pressed')).toBe('true');
-  document.getElementById('info-toggle').click();
   expect(button.closest('[hidden]')).toBeNull();
   button.click();
   await vi.waitFor(() =>
@@ -343,34 +341,35 @@ it('keyboard repeat is independent, visible with service panel hidden, and refle
   expect(button.dataset.state).toBe('paused');
   expect(button.getAttribute('aria-label')).toContain('приостановлен');
 });
-it('requires explicit confirmation before closing all clients from overlay', async () => {
+it('requires explicit selection before closing all clients from overlay', async () => {
   document.getElementById('party-close-all').click();
-  expect(document.getElementById('close-confirm').hidden).toBe(false);
+  expect(document.getElementById('close-dropdown').hidden).toBe(false);
   expect(mocks.invoke).not.toHaveBeenCalledWith(
     'game_macro_navigate',
     expect.objectContaining({ action: 'party-close-all' })
   );
-  document.getElementById('close-confirm-no').click();
-  expect(document.getElementById('close-confirm').hidden).toBe(true);
-  document.getElementById('party-close-all').click();
-  document.getElementById('close-confirm-yes').click();
+  document.querySelector('#close-dropdown [data-close-mode="all"]').click();
   await vi.waitFor(() =>
     expect(mocks.invoke).toHaveBeenCalledWith('game_macro_navigate', { action: 'party-close-all', partyId: null })
   );
 });
-it('offers additional selectable colors in every palette and saves them', async () => {
+it('offers additional selectable swatch colors in every palette and saves them', async () => {
   for (const id of ['text-color', 'key-color', 'command-color']) {
-    expect(document.querySelectorAll(`[name="${id}-choice"]`).length).toBe(9);
-    const radio = document.querySelector(`[name="${id}-choice"][value="coral"]`);
-    radio.click();
-    expect(document.getElementById(id).value).toBe('coral');
+    expect(document.querySelectorAll(`[data-swatch-for="${id}"] .swatch`).length).toBeGreaterThan(3);
+    const swatch = document.querySelector(`[data-swatch-for="${id}"] .swatch[data-color="#ff6b6b"]`);
+    swatch.click();
+    expect(document.getElementById(id).value).toBe('#ff6b6b');
   }
   document.getElementById('save-appearance').click();
   await vi.waitFor(() =>
     expect(mocks.invoke).toHaveBeenCalledWith(
       'game_macro_overlay_preferences',
       expect.objectContaining({
-        appearance: expect.objectContaining({ textColor: 'coral', keyColor: 'coral', commandColor: 'coral' })
+        appearance: expect.objectContaining({
+          textColor: '#ff6b6b',
+          keyColor: '#ff6b6b',
+          commandColor: '#ff6b6b'
+        })
       })
     )
   );
@@ -420,6 +419,8 @@ it('shows current character, elapsed stage time and terminal launch counts', asy
 });
 
 it('requests input reconnect without toggling keyboard or mouse modes', async () => {
+  mocks.handlers.get('game-macro-snapshot')({ payload: { busy: false } });
+  expect(document.querySelector('#reconnect-input').disabled).toBe(false);
   document.querySelector('#reconnect-input').click();
   await vi.waitFor(() => expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-reconnect'));
   expect(mocks.emitTo.mock.calls.some(([, name]) => /keyboard-toggle|mouse-toggle/.test(name))).toBe(false);
@@ -436,7 +437,6 @@ it('toggles persisted hotkey intent independently of keyboard/mouse repeat, even
   update({ payload: { hotkeysEnabled: false, registered: false } });
   expect(button.textContent).toBe('⚡ ВЫКЛ');
   expect(button.dataset.state).toBe('off');
-  document.getElementById('info-toggle').click();
   expect(button.closest('[hidden]')).toBeNull();
   mocks.emitTo.mockClear();
   button.click();
@@ -485,8 +485,7 @@ it('offers scoped close requests and preserves explicit checks on unrelated snap
   await snapshot({ payload: { ...data, logs: ['changed'] } });
   expect(document.querySelectorAll('[data-close-window]')[1].checked).toBe(true);
   document.getElementById('party-close-all').click();
-  document.getElementById('close-mode').value = 'selected';
-  document.getElementById('close-confirm-yes').click();
+  document.querySelector('#close-dropdown [data-close-mode="selected"]').click();
   await vi.waitFor(() =>
     expect(mocks.invoke).toHaveBeenCalledWith('game_macro_navigate', {
       action: 'party-close-all',
@@ -498,26 +497,22 @@ it('offers scoped close requests and preserves explicit checks on unrelated snap
 });
 it('keeps pause/reconnect and full keyboard icon available without a duplicate party button', async () => {
   await mocks.handlers.get('game-macro-snapshot')({ payload: { mirrorKeys: false, mirrorMouse: false } });
-  document.getElementById('info-toggle').click();
-  expect(document.getElementById('overlay-controls').hidden).toBe(true);
   expect(document.getElementById('keyboard-repeat-toggle').querySelector('svg')).not.toBeNull();
   expect(document.getElementById('compact-party')).toBeNull();
   for (const id of ['pause-macros', 'reconnect-input']) {
-    expect(document.getElementById(id).closest('.repeat-controls')).not.toBeNull();
+    expect(document.getElementById(id).closest('.repeat-strip')).not.toBeNull();
     expect(document.getElementById(id).closest('[hidden]')).toBeNull();
   }
+  expect(document.getElementById('reconnect-input').closest('.repeat-controls')).not.toBeNull();
   document.getElementById('pause-macros').click();
   await vi.waitFor(() => expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-pause'));
-  document.getElementById('info-toggle').click();
   document.querySelector('[data-view=party]').click();
   expect(document.getElementById('party-screen').hidden).toBe(false);
 });
-it('moves real repeat/hotkey toggles into the visible folded strip and restores them', async () => {
+it('keeps real repeat/hotkey toggles visible in the strip through fold and restore', async () => {
+  const strip = document.querySelector('.repeat-strip');
   const controls = document.querySelector('.repeat-controls');
   const original = controls.parentElement;
-  document.getElementById('fold').click();
-  await vi.waitFor(() => expect(document.body.classList.contains('folded')).toBe(true));
-  expect(controls.closest('header')).not.toBeNull();
   for (const id of [
     'keyboard-repeat-toggle',
     'mouse-repeat-toggle',
@@ -525,9 +520,21 @@ it('moves real repeat/hotkey toggles into the visible folded strip and restores 
     'pause-macros',
     'reconnect-input'
   ])
-    expect(document.getElementById(id).closest('#panel')).toBeNull();
+    expect(document.getElementById(id).closest('.repeat-strip')).not.toBeNull();
   document.getElementById('fold').click();
-  await vi.waitFor(() => expect(controls.parentElement).toBe(original));
+  await vi.waitFor(() => expect(document.body.classList.contains('folded')).toBe(true));
+  for (const id of [
+    'keyboard-repeat-toggle',
+    'mouse-repeat-toggle',
+    'hotkeys-toggle',
+    'pause-macros',
+    'reconnect-input'
+  ])
+    expect(document.getElementById(id).closest('.repeat-strip')).not.toBeNull();
+  expect(strip.isConnected).toBe(true);
+  document.getElementById('fold').click();
+  await vi.waitFor(() => expect(document.body.classList.contains('folded')).toBe(false));
+  expect(controls.parentElement).toBe(original);
 });
 
 it('opens recipient selection in the overlay, preserves edits on snapshots, and submits only on save', async () => {

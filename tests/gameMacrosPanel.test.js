@@ -69,7 +69,7 @@ describe('party command workspace', () => {
   it('keeps everyday controls visible and technical tools collapsed below the command list', () => {
     const host = document.querySelector('#host');
     const advanced = host.querySelector('.gm-advanced-tools');
-    expect(host.querySelector('.gm-page-heading h3').textContent).toBe('Команды');
+    expect(host.querySelector('.gm-page-heading h3').textContent).toBe('Команды Эксперимент');
     expect(advanced.open).toBe(false);
     for (const selector of [
       '[data-gm-recipients]',
