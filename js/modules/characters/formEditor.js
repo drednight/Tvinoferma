@@ -158,6 +158,13 @@ export function openCharacterForm(char = null) {
             <summary class="pf-panel-title">Контактные данные <span class="muted cf-fold-note">для входа</span></summary>
             ${vaultStatus().ready ? '<p class="cf-vault-note">🔒 Хранятся в защищённом хранилище учётных данных ОС, а не в state.json</p>' : ''}
             <p class="muted">В профиле появится ручная проверка способа входа. Автоматического перехвата ссылки пока нет; флажок не подтверждает авторизацию и не меняет контакты.</p>
+            <div class="field cf-field">
+              <label class="cf-hint-label">Способ входа</label>
+              <label class="character-login-switch">
+                <input type="checkbox" name="site-gamecenter" role="switch" ${currentChar.siteLogin?.mode === 'gamecenter' ? 'checked' : ''} />
+                <span>Вход через GameCenter</span>
+              </label>
+            </div>
             <div class="two-cols">
               <div class="field cf-field"><label>Email / Логин</label><input class="input" type="text" name="contact-email" value="${escapeHtml(contacts.email)}" /></div>
               <div class="field cf-field"><label>Пароль</label><input class="input" type="text" name="contact-password" value="${escapeHtml(contacts.password)}" /></div>
@@ -391,7 +398,7 @@ export function openCharacterForm(char = null) {
             name: getSafeStr('sky-name') || null,
             level: formData.get('sky-level') ? parseInt(formData.get('sky-level'), 10) : null
           },
-          siteLogin: { mode: 'standard' },
+          siteLogin: { mode: formData.get('site-gamecenter') ? 'gamecenter' : 'standard' },
           contacts: {
             email: getSafeStr('contact-email'),
             password: getSafeStr('contact-password'),

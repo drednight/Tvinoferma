@@ -385,6 +385,9 @@
       // Проверяем его актуальность через fetchPoll (текущие варианты и тип), а не через
       // #mainPoll на странице профиля: опрос из списка в профиле вовсе не отображается.
       const poll = await fetchPoll(id);
+      // Проверяем, что запрошенный опрос — тот, что вернул API: иначе голос уйдёт
+      // в измененный или удалённый опрос, и сервер отклонит его.
+      if (String(poll.poll?.id) !== id) throw new Error('Варианты опроса изменились. Обновите сводку клана.');
       const available = new Set(poll.options.map((option) => String(option.id)));
       if (selected.some((value) => !available.has(value)) ||
           (poll.poll.poll_type !== 'multiple' && selected.length !== 1)) {

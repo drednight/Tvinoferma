@@ -2,7 +2,6 @@
 import { escapeHtml as esc } from '../../js/core/utils.js';
 import { mskAddDays } from '../../js/core/msk.js';
 import { dungeonInfoForDate } from '../../js/modules/dungeons/schedule.js';
-import { guildPollHtml } from '../../js/modules/guild/poll.js';
 import { TASKS, demoDays, partyInfo, summary, marathonRisk, selectedTasks, activePromos } from './data.js';
 
 export const icon = (name, cls = '') => `<svg class="i ${cls}" aria-hidden="true"><use href="#i-${name}"></use></svg>`;
@@ -96,6 +95,22 @@ function marathon(state) {
       ''
     )}</div><div class="t-marathon-refresh"><button class="t-btn t-btn-primary" data-marathon-refresh ${state.marathonChecking ? 'disabled' : ''}>${icon('refresh')} ${state.marathonChecking ? 'Проверяю отметки…' : 'Обновить всех участников'}</button><small role="status">${state.marathonChecking ? 'Имитация скрипта: только участники этого марафона' : state.marathonCheckedAt ? `Проверено ${rows.length} перс. · ${esc(state.marathonCheckedAt)} мск` : 'Демо: на сайт запросы не отправляются'}</small></div><details class="t-risk-help"><summary>Как определён риск?</summary>Запас = оставшиеся дни − недостающие отметки. Отрицательный запас — отставание, ноль — нельзя пропустить ни дня, один день — малый запас. Формула для этого примера: одна отметка в сутки. Для других марафонов нужны их реальные правила.</details></section>`;
 }
+// Демо-опрос — форма с чекбоксами и кнопкой отправки: интерфейс today.js читает
+// input:checked внутри [data-guild-poll] и обрабатывает событие submit.
+const pollParts = parts =>
+  (Array.isArray(parts) ? parts : [])
+    .map(part => (part.href ? `<a href="${esc(part.href)}" target="_blank" rel="noopener noreferrer">${esc(part.text)}</a>` : esc(part.text)))
+    .join('');
+function demoPollHtml(poll) {
+  if (!poll) return '';
+  const options = (poll.options || [])
+    .map(
+      option =>
+        `<label class="t-poll-option"><input type="checkbox" value="${esc(option.id)}" ${option.selected ? 'checked' : ''}><span>${pollParts(option.text)}</span></label>`
+    )
+    .join('');
+  return `<form class="guild-poll t-poll" data-guild-poll><div class="t-poll-title">${pollParts(poll.title) || 'Голосование'}</div><div class="t-poll-options">${options}</div><button type="submit" class="t-btn t-btn-primary">Голосовать выбранными</button></form>`;
+}
 function clan(state) {
   if (!state.clanEnabled) return '';
   const response = (id, title, time) =>
@@ -105,7 +120,7 @@ function clan(state) {
     .map(c => esc(c.nick))
     .join(
       ', '
-    )}</p><button class="t-link" data-open-section="clan-copy">Скопировать ники</button></div></div>${state.pollEnabled ? guildPollHtml(state.poll) : ''}</section>`;
+    )}</p><button class="t-link" data-open-section="clan-copy">Скопировать ники</button></div></div>${state.pollEnabled ? demoPollHtml(state.poll) : ''}</section>`;
 }
 function pageHeading(state, title, subtitle) {
   const marks = selectedTasks(state);

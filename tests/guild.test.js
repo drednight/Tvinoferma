@@ -33,11 +33,13 @@ const doc = () => new DOMParser().parseFromString(html, 'text/html');
 const profile = () => parseProfileDocument(doc());
 
 /** Тот же скрипт, что Rust вшивает в окно клана, на фикстуре. */
-function runWindowScript() {
+async function runWindowScript() {
   delete window.__tfGuildInstalled;
   document.body.innerHTML = new DOMParser().parseFromString(html, 'text/html').body.innerHTML;
   window.history.replaceState(null, '', '/index.php');
   new Function(readFileSync('src-tauri/src/scripts/guild.js', 'utf8'))();
+  // Скрипт публикует сводку асинхронно (await buildReport → loadPolls).
+  await new Promise(resolve => setTimeout(resolve, 0));
   return JSON.parse(decodeURIComponent(window.location.hash.replace('#TFETE1_', '')));
 }
 
@@ -97,8 +99,8 @@ describe('разбор профиля', () => {
 describe('скрипт окна совпадает с эталоном', () => {
   let window_report;
 
-  beforeEach(() => {
-    window_report = runWindowScript();
+  beforeEach(async () => {
+    window_report = await runWindowScript();
   });
 
   it('кладёт в hash те же события, что и core.js', () => {
@@ -182,6 +184,7 @@ describe('нормализация кэша', () => {
       parties: [],
       selfNick: '',
       poll: null,
+      polls: [],
       syncedAt: null
     });
   });
@@ -425,7 +428,7 @@ it('reads explicit PL marker outside the nickname link in the same table cell', 
   expect(member.leader).toBe(true);
 });
 
-it('embedded site parser also preserves PL outside the nickname link', () => {
+it('embedded site parser also preserves PL outside the nickname link', async () => {
   delete window.__tfGuildInstalled;
   document.body.innerHTML = doc().body.innerHTML;
   const link = document.querySelector('a.table-username');
@@ -433,6 +436,7 @@ it('embedded site parser also preserves PL outside the nickname link', () => {
   link.after(document.createTextNode(' (ПЛ)'));
   window.history.replaceState(null, '', '/index.php');
   new Function(readFileSync('src-tauri/src/scripts/guild.js', 'utf8'))();
+  await new Promise(resolve => setTimeout(resolve, 0));
   const result = JSON.parse(decodeURIComponent(window.location.hash.replace('#TFETE1_', '')));
   expect(result.data.parties[0].members[0]).toMatchObject({ nick: '#Дреднайт', leader: true });
 });

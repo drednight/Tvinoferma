@@ -82,7 +82,7 @@ describe('структура опроса и безопасный рендере
   it('отображает ошибку загрузки, но не скрывает существующий опрос', () => {
     const markup = guildPollHtml({ id: '901', title: [{ text: 'Тест' }], loadError: true });
     expect(markup).toContain('Не удалось загрузить варианты');
-    expect(markup).toContain('disabled');
+    expect(markup).toContain('data-poll-id="901"');
   });
 });
 
@@ -188,14 +188,24 @@ describe('скрипт окна клана: API и голосование', () =
 
   it('поздний старый ответ не перезаписывает новую сводку', async () => {
     const pending = [];
-    install(vi.fn(() => new Promise(resolve => pending.push(resolve))));
+    const fetchMock = vi.fn(() => new Promise(resolve => pending.push(resolve)));
+    install(fetchMock);
+    // start() уже запустил первую сводку (polls.php → pending[0]);
+    // явный вызов — вторую, более свежую (polls.php → pending[1]).
     window.__tfGuildScrape();
-    expect(pending).toHaveLength(2);
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
+    // Новая сводка: polls.php, затем варианты (user_vote 502).
+    pending[1](replyText(pollsListHtml));
+    await vi.waitFor(() => expect(pending).toHaveLength(3));
     const newer = structuredClone(response);
     newer.user_vote = [502];
-    pending[1](reply(newer));
+    pending[2](reply(newer));
     await waitHash('#TFETE1_');
+    expect(report('#TFETE1_').data.polls[0].options.find(o => o.id === '502').selected).toBe(true);
+    // Старая сводка завершается позже: её публикация должна быть проигнорирована.
     pending[0](replyText(pollsListHtml));
+    await vi.waitFor(() => expect(pending).toHaveLength(4));
+    pending[3](reply(response));
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(report('#TFETE1_').data.polls[0].options.find(o => o.id === '502').selected).toBe(true);
   });

@@ -1,5 +1,11 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ persist: vi.fn(), guard: vi.fn(), send: vi.fn(), read: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  persist: vi.fn(),
+  guard: vi.fn(),
+  send: vi.fn(),
+  sendBatch: vi.fn(async () => ({ ok: true, results: [] })),
+  read: vi.fn()
+}));
 vi.mock('../js/core/storage.js', () => ({
   persist: mocks.persist,
   isTauri: () => true,
@@ -8,6 +14,7 @@ vi.mock('../js/core/storage.js', () => ({
 vi.mock('../js/modules/guild/window.js', () => ({
   openGuild: vi.fn(),
   respondToEvent: mocks.send,
+  respondToEvents: mocks.sendBatch,
   syncGuildFromSite: mocks.read,
   voteInGuildPoll: vi.fn()
 }));
@@ -46,9 +53,9 @@ it('клик сразу сохраняет локальный ответ и пе
   expect(state.settings.guild.pendingResponses).toEqual([{ eventId: '1', response: 'yes', failed: false }]);
   expect(state.settings.guild.events[0].response).toBe('no');
   expect(state.settings.guild.syncedAt).toBe(123);
-  expect(mocks.send).not.toHaveBeenCalled();
+  expect(mocks.sendBatch).not.toHaveBeenCalled();
   await vi.advanceTimersByTimeAsync(10000);
-  expect(mocks.send).toHaveBeenCalledWith('1', 'yes');
+  expect(mocks.sendBatch).toHaveBeenCalledWith([{ eventId: '1', response: 'yes' }]);
   expect(state.settings.guild.events[0].response).toBe('yes');
   expect(state.settings.guild.pendingResponses).toEqual([]);
 });
@@ -57,10 +64,10 @@ it('применение видимости во время защищённог
   state.settings.guild.pendingResponses = [{ eventId: '1', response: 'yes', failed: false }];
   page.applyGuildVisibility();
   await vi.advanceTimersByTimeAsync(20000);
-  expect(mocks.send).not.toHaveBeenCalled();
+  expect(mocks.sendBatch).not.toHaveBeenCalled();
   page.startGuildDailySync();
   await vi.advanceTimersByTimeAsync(10000);
-  expect(mocks.send).toHaveBeenCalledTimes(1);
+  expect(mocks.sendBatch).toHaveBeenCalledTimes(1);
 });
 
 it('защита восстановления блокирует и старую очередь, и новые ответы, и фоновое обновление', async () => {

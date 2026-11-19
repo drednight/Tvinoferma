@@ -306,6 +306,10 @@ async function recheckProblems(task, checked, { baseTimeout, closeAfter }) {
   if (!bad.length) return 0;
   task.log(`Перепроверяем тех, кто без входа или с ошибкой: ${bad.length}. Может занять минуту.`, 'step');
   const fixed = [];
+  // Перепроверка — новая фаза: прогресс начинается с нуля по подмножеству.
+  // Прямо назначаем total размеру перепроверяемых: иначе progress() (Math.max с
+  // total основной проверки) сохранит старый итог и не покажет 0/N подсета.
+  task.total = bad.length;
   task.progress(0, bad.length, 'Перепроверка входа');
   let rechecked = 0;
   for (const char of bad) {

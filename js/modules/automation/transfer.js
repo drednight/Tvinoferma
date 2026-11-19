@@ -374,7 +374,7 @@ export function openTransferDialog({ ids = [] } = {}) {
       checkBtn.textContent =
         selected.size > 1 ? `🔍 Проверить персонажей (${selected.size})` : '🔍 Проверить персонажа';
     const planBtn = dlg.foot.querySelector('#tr-plan-btn');
-    if (planBtn) planBtn.disabled = !selected.size || running || confirming || !recipientsReady();
+    if (planBtn) planBtn.disabled = !selected.size || running || confirming;
     const canRun = plans.some(p => p.run);
     const dry = dlg.foot.querySelector('[data-act="dry"]');
     if (dry) dry.disabled = !canRun;

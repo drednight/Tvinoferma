@@ -12,6 +12,7 @@ vi.mock('../js/modules/guild/window.js', () => ({
   openGuild: vi.fn(),
   syncGuildFromSite: vi.fn(),
   respondToEvent: vi.fn(),
+  respondToEvents: vi.fn(),
   voteInGuildPoll: vi.fn()
 }));
 vi.mock('../js/core/linkBrowser.js', () => ({ openWebLink: vi.fn(async () => {}) }));
