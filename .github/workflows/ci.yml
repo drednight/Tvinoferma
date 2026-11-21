@@ -43,7 +43,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-frontend
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v6
         with:
           path: .ci-timings
           key: test-times-v1-${{ github.head_ref || github.ref_name }}-${{ github.run_id }}
@@ -77,7 +77,7 @@ jobs:
           path: .ci-results
           merge-multiple: true
       - run: node scripts/merge-test-timings.mjs
-      - uses: actions/cache/save@v4
+      - uses: actions/cache/save@v6
         with:
           path: .ci-timings
           key: test-times-v1-${{ github.head_ref || github.ref_name }}-${{ github.run_id }}
