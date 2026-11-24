@@ -92,6 +92,9 @@ async function init() {
   };
   let acknowledgedOpen = '';
   let windowSignature = '';
+  let latestParties = [];
+  let latestWindows = [];
+  let askBeforeLaunch = true;
   let recipientRevision = '',
     recipientDirty = false,
     recipientsPending = false;
@@ -249,11 +252,15 @@ async function init() {
     recipientLeader.disabled = !!data.busy || recipientsPending || !recipientRevision;
     const partySelect = document.getElementById('party-select'),
       selected = partySelect.value || data.partyId;
-    partySelect.replaceChildren(
-      new Option('Выберите пати', ''),
-      ...(data.parties || []).map(p => new Option(p.name, p.id))
-    );
+    latestParties = Array.isArray(data.parties) ? data.parties : [];
+    latestWindows = Array.isArray(data.windows) ? data.windows : [];
+    askBeforeLaunch = data.askBeforeLaunch !== false;
+    partySelect.replaceChildren(new Option('Выберите пати', ''), ...latestParties.map(p => new Option(p.name, p.id)));
     partySelect.value = selected || '';
+    if (data.busy) {
+      const picker = document.getElementById('party-launch-picker');
+      if (picker) picker.hidden = true;
+    }
     document.getElementById('party-launch').disabled = !!data.busy || !partySelect.value;
     document.getElementById('party-refresh').disabled = !!data.busy;
     document.getElementById('window-notice').textContent = data.windowNotice || 'Нажмите «Обновить окна».';
@@ -469,7 +476,7 @@ async function init() {
     });
     closeMenu();
   };
-  document.querySelectorAll('[data-view]').forEach(
+  document.querySelectorAll('button[data-view]').forEach(
     button =>
       (button.onclick = () => {
         if (button.dataset.view === '__fold') {
@@ -543,6 +550,113 @@ async function init() {
       .forEach(input => (input.nextElementSibling.style.color = colors[input.value]));
   let partyBusy = false;
   document.getElementById('party-launch').disabled = true;
+  const partyPicker = document.getElementById('party-launch-picker');
+  const pickerList = document.getElementById('party-picker-list');
+  const pickerTitle = document.getElementById('party-picker-title');
+  const pickerCount = document.getElementById('party-picker-count');
+  const pickerConfirm = document.getElementById('party-picker-confirm');
+  const closeInlinePicker = () => {
+    if (partyPicker) partyPicker.hidden = true;
+  };
+  const updateInlinePickerCount = () => {
+    if (!pickerList || !pickerConfirm) return;
+    const boxes = [...pickerList.querySelectorAll('input[type="checkbox"]')];
+    const checked = boxes.filter(b => b.checked).length;
+    if (pickerCount) pickerCount.textContent = `Запустить: ${checked} из ${boxes.length}`;
+    pickerConfirm.textContent = `▶ Запустить (${checked})`;
+    pickerConfirm.disabled = checked === 0;
+  };
+  const sendOverlayPartyLaunch = async (partyId, memberIds) => {
+    if (partyBusy) return;
+    partyBusy = true;
+    document.getElementById('party-launch').disabled = true;
+    document.getElementById('party-refresh').disabled = true;
+    document.getElementById('party-close-all').disabled = true;
+    try {
+      await emitTo('main', 'game-overlay-party', {
+        action: 'party-launch',
+        partyId,
+        memberIds
+      });
+    } catch {
+      document.getElementById('window-notice').textContent =
+        'Не удалось отправить запрос. Откройте главное приложение.';
+      document.getElementById('party-refresh').disabled = false;
+      document.getElementById('party-close-all').disabled = false;
+      document.getElementById('party-launch').disabled = !document.getElementById('party-select').value;
+    } finally {
+      partyBusy = false;
+    }
+  };
+  const openInlinePicker = party => {
+    if (!partyPicker || !pickerList) return false;
+    const runningNames = new Set(
+      latestWindows.filter(w => w.known && w.name).map(w => String(w.name).trim().toLowerCase())
+    );
+    if (pickerTitle) pickerTitle.textContent = `Запуск «${party.name}» — кого запускаем:`;
+    pickerList.replaceChildren(
+      ...(party.members || []).map(member => {
+        const li = document.createElement('li');
+        const label = document.createElement('label');
+        label.className = 'rrow plp-ov-row';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.value = String(member.id);
+        input.checked = true;
+        const nick = document.createElement('span');
+        nick.className = 'nick';
+        nick.textContent = member.nick || member.id;
+        label.append(input, nick);
+        if (member.cls) {
+          const cls = document.createElement('span');
+          cls.className = 'party';
+          cls.textContent = member.cls;
+          label.append(cls);
+        }
+        if (
+          runningNames.has(
+            String(member.nick || '')
+              .trim()
+              .toLowerCase()
+          )
+        ) {
+          const badge = document.createElement('span');
+          badge.className = 'plp-ov-badge';
+          badge.textContent = 'уже запущено';
+          label.append(badge);
+        }
+        li.append(label);
+        return li;
+      })
+    );
+    partyPicker.dataset.partyId = party.id;
+    partyPicker.hidden = false;
+    updateInlinePickerCount();
+    return true;
+  };
+  if (pickerList) pickerList.onchange = updateInlinePickerCount;
+  const pickerAll = document.getElementById('party-picker-all');
+  if (pickerAll)
+    pickerAll.onclick = () => {
+      pickerList?.querySelectorAll('input[type="checkbox"]').forEach(b => (b.checked = true));
+      updateInlinePickerCount();
+    };
+  const pickerNone = document.getElementById('party-picker-none');
+  if (pickerNone)
+    pickerNone.onclick = () => {
+      pickerList?.querySelectorAll('input[type="checkbox"]').forEach(b => (b.checked = false));
+      updateInlinePickerCount();
+    };
+  const pickerCancel = document.getElementById('party-picker-cancel');
+  if (pickerCancel) pickerCancel.onclick = closeInlinePicker;
+  if (pickerConfirm)
+    pickerConfirm.onclick = () => {
+      const partyId = partyPicker?.dataset.partyId || document.getElementById('party-select').value;
+      const memberIds = [...(pickerList?.querySelectorAll('input[type="checkbox"]:checked') || [])].map(b => b.value);
+      if (!partyId || !memberIds.length) return;
+      closeInlinePicker();
+      void sendOverlayPartyLaunch(partyId, memberIds);
+    };
   const partyRequest = async (action, options = {}) => {
     if (partyBusy) return;
     partyBusy = true;
@@ -565,9 +679,22 @@ async function init() {
       partyBusy = false;
     }
   };
-  document.getElementById('party-select').onchange = () =>
-    (document.getElementById('party-launch').disabled = partyBusy || !document.getElementById('party-select').value);
-  document.getElementById('party-launch').onclick = () => partyRequest('party-launch');
+  document.getElementById('party-select').onchange = () => {
+    closeInlinePicker();
+    document.getElementById('party-launch').disabled = partyBusy || !document.getElementById('party-select').value;
+  };
+  document.getElementById('party-launch').onclick = () => {
+    const selectedId = document.getElementById('party-select').value;
+    const party = latestParties.find(p => p.id === selectedId);
+    if (
+      askBeforeLaunch !== false &&
+      Array.isArray(party?.members) &&
+      party.members.length > 1 &&
+      openInlinePicker(party)
+    )
+      return;
+    void partyRequest('party-launch');
+  };
   const closeButton = document.getElementById('party-close-all');
   const closeDropdown = document.getElementById('close-dropdown');
   const closeWindows = mode => {

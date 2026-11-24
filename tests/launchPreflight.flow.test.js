@@ -52,6 +52,7 @@ beforeEach(async () => {
     preferredGcId: '',
     decorateWindows: false,
     skipRunning: true,
+    askBeforeLaunch: false,
     preflight: 'issues',
     delaySec: 3
   };

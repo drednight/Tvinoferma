@@ -637,6 +637,58 @@
         margin-left: auto;
         font-size: 0.692rem;
         font-weight: 700;
+      }
+      .plp-ov {
+        margin: 8px 0 10px;
+        padding: 9px 10px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        background: var(--panel-2);
+      }
+      .plp-ov-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+        margin-bottom: 6px;
+        font-size: 0.846rem;
+        font-weight: 600;
+      }
+      .plp-ov-actions {
+        display: flex;
+        gap: 4px;
+      }
+      .plp-ov-actions .btn {
+        padding: 3px 7px;
+        font-size: 0.769rem;
+      }
+      .plp-ov-list {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 8px;
+        max-height: 170px;
+        overflow-y: auto;
+      }
+      .plp-ov-row {
+        cursor: pointer;
+        margin-bottom: 4px;
+        padding: 5px 8px;
+      }
+      .plp-ov-badge {
+        margin-left: auto;
+        font-size: 0.692rem;
+        color: var(--text-mute);
+      }
+      .plp-ov-foot {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .plp-ov-foot .note {
+        margin: 0;
+        flex: 1;
+      }
         color: var(--accent);
         background: color-mix(in srgb, var(--accent) 14%, transparent);
         border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
@@ -1253,6 +1305,21 @@
                 <p class="recipient-help">
                   Для выборочного закрытия отметьте окна в списке ниже. Несохранённые данные в игре будут потеряны.
                 </p>
+                <div id="party-launch-picker" class="plp-ov" hidden>
+                  <div class="plp-ov-head">
+                    <span id="party-picker-title">Кого запускать:</span>
+                    <span class="plp-ov-actions">
+                      <button type="button" class="btn ghost" id="party-picker-all">Всех</button>
+                      <button type="button" class="btn ghost" id="party-picker-none">Снять</button>
+                    </span>
+                  </div>
+                  <ul id="party-picker-list" class="plp-ov-list"></ul>
+                  <div class="plp-ov-foot">
+                    <span id="party-picker-count" class="note"></span>
+                    <button type="button" class="btn ghost" id="party-picker-cancel">Отмена</button>
+                    <button type="button" class="btn primary" id="party-picker-confirm">▶ Запустить (0)</button>
+                  </div>
+                </div>
                 <div id="launch-progress" hidden>
                   <p id="launch-character" class="launch-character" hidden></p>
                   <progress id="launch-percent" max="100" value="0" aria-label="Прогресс запуска пати"></progress>
