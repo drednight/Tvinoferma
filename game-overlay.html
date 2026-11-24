@@ -8,12 +8,12 @@
       /* ============ THEMES ============ */
       :root {
         color-scheme: dark;
-        --font: var(--overlay-font, 13px) system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+        --font: var(--overlay-font, 13px) system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
         --radius: 14px;
         --radius-sm: 9px;
         --alpha: 0.9;
       }
-      [data-theme="night"] {
+      [data-theme='night'] {
         --text: #eef2ff;
         --text-dim: #aab1c6;
         --text-mute: #7a8299;
@@ -28,10 +28,10 @@
         --panel-3: rgba(33, 40, 58, 0.92);
         --line: rgba(255, 255, 255, 0.12);
         --line-2: rgba(255, 255, 255, 0.06);
-        --header-bg: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
-        --shadow: 0 16px 44px rgba(0,0,0,0.5);
+        --header-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+        --shadow: 0 16px 44px rgba(0, 0, 0, 0.5);
       }
-      [data-theme="obsidian"] {
+      [data-theme='obsidian'] {
         color-scheme: dark;
         --text: #f2eefb;
         --text-dim: #c3bcdf;
@@ -47,10 +47,10 @@
         --panel-3: rgba(40, 30, 60, 0.92);
         --line: rgba(180, 150, 255, 0.16);
         --line-2: rgba(180, 150, 255, 0.07);
-        --header-bg: linear-gradient(180deg, rgba(180,150,255,0.12), rgba(180,150,255,0.03));
-        --shadow: 0 16px 44px rgba(20,10,40,0.6);
+        --header-bg: linear-gradient(180deg, rgba(180, 150, 255, 0.12), rgba(180, 150, 255, 0.03));
+        --shadow: 0 16px 44px rgba(20, 10, 40, 0.6);
       }
-      [data-theme="neon"] {
+      [data-theme='neon'] {
         color-scheme: dark;
         --text: #eafcff;
         --text-dim: #9fd8e6;
@@ -66,10 +66,10 @@
         --panel-3: rgba(22, 34, 52, 0.94);
         --line: rgba(94, 240, 192, 0.35);
         --line-2: rgba(94, 240, 192, 0.12);
-        --header-bg: linear-gradient(180deg, rgba(94,240,192,0.14), rgba(94,240,192,0.03));
-        --shadow: 0 0 0 1px rgba(94,240,192,0.18), 0 16px 44px rgba(0,0,0,0.55);
+        --header-bg: linear-gradient(180deg, rgba(94, 240, 192, 0.14), rgba(94, 240, 192, 0.03));
+        --shadow: 0 0 0 1px rgba(94, 240, 192, 0.18), 0 16px 44px rgba(0, 0, 0, 0.55);
       }
-      [data-theme="light"] {
+      [data-theme='light'] {
         color-scheme: light;
         --text: #1a2233;
         --text-dim: #4a5468;
@@ -85,27 +85,47 @@
         --panel-3: rgba(238, 241, 247, 0.95);
         --line: rgba(20, 30, 60, 0.14);
         --line-2: rgba(20, 30, 60, 0.07);
-        --header-bg: linear-gradient(180deg, rgba(20,30,60,0.06), rgba(20,30,60,0.02));
-        --shadow: 0 16px 40px rgba(20,30,60,0.22);
+        --header-bg: linear-gradient(180deg, rgba(20, 30, 60, 0.06), rgba(20, 30, 60, 0.02));
+        --shadow: 0 16px 40px rgba(20, 30, 60, 0.22);
       }
 
-      * { box-sizing: border-box; }
-      html, body { margin: 0; background: transparent; font-size: var(--overlay-font, 13px); }
-      [hidden] { display: none !important; }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: transparent;
+        font-size: var(--overlay-font, 13px);
+      }
+      [hidden] {
+        display: none !important;
+      }
 
       /* ---- окно оверлея (всё окно) ---- */
       .ov {
-        position: fixed; inset: 0; z-index: 10;
-        display: flex; flex-direction: column;
-        width: 100%; height: 100%;
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        height: 100%;
         background: var(--panel);
         backdrop-filter: blur(20px) saturate(140%);
         -webkit-backdrop-filter: blur(20px) saturate(140%);
-        border: 1px solid var(--line); border-radius: var(--radius);
-        box-shadow: var(--shadow); overflow: hidden; color: var(--overlay-text, var(--text));
-        font: var(--font); color: var(--overlay-text, var(--text));
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+        color: var(--overlay-text, var(--text));
+        font: var(--font);
+        color: var(--overlay-text, var(--text));
       }
-      .ov.ghost { border-color: transparent; box-shadow: 0 8px 24px rgba(0,0,0,0.25); }
+      .ov.ghost {
+        border-color: transparent;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+      }
       /* призрачный режим: обводки и фоны всех блоков убраны — виден только текст и кнопки.
          Кнопки остаются непрозрачными, остальные блоки (карты, списки, меню, шапка) — прозрачны. */
       .ov.ghost,
@@ -131,7 +151,9 @@
       .ov.ghost .repeat-strip,
       .ov.ghost .ov-status,
       .ov.ghost .backbar,
-      .ov.ghost kbd { border-color: transparent !important; }
+      .ov.ghost kbd {
+        border-color: transparent !important;
+      }
       .ov.ghost .card,
       .ov.ghost .chead,
       .ov.ghost .cmd,
@@ -143,8 +165,12 @@
       .ov.ghost .repeat-strip,
       .ov.ghost .ov-status,
       .ov.ghost .backbar,
-      .ov.ghost #logs { background: transparent !important; }
-      .ov.ghost kbd { background: transparent; }
+      .ov.ghost #logs {
+        background: transparent !important;
+      }
+      .ov.ghost kbd {
+        background: transparent;
+      }
       /* Раскрывающееся меню остаётся непрозрачным (фон --panel-2), чтобы пункты
          были видны; только обводка снимается, как у остальных блоков призрачного режима. */
       /* кнопки остаются непрозрачными */
@@ -152,205 +178,828 @@
       .ov.ghost .winbtn,
       .ov.ghost .menu-btn,
       .ov.ghost .btn,
-      .ov.ghost .cmd-run { background-color: var(--panel-3); }
+      .ov.ghost .cmd-run {
+        background-color: var(--panel-3);
+      }
 
       /* header */
       .ov-header {
-        display: flex; align-items: center; gap: 8px; padding: 9px 10px;
-        background: var(--header-bg); border-bottom: 1px solid var(--line-2);
-        cursor: move; user-select: none;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 10px;
+        background: var(--header-bg);
+        border-bottom: 1px solid var(--line-2);
+        cursor: move;
+        user-select: none;
       }
       .menu-btn {
-        position: relative; width: 30px; height: 30px; flex: 0 0 auto;
-        display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px;
-        background: var(--panel-3); color: var(--text-dim); cursor: pointer; font-size: 1.077rem; transition: .15s;
+        position: relative;
+        width: 30px;
+        height: 30px;
+        flex: 0 0 auto;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-3);
+        color: var(--text-dim);
+        cursor: pointer;
+        font-size: 1.077rem;
+        transition: 0.15s;
       }
-      .menu-btn:hover, .menu-btn[aria-expanded="true"] { color: var(--text); border-color: var(--accent); }
-      .ov-title { display: flex; align-items: center; gap: 7px; font-weight: 700; font-size: 1.038rem; flex: 1; min-width: 0; }
-      .ov-title .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-2); box-shadow: 0 0 10px var(--accent-2); flex: 0 0 auto; }
-      .ov-title .crumb { font-weight: 500; font-size: 0.846rem; color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .winbtns { display: flex; gap: 5px; flex: 0 0 auto; }
+      .menu-btn:hover,
+      .menu-btn[aria-expanded='true'] {
+        color: var(--text);
+        border-color: var(--accent);
+      }
+      .ov-title {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-weight: 700;
+        font-size: 1.038rem;
+        flex: 1;
+        min-width: 0;
+      }
+      .ov-title .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--accent-2);
+        box-shadow: 0 0 10px var(--accent-2);
+        flex: 0 0 auto;
+      }
+      .ov-title .crumb {
+        font-weight: 500;
+        font-size: 0.846rem;
+        color: var(--accent);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .winbtns {
+        display: flex;
+        gap: 5px;
+        flex: 0 0 auto;
+      }
       .winbtn {
-        width: 28px; height: 28px; display: grid; place-items: center;
-        border: 1px solid var(--line); border-radius: 8px; background: var(--panel-3);
-        color: var(--text-dim); cursor: pointer; font-size: 1.000rem; transition: .15s;
+        width: 28px;
+        height: 28px;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-3);
+        color: var(--text-dim);
+        cursor: pointer;
+        font-size: 1rem;
+        transition: 0.15s;
       }
-      .winbtn:hover { color: var(--text); border-color: var(--accent); }
+      .winbtn:hover {
+        color: var(--text);
+        border-color: var(--accent);
+      }
 
       /* выпадающее меню */
       .menu {
-        position: absolute; top: 46px; left: 10px; z-index: 30;
-        min-width: 190px; padding: 6px;
-        background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px;
-        box-shadow: var(--shadow); backdrop-filter: blur(20px);
+        position: absolute;
+        top: 46px;
+        left: 10px;
+        z-index: 30;
+        min-width: 190px;
+        padding: 6px;
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(20px);
       }
       .menu button {
-        display: flex; align-items: center; gap: 8px; width: 100%;
-        padding: 8px 10px; border: none; border-radius: 7px;
-        background: transparent; color: var(--text); cursor: pointer; font: inherit; font-size: 0.962rem; text-align: left; transition: .12s;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        padding: 8px 10px;
+        border: none;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--text);
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.962rem;
+        text-align: left;
+        transition: 0.12s;
       }
-      .menu button:hover { background: rgba(255,255,255,0.07); }
-      .menu button[aria-current="page"] { color: var(--accent); }
-      .menu button .ico { width: 16px; text-align: center; }
-      .menu .sep { height: 1px; background: var(--line-2); margin: 5px 4px; }
+      .menu button:hover {
+        background: rgba(255, 255, 255, 0.07);
+      }
+      .menu button[aria-current='page'] {
+        color: var(--accent);
+      }
+      .menu button .ico {
+        width: 16px;
+        text-align: center;
+      }
+      .menu .sep {
+        height: 1px;
+        background: var(--line-2);
+        margin: 5px 4px;
+      }
 
       /* ---- strip контрольных кнопок (всегда виден, и в свёрнутом виде) ---- */
       .repeat-strip {
-        display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;
-        padding: 8px; background: rgba(0,0,0,0.14); border-bottom: 1px solid var(--line-2);
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 5px;
+        padding: 8px;
+        background: rgba(0, 0, 0, 0.14);
+        border-bottom: 1px solid var(--line-2);
       }
       /* Блок переподключения ввода: лежит под рядом переключателей (повтор, сочетания, пауза) */
       .repeat-controls {
-        display: grid; grid-template-columns: repeat(1, 1fr); gap: 5px;
+        display: grid;
+        grid-template-columns: repeat(1, 1fr);
+        gap: 5px;
         grid-column: span 4;
       }
       .chip {
-        display: flex; align-items: center; gap: 6px; padding: 7px 6px;
-        border: 1px solid var(--line); border-radius: var(--radius-sm);
-        background: var(--panel-3); cursor: pointer; font-size: 0.846rem; font-weight: 600;
-        text-align: center; transition: .15s; color: var(--text);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 6px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        background: var(--panel-3);
+        cursor: pointer;
+        font-size: 0.846rem;
+        font-weight: 600;
+        text-align: center;
+        transition: 0.15s;
+        color: var(--text);
       }
-      .chip:hover { border-color: var(--accent); }
-      .chip .state { font-size: 0.731rem; font-weight: 700; padding: 1px 5px; border-radius: 20px; background: rgba(255,255,255,0.08); color: var(--text-mute); margin-left: auto; }
-      .chip[data-state="on"] { border-color: var(--accent-2); background: color-mix(in srgb, var(--accent-2) 13%, var(--panel-3)); }
-      .chip[data-state="on"] .state { background: color-mix(in srgb, var(--accent-2) 26%, transparent); color: var(--accent-2); }
-      .chip[data-state="paused"] { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 13%, var(--panel-3)); }
-      .chip[data-state="paused"] .state { background: color-mix(in srgb, var(--warn) 26%, transparent); color: var(--warn); }
-      .chip[data-state="pending"] { border-color: var(--accent-3); }
-      .chip.reconnect { grid-column: span 1; }
-      .chip:disabled { opacity: .45; cursor: default; }
+      .chip:hover {
+        border-color: var(--accent);
+      }
+      .chip .state {
+        font-size: 0.731rem;
+        font-weight: 700;
+        padding: 1px 5px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--text-mute);
+        margin-left: auto;
+      }
+      .chip[data-state='on'] {
+        border-color: var(--accent-2);
+        background: color-mix(in srgb, var(--accent-2) 13%, var(--panel-3));
+      }
+      .chip[data-state='on'] .state {
+        background: color-mix(in srgb, var(--accent-2) 26%, transparent);
+        color: var(--accent-2);
+      }
+      .chip[data-state='paused'] {
+        border-color: var(--warn);
+        background: color-mix(in srgb, var(--warn) 13%, var(--panel-3));
+      }
+      .chip[data-state='paused'] .state {
+        background: color-mix(in srgb, var(--warn) 26%, transparent);
+        color: var(--warn);
+      }
+      .chip[data-state='pending'] {
+        border-color: var(--accent-3);
+      }
+      .chip.reconnect {
+        grid-column: span 1;
+      }
+      .chip:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
 
       /* status */
-      .ov-status { display: flex; align-items: center; gap: 7px; padding: 7px 10px; font-size: 0.885rem; color: var(--text-dim); background: rgba(0,0,0,0.12); border-bottom: 1px solid var(--line-2); }
-      .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-2); animation: pulse 1.6s infinite; flex: 0 0 auto; }
-      @keyframes pulse { 0%,100%{opacity:.35;transform:scale(.85)} 50%{opacity:1;transform:scale(1.1)} }
-      #status { color: var(--text); }
-      #status[data-execution-state="finished"],
-      #status[data-execution-state="failed"],
-      #status[data-execution-state="stopped"],
-      #status[data-execution-state="stopping"] { color: var(--danger); font-weight: 600; }
-      .ov-status b { color: var(--text); font-weight: 600; }
+      .ov-status {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 7px 10px;
+        font-size: 0.885rem;
+        color: var(--text-dim);
+        background: rgba(0, 0, 0, 0.12);
+        border-bottom: 1px solid var(--line-2);
+      }
+      .pulse {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--accent-2);
+        animation: pulse 1.6s infinite;
+        flex: 0 0 auto;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 0.35;
+          transform: scale(0.85);
+        }
+        50% {
+          opacity: 1;
+          transform: scale(1.1);
+        }
+      }
+      #status {
+        color: var(--text);
+      }
+      #status[data-execution-state='finished'],
+      #status[data-execution-state='failed'],
+      #status[data-execution-state='stopped'],
+      #status[data-execution-state='stopping'] {
+        color: var(--danger);
+        font-weight: 600;
+      }
+      .ov-status b {
+        color: var(--text);
+        font-weight: 600;
+      }
 
       /* backbar */
-      .backbar { display: flex; align-items: center; gap: 6px; padding: 7px 11px; font-size: 0.846rem; color: var(--text-mute); border-bottom: 1px solid var(--line-2); background: rgba(255,255,255,0.02); }
-      .backbar button { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel-3); color: var(--text-dim); cursor: pointer; font: inherit; font-size: 0.846rem; font-weight: 600; transition: .15s; }
-      .backbar button:hover { color: var(--text); border-color: var(--accent); }
-      .backbar .where { color: var(--accent); font-weight: 700; }
+      .backbar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 11px;
+        font-size: 0.846rem;
+        color: var(--text-mute);
+        border-bottom: 1px solid var(--line-2);
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .backbar button {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 8px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--panel-3);
+        color: var(--text-dim);
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.846rem;
+        font-weight: 600;
+        transition: 0.15s;
+      }
+      .backbar button:hover {
+        color: var(--text);
+        border-color: var(--accent);
+      }
+      .backbar .where {
+        color: var(--accent);
+        font-weight: 700;
+      }
 
       /* body / service panel */
-      #overlay-controls { flex: 1; overflow: auto; }
-      #overlay-controls::-webkit-scrollbar { width: 7px; }
-      #overlay-controls::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; }
-      .body { padding: 11px; display: flex; flex-direction: column; gap: 10px; }
+      #overlay-controls {
+        flex: 1;
+        overflow: auto;
+      }
+      #overlay-controls::-webkit-scrollbar {
+        width: 7px;
+      }
+      #overlay-controls::-webkit-scrollbar-thumb {
+        background: var(--line);
+        border-radius: 8px;
+      }
+      .body {
+        padding: 11px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
 
-      .target { display: inline-flex; align-items: center; gap: 4px; font-size: 0.731rem; font-weight: 700; color: var(--accent-3); background: color-mix(in srgb, var(--accent-3) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent-3) 30%, transparent); padding: 2px 7px; border-radius: 20px; white-space: nowrap; }
-      .target::before { content: "◎"; font-size: 0.692rem; }
+      .target {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 0.731rem;
+        font-weight: 700;
+        color: var(--accent-3);
+        background: color-mix(in srgb, var(--accent-3) 12%, transparent);
+        border: 1px solid color-mix(in srgb, var(--accent-3) 30%, transparent);
+        padding: 2px 7px;
+        border-radius: 20px;
+        white-space: nowrap;
+      }
+      .target::before {
+        content: '◎';
+        font-size: 0.692rem;
+      }
 
-      .card { border: 1px solid var(--line-2); border-radius: var(--radius-sm); overflow: hidden; }
-      .card > .chead { display: flex; align-items: center; gap: 7px; padding: 8px 10px; border-bottom: 1px solid var(--line-2); background: rgba(255,255,255,0.03); }
-      .card > .chead h3 { margin: 0; font-size: 0.923rem; font-weight: 700; color: var(--accent-2); }
-      .card > .cbody { padding: 9px 10px; }
+      .card {
+        border: 1px solid var(--line-2);
+        border-radius: var(--radius-sm);
+        overflow: hidden;
+      }
+      .card > .chead {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line-2);
+        background: rgba(255, 255, 255, 0.03);
+      }
+      .card > .chead h3 {
+        margin: 0;
+        font-size: 0.923rem;
+        font-weight: 700;
+        color: var(--accent-2);
+      }
+      .card > .cbody {
+        padding: 9px 10px;
+      }
 
       /* цветные команды */
-      #commands { list-style: none; padding: 0; margin: 0; }
-      .cmd { position: relative; display: flex; align-items: center; gap: 10px; padding: 9px 10px 9px 10px; padding-right: 40px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--panel); margin-bottom: 8px; cursor: pointer; }
-      .cmd:last-child { margin-bottom: 0; }
-      .cmd:hover { border-color: var(--line); }
-      .cmd-run { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 26px; height: 26px; display: grid; place-items: center; border: none; border-radius: 7px; background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); cursor: pointer; font-size: 0.846rem; }
-      .cmd-run:hover { background: color-mix(in srgb, var(--accent) 34%, transparent); }
-      .cmd-run:disabled { opacity: .4; cursor: default; }
-      .cmd .name { flex: 1 1 auto; min-width: 0; font-size: 0.923rem; font-weight: 700; color: var(--overlay-command, var(--cmd)); overflow-wrap: anywhere; }
-      .cmd.c2 .name { color: var(--accent-2); }
-      .cmd.c3 .name { color: var(--accent-3); }
-      .cmd.c4 .name { color: var(--accent); }
-      .cmd .name small { display: block; font-weight: 500; color: var(--text-mute); font-size: 0.769rem; }
-      kbd { font-family: ui-monospace, Menlo, monospace; font-size: 0.769rem; font-weight: 700; color: var(--overlay-key, var(--accent)); background: color-mix(in srgb, var(--overlay-key, var(--accent)) 12%, transparent); border: 1px solid color-mix(in srgb, var(--overlay-key, var(--accent)) 35%, transparent); border-radius: 5px; padding: 2px 6px; white-space: nowrap; }
+      #commands {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .cmd {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 10px 9px 10px;
+        padding-right: 40px;
+        border: 1px solid var(--line-2);
+        border-radius: var(--radius-sm);
+        background: var(--panel);
+        margin-bottom: 8px;
+        cursor: pointer;
+      }
+      .cmd:last-child {
+        margin-bottom: 0;
+      }
+      .cmd:hover {
+        border-color: var(--line);
+      }
+      .cmd-run {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 26px;
+        height: 26px;
+        display: grid;
+        place-items: center;
+        border: none;
+        border-radius: 7px;
+        background: color-mix(in srgb, var(--accent) 18%, transparent);
+        color: var(--accent);
+        cursor: pointer;
+        font-size: 0.846rem;
+      }
+      .cmd-run:hover {
+        background: color-mix(in srgb, var(--accent) 34%, transparent);
+      }
+      .cmd-run:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      .cmd .name {
+        flex: 1 1 auto;
+        min-width: 0;
+        font-size: 0.923rem;
+        font-weight: 700;
+        color: var(--overlay-command, var(--cmd));
+        overflow-wrap: anywhere;
+      }
+      .cmd.c2 .name {
+        color: var(--accent-2);
+      }
+      .cmd.c3 .name {
+        color: var(--accent-3);
+      }
+      .cmd.c4 .name {
+        color: var(--accent);
+      }
+      .cmd .name small {
+        display: block;
+        font-weight: 500;
+        color: var(--text-mute);
+        font-size: 0.769rem;
+      }
+      kbd {
+        font-family: ui-monospace, Menlo, monospace;
+        font-size: 0.769rem;
+        font-weight: 700;
+        color: var(--overlay-key, var(--accent));
+        background: color-mix(in srgb, var(--overlay-key, var(--accent)) 12%, transparent);
+        border: 1px solid color-mix(in srgb, var(--overlay-key, var(--accent)) 35%, transparent);
+        border-radius: 5px;
+        padding: 2px 6px;
+        white-space: nowrap;
+      }
 
       /* recipients */
-      #recipient-list { list-style: none; padding: 0; margin: 0; }
-      .rrow { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--panel-3); margin-bottom: 6px; }
-      .rrow:last-child { margin-bottom: 0; }
-      .rrow input { width: 15px; height: 15px; accent-color: var(--accent-2); }
-      .rrow .nick { font-weight: 700; font-size: 0.923rem; color: var(--accent-2); }
-      .rrow .party { font-size: 0.769rem; color: var(--text-mute); }
-      .rrow .lead { margin-left: auto; font-size: 0.692rem; font-weight: 700; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); padding: 1px 6px; border-radius: 20px; }
-      .recipient-actions { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 8px; }
-      .recipient-help { color: var(--text-mute); line-height: 1.5; font-size: 0.846rem; }
-      #recipients-screen select { width: 100%; padding: 7px 8px; background: var(--panel-3); color: var(--text); border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 0.885rem; }
+      #recipient-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .rrow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 8px;
+        border: 1px solid var(--line-2);
+        border-radius: var(--radius-sm);
+        background: var(--panel-3);
+        margin-bottom: 6px;
+      }
+      .rrow:last-child {
+        margin-bottom: 0;
+      }
+      .rrow input {
+        width: 15px;
+        height: 15px;
+        accent-color: var(--accent-2);
+      }
+      .rrow .nick {
+        font-weight: 700;
+        font-size: 0.923rem;
+        color: var(--accent-2);
+      }
+      .rrow .party {
+        font-size: 0.769rem;
+        color: var(--text-mute);
+      }
+      .rrow .lead {
+        margin-left: auto;
+        font-size: 0.692rem;
+        font-weight: 700;
+        color: var(--accent);
+        background: color-mix(in srgb, var(--accent) 14%, transparent);
+        border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+        padding: 1px 6px;
+        border-radius: 20px;
+      }
+      .recipient-actions {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+      }
+      .recipient-help {
+        color: var(--text-mute);
+        line-height: 1.5;
+        font-size: 0.846rem;
+      }
+      #recipients-screen select {
+        width: 100%;
+        padding: 7px 8px;
+        background: var(--panel-3);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        font: inherit;
+        font-size: 0.885rem;
+      }
 
       /* windows */
-      #windows { list-style: none; padding: 0; margin: 0; }
-      .wrow { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--panel-3); margin-bottom: 6px; font-size: 0.885rem; }
-      .wrow:last-child { margin-bottom: 0; }
-      .wrow input { width: 14px; height: 14px; accent-color: var(--danger); }
-      .wicon { font-size: 1.154rem; line-height: 1; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 40%, transparent)); }
-      .wrow .pname { font-weight: 700; color: var(--cmd); overflow-wrap: anywhere; }
-      .wrow .pmeta { font-size: 0.769rem; color: var(--text-mute); }
-      .wrow .pwrap { min-width: 0; flex: 1; }
-      .wpin { flex: 0 0 auto; width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); color: var(--accent); cursor: pointer; font-size: 1.077rem; transition: .15s; }
-      .wpin:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--panel-2)); }
-      .progress { height: 7px; border-radius: 20px; background: rgba(255,255,255,0.08); overflow: hidden; margin-top: 6px; }
-      .progress > i { display: block; height: 100%; width: 62%; border-radius: 20px; background: linear-gradient(90deg, var(--accent-2), var(--accent)); }
+      #windows {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .wrow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 8px;
+        border: 1px solid var(--line-2);
+        border-radius: var(--radius-sm);
+        background: var(--panel-3);
+        margin-bottom: 6px;
+        font-size: 0.885rem;
+      }
+      .wrow:last-child {
+        margin-bottom: 0;
+      }
+      .wrow input {
+        width: 14px;
+        height: 14px;
+        accent-color: var(--danger);
+      }
+      .wicon {
+        font-size: 1.154rem;
+        line-height: 1;
+        filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 40%, transparent));
+      }
+      .wrow .pname {
+        font-weight: 700;
+        color: var(--cmd);
+        overflow-wrap: anywhere;
+      }
+      .wrow .pmeta {
+        font-size: 0.769rem;
+        color: var(--text-mute);
+      }
+      .wrow .pwrap {
+        min-width: 0;
+        flex: 1;
+      }
+      .wpin {
+        flex: 0 0 auto;
+        width: 30px;
+        height: 30px;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-2);
+        color: var(--accent);
+        cursor: pointer;
+        font-size: 1.077rem;
+        transition: 0.15s;
+      }
+      .wpin:hover {
+        border-color: var(--accent);
+        background: color-mix(in srgb, var(--accent) 14%, var(--panel-2));
+      }
+      .progress {
+        height: 7px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.08);
+        overflow: hidden;
+        margin-top: 6px;
+      }
+      .progress > i {
+        display: block;
+        height: 100%;
+        width: 62%;
+        border-radius: 20px;
+        background: linear-gradient(90deg, var(--accent-2), var(--accent));
+      }
 
-      .btn { padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-3); color: var(--text); cursor: pointer; font: inherit; font-size: 0.885rem; font-weight: 600; transition: .15s; }
-      .btn:hover { border-color: var(--accent); }
-      .btn.primary { background: linear-gradient(180deg, color-mix(in srgb, var(--accent-2) 30%, var(--panel-3)), var(--panel-3)); border-color: color-mix(in srgb, var(--accent-2) 45%, transparent); color: var(--accent-2); }
-      .btn.ghost { background: transparent; }
-      .close-wrap { position: relative; display: inline-block; }
+      .btn {
+        padding: 6px 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-3);
+        color: var(--text);
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.885rem;
+        font-weight: 600;
+        transition: 0.15s;
+      }
+      .btn:hover {
+        border-color: var(--accent);
+      }
+      .btn.primary {
+        background: linear-gradient(180deg, color-mix(in srgb, var(--accent-2) 30%, var(--panel-3)), var(--panel-3));
+        border-color: color-mix(in srgb, var(--accent-2) 45%, transparent);
+        color: var(--accent-2);
+      }
+      .btn.ghost {
+        background: transparent;
+      }
+      .close-wrap {
+        position: relative;
+        display: inline-block;
+      }
       .close-dropdown {
-        position: absolute; z-index: 30; top: calc(100% + 4px); left: 0;
-        min-width: 220px; padding: 5px;
-        background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px;
+        position: absolute;
+        z-index: 30;
+        top: calc(100% + 4px);
+        left: 0;
+        min-width: 220px;
+        padding: 5px;
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        border-radius: 10px;
         box-shadow: var(--shadow);
       }
       .close-dropdown button {
-        display: block; width: 100%; text-align: left; padding: 8px 10px;
-        border: none; border-radius: 7px; background: transparent; color: var(--text);
-        cursor: pointer; font: inherit; font-size: 0.885rem; transition: .12s;
+        display: block;
+        width: 100%;
+        text-align: left;
+        padding: 8px 10px;
+        border: none;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--text);
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.885rem;
+        transition: 0.12s;
       }
-      .close-dropdown button:hover { background: rgba(255,255,255,0.07); color: var(--accent); }
-      #party-screen select { width: 100%; padding: 7px 8px; background: var(--panel-3); color: var(--text); border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 0.885rem; }
-      .launch-character { border-left: 3px solid var(--accent-2); padding: 6px 10px; font-weight: 700; color: var(--accent-2); background: color-mix(in srgb, var(--accent-2) 12%, transparent); }
+      .close-dropdown button:hover {
+        background: rgba(255, 255, 255, 0.07);
+        color: var(--accent);
+      }
+      #party-screen select {
+        width: 100%;
+        padding: 7px 8px;
+        background: var(--panel-3);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        font: inherit;
+        font-size: 0.885rem;
+      }
+      .launch-character {
+        border-left: 3px solid var(--accent-2);
+        padding: 6px 10px;
+        font-weight: 700;
+        color: var(--accent-2);
+        background: color-mix(in srgb, var(--accent-2) 12%, transparent);
+      }
 
       /* journal */
-      pre { white-space: pre-wrap; max-height: 220px; overflow: auto; font: inherit; }
-      #logs { font-family: ui-monospace, Menlo, monospace; font-size: 0.808rem; line-height: 1.5; background: rgba(0,0,0,0.3); border: 1px solid var(--line-2); border-radius: var(--radius-sm); padding: 8px 10px; margin: 0; }
-      .gm-log-terminal { color: var(--danger); font-weight: 600; }
-      .gm-journal-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
-      .gm-journal-actions > button { margin: 0; }
+      pre {
+        white-space: pre-wrap;
+        max-height: 220px;
+        overflow: auto;
+        font: inherit;
+      }
+      #logs {
+        font-family: ui-monospace, Menlo, monospace;
+        font-size: 0.808rem;
+        line-height: 1.5;
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid var(--line-2);
+        border-radius: var(--radius-sm);
+        padding: 8px 10px;
+        margin: 0;
+      }
+      .gm-log-terminal {
+        color: var(--danger);
+        font-weight: 600;
+      }
+      .gm-journal-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+      }
+      .gm-journal-actions > button {
+        margin: 0;
+      }
 
       /* appearance */
-      .color-options { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin: 10px 0; display: flex; flex-wrap: wrap; gap: 6px; }
-      .color-options legend { padding: 0 6px; font-size: 0.846rem; color: var(--text-dim); }
-      .color-options label { display: flex; align-items: center; gap: 5px; padding: 5px 8px; border-radius: 7px; background: var(--panel-3); cursor: pointer; font-size: 0.846rem; }
-      .swatch-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--line-2); }
-      .swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); cursor: pointer; padding: 0; transition: .12s; }
-      .swatch:hover { transform: scale(1.12); border-color: var(--text-dim); }
-      .swatch.sel { border-color: var(--text); box-shadow: 0 0 0 2px var(--panel-2), 0 0 0 4px var(--accent); }
-      .color-options input[type="radio"] { accent-color: var(--accent); }
-      .color-options span::before { content: "●"; margin-right: 5px; }
-      [data-swatch="light"], [data-swatch="white"] { color: #eef2ff; }
-      [data-swatch="warm"], [data-swatch="gold"] { color: #f5d98c; }
-      [data-swatch="mint"] { color: #91e2bd; }
-      [data-swatch="blue"] { color: #9ccaff; }
-      [data-swatch="violet"] { color: #c7a7ff; }
-      [data-swatch="orange"] { color: #ffb380; }
-      .field { display: flex; align-items: center; gap: 8px; font-size: 0.885rem; color: var(--text-dim); margin-bottom: 10px; }
-      .field output { color: var(--accent); font-weight: 700; min-width: 34px; text-align: right; }
-      input[type="range"] { accent-color: var(--accent); flex: 1; }
-      .note { font-size: 0.808rem; color: var(--text-mute); line-height: 1.5; }
-      .size-presets { display: flex; gap: 6px; margin-top: 4px; }
-      .size-presets .btn { flex: 1; text-align: center; }
-      .theme-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 4px; }
-      .theme-opt { display: flex; align-items: center; gap: 7px; padding: 7px 8px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel-3); cursor: pointer; font-size: 0.885rem; font-weight: 600; }
-      .theme-opt i { width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--line); display: inline-block; }
-      .theme-opt.sel { border-color: var(--accent); }
+      .color-options {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 8px 10px;
+        margin: 10px 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .color-options legend {
+        padding: 0 6px;
+        font-size: 0.846rem;
+        color: var(--text-dim);
+      }
+      .color-options label {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 5px 8px;
+        border-radius: 7px;
+        background: var(--panel-3);
+        cursor: pointer;
+        font-size: 0.846rem;
+      }
+      .swatch-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 7px;
+        padding-top: 7px;
+        border-top: 1px solid var(--line-2);
+      }
+      .swatch {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        border: 2px solid var(--line);
+        cursor: pointer;
+        padding: 0;
+        transition: 0.12s;
+      }
+      .swatch:hover {
+        transform: scale(1.12);
+        border-color: var(--text-dim);
+      }
+      .swatch.sel {
+        border-color: var(--text);
+        box-shadow:
+          0 0 0 2px var(--panel-2),
+          0 0 0 4px var(--accent);
+      }
+      .color-options input[type='radio'] {
+        accent-color: var(--accent);
+      }
+      .color-options span::before {
+        content: '●';
+        margin-right: 5px;
+      }
+      [data-swatch='light'],
+      [data-swatch='white'] {
+        color: #eef2ff;
+      }
+      [data-swatch='warm'],
+      [data-swatch='gold'] {
+        color: #f5d98c;
+      }
+      [data-swatch='mint'] {
+        color: #91e2bd;
+      }
+      [data-swatch='blue'] {
+        color: #9ccaff;
+      }
+      [data-swatch='violet'] {
+        color: #c7a7ff;
+      }
+      [data-swatch='orange'] {
+        color: #ffb380;
+      }
+      .field {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.885rem;
+        color: var(--text-dim);
+        margin-bottom: 10px;
+      }
+      .field output {
+        color: var(--accent);
+        font-weight: 700;
+        min-width: 34px;
+        text-align: right;
+      }
+      input[type='range'] {
+        accent-color: var(--accent);
+        flex: 1;
+      }
+      .note {
+        font-size: 0.808rem;
+        color: var(--text-mute);
+        line-height: 1.5;
+      }
+      .size-presets {
+        display: flex;
+        gap: 6px;
+        margin-top: 4px;
+      }
+      .size-presets .btn {
+        flex: 1;
+        text-align: center;
+      }
+      .theme-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 6px;
+        margin-top: 4px;
+      }
+      .theme-opt {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 7px 8px;
+        border: 1px solid var(--line-2);
+        border-radius: 8px;
+        background: var(--panel-3);
+        cursor: pointer;
+        font-size: 0.885rem;
+        font-weight: 600;
+      }
+      .theme-opt i {
+        width: 14px;
+        height: 14px;
+        border-radius: 4px;
+        border: 1px solid var(--line);
+        display: inline-block;
+      }
+      .theme-opt.sel {
+        border-color: var(--accent);
+      }
 
       /* свёрнутый вид: оставляем header + repeat-strip, прячем навигацию и содержимое */
       body.folded .ov-status,
       body.folded .backbar,
-      body.folded #overlay-controls { display: none; }
-      body.folded .ov { border-radius: 0; height: auto; max-height: none; overflow: visible; }
+      body.folded #overlay-controls {
+        display: none;
+      }
+      body.folded .ov {
+        border-radius: 0;
+        height: auto;
+        max-height: none;
+        overflow: visible;
+      }
       /* при свернутом оверлее меню открывается полностью — по высоте окна, со скроллом, без обрезки */
       body.folded .menu {
         top: 44px;
@@ -361,11 +1010,20 @@
         overflow-y: auto;
         overscroll-behavior: contain;
       }
-      body.folded .menu::-webkit-scrollbar { width: 7px; }
-      body.folded .menu::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; }
+      body.folded .menu::-webkit-scrollbar {
+        width: 7px;
+      }
+      body.folded .menu::-webkit-scrollbar-thumb {
+        background: var(--line);
+        border-radius: 8px;
+      }
       body.header-hidden .ov-header,
-      body.header-hidden .backbar { display: none; }
-      body.header-hidden .ov { border-radius: 0; }
+      body.header-hidden .backbar {
+        display: none;
+      }
+      body.header-hidden .ov {
+        border-radius: 0;
+      }
       .floating-panel-toggle {
         display: none;
         position: absolute;
@@ -381,30 +1039,50 @@
         color: var(--text-dim);
         cursor: pointer;
         font-size: 1.077rem;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
       }
-      body.header-hidden .floating-panel-toggle { display: grid; }
-      .floating-panel-toggle:hover { color: var(--text); border-color: var(--accent); }
+      body.header-hidden .floating-panel-toggle {
+        display: grid;
+      }
+      .floating-panel-toggle:hover {
+        color: var(--text);
+        border-color: var(--accent);
+      }
       .menu-label {
         padding: 5px 10px 3px;
         font-size: 0.731rem;
         font-weight: 700;
-        letter-spacing: .08em;
+        letter-spacing: 0.08em;
         text-transform: uppercase;
         color: var(--text-mute);
       }
 
-      :root[data-size="S"] { --ov-w: 300px; --ov-h: 300px; }
-      :root[data-size="M"] { --ov-w: 380px; --ov-h: 380px; }
-      :root[data-size="L"] { --ov-w: 460px; --ov-h: 460px; }
+      :root[data-size='S'] {
+        --ov-w: 300px;
+        --ov-h: 300px;
+      }
+      :root[data-size='M'] {
+        --ov-w: 380px;
+        --ov-h: 380px;
+      }
+      :root[data-size='L'] {
+        --ov-w: 460px;
+        --ov-h: 460px;
+      }
 
       /* ============ ADAPTIVE ============ */
       @media (max-width: 520px) {
-        .repeat-strip { grid-template-columns: repeat(2, 1fr); }
-        .repeat-controls { grid-column: span 2; }
+        .repeat-strip {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        .repeat-controls {
+          grid-column: span 2;
+        }
       }
       @media (max-height: 560px) {
-        .ov-status { display: none; }
+        .ov-status {
+          display: none;
+        }
       }
     </style>
   </head>
@@ -412,11 +1090,29 @@
     <div class="ov" id="ov">
       <button class="floating-panel-toggle" id="floating-panel-toggle" title="Меню" aria-label="Меню">☰</button>
       <header class="ov-header" id="ov-handle" data-drag>
-        <button class="menu-btn" id="menu-btn" aria-expanded="false" aria-haspopup="true" title="Меню" aria-label="Меню">☰</button>
+        <button
+          class="menu-btn"
+          id="menu-btn"
+          aria-expanded="false"
+          aria-haspopup="true"
+          title="Меню"
+          aria-label="Меню"
+        >
+          ☰
+        </button>
         <div class="winbtns">
-          <button class="winbtn" id="ghost" title="Призрачный режим (почти прозрачно)" aria-label="Призрачный режим">👁</button>
+          <button class="winbtn" id="ghost" title="Призрачный режим (почти прозрачно)" aria-label="Призрачный режим">
+            👁
+          </button>
           <button class="winbtn" id="fold" title="Свернуть (оставить кнопки)" aria-label="Свернуть">▾</button>
-          <button class="winbtn" id="header-toggle" title="Скрыть заголовок и кнопки окна" aria-label="Скрыть заголовок и кнопки окна">🚫</button>
+          <button
+            class="winbtn"
+            id="header-toggle"
+            title="Скрыть заголовок и кнопки окна"
+            aria-label="Скрыть заголовок и кнопки окна"
+          >
+            🚫
+          </button>
           <button class="winbtn" id="close" title="Закрыть оверлей" aria-label="Закрыть оверлей">×</button>
         </div>
       </header>
@@ -428,16 +1124,28 @@
         <div class="sep"></div>
         <button data-view="appearance"><span class="ico">🎨</span>Настройки</button>
         <div class="sep"></div>
-        <button type="button" id="menu-header-toggle" aria-pressed="false"><span class="ico">🚫</span><span id="menu-header-toggle-label">Скрыть заголовок и кнопки окна</span></button>
+        <button type="button" id="menu-header-toggle" aria-pressed="false">
+          <span class="ico">🚫</span><span id="menu-header-toggle-label">Скрыть заголовок и кнопки окна</span>
+        </button>
       </div>
 
       <div class="repeat-strip">
-        <button type="button" class="chip" id="mouse-repeat-toggle" aria-pressed="false" data-state="off" disabled><span>🖱</span> Мышь<span class="state">выкл</span></button>
-        <button type="button" class="chip" id="keyboard-repeat-toggle" aria-pressed="false" data-state="off" disabled><span>⌨</span> Клавиатура<span class="state">выкл</span></button>
-        <button type="button" class="chip" id="hotkeys-toggle" aria-pressed="false" data-state="off" disabled><span>⚡</span> Сочетания<span class="state">выкл</span></button>
-        <button type="button" class="chip" id="pause-macros"><span>⏸</span> Пауза<span class="state">выкл</span></button>
+        <button type="button" class="chip" id="mouse-repeat-toggle" aria-pressed="false" data-state="off" disabled>
+          <span>🖱</span> Мышь<span class="state">выкл</span>
+        </button>
+        <button type="button" class="chip" id="keyboard-repeat-toggle" aria-pressed="false" data-state="off" disabled>
+          <span>⌨</span> Клавиатура<span class="state">выкл</span>
+        </button>
+        <button type="button" class="chip" id="hotkeys-toggle" aria-pressed="false" data-state="off" disabled>
+          <span>⚡</span> Сочетания<span class="state">выкл</span>
+        </button>
+        <button type="button" class="chip" id="pause-macros">
+          <span>⏸</span> Пауза<span class="state">выкл</span>
+        </button>
         <div class="repeat-controls">
-          <button type="button" class="chip reconnect" id="reconnect-input" disabled><span>↻</span> Переподключить ввод<span class="state">клик</span></button>
+          <button type="button" class="chip reconnect" id="reconnect-input" disabled>
+            <span>↻</span> Переподключить ввод<span class="state">клик</span>
+          </button>
         </div>
       </div>
 
@@ -455,7 +1163,10 @@
           <!-- Клавиши -->
           <section id="shortcuts-screen" data-view="shortcuts">
             <div class="card">
-              <div class="chead"><h3 data-service-heading>Назначенные клавиши</h3><span class="target">цель: окна пати</span></div>
+              <div class="chead">
+                <h3 data-service-heading>Назначенные клавиши</h3>
+                <span class="target">цель: окна пати</span>
+              </div>
               <div class="cbody">
                 <ul id="commands"></ul>
               </div>
@@ -465,9 +1176,15 @@
           <!-- Получатели -->
           <section id="recipients-screen" data-view="recipients" hidden>
             <div class="card">
-              <div class="chead"><h3 data-service-heading>Получатели команд</h3><span class="target">цель: персонажи</span></div>
+              <div class="chead">
+                <h3 data-service-heading>Получатели команд</h3>
+                <span class="target">цель: персонажи</span>
+              </div>
               <div class="cbody">
-                <p class="recipient-help">По умолчанию выбраны все распознанные окна. Снимите отметку, чтобы исключить персонажа из команд. Новые окна включаются автоматически.</p>
+                <p class="recipient-help">
+                  По умолчанию выбраны все распознанные окна. Снимите отметку, чтобы исключить персонажа из команд.
+                  Новые окна включаются автоматически.
+                </p>
                 <div class="recipient-actions">
                   <button type="button" class="btn ghost" id="recipients-refresh">↻ Обновить</button>
                   <button type="button" class="btn ghost" id="recipients-all">Выбрать всех</button>
@@ -475,14 +1192,26 @@
                 </div>
                 <p id="recipients-notice" role="status" aria-live="polite">Обновите список.</p>
                 <ul id="recipient-list"></ul>
-                <label class="field" style="margin-top:8px">ПЛ для специальных команд
+                <label class="field" style="margin-top: 8px"
+                  >ПЛ для специальных команд
                   <select id="recipient-leader">
                     <option value="">Не менять текущего ПЛ</option>
                   </select>
                 </label>
                 <p id="recipient-leader-hint" class="recipient-help"></p>
-                <button type="button" class="btn primary" id="recipients-save" style="width:100%; margin-top:8px" disabled>Сохранить выбор</button>
-                <p class="recipient-help">Старые команды могут дополнительно ограничивать получателей пати. Повтор клавиатуры и мыши настраивается отдельно.</p>
+                <button
+                  type="button"
+                  class="btn primary"
+                  id="recipients-save"
+                  style="width: 100%; margin-top: 8px"
+                  disabled
+                >
+                  Сохранить выбор
+                </button>
+                <p class="recipient-help">
+                  Старые команды могут дополнительно ограничивать получателей пати. Повтор клавиатуры и мыши
+                  настраивается отдельно.
+                </p>
               </div>
             </div>
           </section>
@@ -490,18 +1219,30 @@
           <!-- Окна и пати -->
           <section id="party-screen" data-view="party" hidden>
             <div class="card">
-              <div class="chead"><h3 data-service-heading>Окна и пати</h3><span class="target">цель: игровые окна</span></div>
+              <div class="chead">
+                <h3 data-service-heading>Окна и пати</h3>
+                <span class="target">цель: игровые окна</span>
+              </div>
               <div class="cbody">
-                <label class="field" style="margin-bottom:8px">Пати для запуска
+                <label class="field" style="margin-bottom: 8px"
+                  >Пати для запуска
                   <select id="party-select">
                     <option value="">Выберите пати</option>
                   </select>
                 </label>
-                <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px">
+                <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px">
                   <button type="button" class="btn primary" id="party-launch">▶ Запустить пати</button>
                   <button type="button" class="btn ghost" id="party-refresh">Обновить окна</button>
                   <div class="close-wrap">
-                    <button type="button" class="btn ghost" id="party-close-all" aria-expanded="false" aria-haspopup="true">Закрыть окна ▾</button>
+                    <button
+                      type="button"
+                      class="btn ghost"
+                      id="party-close-all"
+                      aria-expanded="false"
+                      aria-haspopup="true"
+                    >
+                      Закрыть окна ▾
+                    </button>
                     <div class="close-dropdown" id="close-dropdown" hidden>
                       <button type="button" data-close-mode="all">Все игровые окна</button>
                       <button type="button" data-close-mode="except-leader">Все кроме ПЛ выбранной пати</button>
@@ -509,7 +1250,9 @@
                     </div>
                   </div>
                 </div>
-                <p class="recipient-help">Для выборочного закрытия отметьте окна в списке ниже. Несохранённые данные в игре будут потеряны.</p>
+                <p class="recipient-help">
+                  Для выборочного закрытия отметьте окна в списке ниже. Несохранённые данные в игре будут потеряны.
+                </p>
                 <div id="launch-progress" hidden>
                   <p id="launch-character" class="launch-character" hidden></p>
                   <progress id="launch-percent" max="100" value="0" aria-label="Прогресс запуска пати"></progress>
@@ -519,7 +1262,9 @@
                 </div>
                 <p id="window-notice" role="status">Нажмите «Обновить окна».</p>
                 <ul id="windows"></ul>
-                <p class="note">Запуск использует сохранённые настройки пати. Список обновляется по кнопке, не каждую секунду.</p>
+                <p class="note">
+                  Запуск использует сохранённые настройки пати. Список обновляется по кнопке, не каждую секунду.
+                </p>
               </div>
             </div>
           </section>
@@ -527,7 +1272,10 @@
           <!-- Журнал -->
           <section id="journal-screen" data-view="journal" hidden>
             <div class="card">
-              <div class="chead"><h3 data-service-heading>Журнал текущего сеанса</h3><span class="target">цель: сеанс</span></div>
+              <div class="chead">
+                <h3 data-service-heading>Журнал текущего сеанса</h3>
+                <span class="target">цель: сеанс</span>
+              </div>
               <div class="cbody">
                 <div class="gm-journal-actions">
                   <button type="button" class="btn ghost" id="copy-logs">Копировать весь лог</button>
@@ -543,12 +1291,18 @@
           <!-- Настройки -->
           <section id="appearance-screen" data-view="appearance" hidden>
             <div class="card">
-              <div class="chead"><h3 data-service-heading>Настройки оверлея</h3><span class="target">цель: внешность</span></div>
+              <div class="chead">
+                <h3 data-service-heading>Настройки оверлея</h3>
+                <span class="target">цель: внешность</span>
+              </div>
               <div class="cbody">
-                <div class="field">Прозрачность окна <output id="alpha-value">90%</output>
+                <div class="field">
+                  Прозрачность окна <output id="alpha-value">90%</output>
                   <input id="opacity" type="range" min="5" max="100" value="90" />
                 </div>
-                <div class="note" style="margin:-4px 0 10px">Задвигайте ползунок вниз — окно станет практически невидимым.</div>
+                <div class="note" style="margin: -4px 0 10px">
+                  Задвигайте ползунок вниз — окно станет практически невидимым.
+                </div>
 
                 <div class="field"><input id="topmost" type="checkbox" checked /> Поверх других окон</div>
                 <div class="field">Размер окна</div>
@@ -557,46 +1311,93 @@
                   <button type="button" class="btn" data-size="M">M</button>
                   <button type="button" class="btn" data-size="L">L</button>
                 </div>
-                <div class="note" style="margin-top:4px">Или ресайзните окно за границы — размер регулируется вручную.</div>
+                <div class="note" style="margin-top: 4px">
+                  Или ресайзните окно за границы — размер регулируется вручную.
+                </div>
 
-                <div class="field" style="margin-top:10px">Тема оверлея</div>
+                <div class="field" style="margin-top: 10px">Тема оверлея</div>
                 <div class="theme-grid" id="theme-grid">
-                  <span class="theme-opt sel" data-theme="night"><i style="background:linear-gradient(135deg,#1c2a4d,#3a2147)"></i>Ночка</span>
-                  <span class="theme-opt" data-theme="obsidian"><i style="background:linear-gradient(135deg,#180e1c,#412a5e)"></i>Обсидиан</span>
-                  <span class="theme-opt" data-theme="neon"><i style="background:linear-gradient(135deg,#0d3b4a,#2a1d4a)"></i>Неон</span>
-                  <span class="theme-opt" data-theme="light"><i style="background:linear-gradient(135deg,#e8edf7,#c9d6f0)"></i>Светлая</span>
+                  <span class="theme-opt sel" data-theme="night"
+                    ><i style="background: linear-gradient(135deg, #1c2a4d, #3a2147)"></i>Ночка</span
+                  >
+                  <span class="theme-opt" data-theme="obsidian"
+                    ><i style="background: linear-gradient(135deg, #180e1c, #412a5e)"></i>Обсидиан</span
+                  >
+                  <span class="theme-opt" data-theme="neon"
+                    ><i style="background: linear-gradient(135deg, #0d3b4a, #2a1d4a)"></i>Неон</span
+                  >
+                  <span class="theme-opt" data-theme="light"
+                    ><i style="background: linear-gradient(135deg, #e8edf7, #c9d6f0)"></i>Светлая</span
+                  >
                 </div>
 
                 <fieldset class="color-options">
                   <legend>Цвет текста</legend>
                   <input type="hidden" id="text-color" value="light" />
-                  <label><input type="radio" name="text-color-choice" value="light" checked /><span data-swatch="light">Светлый</span></label>
-                  <label><input type="radio" name="text-color-choice" value="warm" /><span data-swatch="warm">Тёплый</span></label>
-                  <label><input type="radio" name="text-color-choice" value="mint" /><span data-swatch="mint">Мятный</span></label>
+                  <label
+                    ><input type="radio" name="text-color-choice" value="light" checked /><span data-swatch="light"
+                      >Светлый</span
+                    ></label
+                  >
+                  <label
+                    ><input type="radio" name="text-color-choice" value="warm" /><span data-swatch="warm"
+                      >Тёплый</span
+                    ></label
+                  >
+                  <label
+                    ><input type="radio" name="text-color-choice" value="mint" /><span data-swatch="mint"
+                      >Мятный</span
+                    ></label
+                  >
                   <div class="swatch-row" data-swatch-for="text-color"></div>
                 </fieldset>
                 <fieldset class="color-options">
                   <legend>Цвет клавиш</legend>
                   <input type="hidden" id="key-color" value="gold" />
-                  <label><input type="radio" name="key-color-choice" value="gold" checked /><span data-swatch="gold">Золотой</span></label>
-                  <label><input type="radio" name="key-color-choice" value="blue" /><span data-swatch="blue">Голубой</span></label>
-                  <label><input type="radio" name="key-color-choice" value="white" /><span data-swatch="white">Белый</span></label>
+                  <label
+                    ><input type="radio" name="key-color-choice" value="gold" checked /><span data-swatch="gold"
+                      >Золотой</span
+                    ></label
+                  >
+                  <label
+                    ><input type="radio" name="key-color-choice" value="blue" /><span data-swatch="blue"
+                      >Голубой</span
+                    ></label
+                  >
+                  <label
+                    ><input type="radio" name="key-color-choice" value="white" /><span data-swatch="white"
+                      >Белый</span
+                    ></label
+                  >
                   <div class="swatch-row" data-swatch-for="key-color"></div>
                 </fieldset>
                 <fieldset class="color-options">
                   <legend>Цвет названия команды</legend>
                   <input type="hidden" id="command-color" value="mint" />
-                  <label><input type="radio" name="command-color-choice" value="mint" checked /><span data-swatch="mint">Мятный</span></label>
-                  <label><input type="radio" name="command-color-choice" value="violet" /><span data-swatch="violet">Фиолетовый</span></label>
-                  <label><input type="radio" name="command-color-choice" value="orange" /><span data-swatch="orange">Оранжевый</span></label>
+                  <label
+                    ><input type="radio" name="command-color-choice" value="mint" checked /><span data-swatch="mint"
+                      >Мятный</span
+                    ></label
+                  >
+                  <label
+                    ><input type="radio" name="command-color-choice" value="violet" /><span data-swatch="violet"
+                      >Фиолетовый</span
+                    ></label
+                  >
+                  <label
+                    ><input type="radio" name="command-color-choice" value="orange" /><span data-swatch="orange"
+                      >Оранжевый</span
+                    ></label
+                  >
                   <div class="swatch-row" data-swatch-for="command-color"></div>
                 </fieldset>
-                <label class="field" style="margin-top:10px">Размер текста <output id="font-size-out">13px</output>
+                <label class="field" style="margin-top: 10px"
+                  >Размер текста <output id="font-size-out">13px</output>
                   <input id="font-size" type="range" min="10" max="18" value="13" />
                 </label>
                 <label class="field"><input id="hide-header" type="checkbox" /> Скрыть заголовок и кнопки окна</label>
                 <p class="note">При скрытом заголовке кнопка ☰ остаётся для возврата в настройки.</p>
-                <button type="button" class="btn primary" id="save-appearance" style="width:100%">Сохранить</button>
+                <button type="button" class="btn primary" id="save-appearance" style="width: 100%">Сохранить</button>
                 <p id="appearance-error" role="status"></p>
               </div>
             </div>

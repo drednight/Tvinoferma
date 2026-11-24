@@ -466,9 +466,7 @@ export function openMarathonWizard(opts = {}) {
   /** Результаты поиска: найденные новости с кнопкой «Выбрать». Выбранные новости из списка скрыты. */
   function newsSearchHtml(sr) {
     if (!sr.task && !sr.items && !sr.error) return '';
-    const found = sr.items
-      ? filterNews(sr.items, { all: sr.all }).filter(x => !sr.chosen?.has(x.url))
-      : [];
+    const found = sr.items ? filterNews(sr.items, { all: sr.all }).filter(x => !sr.chosen?.has(x.url)) : [];
     return `
       <div class="tf-news-search">
         ${sr.task && sr.loading ? taskCardHtml(sr.task) : ''}

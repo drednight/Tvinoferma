@@ -1665,9 +1665,7 @@ export async function initGameMacros() {
         await broadcast();
         return;
       }
-      const character = row.charId
-        ? state.characters.find(c => String(c.id) === String(row.charId))
-        : null;
+      const character = row.charId ? state.characters.find(c => String(c.id) === String(row.charId)) : null;
       const title = windowTitle(character || { nick: row.nick, class: row.cls });
       const result = await applyWindowStyle({ pid, title, class: row.cls || null });
       overlayWindowNotice = applyStyleText(result) || `Окно ${row.nick || pid} переподключено.`;

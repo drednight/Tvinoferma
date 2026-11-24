@@ -333,7 +333,9 @@ async function init() {
     document.body.classList.toggle('header-hidden', a.hideHeader);
     const menuHeaderToggleLabel = document.getElementById('menu-header-toggle-label');
     if (menuHeaderToggleLabel)
-      menuHeaderToggleLabel.textContent = a.hideHeader ? 'Показать заголовок и кнопки окна' : 'Скрыть заголовок и кнопки окна';
+      menuHeaderToggleLabel.textContent = a.hideHeader
+        ? 'Показать заголовок и кнопки окна'
+        : 'Скрыть заголовок и кнопки окна';
     const menuHeaderToggleBtn = document.getElementById('menu-header-toggle');
     if (menuHeaderToggleBtn) menuHeaderToggleBtn.setAttribute('aria-pressed', String(a.hideHeader));
     if (document.getElementById('appearance-screen').hidden) {
@@ -341,7 +343,8 @@ async function init() {
         'text-color': a.textColor,
         'key-color': a.keyColor,
         'command-color': a.commandColor
-      })) setColor(id, value);
+      }))
+        setColor(id, value);
       document.getElementById('font-size').value = String(a.fontSize);
       document.getElementById('hide-header').checked = a.hideHeader;
     }
@@ -466,16 +469,33 @@ async function init() {
     });
     closeMenu();
   };
-  document.querySelectorAll('[data-view]').forEach(button => (button.onclick = () => {
-    if (button.dataset.view === '__fold') { void foldClick(); return; }
-    showView(button.dataset.view);
-  }));
+  document.querySelectorAll('[data-view]').forEach(
+    button =>
+      (button.onclick = () => {
+        if (button.dataset.view === '__fold') {
+          void foldClick();
+          return;
+        }
+        showView(button.dataset.view);
+      })
+  );
 
   // Палитра цветов: пары основных пресетов + выбор произвольного цвета свайдами.
   const COLOR_PALETTE = [
-    '#ff6b6b', '#ffb46b', '#f5cc76', '#7de4b4', '#83e8f5', '#b7c2ff',
-    '#c4a5ff', '#ffb3d9', '#d4ee85', '#eef1ff', '#cbd5e1', '#ffffff',
-    '#1a2233', '#000000'
+    '#ff6b6b',
+    '#ffb46b',
+    '#f5cc76',
+    '#7de4b4',
+    '#83e8f5',
+    '#b7c2ff',
+    '#c4a5ff',
+    '#ffb3d9',
+    '#d4ee85',
+    '#eef1ff',
+    '#cbd5e1',
+    '#ffffff',
+    '#1a2233',
+    '#000000'
   ];
   const colorPresets = {
     'text-color': TEXT_PRESETS,
@@ -551,7 +571,10 @@ async function init() {
   const closeButton = document.getElementById('party-close-all');
   const closeDropdown = document.getElementById('close-dropdown');
   const closeWindows = mode => {
-    if (mode === 'all') { void partyRequest('party-close-all'); return; }
+    if (mode === 'all') {
+      void partyRequest('party-close-all');
+      return;
+    }
     const closeTargets = [
       ...document.querySelectorAll(
         mode === 'selected' ? '[data-close-window]:checked' : '[data-close-window]:not(:disabled)'
@@ -593,7 +616,10 @@ async function init() {
   };
   if (menuBtn) menuBtn.onclick = toggleMenu;
   const floatingPanelToggle = document.getElementById('floating-panel-toggle');
-  if (floatingPanelToggle) floatingPanelToggle.onclick = () => { menu.hidden = false; };
+  if (floatingPanelToggle)
+    floatingPanelToggle.onclick = () => {
+      menu.hidden = false;
+    };
   document.addEventListener('click', event => {
     if (menu.hidden) return;
     const target = event.target;
@@ -606,12 +632,13 @@ async function init() {
 
   // Кнопка в хедере: скрыть/показать заголовок и кнопки окна (сразу, с синхронной чекбоксом).
   const headerToggle = document.getElementById('header-toggle');
-  if (headerToggle) headerToggle.onclick = () => {
-    const on = !document.body.classList.contains('header-hidden');
-    document.body.classList.toggle('header-hidden', on);
-    if (hideHeader) hideHeader.checked = on;
-    syncMenuHeaderToggle();
-  };
+  if (headerToggle)
+    headerToggle.onclick = () => {
+      const on = !document.body.classList.contains('header-hidden');
+      document.body.classList.toggle('header-hidden', on);
+      if (hideHeader) hideHeader.checked = on;
+      syncMenuHeaderToggle();
+    };
 
   // Кнопка в раскрывающемся меню: показать заголовок и кнопки окна, когда они скрыты
   // (меню открывается плавающей кнопкой ☰, поэтому нужен способ вернуть хедер).
@@ -623,12 +650,13 @@ async function init() {
     const label = document.getElementById('menu-header-toggle-label');
     if (label) label.textContent = hidden ? 'Показать заголовок и кнопки окна' : 'Скрыть заголовок и кнопки окна';
   };
-  if (menuHeaderToggle) menuHeaderToggle.onclick = () => {
-    const on = !document.body.classList.contains('header-hidden');
-    document.body.classList.toggle('header-hidden', on);
-    if (hideHeader) hideHeader.checked = on;
-    syncMenuHeaderToggle();
-  };
+  if (menuHeaderToggle)
+    menuHeaderToggle.onclick = () => {
+      const on = !document.body.classList.contains('header-hidden');
+      document.body.classList.toggle('header-hidden', on);
+      if (hideHeader) hideHeader.checked = on;
+      syncMenuHeaderToggle();
+    };
   syncMenuHeaderToggle();
 
   const themeGrid = document.getElementById('theme-grid');

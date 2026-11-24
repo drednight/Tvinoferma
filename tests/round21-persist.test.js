@@ -35,7 +35,14 @@ describe('real persist path with pendingPollVotes', () => {
         events: [],
         parties: [],
         selfNick: '',
-        polls: [{ id: '901', title: [{ text: 'Q' }], type: 'multiple', options: [{ id: '501', text: [{ text: 'A' }], selected: false }] }],
+        polls: [
+          {
+            id: '901',
+            title: [{ text: 'Q' }],
+            type: 'multiple',
+            options: [{ id: '501', text: [{ text: 'A' }], selected: false }]
+          }
+        ],
         syncedAt: 1
       });
     } catch (e) {
