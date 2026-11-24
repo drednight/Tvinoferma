@@ -1,3 +1,4 @@
 #!/bin/sh
 # Git calls this before creating a commit; failures block the commit.
+node scripts/check-text-files.mjs --staged
 node scripts/format-staged.mjs

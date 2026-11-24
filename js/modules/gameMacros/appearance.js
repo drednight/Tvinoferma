@@ -17,7 +17,10 @@ export function normalizeAppearance(value = {}) {
   value = value && typeof value === 'object' ? value : {};
   return {
     textColor: isHexColor(value.textColor) || Object.hasOwn(TEXT_PRESETS, value.textColor) ? value.textColor : 'light',
-    commandColor: isHexColor(value.commandColor) || Object.hasOwn(COMMAND_PRESETS, value.commandColor) ? value.commandColor : 'mint',
+    commandColor:
+      isHexColor(value.commandColor) || Object.hasOwn(COMMAND_PRESETS, value.commandColor)
+        ? value.commandColor
+        : 'mint',
     keyColor: isHexColor(value.keyColor) || Object.hasOwn(KEY_PRESETS, value.keyColor) ? value.keyColor : 'gold',
     fontSize: Math.max(10, Math.min(24, Math.round(Number(value.fontSize) || 14))),
     hideHeader: value.hideHeader === true
