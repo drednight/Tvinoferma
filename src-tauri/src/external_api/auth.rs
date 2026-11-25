@@ -104,6 +104,11 @@ pub fn access_for(method: &str, path: &str) -> Result<Access, &'static str> {
         ("GET", ["health"])
         | ("GET", ["characters"])
         | ("GET", ["characters", _])
+        // Адресные данные персонажа: статы и проходки по отдельности.
+        | ("GET", ["characters", _, "stats"])
+        | ("GET", ["characters", _, "stats", _])
+        | ("GET", ["characters", _, "dungeon-passes"])
+        | ("GET", ["characters", _, "dungeon-passes", _])
         | ("GET", ["parties"])
         | ("GET", ["parties", _])
         | ("GET", ["marathons"])
@@ -116,6 +121,8 @@ pub fn access_for(method: &str, path: &str) -> Result<Access, &'static str> {
         | ("GET", ["export", _])
         | ("GET", ["audit"]) => Ok(Access::Read),
         ("PATCH", ["characters", _])
+        | ("PATCH", ["characters", _, "stats", _])
+        | ("PATCH", ["characters", _, "dungeon-passes", _])
         | ("POST", ["characters"])
         | ("POST", ["characters", "bulk-update"])
         | ("PATCH", ["dungeon-passes", _])
@@ -290,6 +297,36 @@ mod tests {
         assert_eq!(
             access_for("GET", "/api/v1/export/characters.csv"),
             Ok(Access::Read)
+        );
+        // Адресные данные: статы и проходки (в том числе по-русски в адресе).
+        assert_eq!(
+            access_for("GET", "/api/v1/characters/Mag_1/stats"),
+            Ok(Access::Read)
+        );
+        assert_eq!(
+            access_for("GET", "/api/v1/characters/Mag_1/stats/hp"),
+            Ok(Access::Read)
+        );
+        assert_eq!(
+            access_for("GET", "/api/v1/characters/Mag_1/dungeon-passes"),
+            Ok(Access::Read)
+        );
+        assert_eq!(
+            access_for("GET", "/api/v1/characters/Mag_1/dungeon-passes/weapon"),
+            Ok(Access::Read)
+        );
+        assert_eq!(
+            access_for("PATCH", "/api/v1/characters/Mag_1/stats/hp"),
+            Ok(Access::Modify)
+        );
+        assert_eq!(
+            access_for("PATCH", "/api/v1/characters/Mag_1/dungeon-passes/relic"),
+            Ok(Access::Modify)
+        );
+        // Четыре сегмента — предел: глубже путь не существует.
+        assert_eq!(
+            access_for("GET", "/api/v1/characters/Mag_1/stats/hp/extra"),
+            Err("not_found")
         );
         // Изменение данных — право «Изменение статов и проходок».
         assert_eq!(access_for("POST", "/api/v1/characters"), Ok(Access::Modify));

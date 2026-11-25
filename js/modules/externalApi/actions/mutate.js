@@ -623,3 +623,153 @@ export async function adjustMarathonCell(state, id, body, deps) {
     changed: cell.adjust !== before
   };
 }
+
+/* ------------------------------------------------------------------ */
+/*  Адресная запись: один стат или одна проходка в адресе              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `PATCH /characters/{id}/stats/{stat}` — одно значение стата.
+ *
+ * Тело:
+ * - `{ "value": 150 }` — явное значение, удобно для скриптов;
+ * - `{ "mode": "inc", "by": 5 }` (или `dec`) — прибавка/вычитание, удобно для
+ *   «+1 к опыту пати» и подобного. `by` по умолчанию 1.
+ *
+ * `mode: "set"` — то же, что отсутствие `mode`. Неизвестный стат — `422`.
+ */
+export async function patchCharacterStat(state, id, stat, body, deps) {
+  if (!isPlainObject(body)) throw new ApiError(422, 'invalid_value', 'Тело запроса должно быть объектом');
+  const allowed = new Set(['value', 'mode', 'by']);
+  for (const key of Object.keys(body)) {
+    if (!allowed.has(key)) throw new ApiError(422, 'invalid_value', `Неизвестное поле «${key}»`);
+  }
+  assertWritable(deps.assertStateWriteAvailable);
+  const character = findCharacter(state, id);
+  if (!character) throw new ApiError(404, 'no_such_character', 'Персонаж не найден');
+  const key = String(stat || '').trim();
+  if (!STAT_KEYS.has(key)) {
+    throw new ApiError(
+      422,
+      'invalid_value',
+      `Неизвестный стат «${key}»: помогите списком из GET /characters/${id}/stats`
+    );
+  }
+  const mode = String(body.mode || 'set')
+    .trim()
+    .toLowerCase();
+  if (!['set', 'inc', 'dec'].includes(mode)) {
+    throw new ApiError(422, 'invalid_value', 'mode: set, inc или dec');
+  }
+  let value;
+  if (mode === 'set') {
+    if (body.value === undefined) throw new ApiError(422, 'invalid_value', 'Для mode=set нужен value');
+    // Тот же диапазон, что у массового изменения: 0…1 000 000 000.
+    value = checkNumber(body.value, { where: 'value' });
+    if (body.by !== undefined) throw new ApiError(422, 'invalid_value', 'by используется только с mode=inc/dec');
+  } else {
+    if (body.value !== undefined)
+      throw new ApiError(422, 'invalid_value', 'При mode=inc/dec указывайте by, а не value');
+    const by = body.by === undefined ? 1 : checkNumber(body.by, { where: 'by' });
+    const before = Number(character.stats?.[key]) || 0;
+    value = mode === 'inc' ? before + by : before - by;
+    if (value < 0) throw new ApiError(422, 'invalid_value', 'Стат не может стать отрицательным');
+    if (value > MAX_STAT_VALUE) throw new ApiError(422, 'invalid_value', `Стат больше ${MAX_STAT_VALUE}`);
+  }
+  if (!character.stats || typeof character.stats !== 'object') character.stats = { ...DEFAULT_STATS };
+  if (!character.statsHistory) character.statsHistory = [];
+  const before = Number(character.stats[key]) || 0;
+  if (before === value) {
+    return { id: character.id, nick: character.nick, stat: key, value, before, changed: false };
+  }
+  const at = (deps.now || (() => new Date().toISOString()))();
+  // Снимок «было»: rememberStatsBefore сравнивает переданные значения с текущими
+  // и пишет их только если они разные. Значит вызывать его нужно ДО записи —
+  // иначе сравнение увидит «было = стало» и снимка не будет.
+  const previous = { ...character.stats };
+  character.stats[key] = value;
+  rememberStatsBefore(character, previous, at);
+  character.updatedAt = at;
+  await persistOrThrow(deps);
+  deps.renderCharacters?.();
+  return { id: character.id, nick: character.nick, stat: key, value, before, changed: true };
+}
+
+/**
+ * `PATCH /characters/{id}/dungeon-passes/{pass}` — одно число проходок.
+ *
+ * Тело — либо `{ "value": 5 }`, либо просто `5` (голое число): так короче
+ * в PowerShell и curl, где JSON-обёртка только мешает:
+ * `curl -X PATCH .../dungeon-passes/оружие -d 5`.
+ *
+ * Имя проходки принимается по-русски и по-английски: `weapon`/`оружие`,
+ * `armor`/`доспех`, `relic`/`реликвия`. Отрицательное значение — `422`.
+ */
+export async function patchCharacterPass(state, id, pass, body, deps) {
+  const key = passKeyOf(pass);
+  if (!key) {
+    throw new ApiError(
+      422,
+      'invalid_value',
+      `Неизвестная проходка «${pass}»: weapon/оружие, armor/доспех, relic/реликвия`
+    );
+  }
+  // Голое число — законное тело: `-d 5` в curl не даёт JSON-объекта.
+  const raw = body;
+  if (!isPlainObject(raw) && typeof raw !== 'number') {
+    throw new ApiError(422, 'invalid_value', 'Тело: {"value": число} или просто число');
+  }
+  let value;
+  if (typeof raw === 'number') {
+    value = checkNumber(raw, { integer: true, where: 'value' });
+  } else {
+    for (const key of Object.keys(raw)) {
+      if (key !== 'value') throw new ApiError(422, 'invalid_value', `Неизвестное поле «${key}»`);
+    }
+    if (raw.value === undefined) throw new ApiError(422, 'invalid_value', 'Нужен value');
+    value = checkNumber(raw.value, { integer: true, where: 'value' });
+  }
+  assertWritable(deps.assertStateWriteAvailable);
+  const character = findCharacter(state, id);
+  if (!character) throw new ApiError(404, 'no_such_character', 'Персонаж не найден');
+  if (!character.dungeonPasses || typeof character.dungeonPasses !== 'object') {
+    character.dungeonPasses = { weapon: 0, armor: 0, relic: 0 };
+  }
+  const before = Number(character.dungeonPasses[key]) || 0;
+  if (before === value) {
+    return { id: character.id, nick: character.nick, pass: key, value, before, changed: false };
+  }
+  character.dungeonPasses[key] = value;
+  const at = (deps.now || (() => new Date().toISOString()))();
+  character.updatedAt = at;
+  await persistOrThrow(deps);
+  deps.renderCharacters?.();
+  const passes = character.dungeonPasses;
+  return {
+    id: character.id,
+    nick: character.nick,
+    pass: key,
+    value,
+    before,
+    changed: true,
+    dungeonPasses: { ...passes },
+    total: PASS_KEYS.reduce((sum, name) => sum + (Number(passes[name]) || 0), 0)
+  };
+}
+
+/** Имена проходок: по-русски и по-английски → ключ состояния. */
+function passKeyOf(name) {
+  const text = String(name || '')
+    .trim()
+    .toLowerCase();
+  const map = {
+    weapon: 'weapon',
+    оружие: 'weapon',
+    armor: 'armor',
+    armour: 'armor',
+    доспех: 'armor',
+    relic: 'relic',
+    реликвия: 'relic'
+  };
+  return map[text] || null;
+}

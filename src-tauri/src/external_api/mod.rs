@@ -51,6 +51,8 @@ const EVENT_NAME: &str = "external-api-request";
 const PAGE_HTML: &str = include_str!("web/index.html");
 const PAGE_CSS: &str = include_str!("web/app.css");
 const PAGE_JS: &str = include_str!("web/app.js");
+/// Справочник методов для страницы (данные, без логики — см. web/docs.js).
+const PAGE_DOCS_JS: &str = include_str!("web/docs.js");
 const CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'";
 
 /// Ответ из JS на запрос из реестра.
@@ -690,6 +692,14 @@ fn handle(app: &AppHandle, context: &ServeContext, request: http::Request) -> Re
                     200,
                     "text/javascript; charset=utf-8",
                     PAGE_JS,
+                    &ledger,
+                );
+            }
+            "/docs.js" => {
+                return Response::static_file(
+                    200,
+                    "text/javascript; charset=utf-8",
+                    PAGE_DOCS_JS,
                     &ledger,
                 );
             }

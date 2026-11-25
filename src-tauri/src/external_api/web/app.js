@@ -38,6 +38,38 @@
   let token = '';
   let recipe = 'curl';
   let latest = { characters: [], parties: [], windows: [] };
+  let activeTab = 'panel';
+  const docs = window.TF_API_DOCS || { groups: [], fieldLists: { stats: [], passes: [] } };
+
+  /** Подставить пример запроса в тестовую строку. */
+  function useExample(path, method, bodyText) {
+    $('#play-method').value = method || 'GET';
+    $('#play-path').value = path || '/api/v1/health';
+    $('#play-body').value = bodyText || '';
+    showTab('playground');
+    $('#play-path').focus();
+    setChip('play-code', 'код: —', null);
+    $('#play-out').textContent = 'Нажмите «Отправить», чтобы выполнить запрос.';
+  }
+
+  /** Имя персонажа для примеров: первый из загруженных или «Mag_1». */
+  function sampleCharId() {
+    const first = latest.characters[0];
+    return (first && first.id) || 'Mag_1';
+  }
+
+  const PLAY_PRESETS = () => [
+    ['Карточка персонажа', 'GET', `/api/v1/characters/${sampleCharId()}`, ''],
+    ['Только HP', 'GET', `/api/v1/characters/${sampleCharId()}/stats/hp`, ''],
+    ['Все проходки', 'GET', `/api/v1/characters/${sampleCharId()}/dungeon-passes`, ''],
+    ['Оружие: сколько', 'GET', `/api/v1/characters/${sampleCharId()}/dungeon-passes/weapon`, ''],
+    ['Проходки +5', 'PATCH', `/api/v1/characters/${sampleCharId()}/dungeon-passes/weapon`, '5'],
+    ['HP +1', 'PATCH', `/api/v1/characters/${sampleCharId()}/stats/hp`, '{"mode":"inc","by":1}'],
+    ['Список марафонов', 'GET', '/api/v1/marathons', ''],
+    ['Окна игры', 'GET', '/api/v1/windows', ''],
+    ['Выгрузка CSV', 'GET', '/api/v1/export/characters.csv', ''],
+    ['Журнал вызовов', 'GET', '/api/v1/audit', '']
+  ];
 
   const escapeHtml = value =>
     String(value ?? '').replace(
@@ -289,12 +321,260 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
     if (result.ok) renderAudit(result.body && result.body.audit);
   }
 
+  /* ------------------------------------------------------------------ */
+  /*  Вкладки страницы                                                  */
+  /* ------------------------------------------------------------------ */
+
+  function showTab(name) {
+    activeTab = name;
+    for (const panel of document.querySelectorAll('[data-panel]')) {
+      panel.hidden = panel.dataset.panel !== name;
+    }
+    for (const tab of document.querySelectorAll('[data-tab]')) {
+      const on = tab.dataset.tab === name;
+      tab.classList.toggle('is-on', on);
+      if (on) tab.setAttribute('aria-current', 'page');
+      else tab.removeAttribute('aria-current');
+    }
+    if (name === 'docs') renderDocs();
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Тестовый запрос                                                   */
+  /* ------------------------------------------------------------------ */
+
+  function renderPresets() {
+    const box = $('#play-presets');
+    box.innerHTML = PLAY_PRESETS()
+      .map(
+        ([title, method, path, body], index) =>
+          `<button type="button" class="xapi-preset" data-preset="${index}" title="${escapeHtml(method)} ${escapeHtml(path)}">${escapeHtml(title)}</button>`
+      )
+      .join('');
+    for (const button of box.querySelectorAll('[data-preset]')) {
+      button.addEventListener('click', () => {
+        const [, method, path, body] = PLAY_PRESETS()[Number(button.dataset.preset)] || [];
+        if (path) useExample(path, method, body);
+      });
+    }
+  }
+
+  /** Разбор тела: пусто → undefined, число → число, остальное → JSON. */
+  function parsePlayBody(text) {
+    const trimmed = String(text || '').trim();
+    if (!trimmed) return undefined;
+    if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
+    try {
+      return JSON.parse(trimmed);
+    } catch (error) {
+      throw new Error(`Тело — не JSON: ${error.message}`);
+    }
+  }
+
+  async function sendPlay() {
+    const method = ($('#play-method').value || 'GET').toUpperCase();
+    const path = ($('#play-path').value || '').trim();
+    if (!path.startsWith('/')) {
+      $('#play-status').textContent = 'Путь начинается с «/»: например /api/v1/health.';
+      $('#play-path').focus();
+      return;
+    }
+    let body;
+    try {
+      body = parsePlayBody($('#play-body').value);
+    } catch (error) {
+      $('#play-status').textContent = error.message;
+      return;
+    }
+    const button = $('#play-send');
+    button.disabled = true;
+    button.textContent = 'Отправляю…';
+    const startedAt = performance.now();
+    try {
+      const headers = { Accept: 'application/json' };
+      if (token) headers.Authorization = `Bearer ${token}`;
+      if (body !== undefined) headers['Content-Type'] = 'application/json';
+      const response = await fetch(path, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body)
+      });
+      const ms = Math.round(performance.now() - startedAt);
+      const text = await response.text();
+      const type = response.headers.get('Content-Type') || '—';
+      // Выгрузка: показываем начало файла и имя из Content-Disposition.
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const size = new Blob([text]).size;
+      setChip('play-code', `код: ${response.status}`, response.ok ? 'ok' : 'bad');
+      setChip('play-time', `время: ${formatMs(ms)}`, null);
+      setChip('play-type', `тип: ${type.split(';')[0]}`, null);
+      setChip('play-size', `размер: ${size < 1024 ? `${size} Б` : `${(size / 1024).toFixed(1)} КБ`}`, null);
+      if (disposition) {
+        $('#play-status').textContent = `Файл: ${disposition.replace(/^attachment;\s*filename="?/, '').replace(/"$/, '')} — показаны первые 2000 символов.`;
+        $('#play-out').textContent = text.slice(0, 2000) + (text.length > 2000 ? '\n… (файл длиннее)' : '');
+      } else {
+        $('#play-status').textContent = '';
+        try {
+          $('#play-out').textContent = JSON.stringify(JSON.parse(text), null, 2);
+        } catch {
+          $('#play-out').textContent = text || '(пустой ответ)';
+        }
+      }
+    } catch (error) {
+      setChip('play-code', 'код: —', 'bad');
+      $('#play-status').textContent = `Запрос не ушёл: ${error && error.message ? error.message : error}`;
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Отправить';
+    }
+  }
+
+  /** Тот же запрос, но текстом для терминала. */
+  async function copyAsCurl() {
+    const method = ($('#play-method').value || 'GET').toUpperCase();
+    const path = ($('#play-path').value || '').trim() || '/api/v1/health';
+    const bodyText = ($('#play-body').value || '').trim();
+    const lines = [`curl -s -X ${method} \\`, `  -H "Authorization: Bearer ${token || '<токен>'}" \\`];
+    if (bodyText) lines.push('  -H "Content-Type: application/json" \\', `  -d '${bodyText.replace(/'/g, `'\\''`)}' \\`);
+    lines.push(`  ${location.origin}${path}`);
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'));
+      $('#play-status').textContent = 'Команда curl скопирована в буфер обмена.';
+    } catch {
+      $('#play-out').textContent = lines.join('\n');
+      $('#play-status').textContent = 'Буфер недоступен: команда показана в поле ответа.';
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Справочник                                                        */
+  /* ------------------------------------------------------------------ */
+
+  function docsMethodId(group, method) {
+    return `m-${group.id}-${method.id}`;
+  }
+
+  /**
+   * Путь с подставленными значениями для «Попробовать»: `{id}` — первый
+   * персонаж, пати или марафон в зависимости от маршрута, `{stat}` — hp,
+   * `{pass}` — weapon, `{jobId}` — job_1, `{набор}.{csv|json}` — characters.csv.
+   */
+  function fillExamplePath(path) {
+    let out = String(path);
+    if (out.includes('/parties/')) out = out.replace('{id}', (latest.parties[0] && latest.parties[0].id) || 'p-osnova');
+    else if (out.includes('/marathons/')) out = out.replace('{id}', 'm1');
+    else out = out.replace('{id}', sampleCharId());
+    return out
+      .replace('{stat}', 'hp')
+      .replace('{pass}', 'weapon')
+      .replace('{jobId}', 'job_1')
+      .replace('{набор}.{csv|json}', 'characters.csv');
+  }
+
+  function methodHtml(group, method) {
+    const id = docsMethodId(group, method);
+    const badge = method.method === '—' ? 'правило' : method.method;
+    const params = (method.params || []).length
+      ? `<div class="xapi-table-wrap"><table class="xapi-table"><thead><tr><th scope="col">Имя</th><th scope="col">Где</th><th scope="col">Тип</th><th scope="col">Описание</th></tr></thead><tbody>${method.params
+          .map(
+            ([name, where, type, text]) =>
+              `<tr><td><code>${escapeHtml(name)}</code></td><td>${escapeHtml(where)}</td><td>${escapeHtml(type)}</td><td>${escapeHtml(text)}</td></tr>`
+          )
+          .join('')}</tbody></table></div>`
+      : '<p class="xapi-note">Параметров нет.</p>';
+    const canTry = method.method !== '—' && !String(method.path).startsWith('http');
+    const examplePath = canTry ? fillExamplePath(method.path) : method.path;
+    const bodyText = method.exampleBody ? JSON.stringify(method.exampleBody) : '';
+    const tryButton = canTry
+      ? `<button type="button" class="btn secondary small" data-try="${escapeHtml(examplePath)}" data-try-method="${escapeHtml(method.method)}" data-try-body="${escapeHtml(bodyText)}">Попробовать в тестовой строке</button>`
+      : '';
+    return `<article class="xapi-doc" id="${escapeHtml(id)}" data-doc>
+      <div class="xapi-doc-head">
+        <span class="xapi-doc-method is-${String(method.method).toLowerCase()}">${escapeHtml(badge)}</span>
+        <code class="xapi-doc-path">${escapeHtml(method.path)}</code>
+        <span class="xapi-chip">право: ${escapeHtml(method.scope)}</span>
+      </div>
+      <h4>${escapeHtml(method.summary)}</h4>
+      <p class="xapi-note">${escapeHtml(method.description)}</p>
+      <div class="xapi-doc-body">
+        <h5>Параметры</h5>
+        ${params}
+        <h5>Ответ</h5>
+        <p class="xapi-note">${escapeHtml(method.response)}</p>
+        <h5>Пример</h5>
+        <pre class="xapi-code xapi-code-sm">${escapeHtml(
+          `${method.method === '—' ? '' : `${method.method} `}${method.path}${bodyText ? `\n${bodyText}` : ''}`
+        )}</pre>
+        ${tryButton}
+      </div>
+    </article>`;
+  }
+
+  function renderDocs() {
+    const body = $('#docs-body');
+    if (!docs.groups.length) {
+      body.innerHTML = '<p class="xapi-note">Справочник не загрузился: файл docs.js не подключён.</p>';
+      return;
+    }
+    const onlyOnce = body.dataset.rendered === '1';
+    if (!onlyOnce) {
+      $('#docs-toc').innerHTML = docs.groups
+        .map(
+          group =>
+            `<a class="xapi-toc-link" href="#g-${escapeHtml(group.id)}">${escapeHtml(group.title)} <span class="xapi-toc-count">${group.methods.length}</span></a>`
+        )
+        .join('');
+      body.innerHTML = docs.groups
+        .map(
+          group => `<section class="xapi-doc-group" id="g-${escapeHtml(group.id)}" data-doc-group>
+        <h3>${escapeHtml(group.title)}</h3>
+        <p class="xapi-note">${escapeHtml(group.summary)}</p>
+        ${group.methods.map(method => methodHtml(group, method)).join('')}
+      </section>`
+        )
+        .join('');
+      body.dataset.rendered = '1';
+      for (const button of body.querySelectorAll('[data-try]'))
+        button.addEventListener('click', () =>
+          useExample(`/api/v1${button.dataset.try}`, button.dataset.tryMethod, button.dataset.tryBody)
+        );
+      // Оглавление — настоящие ссылки: работают и без JS-переходов.
+      for (const link of document.querySelectorAll('.xapi-toc-link'))
+        link.addEventListener('click', event => {
+          event.preventDefault();
+          const target = document.querySelector(link.getAttribute('href'));
+          if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    }
+    filterDocs();
+  }
+
+  /** Поиск: скрывает группы и методы, где нет совпадения. */
+  function filterDocs() {
+    const input = $('#docs-filter');
+    const query = (input ? input.value : '').trim().toLowerCase();
+    let shown = 0;
+    for (const group of document.querySelectorAll('[data-doc-group]')) {
+      let any = false;
+      for (const doc of group.querySelectorAll('[data-doc]')) {
+        const hit = !query || doc.textContent.toLowerCase().includes(query);
+        doc.hidden = !hit;
+        if (hit) any = true;
+      }
+      group.hidden = !any;
+      if (any) shown += 1;
+    }
+    if (query && shown === 0 && input) input.setAttribute('data-empty', '1');
+    else if (input) input.removeAttribute('data-empty');
+  }
+
   async function loadAll() {
     const health = await api('/api/v1/health');
     if (!health.ok) {
       setChip('server', `сервер: ${health.status === 401 ? 'токен не принят' : 'недоступен'}`, 'bad');
       $('#connect-note').textContent = `${errorText(health)}. Проверьте токен в настройках приложения.`;
-      $('#panel').hidden = true;
+      // Справочник не зависит от токена: его можно читать и без подключения.
+      if (activeTab === 'panel') showTab('docs');
       return false;
     }
     const info = health.body || {};
@@ -383,6 +663,25 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
   }
 
   function bind() {
+    for (const tab of document.querySelectorAll('[data-tab]'))
+      tab.addEventListener('click', () => showTab(tab.dataset.tab || 'panel'));
+    $('#play-send').addEventListener('click', sendPlay);
+    $('#play-clear').addEventListener('click', () => {
+      $('#play-method').value = 'GET';
+      $('#play-path').value = '';
+      $('#play-body').value = '';
+      $('#play-out').textContent = 'Здесь появится ответ сервера.';
+      $('#play-status').textContent = '';
+      setChip('play-code', 'код: —', null);
+      setChip('play-time', 'время: —', null);
+      setChip('play-type', 'тип: —', null);
+      setChip('play-size', 'размер: —', null);
+    });
+    $('#play-copy').addEventListener('click', copyAsCurl);
+    $('#play-path').addEventListener('keydown', event => {
+      if (event.key === 'Enter') sendPlay();
+    });
+    $('#docs-filter').addEventListener('input', filterDocs);
     $('#connect').addEventListener('click', connect);
     $('#forget').addEventListener('click', forget);
     $('#reload').addEventListener('click', reload);
@@ -408,6 +707,8 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
 
   fillBase();
   bind();
+  renderPresets();
+  showTab('panel');
   const saved = sessionStorage.getItem(storageKey);
   if (saved) {
     tokenInput.value = saved;
