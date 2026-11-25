@@ -781,18 +781,14 @@ impl HybridState {
                     self.global_keys.insert(key.vk, key);
                 }
                 hybrid_post(hwnd, key, false, repeat)?;
-                self.clients
-                    .get_mut(&hwnd)
-                    .ok_or(7)?
-                    .keys
-                    .insert(
-                        key.vk,
-                        HybridKey {
-                            key,
-                            deadline: Instant::now() + Duration::from_millis(HYBRID_HOLD_MS),
-                            released: false,
-                        },
-                    );
+                self.clients.get_mut(&hwnd).ok_or(7)?.keys.insert(
+                    key.vk,
+                    HybridKey {
+                        key,
+                        deadline: Instant::now() + Duration::from_millis(HYBRID_HOLD_MS),
+                        released: false,
+                    },
+                );
                 Ok(())
             }
         }
@@ -880,7 +876,11 @@ impl HybridState {
         Ok(())
     }
     unsafe fn release_global_if_idle(&mut self, vk: u32) -> Result<(), u8> {
-        if self.clients.values().any(|client| client.keys.contains_key(&vk)) {
+        if self
+            .clients
+            .values()
+            .any(|client| client.keys.contains_key(&vk))
+        {
             return Ok(());
         }
         let Some(key) = self.global_keys.remove(&vk) else {
@@ -922,7 +922,11 @@ impl HybridState {
         for hwnd in self.clients.keys().copied().collect::<Vec<_>>() {
             let (mut items, active, mode) = {
                 let client = self.clients.get_mut(&hwnd).expect("known client");
-                let items = client.keys.values().map(|item| item.key).collect::<Vec<_>>();
+                let items = client
+                    .keys
+                    .values()
+                    .map(|item| item.key)
+                    .collect::<Vec<_>>();
                 client.keys.clear();
                 let active = client.active;
                 client.active = false;
@@ -1176,7 +1180,10 @@ fn release(
     let mut failure = None;
     if method.cache_hybrid() {
         for (hwnd, keys) in held.drain() {
-            if !clients.iter().any(|client| client.hwnd == hwnd && verify(client)) {
+            if !clients
+                .iter()
+                .any(|client| client.hwnd == hwnd && verify(client))
+            {
                 continue;
             }
             let mut mouse_releases: Vec<Key> = keys
@@ -1198,13 +1205,17 @@ fn release(
         }
     } else {
         for (hwnd, keys) in held.drain() {
-            if clients.iter().any(|client| client.hwnd == hwnd && verify(client)) {
+            if clients
+                .iter()
+                .any(|client| client.hwnd == hwnd && verify(client))
+            {
                 let mut releases: Vec<_> = keys.into_values().collect();
                 // Release ordinary keys before their modifiers, including emergency cleanup.
                 releases.sort_by_key(|(key, _)| modifier_release_order(key.vk));
                 for (key, _) in releases {
                     let up = Key { up: true, ..key };
-                    if let Err(reason) = unsafe { post(hwnd, up, true, false, method, timeout_ms) } {
+                    if let Err(reason) = unsafe { post(hwnd, up, true, false, method, timeout_ms) }
+                    {
                         failed_input(control, up);
                         failure.get_or_insert(reason);
                     }
@@ -1406,7 +1417,10 @@ fn forward(
             }
             continue;
         }
-        if !clients.iter().any(|client| client.hwnd == key.source && verify(client)) {
+        if !clients
+            .iter()
+            .any(|client| client.hwnd == key.source && verify(client))
+        {
             halt(&control, 3);
             break;
         }
@@ -1415,7 +1429,10 @@ fn forward(
             global_mouse && global_mouse_input_allowed(key.source, mouse_source, *mouse)
         }) {
             if !key.up {
-                let point = windows::Win32::Foundation::POINT { x: mouse.x, y: mouse.y };
+                let point = windows::Win32::Foundation::POINT {
+                    x: mouse.x,
+                    y: mouse.y,
+                };
                 let ready = clients
                     .iter()
                     .filter(|client| client.hwnd != key.source)
@@ -1429,7 +1446,8 @@ fn forward(
                     break;
                 }
             }
-            if let Err(reason) = unsafe { global_mouse_event(&mut global_mouse_buttons, mouse, key.up) }
+            if let Err(reason) =
+                unsafe { global_mouse_event(&mut global_mouse_buttons, mouse, key.up) }
             {
                 failed_input(&control, key);
                 trace.record(key, 0);
@@ -1464,7 +1482,8 @@ fn forward(
                 halt(&control, 1);
                 break;
             }
-            if key.mouse.is_none() && !keyboard_recipient(keyboard_targets.as_deref(), client.hwnd) {
+            if key.mouse.is_none() && !keyboard_recipient(keyboard_targets.as_deref(), client.hwnd)
+            {
                 continue;
             }
             let keys = held.entry(client.hwnd).or_default();
