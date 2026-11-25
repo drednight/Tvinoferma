@@ -48,6 +48,8 @@
   const recipeCatalog = window.TF_API_RECIPES || [];
   const recipeGroupList = window.TF_API_RECIPE_GROUPS || [];
   const recipeSnippetBuilders = window.TF_API_RECIPE_SNIPPETS || {};
+  // Язык примера в рецептах: curl, Python или PowerShell — на всех сразу.
+  let recipeLanguage = 'curl';
   let activeAction = null;
 
   /** Подставить пример запроса в тестовую строку. */
@@ -669,7 +671,7 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
       : '';
     const response = typeof item.response === 'string' ? item.response : JSON.stringify(item.response, null, 2);
     const tryButton = `<button type="button" class="btn secondary small" data-recipe-try="${escapeHtml(item.path)}" data-recipe-method="${escapeHtml(item.method)}" data-recipe-body="${escapeHtml(recipeBody(item))}">Попробовать в тестовой строке</button>`;
-    return `<article class="xapi-doc" data-recipe>
+    return `<article class="xapi-doc" data-recipe data-recipe-id="${escapeHtml(item.id)}">
       <div class="xapi-doc-head">
         <span class="xapi-doc-method is-${escapeHtml(String(item.method).toLowerCase())}">${escapeHtml(item.method)}</span>
         <code class="xapi-doc-path">${escapeHtml(item.template || item.path)}</code>
@@ -679,7 +681,7 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
       <p class="xapi-note">${escapeHtml(item.scenario)}</p>
       <div class="xapi-doc-body">
         <h5>Запрос</h5>
-        <pre class="xapi-code xapi-code-sm">${escapeHtml(recipeSnippet(item, 'curl'))}</pre>
+        <pre class="xapi-code xapi-code-sm" data-recipe-snippet>${escapeHtml(recipeSnippet(item, recipeLanguage))}</pre>
         ${tryButton}
         <h5>Ответ</h5>
         <pre class="xapi-code xapi-code-sm">${escapeHtml(response)}</pre>
@@ -716,6 +718,24 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
       }
     }
     filterRecipes();
+  }
+
+  /**
+   * Смена языка примеров: подменяем только текст команд, карточки не перерисовываем.
+   */
+  function setRecipeLanguage(language) {
+    recipeLanguage = language;
+    for (const tab of document.querySelectorAll('[data-recipe-lang]')) {
+      const on = tab.dataset.recipeLang === language;
+      tab.classList.toggle('is-on', on);
+      tab.setAttribute('aria-selected', on ? 'true' : 'false');
+    }
+    for (const article of document.querySelectorAll('[data-recipe]')) {
+      const item = recipeCatalog.find(recipe => recipe.id === article.dataset.recipeId);
+      const pre = article.querySelector('[data-recipe-snippet]');
+      if (!item || !pre) continue;
+      pre.textContent = recipeSnippet(item, recipeLanguage);
+    }
   }
 
   /** Поиск: скрывает рецепты, где нет совпадения. */
@@ -1304,6 +1324,9 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
     $('#docs-filter').addEventListener('input', filterDocs);
     // Вкладка «Рецепты».
     $('#recipes-filter')?.addEventListener('input', filterRecipes);
+    for (const tab of document.querySelectorAll('[data-recipe-lang]')) {
+      tab.addEventListener('click', () => setRecipeLanguage(tab.dataset.recipeLang || 'curl'));
+    }
     // Вкладка «Действия».
     $('#overview-refresh')?.addEventListener('click', loadOverview);
     $('#actions-filter')?.addEventListener('input', renderActionsList);

@@ -193,4 +193,27 @@ describe('внешний API: вкладка «Рецепты» на стран�
     expect(visible.length).toBeGreaterThan(0);
     expect(visible.length).toBeLessThan(catalog.recipes.length);
   });
+
+  it('язык примера переключается: curl, Python и PowerShell', async () => {
+    document.documentElement.innerHTML = read('index.html')
+      .replace(/^[\s\S]*?<body>/, '<body>')
+      .replace(/<\/body>[\s\S]*$/, '</body>');
+    globalThis.fetch = async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json; charset=utf-8' },
+      text: async () => JSON.stringify({ ok: true })
+    });
+    for (const file of ['errors.js', 'docs.js', 'actions.js', 'recipes.js', 'app.js']) {
+      new Function(read(file))();
+    }
+    document.querySelector('[data-tab="recipes"]').click();
+    const body = document.getElementById('recipes-body');
+    const snippet = () => body.querySelector('[data-recipe-snippet]').textContent;
+    expect(snippet()).toContain('curl -s');
+    document.querySelector('[data-recipe-lang="python"]').click();
+    expect(snippet()).toContain('urllib.request');
+    document.querySelector('[data-recipe-lang="powershell"]').click();
+    expect(snippet()).toContain('Invoke-RestMethod');
+  });
 });
