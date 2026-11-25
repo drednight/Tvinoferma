@@ -575,9 +575,8 @@ export async function bindExternalApiBridge(options = {}) {
         requestId,
         status: answerResult.status,
         body: answerResult.body,
-        contentType: raw?.contentType ?? null,
-        rawBody: raw?.text ?? null,
-        disposition: raw?.disposition ?? null
+        // Tauri приводит `null` к отсутствию поля; Rust ждёт `Option<RawReplyInput>`.
+        raw: raw ? { contentType: raw.contentType, body: raw.text, disposition: raw.disposition ?? null } : null
       });
     } catch (error) {
       console.warn('[EXTERNAL API] Не удалось отправить ответ', error);

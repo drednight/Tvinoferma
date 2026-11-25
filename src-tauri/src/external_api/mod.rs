@@ -366,8 +366,21 @@ pub fn external_api_client_ready(state: State<'_, ExternalApiState>) -> Result<b
     }
 }
 
+/// Сырой ответ из JS: `{ contentType, body, disposition? }`. Отдельная команда
+/// не нужна — передаётся необязательным полем `raw` у обычного ответа.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RawReplyInput {
+    content_type: String,
+    body: String,
+    disposition: Option<String>,
+}
+
 /// Ответ JS на запрос из очереди. Чужое окно и неизвестный `requestId`
 /// игнорируются: запрос мог уже истечь по времени.
+///
+/// `raw` — для выгрузок (CSV): готовый текст и его `Content-Type`. Остальные
+/// ответы — JSON в `body`.
 #[tauri::command]
 pub fn external_api_reply(
     window: tauri::WebviewWindow,
@@ -375,17 +388,15 @@ pub fn external_api_reply(
     request_id: String,
     status: u16,
     body: Value,
-    content_type: Option<String>,
-    raw_body: Option<String>,
-    disposition: Option<String>,
+    raw: Option<RawReplyInput>,
 ) -> Result<(), String> {
     if window.label() != "main" {
         return Err("Ответ принимается только из главного окна".into());
     }
-    let raw = raw_body.map(|text| RawReply {
-        content_type: content_type.unwrap_or_else(|| "text/plain; charset=utf-8".to_string()),
-        body: text,
-        disposition,
+    let raw = raw.map(|input| RawReply {
+        content_type: input.content_type,
+        body: input.body,
+        disposition: input.disposition,
     });
     let sender = state
         .pending
