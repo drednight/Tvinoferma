@@ -48,18 +48,25 @@ export function relaunchElevated(minimized, deps = {}) {
  * Отдельно говорим, где её искать: при запуске от администратора записью Планировщика
  * («Диспетчер задач → Автозагрузка» показывает только записи реестра и папки «Автозагрузка»
  * и потому её не видит), иначе выглядит как «автозагрузка не работает».
+ *
+ * @param {{ taskName?: string }} [info] состояние автозапуска
+ * @param {{ alwaysAdmin?: boolean }} [options] `alwaysAdmin` — тестовая сборка: она всегда
+ *   работает от администратора, поэтому переключатель «от имени администратора» лишний.
  */
-export function autostartNote(info) {
+export function autostartNote(info, options = {}) {
   if (!info?.supported) return 'Автозапуск доступен только в Windows.';
+  const alwaysAdmin = !!options.alwaysAdmin;
+  const head = alwaysAdmin ? 'Тестовая сборка всегда работает от администратора. ' : '';
   const now = info.selfElevated ? 'Сейчас Твиноферма запущена от администратора. ' : '';
-  if (!info.enabled) return `${now}Выключен.`;
+  if (!info.enabled) return `${head}${now}Выключен.`;
   const how = info.minimized ? 'сразу в трей, без окна' : 'с окном';
   if (!info.current)
-    return `${now}Включён (${how}), но запись ведёт на другую копию: ${info.path}. Чтобы привязать к этой копии, выключите и включите снова.`;
+    return `${head}${now}Включён (${how}), но запись ведёт на другую копию: ${info.path}. Чтобы привязать к этой копии, выключите и включите снова.`;
+  const taskName = info.taskName || 'Tvinoferma autostart';
   const where = info.admin
-    ? 'Запись: Планировщик заданий → «Tvinoferma autostart» (Панель управления → Планировщик заданий). В «Диспетчере задач → Автозагрузка» её не видно — там только записи реестра и папка «Автозагрузка».'
+    ? `Запись: Планировщик заданий → «${taskName}» (Панель управления → Планировщик заданий). В «Диспетчере задач → Автозагрузка» её не видно — там только записи реестра и папки «Автозагрузка».`
     : 'Запись: «Диспетчер задач → Автозагрузка», имя — Tvinoferma.';
-  return `${now}Включён${info.admin ? ' от администратора' : ''}: при входе в Windows Твиноферма запустится ${how}. ${where}`;
+  return `${head}${now}Включён${info.admin ? ' от администратора' : ''}: при входе в Windows Твиноферма запустится ${how}. ${where}`;
 }
 
 /**
@@ -82,14 +89,21 @@ export async function bindAutostart(deps = {}) {
   const relaunch = document.getElementById('autostart-relaunch');
   if (!block || !on || !min || !adm) return;
   if (!deps.invoke && !window.__TAURI_INTERNALS__) return;
+  const invoke = deps.invoke || tauriInvoke;
+  // Тестовая сборка всегда работает от администратора: переключатель «от имени
+  // администратора» ей не нужен, а автозапуск идёт через Планировщик.
+  const rawProfile = deps.profile ?? (await invoke('app_build_profile').catch(() => 'stable'));
+  const alwaysAdmin =
+    typeof rawProfile === 'string' && (rawProfile === 'acceptance' || rawProfile === 'acceptance-shared');
 
   const show = info => {
     block.hidden = !info.supported;
     on.checked = info.enabled;
     min.checked = info.minimized;
-    adm.checked = info.admin;
+    adm.checked = info.admin || alwaysAdmin;
     min.disabled = adm.disabled = !info.enabled;
-    if (note) note.textContent = autostartNote(info);
+    if (alwaysAdmin) adm.disabled = true;
+    if (note) note.textContent = autostartNote(info, { alwaysAdmin });
     // Кнопка перезапуска нужна ровно тогда, когда прав нет, а пользователь их хочет.
     // Если уже администратор — вопрос снят, и лишний запрос UAC показывать незачем.
     if (relaunch) {

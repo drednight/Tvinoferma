@@ -177,6 +177,133 @@ fn wait_for_result(path: &std::path::Path) -> Result<HelperResult, String> {
 /// Код Windows, которым оболочка сообщает об отказе в запросе UAC.
 const EXIT_UAC_CANCELLED: u32 = 1223;
 
+/// Тестовая сборка: поднять права при старте.
+///
+/// Тестовая сборка всегда должна работать от администратора: иначе она не может
+/// ни подписать, ни закрыть окна игры, запущенные с правами администратора, и проверки
+/// приёмочной сборки ведутся вслепую. Права берутся один раз при запуске — Windows
+/// спросит разрешение, дальше копия работает с ними всегда.
+///
+/// Стабильная сборка ничего не меняет: функция сразу возвращает `None`.
+///
+/// Возвращает `Some(код)`, если текущий процесс должен завершиться: копия с правами уже
+/// запущена (`0`) или приложение уже работает (`0`). `None` — продолжаем как есть: прав
+/// нет и получить их не удалось.
+pub fn ensure_admin_start() -> Option<i32> {
+    if cfg!(feature = "acceptance") {
+        return start_as_admin();
+    }
+    None
+}
+
+/// Права администратора при старте тестовой сборки (вызывается только из неё).
+fn start_as_admin() -> Option<i32> {
+    if crate::launcher::self_elevated() {
+        // Мы и есть запущенный экземпляр: оставляем метку, чтобы следующий запуск
+        // увидел, что приложение уже работает, и не спрашивал права заново.
+        crate::instance::write_marker();
+        return None;
+    }
+    // Уже запущенный экземпляр этой же программы.
+    //
+    // Если он с правами администратора — второй запуск не нужен: сообщение от обычного
+    // процесса окно копии с правами всё равно не примет (Windows запрещает сообщения
+    // снизу вверх), так что вместо окна пользователь увидел бы только запрос UAC.
+    // Если прав нет — старый экземпляр закрываем: он держит «один экземпляр», и новая
+    // копия с правами молча ушла бы в него, оставив пользователя со старым окном в трее.
+    if let Some(marker) = crate::instance::read_marker() {
+        let same_program = marker.exe.eq_ignore_ascii_case(&current_exe_string());
+        if same_program && crate::launcher::process_running(marker.pid) {
+            // PID мог достаться постороннему процессу: сверяем путь, когда он доступен.
+            let path_matches = match crate::launcher::process_image_path(marker.pid) {
+                Some(path) => path.eq_ignore_ascii_case(&marker.exe),
+                // Путь не читается — процесс от администратора, это наш экземпляр.
+                None => true,
+            };
+            if path_matches {
+                if crate::launcher::process_elevated(marker.pid) != Some(false) {
+                    show_notice(
+                        "Тестовая сборка уже запущена от администратора.\n\
+                         Откройте окно через значок в трее — второй запуск ничего не изменит.",
+                        "Твиноферма — тестовая сборка",
+                    );
+                    return Some(0);
+                }
+                crate::launcher::terminate_process(marker.pid);
+                wait_until_gone(marker.pid);
+            }
+        }
+    }
+    let exe = current_exe_string();
+    if exe.is_empty() {
+        return None;
+    }
+    // Ключи текущего запуска сохраняем: новая копия должна вести себя так же
+    // (например, стартовать сразу в трей, если запустили с `--minimized`).
+    match crate::launcher::run_elevated_self_detached(&exe, &current_args()) {
+        Ok(()) => Some(0),
+        Err(code) => {
+            show_notice(
+                &format!(
+                    "Windows не дал тестовой сборке права администратора (код {code}).\n\
+                     Приложение запущено без них: окна игры, запущенные от администратора, \
+                     будут ему недоступны."
+                ),
+                "Твиноферма — тестовая сборка",
+            );
+            // Работаем без прав — метка всё равно нужна: следующий запуск должен увидеть,
+            // что приложение уже открыто, и не поднимать права повторно.
+            crate::instance::write_marker();
+            None
+        }
+    }
+}
+
+/// Путь к текущей программе (пустая строка — определить не удалось).
+fn current_exe_string() -> String {
+    std::env::current_exe()
+        .map(|p| p.display().to_string())
+        .unwrap_or_default()
+}
+
+/// Ключи текущего запуска: их получает копия с правами администратора.
+fn current_args() -> String {
+    std::env::args()
+        .skip(1)
+        .filter(|arg| arg != HELPER_FLAG)
+        .map(|arg| {
+            if arg.contains(' ') {
+                format!("\"{arg}\"")
+            } else {
+                arg
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Дождаться, пока процесс действительно исчез: «один экземпляр» держится мьютексом,
+/// и он освобождается только после выхода процесса.
+fn wait_until_gone(pid: u32) {
+    for _ in 0..40 {
+        if !crate::launcher::process_running(pid) {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
+/// Показать сообщение Windows: на старте окна приложения ещё нет, а сказать пользователю
+/// о неудаче надо обязательно.
+#[cfg(windows)]
+fn show_notice(text: &str, caption: &str) {
+    crate::launcher::show_message_box(text, caption);
+}
+
+/// Сообщение без Windows: показать нечем.
+#[cfg(not(windows))]
+fn show_notice(_text: &str, _caption: &str) {}
+
 /// Перезапуск самого приложения с правами администратора.
 ///
 /// Зачем это вообще, если всё остальное делает помощник: автозапуск от администратора
