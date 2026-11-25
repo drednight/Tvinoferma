@@ -19,6 +19,8 @@ import { launchContextForGroup, runPreflight } from '../../launcher/partyLaunch.
 export const JOB_TTL_MS = 30 * 60 * 1000;
 /** Сколько заданий храним, если их много: старые вытесняются. */
 const MAX_JOBS = 50;
+/** Сколько персонажей можно запустить одним заданием: как у массового изменения. */
+export const MAX_SELECTION = 100;
 
 /**
  * Реестр заданий. Живёт в памяти: перезапуск приложения и задания обрывает,
@@ -170,7 +172,7 @@ export function launchSummary(requested, results, pre, ms, ignoredIds = []) {
  * в итоге пересчитываются из `pre`, потому что `launchGroup` их просто не запускает.
  *
  * @param {JobRegistry} registry
- * @param {'character' | 'party'} kind
+ * @param {'character' | 'party' | 'selection'} kind
  * @param {any[]} characters кого запускаем (уже в нужном порядке)
  * @param {{
  *   launchGroup: (title: string, chars: any[], opts: any) => Promise<any>,
@@ -224,7 +226,11 @@ export function startJob(registry, kind, characters, deps) {
         return;
       }
       const results = await deps.launchGroup(
-        kind === 'party' ? 'Внешний API: запуск пати' : 'Внешний API: запуск персонажа',
+        kind === 'party'
+          ? 'Внешний API: запуск пати'
+          : kind === 'selection'
+            ? 'Внешний API: запуск выбранных'
+            : 'Внешний API: запуск персонажа',
         requested,
         {
           interactive: false,
@@ -347,6 +353,52 @@ export function launchPartyJob(state, body, deps = {}) {
     if (!selected.length) throw new ApiError(422, 'invalid_value', 'Ни один memberIds не входит в пати');
   }
   return startJob(jobs, 'party', selected, { launchGroup, preflight, ignoredIds });
+}
+
+/**
+ * `POST /launch/selection`: выбранные персонажи из разных пати в заданном порядке.
+ *
+ * Это главный сценарий твин-фермы: «запусти вот этих двенадцать» — без пати и
+ * без ручного клика. Порядок `characterIds` сохраняется: первый в списке
+ * запускается первым (игра часто важна для «главного» окна).
+ *
+ * Ограничения те же, что у остальных запусков: не больше 100 персонажей,
+ * одно внешнее задание одновременно, пропуски честно попадают в `skipped`.
+ *
+ * @param {any} state
+ * @param {any} body `{ characterIds: string[], gcId?: string }`
+ * @param {{ jobs?: any, preflight?: any, launchGroup?: any }} [deps]
+ */
+export function launchSelectionJob(state, body, deps = {}) {
+  const { jobs, preflight, launchGroup } = deps;
+  if (!body || typeof body !== 'object' || Array.isArray(body))
+    throw new ApiError(400, 'invalid_json', 'Тело запроса должно быть JSON-объектом');
+  const allowed = new Set(['characterIds', 'gcId']);
+  for (const key of Object.keys(body))
+    if (!allowed.has(key)) throw new ApiError(422, 'invalid_value', `Неизвестное поле «${key}»`);
+  if (!Array.isArray(body.characterIds) || !body.characterIds.length)
+    throw new ApiError(422, 'invalid_value', 'characterIds должен быть непустым массивом');
+  if (body.characterIds.length > MAX_SELECTION)
+    throw new ApiError(422, 'invalid_value', `За один раз можно запустить не больше ${MAX_SELECTION} персонажей`);
+  if (body.gcId !== undefined && typeof body.gcId !== 'string')
+    throw new ApiError(422, 'invalid_value', 'gcId должен быть строкой');
+  const ids = body.characterIds.map(id => String(id || '').trim());
+  if (ids.some(id => !id)) throw new ApiError(422, 'invalid_value', 'В characterIds есть пустая строка');
+  if (new Set(ids).size !== ids.length)
+    throw new ApiError(422, 'invalid_value', 'В characterIds есть повторяющиеся персонажи');
+
+  // Архивные персонажи не запускаются: их окна — это уже «после», а не игра.
+  const characters = Array.isArray(state?.characters) ? state.characters : [];
+  const byId = new Map(characters.map(char => [String(char.id), char]));
+  const chosen = [];
+  const unknown = [];
+  for (const id of ids) {
+    const character = byId.get(id);
+    if (character) chosen.push(character);
+    else unknown.push(id);
+  }
+  if (!chosen.length) throw new ApiError(404, 'no_such_character', 'Ни один персонаж из списка не найден');
+  return startJob(jobs, 'selection', chosen, { launchGroup, preflight, gcId: body.gcId, ignoredIds: unknown });
 }
 
 /** Участники пати в сохранённом порядке — пока без модуля пати, по `partyOrder`. */

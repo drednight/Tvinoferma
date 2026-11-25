@@ -315,7 +315,28 @@ id в пути — тот же, что в ответе `GET /characters` (чит
 Одновременно может быть только одно внешнее задание запуска: второй `POST` до
 завершения первого получает `429 launch_busy` и заголовок `Retry-After`.
 
-### 4.11. `GET /jobs/{jobId}`
+### 4.11. `POST /launch/selection`
+
+Главный сценарий твин-фермы: выбранные персонажи из разных пати, порядок задаёт
+вызывающий. Работает так же, как одиночный запуск: ответ `202 { jobId }`, ход —
+в `GET /jobs/{jobId}`.
+
+```json
+{ "characterIds": ["Mag_1", "Luchnik_2", "Zhrets_3"], "gcId": "gc-1" }
+```
+
+* `characterIds` — 1…100 уникальных id; порядок сохраняется (первым стартует первый).
+* Архивные персонажи не запускаются: их нет в `state.characters`.
+* Неизвестные id попадают в `ignoredIds` итога задания, а не ломают запуск целиком;
+  если известных нет ни одного — `404 no_such_character`.
+* `gcId` необязателен: иначе GameCenter берётся у персонажа или выбранный в настройках.
+* Один внешний запуск одновременно: второй получает `429 launch_busy`.
+
+Проверки «есть GameCenter», «запомнен вход», «уже запущен» выполняет тот же
+`runPreflight`, что и кнопка в интерфейсе, — пропуски видны в `result.items`
+как `skipped` с причиной.
+
+### 4.12. `GET /jobs/{jobId}`
 
 ```json
 {
@@ -362,7 +383,149 @@ id в пути — тот же, что в ответе `GET /characters` (чит
 Причины `skipped`: `no_gc` (нет GameCenter), `no_saved_login` (не запомнен вход),
 `already_running`.
 
-### 4.12. `POST /windows/close`
+### 4.13. Данные твин-фермы: пати, персонажи, марафоны, планировщик, учёт
+
+Эти маршруты отвечают на второй круг задач: «показать всё, что есть, раскрыть
+карточку, выгрузить список и запустить выбранных».
+
+#### `GET /parties/{id}`
+
+Карточка пати с составом в сохранённом порядке (как в интерфейсе). Ответ
+`{ "party": { … } }` в форме §4.7; `404 no_such_party`.
+
+#### `PATCH /parties/{id}` — право «Изменение»
+
+```json
+{ "name": "Основа+", "color": "#000000" }
+```
+
+Меняются только переданные поля. `name` не может быть пустым (`422`), `color`
+принимает `null` (сброс). Ответ: `{ "party": { "id", "name", "color" }, "changed": […] }`.
+
+#### `PATCH /dungeon-passes/{id}` — право «Изменение»
+
+Короткий путь для простых клиентов: только проходки, без вложенного патча.
+
+```json
+{ "weapon": 5, "relic": 3 }
+```
+
+Правила те же, что у `PATCH /characters`: ключи `weapon`, `armor`, `relic`,
+значения — целые `0…1 000 000 000`. Ответ содержит `dungeonPasses`, `previous`
+и `changed`.
+
+#### `PATCH /characters/{id}` — поля карточки
+
+Тот же маршрут, что в §4.5, теперь принимает и поля карточки вместе со статами:
+`nick`, `class`, `level` (0…1000), `notes` (до 5000), `tags` (строка через запятую
+или массив, без дублей и регистра), `favorite` и `sky: { name, level }`.
+
+```json
+{ "nick": "Маг II", "level": 101, "tags": "основа, PvP", "stats": { "hp": 150 } }
+```
+
+Неизвестное поле — `422 invalid_value` (тихого игнорирования нет). Снимок истории
+статов создаётся только при изменении статов (`statsHistoryAdded`).
+
+#### `POST /characters` — новый персонаж
+
+```json
+{ "nick": "Новый", "class": "Маг", "level": 1, "tags": [] }
+```
+
+Обязателен только `nick`. Ответ `201`:
+`{ "character": { "id", "nick", "level", "class" }, "duplicateNick": false }`.
+`duplicateNick` — предупреждение, а не ошибка: одинаковые ники на разных
+аккаунтах допустимы.
+
+#### `GET /marathons`, `GET /marathons/{id}`
+
+Список и карточка марафона: задания с расписанием и наградами, участники,
+назначения, прогресс по каждому персонажу и заданию, награды-аворды, бонусы и
+`totals` (считает `marathonTotals` из модели интерфейса — API не заводит второй
+правды о прогрессе). Папки-серии (`kind: "series"`) отдаются отдельными записями
+с `childIds` и без заданий.
+
+```json
+{
+  "marathons": [
+    {
+      "id": "m1", "kind": "single", "title": "Марафон ноября",
+      "startDate": "2026-11-01", "endDate": "2026-11-30", "status": "active",
+      "participantIds": ["Mag_1"],
+      "tasks": [{ "id": "t1", "title": "Ежедневки", "targetChecks": 10,
+                  "schedule": { "mode": "everyDay", "dates": [], "weekStartDay": 1 },
+                  "rewards": [{ "threshold": 5, "rewardText": "100 монет", "rewardCoins": 100 }] }],
+      "progress": { "Mag_1": { "t1": { "marks": ["2026-11-02"], "adjust": 1, "site": 2 } } },
+      "totals": { "perChar": {}, "perTask": {}, "checks": 3, "maxChecks": 10, "coins": 0, "maxCoins": 100 }
+    }
+  ]
+}
+```
+
+`totals` может быть `null`: если модель не смогла посчитать битые данные, список
+всё равно отдаётся — пусто лучше, чем падение всего ответа.
+
+#### `GET /marathons/{id}/participants`
+
+Участники марафона и их пати: `{ "marathonId", "characters": [{ "id", "nick" }], "parties": [{ "id", "name" }] }`.
+
+#### `POST /marathons/{id}/marks` — право «Изменение»
+
+Поставить или снять ручную отметку дня.
+
+```json
+{ "characterId": "Mag_1", "taskId": "t1", "date": "2026-11-05", "marked": true }
+```
+
+Проверки: персонаж участвует в марафоне, задание существует, дата в формате
+`YYYY-MM-DD` и внутри сроков марафона. Ответ содержит `marked`, `changed` и
+актуальный список `marks`. У папки-серии — `409 marathon_not_ready`.
+
+#### `POST /marathons/{id}/adjust` — право «Изменение»
+
+Абсолютная поправка к счётчику задания (для дел, которые не попали на сайт):
+
+```json
+{ "characterId": "Mag_1", "taskId": "t1", "value": 4 }
+```
+
+`value` — целое от −100 000 до 100 000. Ответ: `{ "adjust", "previous", "changed" }`.
+
+#### `GET /planner`
+
+Записи планировщика: `{ "entries": [{ "id", "title", "date", "time", "durationMinutes", "kind", "priority", "recurrence", "status" }] }`.
+
+#### `GET /finance`
+
+Учёт: движения денег, позиции магазина, долги и настройки курса. Контакты
+персонажей сюда не попадают.
+
+#### `GET /export/{набор}.{csv|json}` — выгрузка файлом
+
+Наборы: `characters`, `parties`, `marathons`, `windows`, `planner`, `finance`.
+Формат — суффикс в пути (`/export/characters.csv`) или `?format=csv|json`
+(приоритет у query). `txt` — тот же CSV.
+
+Ответ приходит с `Content-Type` (`text/csv; charset=utf-8` или
+`application/json; charset=utf-8`) и `Content-Disposition: attachment; filename="…"`:
+программа сохраняет файл одной командой, без разбора JSON.
+
+```bash
+curl -H "Authorization: Bearer $TF_API_TOKEN" \
+     -OJ http://127.0.0.1:47831/api/v1/export/characters.csv
+```
+
+* CSV — с `;` и BOM: Excel на русской локали открывает без настройки кодировки.
+  Значения с `;`, кавычками и переводами строк экранируются по RFC 4180.
+* JSON — `{ "dataset", "exportedAt", "rows": [...] }`.
+* В выгрузку попадают только белые списки полей: контакты, пароли, путь запуска,
+  куки и ключи облака не выгружаются никогда.
+* Сводка (набор, формат, число строк, имя файла) есть в теле ответа для клиентов,
+  которые разбирают JSON; сам файл — в теле.
+* Неизвестный набор — `404 not_found`, неизвестный формат — `422 invalid_value`.
+
+### 4.14. `POST /windows/close`
 
 Закрытие необратимо (несохранённый прогресс в игре теряется), поэтому нужен явный
 подтверждающий флаг. Адресат — **PID из `GET /windows`**, а не id персонажа: два
@@ -383,7 +546,7 @@ id в пути — тот же, что в ответе `GET /characters` (чит
 получает только то, что уже выбрал по списку `GET /windows`, и передаёт PID явно.
 Окна, которых нет в списке, не закрываются.
 
-### 4.13. `POST /app/show`
+### 4.15. `POST /app/show`
 
 ```json
 { "target": "main" }
@@ -397,7 +560,7 @@ id в пути — тот же, что в ответе `GET /characters` (чит
 `overlay-close`: `openOverlay()` в `js/modules/gameMacros/runtime.js` — **переключатель**,
 поэтому одно значение `overlay` было бы неоднозначным).
 
-### 4.14. `GET /audit`
+### 4.16. `GET /audit`
 
 Кольцевой журнал последних 100 вызовов (только при действующем токене). Отдаётся
 только чтением, тела запросов и токены в него не попадают.
@@ -410,7 +573,7 @@ id в пути — тот же, что в ответе `GET /characters` (чит
 }
 ```
 
-### 4.15. Коды ошибок
+### 4.17. Коды ошибок
 
 | HTTP | `code` | Когда |
 | --- | --- | --- |
@@ -422,10 +585,11 @@ id в пути — тот же, что в ответе `GET /characters` (чит
 | 403 | `forbidden_scope` | право выключено в настройках |
 | 403 | `forbidden` | `OPTIONS` / запрос со сторонней страницы (CORS не поддерживается) |
 | 404 | `not_found` | неизвестный путь или job |
-| 404 | `no_such_character` / `no_such_party` | нет такой сущности |
+| 404 | `no_such_character` / `no_such_party` / `no_such_marathon` / `no_such_task` | нет такой сущности |
 | 405 | `method_not_allowed` | метод не поддержан |
 | 408 | `timeout` | запрос не получен целиком за 5 с |
 | 409 | `launch_not_ready` | запускать некого: список пуст |
+| 409 | `marathon_not_ready` | действие над папкой марафонов вместо марафона |
 | 413 | `payload_too_large` | заголовки > 16 КиБ или тело > 64 КиБ |
 | 415 | `unsupported_media_type` | тело не `application/json` |
 | 422 | `invalid_value` | значение вне допустимого диапазона / неизвестное поле |
@@ -751,6 +915,11 @@ JS (`js/modules/externalApi/`):
 | 5 | Нужно ли массовое изменение статов/проходок? | да, до 100 персонажей за запрос |
 | 6 | Порт `47831` подходит? | да; поле в настройках, 1024–65535 |
 | 7 | Нужна ли страничка внутри приложения или достаточно браузера? | **отдельная вкладка** «🔌 Внешний API» в настройках; сама страница API — обычная вкладка браузера по `127.0.0.1` |
+| 8 | Отдавать ли марафоны целиком (прогресс, задания, награды)? | да, с `totals` из модели интерфейса; папки-серии — отдельными записями без заданий |
+| 9 | Как менять прогресс марафона извне? | двумя явными вызовами: `marks` (отметка дня) и `adjust` (абсолютная поправка); правка прогресса «мимо» этих полей не принимается |
+| 10 | Выгрузки: отдельный формат или просто JSON? | и то и другое: `/export/{набор}.{csv\|json}`; CSV с `;` и BOM, файл отдаётся `Content-Disposition` |
+| 11 | Запускать можно только пати? | нет: `POST /launch/selection` — выбранные персонажи из разных пати, до 100, порядок сохраняется |
+| 12 | Создавать персонажей через API? | да, `POST /characters`; удаление — нет (только архив в интерфейсе) |
 
 ---
 
@@ -764,7 +933,8 @@ JS (`js/modules/externalApi/`):
   reply/audit/clear_audit`, реестр запросов, таймауты, проверка `Host`, права, лимиты,
   раздача страницы из памяти, тестовая сборка сервер не запускает;
 - `http.rs` — std-сервер на `TcpListener`: разбор запроса, `408`/`413`, `reason()`
-  на все используемые коды, ответ с `Connection: close`;
+  на все используемые коды, ответ с `Connection: close`; ответ бывает JSON и
+  «сырым» текстом (CSV) с `Content-Type`/`Content-Disposition` из JS;
 - `auth.rs` — `host_allowed`, `bearer_token`, `Scopes`, `RateLimiter` + юнит-тесты;
 - `audit.rs` — кольцевой журнал на 100 записей;
 - `web/index.html`, `web/app.css`, `web/app.js` — страница API (CSP без
@@ -775,10 +945,14 @@ JS (`js/modules/externalApi/`):
 **JS** — `js/modules/externalApi/`:
 
 - `token.js` — токен в хранилище ОС (`external-api-v1`, 64 hex);
-- `actions/read.js` — белый список полей, `characters`, `parties`, `windows`;
-- `actions/mutate.js` — `PATCH`, `bulk-update`, история статов, `423`/`500`;
+- `actions/read.js` — белый список полей, `characters`, `parties`, `marathons`,
+  `planner`, `finance`, `windows`; итоги марафонов — из модели интерфейса;
+- `actions/mutate.js` — `PATCH`, `bulk-update`, поля карточки, создание персонажа,
+  проходки отдельным маршрутом, пати, отметки и поправки марафонов, история
+  статов, `423`/`500`;
 - `actions/launch.js` — `JobRegistry`, `launchCharacterJob`, `launchPartyJob`,
-  `launchSummary`, `publicJob`;
+  `launchSelectionJob`, `launchSummary`, `publicJob`;
+- `actions/export.js` — CSV/JSON-выгрузки с белым списком полей и BOM;
 - `bridge.js` — `routeRequest`, `answer`, `bindExternalApiBridge`, `parseCloseRequest`;
 - `index.js` — `syncExternalApi`, `rotateToken`, `resetToken`, `attachExternalApi`.
 
@@ -799,7 +973,8 @@ JS (`js/modules/externalApi/`):
 | --- | --- |
 | `tests/externalApi.read.test.js` (7) | белый список полей, фильтр по пати, `fields`, окна |
 | `tests/externalApi.mutate.test.js` (14) | диапазоны, `423`, история, bulk, коды ошибок |
-| `tests/externalApi.bridge.test.js` (14) | маршрутизация, права, `confirm`, задания, `429` |
+| `tests/externalApi.bridge.test.js` (22) | маршрутизация, права, `confirm`, задания, `429`, выгрузки, марафоны, `load()` |
+| `tests/externalApi.extended.test.js` (20) | марафоны, отметки/поправки, карточка, создание, пати, CSV, выбор для запуска |
 | `tests/externalApiDemo.test.js` (12) | макет страницы `demo/external-api/` |
 | `tests/settingsLayout.test.js` | группа `api` в настройках |
 | `tests/settingsGuides.test.js` | справка `external-api` ссылается на существующие id |
@@ -812,8 +987,50 @@ Rust-тесты (`auth.rs`, `http.rs`, `audit.rs`) идут в общем `cargo
 `demo/external-api/` (макет страницы без реальных запросов),
 `CHANGELOG.md` → «Не выпущено».
 
-**Что осталось:** ручной приёмочный чек-лист на Windows (ниже) и проверка
-`cargo test`/`clippy`/`rustfmt` на машине с Rust — в песочнице компилятора нет.
+**Этап 2 (после M4):** марафоны, планировщик и учёт на чтение, отметки и
+поправки марафонов, поля карточки и создание персонажа, проходки отдельным
+маршрутом, правка пати, выгрузки CSV/JSON, запуск выбранных персонажей. Тесты:
+`tests/externalApi.extended.test.js` (20) и 8 новых сценариев в
+`tests/externalApi.bridge.test.js`; Rust — новые маршруты в `auth.rs` и «сырые»
+ответы в `mod.rs`.
+
+**Что осталось:** ручной приёмочный чек-лист на Windows (ниже).
+
+---
+
+## 11.1. Быстрые рецепты для твин-фермы
+
+Все примеры — с токеном из §5.6; порт по умолчанию `47831`.
+
+```bash
+# 1. Кто есть и кто уже запущен (одним взглядом)
+curl -s -H "Authorization: Bearer $TF_API_TOKEN" http://127.0.0.1:47831/api/v1/characters \
+  | python -c "import json,sys; [print(c['nick'], c['level'], 'запущен' if c['running'] else '—') for c in json.load(sys.stdin)['characters']]"
+
+# 2. Выгрузить всех персонажей в Excel-совместимый CSV
+curl -s -H "Authorization: Bearer $TF_API_TOKEN" -OJ http://127.0.0.1:47831/api/v1/export/characters.csv
+
+# 3. Поставить проходки двум выбранным
+curl -s -X PATCH -H "Authorization: Bearer $TF_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"weapon": 5, "armor": 5}' http://127.0.0.1:47831/api/v1/dungeon-passes/Mag_1
+
+# 4. Запустить выбранных в нужном порядке
+curl -s -X POST -H "Authorization: Bearer $TF_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"characterIds": ["Mag_1", "Luchnik_2", "Zhrets_3"]}' \
+  http://127.0.0.1:47831/api/v1/launch/selection
+
+# 5. Отметить день в марафоне и поправить счётчик
+curl -s -X POST -H "Authorization: Bearer $TF_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"characterId": "Mag_1", "taskId": "t1", "date": "2026-11-24"}' \
+  http://127.0.0.1:47831/api/v1/marathons/m1/marks
+```
+
+```powershell
+# PowerShell: выгрузка марафонов в файл рядом со скриптом
+$t = $env:TF_API_TOKEN
+Invoke-WebRequest -Headers @{ Authorization = "Bearer $t" } `
+  -Uri http://127.0.0.1:47831/api/v1/export/marathons.csv -OutFile .\marathons.csv
+```
 
 ---
 

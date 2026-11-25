@@ -26,6 +26,28 @@ const JOBS = {
   counter: 0
 };
 const CLOSE_TTL_MS = 30 * 60 * 1000;
+/** Форматы выгрузки: `txt` — тот же CSV, для клиентов, которым так удобнее. */
+const EXPORT_FORMATS = new Set(['csv', 'json', 'txt']);
+
+/** Текст ошибки для ответа: без стеков и внутренностей. */
+function errorMessage(error) {
+  return String(error?.message || error || 'Неизвестная ошибка');
+}
+
+/**
+ * `marathonTotals` из модели марафонов — ленивый импорт и возможность подмены
+ * в тестах. Если модель недоступна, список отдаётся без цифр (`totals: null`),
+ * а не падает целиком.
+ */
+async function marathonTotalsFn(deps) {
+  if (deps.marathonTotals !== undefined) return deps.marathonTotals;
+  try {
+    const model = await import('../marathons/model.js');
+    return model.marathonTotals || null;
+  } catch {
+    return null;
+  }
+}
 
 /** Права, которые Rust уже проверил; повторная проверка здесь — только для отказов. */
 function denied(scope) {
@@ -122,7 +144,7 @@ export function parseCloseRequest(body) {
  *
  * @param {{ method: string, path: string, query?: string, body?: any }} request
  * @param {Record<string, any>} [deps]
- * @returns {Promise<{ status: number, body: any }>}
+ * @returns {Promise<{ status: number, body: any, raw?: { contentType: string, text: string, disposition?: string } }>}
  */
 export async function routeRequest(request, deps = {}) {
   const method = String(request?.method || 'GET').toUpperCase();
@@ -131,9 +153,12 @@ export async function routeRequest(request, deps = {}) {
   const body = request?.body ?? null;
   const settings = state.settings?.externalApi || {};
   const now = deps.now || (() => new Date().toISOString());
+  // Подмена из `deps` (тесты, альтернативная реализация) или ленивая загрузка:
+  // `fallback` — фабрика, её нужно вызвать. Раньше здесь возвращалась сама
+  // функция, и маршруты, которых нет в `deps`, получали фабрику вместо модуля.
   const load = async (name, fallback) => {
     if (deps[name] !== undefined) return deps[name];
-    return fallback;
+    return typeof fallback === 'function' ? fallback() : fallback;
   };
 
   // --- Чтение ---
@@ -183,6 +208,95 @@ export async function routeRequest(request, deps = {}) {
     return { status: 200, body: publicParties(state) };
   }
 
+  if (method === 'GET' && path.startsWith('/api/v1/parties/')) {
+    const { publicParties } = await load('characters', () => import('./actions/read.js'));
+    const id = decodeSegment(path.slice('/api/v1/parties/'.length));
+    const party = publicParties(state).parties.find(row => String(row.id) === id) || null;
+    if (!party) throw new ApiError(404, 'no_such_party', 'Пати не найдена');
+    return { status: 200, body: { party } };
+  }
+
+  // --- Марафоны ---
+  if (method === 'GET' && path === '/api/v1/marathons') {
+    const read = await load('characters', () => import('./actions/read.js'));
+    const totalsOf = await marathonTotalsFn(deps);
+    return { status: 200, body: read.publicMarathons(state, totalsOf) };
+  }
+
+  if (method === 'GET' && path.startsWith('/api/v1/marathons/')) {
+    const rest = path.slice('/api/v1/marathons/'.length);
+    const read = await load('characters', () => import('./actions/read.js'));
+    if (rest.endsWith('/participants')) {
+      const id = decodeSegment(rest.slice(0, -'/participants'.length));
+      const participants = read.marathonParticipants(state, id);
+      if (!participants) throw new ApiError(404, 'no_such_marathon', 'Марафон не найден');
+      return { status: 200, body: participants };
+    }
+    const id = decodeSegment(rest);
+    const totalsOf = await marathonTotalsFn(deps);
+    const marathon = read.publicMarathonById(state, id, totalsOf);
+    if (!marathon) throw new ApiError(404, 'no_such_marathon', 'Марафон не найден');
+    return { status: 200, body: { marathon } };
+  }
+
+  if (method === 'GET' && path === '/api/v1/planner') {
+    const { publicPlanner } = await load('characters', () => import('./actions/read.js'));
+    return { status: 200, body: publicPlanner(state) };
+  }
+
+  if (method === 'GET' && path === '/api/v1/finance') {
+    const { publicFinance } = await load('characters', () => import('./actions/read.js'));
+    return { status: 200, body: publicFinance(state) };
+  }
+
+  // --- Выгрузки файлов: CSV или JSON ---
+  if (method === 'GET' && path.startsWith('/api/v1/export/')) {
+    const name = decodeSegment(path.slice('/api/v1/export/'.length));
+    // `format` в query имеет приоритет: `/export/characters?format=csv` — как у
+    // остального API. Суффикс в пути (`characters.csv`) — сокращение для человека.
+    const suffix = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : '';
+    const dataset = name.includes('.') ? name.slice(0, name.lastIndexOf('.')) : name;
+    const extension = String(query.get('format') || suffix || 'csv').toLowerCase();
+    if (!EXPORT_FORMATS.has(extension)) {
+      throw new ApiError(422, 'invalid_value', 'Формат выгрузки: csv, json или txt');
+    }
+    const { buildExport } = await load('exportAction', () => import('./actions/export.js'));
+    // Окна нужны и для колонки `running` у персонажей, и для набора `windows`:
+    // читаем один раз, чтобы выгрузка не мигала разными снимками.
+    const windowRows = await load('windowRows', () => readWindowRows());
+    /** @type {any} */
+    let prepared;
+    try {
+      prepared = buildExport(state, dataset, {
+        format: extension === 'json' ? 'json' : 'csv',
+        query: query.toString(),
+        running: runningByCharIdOf(windowRows),
+        windowRows,
+        totalsOf: await marathonTotalsFn(deps),
+        now: now()
+      });
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      throw new ApiError(404, 'not_found', errorMessage(error));
+    }
+    // `body` — сводка для логов и `GET /export` через JSON-клиент,
+    // `raw` — сам файл: его отдаёт Rust с нужным Content-Type.
+    return {
+      status: 200,
+      body: {
+        dataset,
+        format: extension === 'json' ? 'json' : 'csv',
+        rows: prepared.rows,
+        fileName: prepared.fileName
+      },
+      raw: {
+        contentType: prepared.contentType,
+        text: prepared.text,
+        disposition: `attachment; filename="${prepared.fileName}"`
+      }
+    };
+  }
+
   if (method === 'GET' && path === '/api/v1/windows') {
     const { publicWindows } = await load('characters', () => import('./actions/read.js'));
     const rows = await load('windowRows', () => readWindowRows());
@@ -218,6 +332,70 @@ export async function routeRequest(request, deps = {}) {
     return { status: 200, body: result };
   }
 
+  if (method === 'POST' && path === '/api/v1/characters') {
+    requireScope('modify');
+    const { createCharacter } = await load('mutate', () => import('./actions/mutate.js'));
+    const result = await createCharacter(state, jsonBody(body), {
+      persist,
+      assertStateWriteAvailable,
+      renderCharacters: deps.renderCharacters,
+      now
+    });
+    return { status: 201, body: result };
+  }
+
+  if (method === 'PATCH' && path.startsWith('/api/v1/dungeon-passes/')) {
+    requireScope('modify');
+    const { patchDungeonPasses } = await load('mutate', () => import('./actions/mutate.js'));
+    const id = decodeSegment(path.slice('/api/v1/dungeon-passes/'.length));
+    const result = await patchDungeonPasses(state, id, jsonBody(body), {
+      persist,
+      assertStateWriteAvailable,
+      renderCharacters: deps.renderCharacters,
+      now
+    });
+    return { status: 200, body: result };
+  }
+
+  if (method === 'PATCH' && path.startsWith('/api/v1/parties/')) {
+    requireScope('modify');
+    const { patchParty } = await load('mutate', () => import('./actions/mutate.js'));
+    const id = decodeSegment(path.slice('/api/v1/parties/'.length));
+    const result = await patchParty(state, id, jsonBody(body), {
+      persist,
+      assertStateWriteAvailable,
+      renderParties: deps.renderParties,
+      now
+    });
+    return { status: 200, body: result };
+  }
+
+  if (method === 'POST' && path.endsWith('/marks') && path.startsWith('/api/v1/marathons/')) {
+    requireScope('modify');
+    const { setMarathonMark } = await load('mutate', () => import('./actions/mutate.js'));
+    const id = decodeSegment(path.slice('/api/v1/marathons/'.length, -'/marks'.length));
+    const result = await setMarathonMark(state, id, jsonBody(body), {
+      persist,
+      assertStateWriteAvailable,
+      renderMarathons: deps.renderMarathons,
+      now
+    });
+    return { status: 200, body: result };
+  }
+
+  if (method === 'POST' && path.endsWith('/adjust') && path.startsWith('/api/v1/marathons/')) {
+    requireScope('modify');
+    const { adjustMarathonCell } = await load('mutate', () => import('./actions/mutate.js'));
+    const id = decodeSegment(path.slice('/api/v1/marathons/'.length, -'/adjust'.length));
+    const result = await adjustMarathonCell(state, id, jsonBody(body), {
+      persist,
+      assertStateWriteAvailable,
+      renderMarathons: deps.renderMarathons,
+      now
+    });
+    return { status: 200, body: result };
+  }
+
   // --- Задание запуска ---
   if (method === 'POST' && path === '/api/v1/launch/character') {
     requireScope('launchClose');
@@ -238,6 +416,13 @@ export async function routeRequest(request, deps = {}) {
         members: (chars, partyId) => charactersInPartyOrdered(chars, partyId)
       })
     };
+  }
+
+  if (method === 'POST' && path === '/api/v1/launch/selection') {
+    requireScope('launchClose');
+    const jobsAction = await load('jobsAction', () => import('./actions/launch.js'));
+    const jobs = (await load('jobs', () => jobsRegistry())) || jobsRegistry();
+    return { status: 202, body: jobsAction.launchSelectionJob(state, jsonBody(body), { jobs }) };
   }
 
   if (method === 'GET' && path.startsWith('/api/v1/jobs/')) {
@@ -384,10 +569,14 @@ export async function bindExternalApiBridge(options = {}) {
     if (!requestId) return;
     const answerResult = await answer(payload, deps);
     try {
+      // `raw` приходит у выгрузок: Rust отдаст готовый текст с нужными заголовками.
+      const raw = /** @type {any} */ (answerResult).raw || null;
       await dynamicInvoke('external_api_reply', {
         requestId,
         status: answerResult.status,
-        body: answerResult.body
+        body: answerResult.body,
+        // Tauri приводит `null` к отсутствию поля; Rust ждёт `Option<RawReplyInput>`.
+        raw: raw ? { contentType: raw.contentType, body: raw.text, disposition: raw.disposition ?? null } : null
       });
     } catch (error) {
       console.warn('[EXTERNAL API] Не удалось отправить ответ', error);

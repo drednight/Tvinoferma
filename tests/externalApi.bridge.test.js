@@ -6,7 +6,7 @@
 //    между запросом и ответом).
 // 3. Закрытие окон требует `confirm: true` и PID из списка, а не id персонажа.
 // 4. Задание запуска: `202`, один активный, честные строки `skipped`.
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { state } from '../js/core/state.js';
 import { answer, parseCloseRequest, routeRequest } from '../js/modules/externalApi/bridge.js';
 import { JobRegistry, launchPartyJob, launchSummary, publicJob } from '../js/modules/externalApi/actions/launch.js';
@@ -58,17 +58,44 @@ function fakeDeps(overrides = {}) {
       calls.closed.push(pids);
       return { found: pids.length, closed: pids.length, failed: 0, denied: 0, elevated: false, details: [], error: '' };
     },
-    characters: {
-      publicCharacters: (...args) => require_read().publicCharacters(...args),
-      publicParties: (...args) => require_read().publicParties(...args),
-      publicWindows: (...args) => require_read().publicWindows(...args)
-    },
-    mutate: {
-      patchCharacter: async (...args) =>
-        require_mutate().patchCharacter(...args, { persist: async () => {}, assertStateWriteAvailable: () => {} }),
-      bulkUpdate: async (...args) =>
-        require_mutate().bulkUpdate(...args, { persist: async () => {}, assertStateWriteAvailable: () => {} })
-    },
+    // Моки чтения — делегируют настоящим функциям, чтобы тест видел те же
+    // поля и то же отсутствие секретов, что и приложение.
+    characters: Object.fromEntries(
+      [
+        'publicCharacters',
+        'publicParties',
+        'publicWindows',
+        'publicMarathons',
+        'publicMarathonById',
+        'marathonParticipants',
+        'publicPlanner',
+        'publicFinance'
+      ].map(name => [name, (...args) => require_read()[name](...args)])
+    ),
+    // Моки изменения: сохранение «успешно», запись разрешена, время фиксировано.
+    mutate: Object.fromEntries(
+      [
+        'patchCharacter',
+        'bulkUpdate',
+        'patchDungeonPasses',
+        'patchCharacterFields',
+        'createCharacter',
+        'patchParty',
+        'setMarathonMark',
+        'adjustMarathonCell'
+      ].map(name => [
+        name,
+        async (...args) =>
+          require_mutate()[name](...args, {
+            persist: async () => {},
+            assertStateWriteAvailable: () => {},
+            now: () => '2026-11-25T12:00:00.000Z',
+            renderCharacters: () => {},
+            renderParties: () => {},
+            renderMarathons: () => {}
+          })
+      ])
+    ),
     ...overrides
   };
 }
@@ -155,6 +182,15 @@ describe('внешний API: маршрутизация моста', () => {
     expect((await answer({ method: 'GET', path: '/api/v1/characters/..%2f..' }, fakeDeps())).status).toBe(404);
     const bad = await answer({ method: 'PATCH', path: '/api/v1/characters/Mag_1', body: 'строка' }, fakeDeps());
     expect(bad).toMatchObject({ status: 400, body: { error: { code: 'invalid_json' } } });
+  });
+
+  it('ленивая загрузка модуля: маршрут без подмены в deps работает сам', async () => {
+    // Регресс: `load()` возвращал саму фабрику `() => import(...)` вместо модуля,
+    // и любой маршрут, не подменённый в deps, падал с «is not a function».
+    state.marathons = [];
+    const result = await routeRequest({ method: 'GET', path: '/api/v1/marathons' }, { marathonTotals: null });
+    expect(result.status).toBe(200);
+    expect(result.body.marathons).toEqual([]);
   });
 
   it('ответ всегда в формате { status, body } — даже если внутри исключение', async () => {
@@ -311,6 +347,166 @@ describe('внешний API: задания запуска', () => {
     const done = await waitJob(jobs, job.id);
     expect(done.status).toBe('done');
     expect(done.result.items.every(row => row.status === 'skipped' && row.error === 'no_saved_login')).toBe(true);
+  });
+});
+
+describe('внешний API: новые маршруты моста', () => {
+  beforeEach(() => {
+    // Даты в имени файла должны быть предсказуемыми: подменяем системное время.
+    vi.setSystemTime(new Date('2026-11-25T12:00:00.000Z'));
+  });
+
+  it('марафоны: список, карточка, участники и 404 на неизвестный', async () => {
+    state.marathons = [
+      {
+        id: 'm1',
+        title: 'Ноябрь',
+        startDate: '2026-11-01',
+        endDate: '2026-11-30',
+        participantIds: ['Mag_1'],
+        tasks: [
+          { id: 't1', title: 'Ежедневки', targetChecks: 3, schedule: { mode: 'everyDay', dates: [] }, rewards: [] }
+        ],
+        progress: {}
+      }
+    ];
+    // `totalsOf` — заведомо известный: модель марафонов проверяется своими тестами.
+    const deps = { ...fakeDeps(), marathonTotals: () => ({ checks: 1, maxChecks: 3, coins: 0, maxCoins: 100 }) };
+    const list = await routeRequest({ method: 'GET', path: '/api/v1/marathons' }, deps);
+    expect(list.status).toBe(200);
+    expect(list.body.marathons[0].title).toBe('Ноябрь');
+    expect(list.body.marathons[0].totals).toMatchObject({ checks: 1 });
+    const one = await routeRequest({ method: 'GET', path: '/api/v1/marathons/m1' }, deps);
+    expect(one.body.marathon.id).toBe('m1');
+    const participants = await routeRequest({ method: 'GET', path: '/api/v1/marathons/m1/participants' }, deps);
+    expect(participants.body.characters).toEqual([{ id: 'Mag_1', nick: 'Маг' }]);
+    const missing = await answer({ method: 'GET', path: '/api/v1/marathons/nope' }, deps);
+    expect(missing).toMatchObject({ status: 404, body: { error: { code: 'no_such_marathon' } } });
+  });
+
+  it('планировщик, учёт и пати по id отвечают без секретов', async () => {
+    state.plannerEntries = [];
+    state.finance = { operations: [], shopItems: [], loans: [], settings: {} };
+    const planner = await routeRequest({ method: 'GET', path: '/api/v1/planner' }, fakeDeps());
+    expect(planner.body.entries).toEqual([]);
+    const finance = await routeRequest({ method: 'GET', path: '/api/v1/finance' }, fakeDeps());
+    expect(finance.body).toHaveProperty('operations');
+    const party = await routeRequest({ method: 'GET', path: '/api/v1/parties/p-osnova' }, fakeDeps());
+    expect(party.body.party).toMatchObject({ id: 'p-osnova', name: 'Основа' });
+    const missing = await answer({ method: 'GET', path: '/api/v1/parties/nope' }, fakeDeps());
+    expect(missing).toMatchObject({ status: 404, body: { error: { code: 'no_such_party' } } });
+  });
+
+  it('выгрузка: CSV приходит как raw с Content-Disposition, JSON — файл с .json', async () => {
+    const csv = await routeRequest({ method: 'GET', path: '/api/v1/export/characters.csv' }, fakeDeps());
+    expect(csv.status).toBe(200);
+    expect(csv.raw.contentType).toContain('text/csv');
+    expect(csv.raw.disposition).toBe('attachment; filename="tvinoferma_characters_2026-11-25.csv"');
+    expect(csv.raw.text).toContain('Ник');
+    expect(csv.raw.text).toContain('Маг');
+    // Тело — короткая сводка, а не гигантская таблица в JSON.
+    expect(csv.body).toMatchObject({ dataset: 'characters', format: 'csv', rows: 3 });
+
+    const json = await routeRequest({ method: 'GET', path: '/api/v1/export/parties.json' }, fakeDeps());
+    expect(json.raw.contentType).toContain('application/json');
+    expect(JSON.parse(json.raw.text).dataset).toBe('parties');
+
+    const txt = await routeRequest({ method: 'GET', path: '/api/v1/export/windows.txt' }, fakeDeps());
+    expect(txt.raw.contentType).toContain('text/csv');
+
+    const badFormat = await answer({ method: 'GET', path: '/api/v1/export/characters.pdf' }, fakeDeps());
+    expect(badFormat).toMatchObject({ status: 422, body: { error: { code: 'invalid_value' } } });
+    const badSet = await answer({ method: 'GET', path: '/api/v1/export/contacts.csv' }, fakeDeps());
+    expect(badSet).toMatchObject({ status: 404, body: { error: { code: 'not_found' } } });
+  });
+
+  it('выгрузка требует права чтения, изменение — права изменения', async () => {
+    setupSettings({ allowModify: false });
+    const exportDenied = await answer({ method: 'GET', path: '/api/v1/export/characters.csv' }, fakeDeps());
+    // Чтение разрешено по умолчанию, поэтому выгрузка проходит и без «изменения».
+    expect(exportDenied.status).toBe(200);
+    const partyPatch = await answer(
+      { method: 'PATCH', path: '/api/v1/parties/p-osnova', body: { name: 'X' } },
+      fakeDeps()
+    );
+    expect(partyPatch).toMatchObject({ status: 403, body: { error: { code: 'forbidden_scope' } } });
+    const passes = await answer(
+      { method: 'PATCH', path: '/api/v1/dungeon-passes/Mag_1', body: { weapon: 1 } },
+      fakeDeps()
+    );
+    expect(passes).toMatchObject({ status: 403 });
+  });
+
+  it('проходки и поля карточки меняются через свои маршруты', async () => {
+    const deps = fakeDeps();
+    const passes = await routeRequest(
+      { method: 'PATCH', path: '/api/v1/dungeon-passes/Mag_1', body: { weapon: 7 } },
+      deps
+    );
+    expect(passes.body.dungeonPasses).toMatchObject({ weapon: 7 });
+    expect(state.characters[0].dungeonPasses.weapon).toBe(7);
+
+    const created = await routeRequest(
+      { method: 'POST', path: '/api/v1/characters', body: { nick: 'Новый' } },
+      { ...deps, mutate: undefined }
+    );
+    expect(created.status).toBe(201);
+    expect(created.body.character.nick).toBe('Новый');
+  });
+
+  it('отметки марафона пишутся через мост, затем видны в чтении', async () => {
+    state.marathons = [
+      {
+        id: 'm1',
+        title: 'Ноябрь',
+        startDate: '2026-11-01',
+        endDate: '2026-11-30',
+        participantIds: ['Mag_1'],
+        tasks: [
+          { id: 't1', title: 'Ежедневки', targetChecks: 3, schedule: { mode: 'everyDay', dates: [] }, rewards: [] }
+        ],
+        progress: {}
+      }
+    ];
+    const result = await routeRequest(
+      {
+        method: 'POST',
+        path: '/api/v1/marathons/m1/marks',
+        body: { characterId: 'Mag_1', taskId: 't1', date: '2026-11-10' }
+      },
+      fakeDeps()
+    );
+    expect(result.body).toMatchObject({ marked: true, changed: true, date: '2026-11-10' });
+    const read = await routeRequest({ method: 'GET', path: '/api/v1/marathons/m1' }, fakeDeps());
+    expect(read.body.marathon.progress.Mag_1.t1.marks).toEqual(['2026-11-10']);
+  });
+
+  it('запуск выборки: 202 и задание, второй запуск — 429', async () => {
+    const deps = fakeDeps({
+      preflight: async characters => ({
+        toLaunch: [],
+        alreadyRunning: [],
+        noGc: [],
+        noSavedLogin: characters,
+        total: characters.length
+      }),
+      launchGroup: async () => {
+        throw new Error('не должен вызываться');
+      }
+    });
+    const started = await routeRequest(
+      { method: 'POST', path: '/api/v1/launch/selection', body: { characterIds: ['Luchnik_2', 'Mag_1'] } },
+      deps
+    );
+    expect(started.status).toBe(202);
+    expect(started.body.kind).toBe('selection');
+    const busy = await answer(
+      { method: 'POST', path: '/api/v1/launch/selection', body: { characterIds: ['Mag_1'] } },
+      deps
+    );
+    expect(busy).toMatchObject({ status: 429, body: { error: { code: 'launch_busy' } } });
+    const done = await waitJob(deps.jobs, started.body.id);
+    expect(done.status).toBe('done');
   });
 });
 

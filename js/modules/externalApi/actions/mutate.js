@@ -75,16 +75,20 @@ function checkNumber(value, { integer = false, where = '' } = {}) {
  * Проверить патч до любых изменений. Возвращает только разрешённые изменения.
  *
  * @param {any} patch тело запроса
- * @returns {{ stats: Record<string, number>, dungeonPasses: Record<string, number> }}
+ * @returns {{ stats: Record<string, number>, dungeonPasses: Record<string, number>, fields?: Record<string, any> }}
  */
 export function validatePatch(patch) {
   if (!isPlainObject(patch)) throw new ApiError(422, 'invalid_value', 'Патч должен быть объектом');
-  const allowed = new Set(['stats', 'dungeonPasses']);
+  // Поля карточки (ник, класс, уровень, заметки, теги, небо, избранное) разрешены
+  // здесь же: клиенту удобнее менять статы и ник одним запросом.
+  const cardKeys = Object.keys(CHARACTER_PATCH_FIELDS);
+  const allowed = new Set(['stats', 'dungeonPasses', ...cardKeys]);
   for (const key of Object.keys(patch)) {
     if (!allowed.has(key)) throw new ApiError(422, 'invalid_value', `Неизвестное поле «${key}»`);
   }
-  if (patch.stats === undefined && patch.dungeonPasses === undefined) {
-    throw new ApiError(422, 'invalid_value', 'Нужен хотя бы один из ключей stats или dungeonPasses');
+  const hasCard = cardKeys.some(key => patch[key] !== undefined);
+  if (patch.stats === undefined && patch.dungeonPasses === undefined && !hasCard) {
+    throw new ApiError(422, 'invalid_value', 'Нужен хотя бы один из ключей stats, dungeonPasses или поля карточки');
   }
   const stats = {};
   const dungeonPasses = {};
@@ -107,17 +111,23 @@ export function validatePatch(patch) {
       dungeonPasses[key] = checkNumber(value, { integer: true, where: `dungeonPasses.${key}` });
     }
   }
-  if (!Object.keys(stats).length && !Object.keys(dungeonPasses).length) {
+  const fields = {};
+  for (const key of cardKeys) {
+    if (patch[key] !== undefined) fields[key] = CHARACTER_PATCH_FIELDS[key](patch[key]);
+  }
+  if (!Object.keys(stats).length && !Object.keys(dungeonPasses).length && !Object.keys(fields).length) {
     throw new ApiError(422, 'invalid_value', 'В патче нет ни одного известного поля');
   }
-  return { stats, dungeonPasses };
+  // `fields` появляется только когда он есть: старый ответ `{stats, dungeonPasses}`
+  // остаётся прежним, и клиенты, читающие его целиком, ничего не замечают.
+  return Object.keys(fields).length ? { stats, dungeonPasses, fields } : { stats, dungeonPasses };
 }
 
 /**
  * Применить проверенный патч к персонажу. Возвращает список изменённых ключей
  * (`stats.hp`, `dungeonPasses.weapon`) — по нему строится ответ `changed`.
  */
-export function applyPatch(character, { stats = {}, dungeonPasses = {} }) {
+export function applyPatch(character, { stats = {}, dungeonPasses = {}, fields = {} }) {
   if (!character.stats || typeof character.stats !== 'object') character.stats = { ...DEFAULT_STATS };
   if (!character.dungeonPasses || typeof character.dungeonPasses !== 'object')
     character.dungeonPasses = { weapon: 0, armor: 0, relic: 0 };
@@ -131,6 +141,12 @@ export function applyPatch(character, { stats = {}, dungeonPasses = {} }) {
     if (Number(character.dungeonPasses[key]) === value) continue;
     character.dungeonPasses[key] = value;
     changed.push(`dungeonPasses.${key}`);
+  }
+  // Поля карточки сравниваются по значению: ник «Маг» → «Маг» не считается правкой.
+  for (const [key, value] of Object.entries(fields)) {
+    if (JSON.stringify(character[key] ?? null) === JSON.stringify(value)) continue;
+    character[key] = value;
+    changed.push(key);
   }
   return changed;
 }
@@ -211,6 +227,10 @@ export async function patchCharacter(state, id, patch, deps) {
     character: {
       id: character.id,
       nick: character.nick,
+      class: character.class,
+      level: character.level,
+      favorite: character.favorite === true,
+      tags: Array.isArray(character.tags) ? [...character.tags] : [],
       stats: { ...character.stats },
       dungeonPasses: { ...character.dungeonPasses },
       updatedAt: character.updatedAt
@@ -263,6 +283,8 @@ export async function bulkUpdate(state, body, deps) {
       continue;
     }
     if (changed.some(key => key.startsWith('stats.'))) rememberStatsBefore(character, before, at);
+    // `touched` уже выставлен выше: любое изменение (статы, проходки или поля карточки)
+    // требует сохранения и перерисовки.
     character.updatedAt = at;
     touched = true;
     updated.push({ id, nick: character.nick, changed });
@@ -272,4 +294,332 @@ export async function bulkUpdate(state, body, deps) {
     deps.renderCharacters?.();
   }
   return { updated, failed };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Проходки отдельным вызовом                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `PATCH /dungeon-passes/{id}`: только проходки, без статов и без истории.
+ * Отдельный маршрут нужен для простых клиентов (Excel, PowerShell), которым
+ * неудобно собирать вложенный патч — но правила те же, что у `PATCH /characters`.
+ */
+export async function patchDungeonPasses(state, id, body, deps) {
+  if (!isPlainObject(body)) throw new ApiError(422, 'invalid_value', 'Тело запроса должно быть объектом');
+  assertWritable(deps.assertStateWriteAvailable);
+  const character = findCharacter(state, id);
+  if (!character) throw new ApiError(404, 'no_such_character', 'Персонаж не найден');
+  // Передаём как `{ dungeonPasses: body }` — проверка и применение те же, что в PATCH.
+  const parsed = validatePatch({ dungeonPasses: body });
+  const before = { dungeonPasses: { ...(character.dungeonPasses || {}) } };
+  const changed = applyPatch(character, parsed);
+  if (changed.length) {
+    const at = (deps.now || (() => new Date().toISOString()))();
+    character.updatedAt = at;
+    await persistOrThrow(deps);
+    deps.renderCharacters?.();
+  }
+  return {
+    id: String(character.id),
+    nick: String(character.nick || ''),
+    dungeonPasses: { ...character.dungeonPasses },
+    previous: before.dungeonPasses,
+    changed
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Карточка персонажа: создание и изменение полей                    */
+/* ------------------------------------------------------------------ */
+
+/** Поля персонажа, которые можно менять целиком (не статы и не проходки). */
+const CHARACTER_PATCH_FIELDS = {
+  nick: value =>
+    String(value || '')
+      .trim()
+      .slice(0, 120),
+  class: value =>
+    String(value || '')
+      .trim()
+      .slice(0, 80),
+  level: value => clampInt(value, 0, 1000),
+  notes: value => String(value || '').slice(0, 5000),
+  tags: value => normalizeTagsInput(value),
+  favorite: value => value === true,
+  sky: value => ({
+    name: value?.name ? String(value.name).slice(0, 80) : null,
+    level: Number.isFinite(Number(value?.level)) ? clampInt(value.level, 0, 1000) : null
+  })
+};
+
+function clampInt(value, min, max) {
+  const number = Math.round(Number(value));
+  if (!Number.isFinite(number)) return min;
+  return Math.min(max, Math.max(min, number));
+}
+
+/** Теги: строки без пустых, без дублей, без учёта регистра — как в интерфейсе. */
+function normalizeTagsInput(value) {
+  const list = Array.isArray(value) ? value : String(value || '').split(',');
+  const seen = new Set();
+  return list
+    .map(item =>
+      String(item || '')
+        .trim()
+        .replace(/\s+/g, ' ')
+    )
+    .filter(item => {
+      const key = item.toLowerCase();
+      if (!item || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 30);
+}
+
+/** Проверить поля карточки: неизвестный ключ — `422`, а не тихое игнорирование. */
+export function validateCharacterFields(body) {
+  if (!isPlainObject(body)) throw new ApiError(422, 'invalid_value', 'Тело запроса должно быть объектом');
+  const out = {};
+  for (const [key, value] of Object.entries(body)) {
+    const apply = CHARACTER_PATCH_FIELDS[key];
+    if (!apply) throw new ApiError(422, 'invalid_value', `Неизвестное поле «${key}»`);
+    out[key] = apply(value);
+  }
+  if (!Object.keys(out).length) throw new ApiError(422, 'invalid_value', 'Не передано ни одного поля');
+  return out;
+}
+
+/**
+ * `PATCH /characters/{id}` с полями карточки. Статы и проходки идут прежним путём
+ * (`stats`, `dungeonPasses`), а ник, класс, уровень, заметки, теги, небо и избранное
+ * меняются здесь. Снимок истории статов не нужен: статы не меняются.
+ */
+export async function patchCharacterFields(state, id, body, deps) {
+  assertWritable(deps.assertStateWriteAvailable);
+  const character = findCharacter(state, id);
+  if (!character) throw new ApiError(404, 'no_such_character', 'Персонаж не найден');
+  const fields = validateCharacterFields(body);
+  const changed = [];
+  for (const [key, value] of Object.entries(fields)) {
+    const before = JSON.stringify(character[key] ?? null);
+    character[key] = value;
+    if (JSON.stringify(value) !== before) changed.push(key);
+  }
+  const at = (deps.now || (() => new Date().toISOString()))();
+  if (changed.length) {
+    character.updatedAt = at;
+    await persistOrThrow(deps);
+    deps.renderCharacters?.();
+  }
+  return { character: { id: character.id, nick: character.nick }, changed };
+}
+
+/**
+ * `POST /characters`: новый персонаж. Обязателен только ник; id генерирует само
+ * приложение (`crypto.randomUUID`), затем сработает обычная нормализация при загрузке.
+ */
+export async function createCharacter(state, body, deps) {
+  if (!isPlainObject(body)) throw new ApiError(422, 'invalid_value', 'Тело запроса должно быть объектом');
+  assertWritable(deps.assertStateWriteAvailable);
+  const fields = validateCharacterFields(body);
+  const nick = String(fields.nick || '').trim();
+  if (!nick) throw new ApiError(422, 'invalid_value', 'nick обязателен');
+  // Два одинаковых ника допустимы (разные аккаунты), но предупредим вызывающего.
+  const sameNick = (state.characters || []).some(char => String(char.nick).toLowerCase() === nick.toLowerCase());
+  const id = `char_${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
+  const at = (deps.now || (() => new Date().toISOString()))();
+  const character = {
+    id,
+    nick,
+    favorite: fields.favorite === true,
+    class: fields.class || '',
+    partyIds: [],
+    mainPartyId: null,
+    partyOrder: {},
+    notes: fields.notes || '',
+    level: fields.level ?? 1,
+    sky: fields.sky || { name: null, level: null },
+    stats: {},
+    dungeonPasses: {},
+    statsHistory: [],
+    tags: fields.tags || [],
+    ancientCoins: 0,
+    isLoggedIn: false,
+    createdAt: at,
+    updatedAt: at
+  };
+  state.characters = Array.isArray(state.characters) ? state.characters : [];
+  state.characters.push(character);
+  await persistOrThrow(deps);
+  deps.renderCharacters?.();
+  return { character: { id, nick, level: character.level, class: character.class }, duplicateNick: sameNick };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Пати                                                              */
+/* ------------------------------------------------------------------ */
+
+/** `PATCH /parties/{id}`: название и цвет. Состав меняется отдельными маршрутами. */
+export async function patchParty(state, id, body, deps) {
+  if (!isPlainObject(body)) throw new ApiError(422, 'invalid_value', 'Тело запроса должно быть объектом');
+  assertWritable(deps.assertStateWriteAvailable);
+  const parties = Array.isArray(state.parties) ? state.parties : [];
+  const party = parties.find(item => String(item.id) === String(id));
+  if (!party) throw new ApiError(404, 'no_such_party', 'Пати не найдена');
+  const allowed = new Set(['name', 'color']);
+  for (const key of Object.keys(body)) {
+    if (!allowed.has(key)) throw new ApiError(422, 'invalid_value', `Неизвестное поле «${key}»`);
+  }
+  const changed = [];
+  if (body.name !== undefined) {
+    const name = String(body.name || '')
+      .trim()
+      .slice(0, 80);
+    if (!name) throw new ApiError(422, 'invalid_value', 'name не может быть пустым');
+    if (party.name !== name) {
+      party.name = name;
+      changed.push('name');
+    }
+  }
+  if (body.color !== undefined) {
+    const color = body.color === null ? null : String(body.color).trim().slice(0, 40);
+    if (party.color !== color) {
+      party.color = color;
+      changed.push('color');
+    }
+  }
+  if (changed.length) {
+    await persistOrThrow(deps);
+    deps.renderParties?.();
+  }
+  return { party: { id: party.id, name: party.name, color: party.color ?? null }, changed };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Марафоны: отметки и поправки                                      */
+/* ------------------------------------------------------------------ */
+
+function findMarathon(state, id) {
+  const marathons = Array.isArray(state.marathons) ? state.marathons : [];
+  return marathons.find(item => String(item.id) === String(id)) || null;
+}
+
+function findTask(marathon, taskId) {
+  return (marathon.tasks || []).find(task => String(task.id) === String(taskId)) || null;
+}
+
+/**
+ * Ячейка прогресса `progress[charId][taskId]`. Отметки и поправка живут здесь же,
+ * где их пишет интерфейс марафонов, поэтому API не заводит своей структуры.
+ */
+function ensureCell(marathon, charId, taskId) {
+  marathon.progress = marathon.progress && typeof marathon.progress === 'object' ? marathon.progress : {};
+  marathon.progress[charId] =
+    marathon.progress[charId] && typeof marathon.progress[charId] === 'object' ? marathon.progress[charId] : {};
+  const cell = marathon.progress[charId][taskId] || {};
+  cell.marks = Array.isArray(cell.marks) ? cell.marks : [];
+  cell.adjust = Number(cell.adjust) || 0;
+  marathon.progress[charId][taskId] = cell;
+  return cell;
+}
+
+/**
+ * `POST /marathons/{id}/marks`: поставить или снять ручную отметку дня.
+ * Тело: `{ characterId, taskId, date: "YYYY-MM-DD", marked: true|false }`.
+ * Дата обязана входить в сроки марафона — в чужие дни отметка не ставится.
+ */
+export async function setMarathonMark(state, id, body, deps) {
+  if (!isPlainObject(body)) throw new ApiError(422, 'invalid_value', 'Тело запроса должно быть объектом');
+  const allowed = new Set(['characterId', 'taskId', 'date', 'marked']);
+  for (const key of Object.keys(body)) {
+    if (!allowed.has(key)) throw new ApiError(422, 'invalid_value', `Неизвестное поле «${key}»`);
+  }
+  assertWritable(deps.assertStateWriteAvailable);
+  const marathon = findMarathon(state, id);
+  if (!marathon) throw new ApiError(404, 'no_such_marathon', 'Марафон не найден');
+  if (marathon.kind === 'series')
+    throw new ApiError(409, 'marathon_not_ready', 'У папки марафонов нет отметок: выберите марафон внутри неё');
+  const characterId = String(body.characterId || '').trim();
+  if (!characterId) throw new ApiError(422, 'invalid_value', 'characterId обязателен');
+  const taskId = String(body.taskId || '').trim();
+  if (!taskId) throw new ApiError(422, 'invalid_value', 'taskId обязателен');
+  const date = String(body.date || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
+    throw new ApiError(422, 'invalid_value', 'date должен быть в формате YYYY-MM-DD');
+  if (marathon.startDate && date < marathon.startDate)
+    throw new ApiError(422, 'invalid_value', 'Дата раньше начала марафона');
+  if (marathon.endDate && date > marathon.endDate)
+    throw new ApiError(422, 'invalid_value', 'Дата позже окончания марафона');
+  if (!(marathon.participantIds || []).map(String).includes(characterId)) {
+    throw new ApiError(422, 'invalid_value', 'Персонаж не участвует в этом марафоне');
+  }
+  if (!findTask(marathon, taskId)) throw new ApiError(404, 'no_such_task', 'Задание не найдено');
+  const cell = ensureCell(marathon, characterId, taskId);
+  const marked = body.marked !== false;
+  const visibleMarks = cell.marks.map(String);
+  const before = visibleMarks.includes(date);
+  if (marked !== before) {
+    cell.marks = marked ? [...visibleMarks, date] : visibleMarks.filter(item => item !== date);
+    marathon.updatedAt = (deps.now || (() => new Date().toISOString()))();
+    await persistOrThrow(deps);
+    deps.renderMarathons?.();
+  }
+  return {
+    marathonId: String(marathon.id),
+    characterId,
+    taskId,
+    date,
+    marked,
+    changed: marked !== before,
+    marks: cell.marks
+  };
+}
+
+/**
+ * `POST /marathons/{id}/adjust`: поправка к счётчику задания (например, +1 за
+ * выполнение, которое не попало на сайт). Тело: `{ characterId, taskId, value }`,
+ * `value` — абсолютное значение поправки, в том числе отрицательное.
+ */
+export async function adjustMarathonCell(state, id, body, deps) {
+  if (!isPlainObject(body)) throw new ApiError(422, 'invalid_value', 'Тело запроса должно быть объектом');
+  const allowed = new Set(['characterId', 'taskId', 'value']);
+  for (const key of Object.keys(body)) {
+    if (!allowed.has(key)) throw new ApiError(422, 'invalid_value', `Неизвестное поле «${key}»`);
+  }
+  assertWritable(deps.assertStateWriteAvailable);
+  const marathon = findMarathon(state, id);
+  if (!marathon) throw new ApiError(404, 'no_such_marathon', 'Марафон не найден');
+  if (marathon.kind === 'series') throw new ApiError(409, 'marathon_not_ready', 'У папки марафонов нет прогресса');
+  const characterId = String(body.characterId || '').trim();
+  if (!characterId) throw new ApiError(422, 'invalid_value', 'characterId обязателен');
+  const taskId = String(body.taskId || '').trim();
+  if (!taskId) throw new ApiError(422, 'invalid_value', 'taskId обязателен');
+  const value = Number(body.value);
+  if (!Number.isFinite(value) || !Number.isInteger(value)) {
+    throw new ApiError(422, 'invalid_value', 'value должен быть целым числом');
+  }
+  if (value < -100000 || value > 100000) throw new ApiError(422, 'invalid_value', 'value вне допустимого диапазона');
+  if (!(marathon.participantIds || []).map(String).includes(characterId)) {
+    throw new ApiError(422, 'invalid_value', 'Персонаж не участвует в этом марафоне');
+  }
+  if (!findTask(marathon, taskId)) throw new ApiError(404, 'no_such_task', 'Задание не найдено');
+  const cell = ensureCell(marathon, characterId, taskId);
+  const before = Number(cell.adjust) || 0;
+  // Если поправка та же, сохранять нечего: лишняя запись — лишний риск для файла.
+  if (before !== value) {
+    cell.adjust = value;
+    marathon.updatedAt = (deps.now || (() => new Date().toISOString()))();
+    await persistOrThrow(deps);
+    deps.renderMarathons?.();
+  }
+  return {
+    marathonId: String(marathon.id),
+    characterId,
+    taskId,
+    adjust: cell.adjust,
+    previous: before,
+    changed: cell.adjust !== before
+  };
 }
