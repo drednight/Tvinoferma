@@ -21,6 +21,41 @@ import {
 import { auditLine, errorCatalogRows } from '../modules/externalApi/errors.js';
 
 const PORT_DEFAULT = 47831;
+/**
+ * Порт по умолчанию в тестовой сборке. Rust подставляет его сам
+ * (`port_for_profile`), когда JS прислал умолчание стабильной сборки: две
+ * сборки могут работать одновременно, и адрес у них разный.
+ */
+const PORT_DEFAULT_ACCEPTANCE = 47832;
+
+/**
+ * Адрес страницы API — **по фактическому порту работающего сервера**.
+ *
+ * Раньше кнопка «Открыть страницу API» брала порт из настроек. В тестовой сборке
+ * Rust подставляет `47832`, а в настройках остаётся `47831` — открывалась пустая
+ * страница (или чужая, если рядом работает рабочая копия). Теперь порядок такой:
+ *   1. `status.port` — сервер запущен и сам сообщил порт;
+ *   2. сохранённый порт из настроек;
+ *   3. умолчание профиля.
+ *
+ * Правило то же, что в Rust (`port_for_profile`): в тестовой сборке умолчание
+ * стабильной сборки (`47831`) заменяется портом профиля, а явно выбранный
+ * пользователем порт остаётся как есть. Держать эти правила одинаковыми важно:
+ * иначе адрес на экране и адрес сервера разъезжаются.
+ */
+export function apiPort({ status = null, settings = null, profile = '' } = {}) {
+  const running = Number(status?.port);
+  if (Number.isFinite(running) && running > 0) return running;
+  const saved = Number(settings?.port);
+  const port = Number.isFinite(saved) && saved > 0 ? saved : PORT_DEFAULT;
+  if (String(profile).startsWith('acceptance') && port === PORT_DEFAULT) return PORT_DEFAULT_ACCEPTANCE;
+  return port;
+}
+
+/** Адрес страницы API для открытия в браузере. */
+export function apiPageUrl(options = {}) {
+  return `http://127.0.0.1:${apiPort(options)}/`;
+}
 
 /**
  * Подпись профиля сборки для строки статуса.
@@ -42,7 +77,7 @@ export function statusText(status, { tauri = true } = {}) {
   if (!status?.running) {
     return status?.error ? `Сервер остановлен: ${status.error}` : 'Сервер остановлен: включите переключатель выше.';
   }
-  const port = Number(status.port) || PORT_DEFAULT;
+  const port = apiPort({ status, profile: status?.profile });
   const scopes = status.scopes || {};
   const names = [
     scopes.read ? 'чтение' : null,
@@ -152,8 +187,14 @@ export function bindExternalApiPanel() {
   });
 
   document.getElementById('external-api-open')?.addEventListener('click', async () => {
-    const port = Number(state.settings?.externalApi?.port) || PORT_DEFAULT;
-    const url = `http://127.0.0.1:${port}/`;
+    // Порт берём у работающего сервера: в тестовой сборке он отличается от
+    // сохранённого, и «Открыть страницу API» должна вести на настоящий адрес.
+    const status = await apiStatus().catch(() => null);
+    const url = apiPageUrl({
+      status,
+      settings: state.settings?.externalApi,
+      profile: status?.profile
+    });
     try {
       if (/** @type {any} */ (window).__TAURI_INTERNALS__) {
         const { open } = await import('@tauri-apps/plugin-shell');
@@ -167,7 +208,8 @@ export function bindExternalApiPanel() {
   });
 
   document.getElementById('external-api-copy-curl')?.addEventListener('click', async () => {
-    const port = Number(state.settings?.externalApi?.port) || PORT_DEFAULT;
+    const status = await apiStatus().catch(() => null);
+    const port = apiPort({ status, settings: state.settings?.externalApi, profile: status?.profile });
     const ok = await copyText(curlExample(port));
     toast(ok ? 'Пример curl скопирован.' : 'Браузер не разрешил копирование.', ok ? 'success' : 'error');
   });

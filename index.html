@@ -498,7 +498,7 @@
             <p class="muted" style="margin-top: 0;">
               Сервер слушает только <code>127.0.0.1</code> и работает лишь из приложения, а не из браузера.
               Любая программа на этом компьютере видит порт, поэтому доступ закрыт токеном, а по умолчанию сервер выключен.
-              Контракт и коды ошибок — <code>docs/EXTERNAL-API.md</code>; полный адрес — <code>http://127.0.0.1:47831/api/v1</code>.
+              Контракт и коды ошибок — <code>docs/EXTERNAL-API.md</code>; полный адрес показан ниже в строке статуса — он зависит от порта.
             </p>
             <p class="muted">
               В тестовой сборке API тоже работает, но на своём порту <code>47832</code> и со своим токеном —
@@ -516,7 +516,7 @@
             <div class="settings-checks">
               <label>Порт
                 <input class="input" type="number" min="1024" max="65535" step="1" style="width: 120px;" data-setting="externalApi.port" />
-                <span class="muted">1024–65535, по умолчанию 47831</span>
+                <span class="muted">1024–65535, по умолчанию 47831 (в тестовой сборке — 47832)</span>
               </label>
             </div>
             <p class="muted" id="external-api-status" role="status" aria-live="polite">Сервер не запущен.</p>
