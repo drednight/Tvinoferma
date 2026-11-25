@@ -46,11 +46,46 @@ function settingsKey(settings, token) {
   });
 }
 
+/**
+ * Перерисовка разделов после изменения через API.
+ *
+ * Без неё данные сохранялись бы, а список на экране показывал бы старое: человек
+ * отметил задачу во внешней программе и не увидел отметки в приложении. Модули
+ * подключаются динамически — иначе мост тянул бы за собой весь интерфейс.
+ */
+function renderers() {
+  // Ошибку перерисовки глотаем: список на экране не обновится, но данные уже записаны,
+  // а падать из-за этого нельзя — ответ API должен уйти клиенту.
+  const safe = fn => () => {
+    try {
+      const result = fn();
+      if (result && typeof result.catch === 'function') result.catch(() => {});
+    } catch {
+      /* перерисовка не удалась — данные уже сохранены */
+    }
+  };
+  return {
+    renderCharacters: safe(() => import('../characters/list.js').then(m => m.renderCharacters())),
+    renderParties: safe(() => import('../parties/index.js').then(m => m.renderParties())),
+    renderMarathons: safe(() => import('../marathons/page.js').then(m => m.renderMarathons())),
+    renderFinance: safe(() => import('../finance/page.js').then(m => m.renderFinance())),
+    // Планировщик живёт на странице «Сегодня»: её рисует renderToday, а кнопки
+    // действий получают тот же runTodayAction, что и в самом приложении.
+    renderPlanner: safe(async () => {
+      const [{ renderToday }, { runTodayAction }] = await Promise.all([
+        import('../dashboard/todayView.js'),
+        import('../characters/list.js')
+      ]);
+      renderToday(document.getElementById('today-root'), { run: runTodayAction });
+    })
+  };
+}
+
 /** Подключить мост один раз: событие `external-api-request` → ответ JS. */
 async function ensureBridge() {
   if (bridge) return bridge;
   const { bindExternalApiBridge } = await import('./bridge.js');
-  bridge = await bindExternalApiBridge();
+  bridge = await bindExternalApiBridge(renderers());
   return bridge;
 }
 

@@ -14,18 +14,14 @@
 // 15 секунд и получила `504`. Ошибки не содержат тел запросов и токенов.
 
 import { state } from '../../core/state.js';
+import { mskDate } from '../../core/msk.js';
 import { persist, assertStateWriteAvailable } from '../../core/storage.js';
 import { ApiError, errorBody } from './actions/mutate.js';
 import { runningByCharId } from './actions/read.js';
+import { JobRegistry } from './actions/launch.js';
 
 const EVENT = 'external-api-request';
 const STARTED_AT = Date.now();
-const JOBS = {
-  /** @type {Map<string, any>} */
-  map: new Map(),
-  counter: 0
-};
-const CLOSE_TTL_MS = 30 * 60 * 1000;
 /** Форматы выгрузки: `txt` — тот же CSV, для клиентов, которым так удобнее. */
 const EXPORT_FORMATS = new Set(['csv', 'json', 'txt']);
 
@@ -235,6 +231,65 @@ export async function routeRequest(request, deps = {}) {
           launchClose: !!settings.allowLaunchClose
         },
         launch: { busy: !!registry?.active?.() }
+      }
+    };
+  }
+
+  // --- Сводка: что сейчас в приложении ---
+  //
+  // Один запрос вместо пяти: сколько персонажей и пати, что осталось на сегодня,
+  // сколько денег в реестре и открыто ли окно игры. Для внешней программы это
+  // дешёвый способ понять «приложение живо и готово», не разбирая все списки.
+  if (method === 'GET' && path === '/api/v1/status') {
+    const version = await load('appVersion', () =>
+      import('@tauri-apps/api/app').then(app => app.getVersion?.()).catch(() => null)
+    );
+    const profile = await load('buildProfile', () => dynamicInvoke('app_build_profile').catch(() => 'stable'));
+    const registry = await load('jobs', () => jobsRegistry());
+    const storageWritable = deps.storageWritable ?? storageWritableNow(deps);
+    const read = await load('characters', () => import('./actions/read.js'));
+    const rows = await load('windowRows', () => readWindowRows());
+    const characters = read.publicCharacters(state, '', { running: runningByCharIdOf(rows) }).characters || [];
+    const parties = read.publicParties(state).parties || [];
+    const marathons = read.publicMarathons(state, await marathonTotalsFn(deps)).marathons || [];
+    const planner = read.publicPlanner(state);
+    const finance = read.publicFinance(state);
+    const balances = await load('balances', () =>
+      import('../finance/model.js').then(model => model.currentBalances(state.finance || {}))
+    );
+    const today = mskDate(new Date());
+    // Дела на сегодня — с учётом повторов: ежедневная запись со вторника попадает
+    // в сегодняшний список, даже если её дата — прошлый вторник.
+    const plannerModel = await load('planner', () => import('../dashboard/planner.js'));
+    const todayEntries = (planner.entries || []).filter(entry => plannerModel.entryOccursOn(entry, today));
+    const doneToday = todayEntries.filter(entry => plannerModel.entryStatusForDate(entry, today) === 'done').length;
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        app: { version: version || 'неизвестна', build: profile || 'stable' },
+        api: { version: 1, uptimeSec: isoSeconds(Date.now() - STARTED_AT) },
+        storage: { writable: storageWritable },
+        scopes: {
+          read: settings.allowRead !== false,
+          modify: !!settings.allowModify,
+          launchClose: !!settings.allowLaunchClose
+        },
+        launch: { busy: !!registry?.active?.() },
+        counts: {
+          characters: characters.length,
+          parties: parties.length,
+          marathons: marathons.length,
+          plannerEntries: (planner.entries || []).length,
+          windows: rows.length,
+          financeOperations: (finance.operations || []).length
+        },
+        today: {
+          date: today,
+          total: todayEntries.length,
+          done: doneToday
+        },
+        finance: { balances: balances || {} }
       }
     };
   }
@@ -497,6 +552,45 @@ export async function routeRequest(request, deps = {}) {
     return { status: 201, body: result };
   }
 
+  // --- Планировщик: правка записи и новая запись ---
+  if (method === 'PATCH' && path.startsWith('/api/v1/planner/entries/')) {
+    requireScope('modify');
+    const { patchPlannerEntry } = await load('mutate', () => import('./actions/mutate.js'));
+    const id = decodeSegment(path.slice('/api/v1/planner/entries/'.length));
+    const result = await patchPlannerEntry(state, id, jsonBody(body), {
+      persist,
+      assertStateWriteAvailable,
+      renderPlanner: deps.renderPlanner,
+      now
+    });
+    return { status: 200, body: result };
+  }
+
+  if (method === 'POST' && path === '/api/v1/planner/entries') {
+    requireScope('modify');
+    const { createPlannerEntry } = await load('mutate', () => import('./actions/mutate.js'));
+    const result = await createPlannerEntry(state, jsonBody(body), {
+      persist,
+      assertStateWriteAvailable,
+      renderPlanner: deps.renderPlanner,
+      now
+    });
+    return { status: 201, body: result };
+  }
+
+  // --- Учёт: новая операция в реестре ---
+  if (method === 'POST' && path === '/api/v1/finance/operations') {
+    requireScope('modify');
+    const { addFinanceOperation } = await load('mutate', () => import('./actions/mutate.js'));
+    const result = await addFinanceOperation(state, jsonBody(body), {
+      persist,
+      assertStateWriteAvailable,
+      renderFinance: deps.renderFinance,
+      now
+    });
+    return { status: 201, body: result };
+  }
+
   if (method === 'PATCH' && path.startsWith('/api/v1/dungeon-passes/')) {
     requireScope('modify');
     const { patchDungeonPasses } = await load('mutate', () => import('./actions/mutate.js'));
@@ -634,46 +728,11 @@ function jobsRegistry() {
   if (existing) return existing;
   // Реестр создаётся лениво: он хранит задания 30 минут и не должен переживать
   // перезагрузку страницы вместе с окнами, которые уже никто не откроет.
-  const now = () => Date.now();
-  const registry = {
-    jobs: JOBS.map,
-    create(kind, total) {
-      const id = `job_${(JOBS.counter = (JOBS.counter || 0) + 1).toString(36)}${now().toString(36)}`;
-      const job = {
-        id,
-        kind,
-        status: 'queued',
-        createdAt: new Date(now()).toISOString(),
-        startedAt: null,
-        finishedAt: null,
-        progress: { done: 0, total, percent: 0, stage: 'В очереди', character: null },
-        result: null
-      };
-      JOBS.map.set(id, job);
-      return job;
-    },
-    get(id) {
-      this.sweep();
-      return JOBS.map.get(String(id)) || null;
-    },
-    active() {
-      this.sweep();
-      for (const job of JOBS.map.values()) if (job.status === 'queued' || job.status === 'running') return job;
-      return null;
-    },
-    sweep() {
-      const cutoff = now() - CLOSE_TTL_MS;
-      for (const [id, job] of JOBS.map) {
-        const finished = job.status === 'done' || job.status === 'failed' || job.status === 'cancelled';
-        if (finished && (Date.parse(job.finishedAt || job.createdAt) || 0) < cutoff) JOBS.map.delete(id);
-      }
-      while (JOBS.map.size > 50) {
-        const oldest = [...JOBS.map.values()].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))[0];
-        if (!oldest) break;
-        JOBS.map.delete(oldest.id);
-      }
-    }
-  };
+  //
+  // Это тот же `JobRegistry`, что и в тестах: у него есть `now()`, который ждёт
+  // код запуска. Свой реестр здесь означал бы, что `POST /launch/*` падает с
+  // «registry.now is not a function» — ровно то, что было до этого изменения.
+  const registry = new JobRegistry();
   globalThis.__tfExternalApiJobs = registry;
   return registry;
 }

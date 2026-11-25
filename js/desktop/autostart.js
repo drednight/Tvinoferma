@@ -101,8 +101,9 @@ export async function bindAutostart(deps = {}) {
     on.checked = info.enabled;
     min.checked = info.minimized;
     adm.checked = info.admin || alwaysAdmin;
-    min.disabled = adm.disabled = !info.enabled;
-    if (alwaysAdmin) adm.disabled = true;
+    min.disabled = !info.enabled;
+    // У тестовой сборки переключатель закрыт навсегда: она всегда работает от администратора.
+    adm.disabled = alwaysAdmin || !info.enabled;
     if (note) note.textContent = autostartNote(info, { alwaysAdmin });
     // Кнопка перезапуска нужна ровно тогда, когда прав нет, а пользователь их хочет.
     // Если уже администратор — вопрос снят, и лишний запрос UAC показывать незачем.
@@ -138,7 +139,12 @@ export async function bindAutostart(deps = {}) {
       }
     } finally {
       on.disabled = false;
-      min.disabled = adm.disabled = !on.checked;
+      min.disabled = !on.checked;
+      // Тестовая сборка всегда работает от администратора: переключатель остаётся
+      // закрытым навсегда. Если вернуть ему доступность после записи, человек
+      // снимет галочку и следующим запуском получит сборку без прав.
+      adm.disabled = alwaysAdmin ? true : !on.checked;
+      if (alwaysAdmin) adm.checked = true;
       wasAdmin = adm.checked;
     }
   };

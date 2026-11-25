@@ -71,9 +71,9 @@
           method: '—',
           path: 'Вкладки этой страницы',
           scope: '—',
-          summary: 'Что умеет консоль: данные, обзор, действия, тестовая строка и этот справочник.',
+          summary: 'Что умеет консоль: данные, обзор, действия, рецепты, тестовая строка и этот справочник.',
           description:
-            '«Данные» — персонажи, пати, окна и журнал вызовов. «Обзор» — живая картина: прогресс марафонов, ближайшие записи планировщика, приход/расход и долги, открытые окна; кнопка «Обновить» перезапрашивает всё. «Действия» — готовые кнопки: не нужно помнить адреса и тела, достаточно выбрать действие и заполнить поля; выбор персонажа и пати — из списка, а не ввод id руками. Каждое действие показывает маршрут до отправки и ответ после; изменения и запуск просят подтверждение и показывают «было → стало», а 403 объясняет, какое право включить. «Тестовый запрос» — свободная строка для любого метода, здесь же рецепты curl, PowerShell и CMD. «Справочник API» — этот список: все методы, параметры, ответы, коды ошибок и примеры.',
+            '«Данные» — персонажи, пати, окна и журнал вызовов. «Обзор» — живая картина: прогресс марафонов, ближайшие записи планировщика, приход/расход и долги, открытые окна; кнопка «Обновить» перезапрашивает всё. «Действия» — готовые кнопки: не нужно помнить адреса и тела, достаточно выбрать действие и заполнить поля; выбор персонажа и пати — из списка, а не ввод id руками. Каждое действие показывает маршрут до отправки и ответ после; изменения и запуск просят подтверждение и показывают «было → стало», а 403 объясняет, какое право включить. «Рецепты» — готовые сценарии: когда запрос нужен, как он выглядит, что придёт в ответ и что ответ значит; тот же набор собран в docs/EXTERNAL-API-EXAMPLES.md из одного каталога, поэтому страница и документ не расходятся. «Тестовый запрос» — свободная строка для любого метода, здесь же рецепты curl, PowerShell и CMD. «Справочник API» — этот список: все методы, параметры, ответы, коды ошибок и примеры.',
           params: [],
           response: 'Страница работает на том же токене, что и настройки: токен вводится один раз в поле слева.',
           example: 'Страница: http://127.0.0.1:<фактический порт>/ — адрес показан в настройках рядом с кнопкой «Открыть страницу API».',
@@ -154,6 +154,20 @@
           response:
             '{ ok, app: { version, build }, api: { version, uptimeSec }, storage: { writable }, scopes: { read, modify, launchClose }, launch: { busy } }.',
           example: 'GET /health',
+          exampleBody: null
+        },
+        {
+          id: 'get-status',
+          method: 'GET',
+          path: '/status',
+          scope: 'чтение',
+          summary: 'Сводка одним запросом: счётчики, дела на сегодня, баланс, права.',
+          description:
+            'Дешёвый способ понять «приложение живо и что в нём происходит», не разбирая пять списков. Контактов, паролей и содержимого заметок в сводке нет: только счётчики и итоги.',
+          params: [],
+          response:
+            '{ ok, app, api, storage, scopes, launch, counts: { characters, parties, marathons, plannerEntries, windows, financeOperations }, today: { date, total, done }, finance: { balances } }.',
+          example: 'GET /status',
           exampleBody: null
         },
         {
@@ -516,6 +530,63 @@
           response: '{ operations: [{ id, date, kind, amount, currency, counterparty, note, characterId }], shopItems, loans, settings }.',
           example: 'GET /finance',
           exampleBody: null
+        },
+        {
+          id: 'patch-planner-entry',
+          method: 'PATCH',
+          path: '/planner/entries/{id}',
+          scope: 'изменение',
+          summary: 'Правка записи планировщика: статус, перенос, название, время.',
+          description:
+            'Поля: status (todo, doing, done), date — день, к которому относится статус (у повторов своё состояние на каждый день), moveToDate — перенос самой записи, title, time. Правку делает тот же модуль, что и интерфейс, поэтому повторы не сбрасываются.',
+          params: [
+            ['id', 'путь', 'string', 'Идентификатор записи из GET /planner.'],
+            ['status', 'тело', 'string', 'todo, doing или done.'],
+            ['date', 'тело', 'string', 'День статуса в формате ГГГГ-ММ-ДД (для повтора — конкретный день).'],
+            ['moveToDate', 'тело', 'string', 'Перенести запись на другой день.'],
+            ['title, time', 'тело', 'string', 'Текст записи: название и время ЧЧ:ММ.']
+          ],
+          response: '{ entry: { id, title, date, time, status }, changed: [ … ] }.',
+          example: 'PATCH /planner/entries/pe_1',
+          exampleBody: { status: 'done', date: '2026-11-24' }
+        },
+        {
+          id: 'post-planner-entry',
+          method: 'POST',
+          path: '/planner/entries',
+          scope: 'изменение',
+          summary: 'Новая запись в календаре планировщика.',
+          description:
+            'Обязательно только title. Остальное необязательно: date (сегодня, если не указать), time, durationMinutes, kind (task, event, note), priority, recurrence (none, daily, weekly, monthly). Запись создаётся тем же нормализатором, что и в интерфейсе.',
+          params: [
+            ['title', 'тело', 'string', 'Название дела (обязательно).'],
+            ['date', 'тело', 'string', 'Дата в формате ГГГГ-ММ-ДД.'],
+            ['time', 'тело', 'string', 'Время ЧЧ:ММ или пустая строка.'],
+            ['durationMinutes', 'тело', 'number', 'Длительность в минутах.'],
+            ['kind, priority, recurrence', 'тело', 'string', 'Тип, приоритет и повтор записи.']
+          ],
+          response: '{ entry: { id, title, date, time, status } }.',
+          example: 'POST /planner/entries',
+          exampleBody: { title: 'Сходить в игру', date: '2026-11-24', time: '19:00' }
+        },
+        {
+          id: 'post-finance-operation',
+          method: 'POST',
+          path: '/finance/operations',
+          scope: 'изменение',
+          summary: 'Новая запись в реестре денег: приход или расход.',
+          description:
+            'kind — in (приход) или out (расход, по умолчанию), amount — положительное число, currency — gold или coins, date, counterparty, note, characterId. Запись идёт через модель учёта приложения: сумма округляется под валюту, поэтому балансы не расходятся с интерфейсом.',
+          params: [
+            ['kind', 'тело', 'string', 'in или out.'],
+            ['amount', 'тело', 'number', 'Сумма: положительное число.'],
+            ['currency', 'тело', 'string', 'gold или coins.'],
+            ['date', 'тело', 'string', 'Дата в формате ГГГГ-ММ-ДД.'],
+            ['counterparty, note, characterId', 'тело', 'string', 'Контрагент, комментарий и персонаж.']
+          ],
+          response: '{ operation: { id, kind, amount, currency, date, counterparty, note } }.',
+          example: 'POST /finance/operations',
+          exampleBody: { kind: 'in', amount: 25000, currency: 'gold', note: 'Продажа зелья' }
         }
       ]
     },

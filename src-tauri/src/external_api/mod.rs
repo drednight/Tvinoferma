@@ -65,6 +65,9 @@ const PAGE_DOCS_JS: &str = include_str!("web/docs.js");
 const PAGE_ERRORS_JS: &str = include_str!("web/errors.js");
 /// Модель действий страницы: что можно нажать и какой запрос уйдёт (web/actions.js).
 const PAGE_ACTIONS_JS: &str = include_str!("web/actions.js");
+/// Каталог примеров для вкладки «Рецепты» (web/recipes.js). Он же — источник
+/// правды для docs/EXTERNAL-API-EXAMPLES.md.
+const PAGE_RECIPES_JS: &str = include_str!("web/recipes.js");
 const CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'";
 
 /// Ответ из JS на запрос из реестра.
@@ -754,6 +757,14 @@ fn handle(app: &AppHandle, context: &ServeContext, request: http::Request) -> Re
                     200,
                     "text/javascript; charset=utf-8",
                     PAGE_ACTIONS_JS,
+                    &ledger,
+                );
+            }
+            "/recipes.js" => {
+                return Response::static_file(
+                    200,
+                    "text/javascript; charset=utf-8",
+                    PAGE_RECIPES_JS,
                     &ledger,
                 );
             }

@@ -152,6 +152,23 @@ describe('автозапуск: переключатели в настройка
     );
   });
 
+  it('тестовая сборка: переключатель остаётся закрытым после записи автозапуска', async () => {
+    // Регрессия: после записи автозапуска переключатель снова становился доступным,
+    // и человек мог снять галочку — а следующий запуск тогда шёл без прав.
+    const invoke = vi.fn(async cmd => {
+      if (cmd === 'autostart_set') return info({ enabled: true, minimized: true, current: true, admin: false });
+      return info({ enabled: true, minimized: true, current: true, admin: true });
+    });
+    await bindAutostart({ invoke, profile: 'acceptance' });
+    const adm = document.getElementById('autostart-admin');
+    const min = document.getElementById('autostart-minimized');
+    min.checked = false;
+    min.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('autostart_set', expect.anything()));
+    await vi.waitFor(() => expect(adm.disabled).toBe(true));
+    expect(adm.checked).toBe(true);
+  });
+
   it('не Windows: блок остаётся скрытым; ошибка записи показывается и состояние перечитывается', async () => {
     await bindAutostart({ invoke: async () => info({ supported: false }) });
     expect(document.getElementById('autostart-block').hidden).toBe(true);

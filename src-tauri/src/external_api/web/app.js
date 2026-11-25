@@ -43,6 +43,11 @@
   // Действия описаны данными (web/actions.js): разметка и запрос строятся по ним,
   // поэтому кнопка не может разойтись с контрактом.
   const actions = Array.isArray(window.TF_API_ACTIONS) ? window.TF_API_ACTIONS : [];
+  // Рецепты описаны данными (web/recipes.js) — тем же каталогом собран
+  // docs/EXTERNAL-API-EXAMPLES.md, поэтому страница и документ не расходятся.
+  const recipeCatalog = window.TF_API_RECIPES || [];
+  const recipeGroupList = window.TF_API_RECIPE_GROUPS || [];
+  const recipeSnippetBuilders = window.TF_API_RECIPE_SNIPPETS || {};
   let activeAction = null;
 
   /** Подставить пример запроса в тестовую строку. */
@@ -359,6 +364,7 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
       else tab.removeAttribute('aria-current');
     }
     if (name === 'docs') renderDocs();
+    if (name === 'recipes') renderRecipes();
     if (name === 'overview') loadOverview();
   }
 
@@ -621,6 +627,114 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
         ${tryButton}
       </div>
     </article>`;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Вкладка «Рецепты»: готовые сценарии «запрос → ответ → смысл»      */
+  /* ------------------------------------------------------------------ */
+
+  /** Название права по-человечески — как в настройках приложения. */
+  const RECIPE_SCOPE_NAMES = {
+    read: 'чтение',
+    modify: 'изменение',
+    launchClose: 'запуск и закрытие окон'
+  };
+
+  /**
+   * Пример запроса с настоящим адресом и токеном.
+   *
+   * Сборщик примеров живёт в каталоге (web/recipes.js) — он же печатает примеры
+   * в документ. Здесь только подставляются адрес этой страницы и токен, чтобы
+   * команду можно было сразу скопировать и выполнить.
+   */
+  function recipeSnippet(item, language) {
+    const builder = recipeSnippetBuilders[language] || recipeSnippetBuilders.curl;
+    if (!builder) return '';
+    return String(builder(item))
+      .replace(/http:\/\/127\.0\.0\.1:47831/g, location.origin)
+      .replace(/<токен>/g, token || '<токен>');
+  }
+
+  /** Тело запроса для кнопки «Попробовать». */
+  function recipeBody(item) {
+    return item.body ? JSON.stringify(item.body) : '';
+  }
+
+  function recipeHtml(item) {
+    const errors = (item.errors || []).length
+      ? `<h5>Если придёт ошибка</h5>
+        <div class="xapi-table-wrap"><table class="xapi-table"><thead><tr><th scope="col">Код</th><th scope="col">Что делать</th></tr></thead><tbody>${item.errors
+          .map(error => `<tr><td><code>${escapeHtml(error.status)} ${escapeHtml(error.code)}</code></td><td>${escapeHtml(error.why)}</td></tr>`)
+          .join('')}</tbody></table></div>`
+      : '';
+    const response = typeof item.response === 'string' ? item.response : JSON.stringify(item.response, null, 2);
+    const tryButton = `<button type="button" class="btn secondary small" data-recipe-try="${escapeHtml(item.path)}" data-recipe-method="${escapeHtml(item.method)}" data-recipe-body="${escapeHtml(recipeBody(item))}">Попробовать в тестовой строке</button>`;
+    return `<article class="xapi-doc" data-recipe>
+      <div class="xapi-doc-head">
+        <span class="xapi-doc-method is-${escapeHtml(String(item.method).toLowerCase())}">${escapeHtml(item.method)}</span>
+        <code class="xapi-doc-path">${escapeHtml(item.template || item.path)}</code>
+        <span class="xapi-chip">право: ${escapeHtml(RECIPE_SCOPE_NAMES[item.scope] || item.scope)}</span>
+      </div>
+      <h4>${escapeHtml(item.title)}</h4>
+      <p class="xapi-note">${escapeHtml(item.scenario)}</p>
+      <div class="xapi-doc-body">
+        <h5>Запрос</h5>
+        <pre class="xapi-code xapi-code-sm">${escapeHtml(recipeSnippet(item, 'curl'))}</pre>
+        ${tryButton}
+        <h5>Ответ</h5>
+        <pre class="xapi-code xapi-code-sm">${escapeHtml(response)}</pre>
+        <h5>Что это значит</h5>
+        <p class="xapi-note">${escapeHtml(item.explanation)}</p>
+        ${errors}
+      </div>
+    </article>`;
+  }
+
+  function renderRecipes() {
+    const body = $('#recipes-body');
+    if (!body) return;
+    if (!recipeCatalog.length) {
+      body.innerHTML = '<p class="xapi-note">Рецепты не загрузились: файл recipes.js не подключён.</p>';
+      return;
+    }
+    if (body.dataset.rendered !== '1') {
+      body.innerHTML = recipeGroupList
+        .map(group => {
+          const inGroup = recipeCatalog.filter(item => item.group === group.id);
+          if (!inGroup.length) return '';
+          return `<section class="xapi-doc-group" data-recipe-group>
+            <h3>${escapeHtml(group.title)}</h3>
+            ${inGroup.map(recipeHtml).join('')}
+          </section>`;
+        })
+        .join('');
+      body.dataset.rendered = '1';
+      for (const button of body.querySelectorAll('[data-recipe-try]')) {
+        button.addEventListener('click', () =>
+          useExample(button.dataset.recipeTry, button.dataset.recipeMethod, button.dataset.recipeBody)
+        );
+      }
+    }
+    filterRecipes();
+  }
+
+  /** Поиск: скрывает рецепты, где нет совпадения. */
+  function filterRecipes() {
+    const input = $('#recipes-filter');
+    const query = (input ? input.value : '').trim().toLowerCase();
+    let shown = 0;
+    for (const group of document.querySelectorAll('[data-recipe-group]')) {
+      let any = false;
+      for (const item of group.querySelectorAll('[data-recipe]')) {
+        const hit = !query || item.textContent.toLowerCase().includes(query);
+        item.hidden = !hit;
+        if (hit) any = true;
+      }
+      group.hidden = !any;
+      if (any) shown += 1;
+    }
+    if (query && shown === 0 && input) input.setAttribute('data-empty', '1');
+    else if (input) input.removeAttribute('data-empty');
   }
 
   /* ------------------------------------------------------------------ */
@@ -1188,6 +1302,8 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
       if (event.key === 'Enter') sendPlay();
     });
     $('#docs-filter').addEventListener('input', filterDocs);
+    // Вкладка «Рецепты».
+    $('#recipes-filter')?.addEventListener('input', filterRecipes);
     // Вкладка «Действия».
     $('#overview-refresh')?.addEventListener('click', loadOverview);
     $('#actions-filter')?.addEventListener('input', renderActionsList);

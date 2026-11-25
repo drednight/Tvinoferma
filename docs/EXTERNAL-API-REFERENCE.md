@@ -231,6 +231,32 @@ curl -s -H "Authorization: Bearer $TF_API_TOKEN" "$BASE/health"
 curl -s -H "Authorization: Bearer $TF_API_TOKEN" "$BASE/audit"
 ```
 
+#### `GET /status`
+
+Сводка одним запросом: счётчики, дела на сегодня, баланс, права и занятость
+запуска. **Право:** чтение.
+
+Контактов, паролей и содержимого заметок в сводке нет — только счётчики и
+итоги, поэтому её безопасно показывать в чужой программе.
+
+```json
+{
+  "ok": true,
+  "app": { "version": "3.0.0", "build": "stable" },
+  "api": { "version": 1, "uptimeSec": 42 },
+  "storage": { "writable": true },
+  "scopes": { "read": true, "modify": true, "launchClose": true },
+  "launch": { "busy": false },
+  "counts": { "characters": 3, "parties": 2, "marathons": 1, "plannerEntries": 12, "windows": 1, "financeOperations": 7 },
+  "today": { "date": "2026-11-25", "total": 4, "done": 1 },
+  "finance": { "balances": { "gold": 125000, "coins": 340 } }
+}
+```
+
+```bash
+curl -s -H "Authorization: Bearer $TF_API_TOKEN" "$BASE/status"
+```
+
 ---
 
 ### Персонажи
@@ -718,6 +744,77 @@ curl -s -H "Authorization: Bearer $TF_API_TOKEN" "$BASE/planner"
 
 ```bash
 curl -s -H "Authorization: Bearer $TF_API_TOKEN" "$BASE/finance"
+```
+
+#### `PATCH /planner/entries/{id}`
+
+Правка записи планировщика. **Право:** изменение.
+
+Поля тела:
+
+| Поле | Тип | Что значит |
+| --- | --- | --- |
+| `status` | строка | `todo`, `doing` или `done` |
+| `date` | строка | День, к которому относится статус, в формате `ГГГГ-ММ-ДД` |
+| `moveToDate` | строка | Перенести саму запись на другой день |
+| `title` | строка | Название |
+| `time` | строка | Время `ЧЧ:ММ` или пустая строка |
+
+У повторяющейся записи своё состояние на каждый день: `date` — конкретный
+день повтора, а не «день записи». Правку делает тот же модуль, что и интерфейс
+приложения, поэтому отметка не сбрасывается и не расходится с календарём.
+
+```json
+{ "entry": { "id": "pe1", "title": "Собрать пати", "date": "2026-11-25", "time": "19:00", "status": "todo" },
+  "changed": ["status"] }
+```
+
+```bash
+curl -s -X PATCH -H "Authorization: Bearer $TF_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"status":"done","date":"2026-11-25"}' "$BASE/planner/entries/pe1"
+```
+
+#### `POST /planner/entries`
+
+Новая запись в календаре планировщика. **Право:** изменение.
+
+Обязательно только `title`. Остальное необязательно: `date` (сегодня, если не
+указать), `time`, `durationMinutes`, `kind` (`task`, `event`, `note`),
+`priority`, `recurrence` (`none`, `daily`, `weekly`, `monthly`).
+
+```json
+{ "entry": { "id": "pe2", "title": "Сходить в игру", "date": "2026-11-25", "time": "19:00", "status": "todo" } }
+```
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $TF_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"title":"Сходить в игру","date":"2026-11-25","time":"19:00"}' "$BASE/planner/entries"
+```
+
+#### `POST /finance/operations`
+
+Новая запись в реестре денег: приход или расход. **Право:** изменение.
+
+| Поле | Тип | Что значит |
+| --- | --- | --- |
+| `kind` | строка | `in` (приход) или `out` (расход, по умолчанию) |
+| `amount` | число | Сумма: положительное число |
+| `currency` | строка | `gold` или `coins` |
+| `date` | строка | Дата в формате `ГГГГ-ММ-ДД` |
+| `counterparty` | строка | Контрагент |
+| `note` | строка | Комментарий |
+| `characterId` | строка | Персонаж, к которому относится операция |
+
+Запись идёт через модель учёта приложения: сумма округляется под валюту, так
+что балансы в приложении и в своей программе не разойдутся.
+
+```json
+{ "operation": { "id": "op2", "kind": "in", "amount": 25000, "currency": "gold", "date": "2026-11-25", "counterparty": "", "note": "Продажа зелья" } }
+```
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $TF_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"kind":"in","amount":25000,"currency":"gold","note":"Продажа зелья"}' "$BASE/finance/operations"
 ```
 
 ---
