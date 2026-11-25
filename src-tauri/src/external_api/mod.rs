@@ -54,9 +54,22 @@ const PAGE_JS: &str = include_str!("web/app.js");
 const CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'";
 
 /// Ответ из JS на запрос из реестра.
+///
+/// Обычно тело — JSON (`body`). Для выгрузок (CSV) JS присылает готовый текст
+/// и тип содержимого: превращать таблицу в JSON, чтобы Rust снова разобрал её
+/// в строку, незачем — а `Content-Type` и `Content-Disposition` задаёт клиент.
 struct Reply {
     status: u16,
     body: Value,
+    raw: Option<RawReply>,
+}
+
+/// Готовый текст ответа: используется, когда `body` — не JSON.
+struct RawReply {
+    content_type: String,
+    body: String,
+    /// Значение заголовка `Content-Disposition` (обычно `attachment; filename="…"`).
+    disposition: Option<String>,
 }
 
 /// Запросы, ожидающие ответа из JS: `requestId → отправитель`.
@@ -86,6 +99,7 @@ impl Server {
                 let _ = sender.send(Reply {
                     status: 503,
                     body: not_ready_body(),
+                    raw: None,
                 });
             }
         }
@@ -361,17 +375,25 @@ pub fn external_api_reply(
     request_id: String,
     status: u16,
     body: Value,
+    content_type: Option<String>,
+    raw_body: Option<String>,
+    disposition: Option<String>,
 ) -> Result<(), String> {
     if window.label() != "main" {
         return Err("Ответ принимается только из главного окна".into());
     }
+    let raw = raw_body.map(|text| RawReply {
+        content_type: content_type.unwrap_or_else(|| "text/plain; charset=utf-8".to_string()),
+        body: text,
+        disposition,
+    });
     let sender = state
         .pending
         .lock()
         .map_err(|_| "Очередь запросов повреждена")?
         .remove(&request_id);
     if let Some(sender) = sender {
-        let _ = sender.send(Reply { status, body });
+        let _ = sender.send(Reply { status, body, raw });
     }
     Ok(())
 }
@@ -526,6 +548,26 @@ impl Response {
             status,
             headers: http::json_headers(),
             body: bytes,
+            method: ledger.0.clone(),
+            path: ledger.1.clone(),
+        }
+    }
+
+    /// Ответ готовым текстом: CSV и прочие выгрузки. `raw` уже содержит
+    /// `Content-Type` и, если нужно, `Content-Disposition`.
+    fn text(status: u16, raw: RawReply, ledger: &(String, String)) -> Self {
+        let mut headers = vec![
+            ("Content-Type".to_string(), raw.content_type.clone()),
+            ("Cache-Control".to_string(), "no-store".to_string()),
+            ("X-Content-Type-Options".to_string(), "nosniff".to_string()),
+        ];
+        if let Some(disposition) = raw.disposition {
+            headers.push(("Content-Disposition".to_string(), disposition));
+        }
+        Self {
+            status,
+            headers,
+            body: raw.body.into_bytes(),
             method: ledger.0.clone(),
             path: ledger.1.clone(),
         }
@@ -774,7 +816,10 @@ fn handle(app: &AppHandle, context: &ServeContext, request: http::Request) -> Re
             if let Ok(mut pending) = context.pending.lock() {
                 pending.remove(&request_id);
             }
-            Response::json(reply.status, reply.body, &ledger)
+            match reply.raw {
+                Some(raw) => Response::text(reply.status, raw, &ledger),
+                None => Response::json(reply.status, reply.body, &ledger),
+            }
         }
         Err(_) => {
             if let Ok(mut pending) = context.pending.lock() {

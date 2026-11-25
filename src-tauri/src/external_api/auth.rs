@@ -105,14 +105,26 @@ pub fn access_for(method: &str, path: &str) -> Result<Access, &'static str> {
         | ("GET", ["characters"])
         | ("GET", ["characters", _])
         | ("GET", ["parties"])
+        | ("GET", ["parties", _])
+        | ("GET", ["marathons"])
+        | ("GET", ["marathons", _])
+        | ("GET", ["marathons", _, "participants"])
+        | ("GET", ["planner"])
+        | ("GET", ["finance"])
         | ("GET", ["windows"])
         | ("GET", ["jobs", _])
+        | ("GET", ["export", _])
         | ("GET", ["audit"]) => Ok(Access::Read),
-        ("PATCH", ["characters", _]) | ("POST", ["characters", "bulk-update"]) => {
-            Ok(Access::Modify)
-        }
+        ("PATCH", ["characters", _])
+        | ("POST", ["characters"])
+        | ("POST", ["characters", "bulk-update"])
+        | ("PATCH", ["dungeon-passes", _])
+        | ("POST", ["marathons", _, "marks"])
+        | ("POST", ["marathons", _, "adjust"])
+        | ("PATCH", ["parties", _]) => Ok(Access::Modify),
         ("POST", ["launch", "character"])
         | ("POST", ["launch", "party"])
+        | ("POST", ["launch", "selection"])
         | ("POST", ["windows", "close"])
         | ("POST", ["app", "show"]) => Ok(Access::LaunchClose),
         ("GET", _) | ("POST", _) | ("PATCH", _) => Err("not_found"),
@@ -257,9 +269,50 @@ mod tests {
             access_for("GET", "/api/v1/characters/Mag_1/extra"),
             Err("not_found")
         );
+        // Удалять персонажей через API нельзя: метод просто не поддерживается.
         assert_eq!(
             access_for("DELETE", "/api/v1/characters/Mag_1"),
             Err("method_not_allowed")
+        );
+        assert_eq!(
+            access_for("DELETE", "/api/v1/marathons/m1"),
+            Err("method_not_allowed")
+        );
+        // Марафоны, планировщик, учёт и выгрузки — чтение.
+        assert_eq!(access_for("GET", "/api/v1/marathons"), Ok(Access::Read));
+        assert_eq!(access_for("GET", "/api/v1/marathons/m1"), Ok(Access::Read));
+        assert_eq!(
+            access_for("GET", "/api/v1/marathons/m1/participants"),
+            Ok(Access::Read)
+        );
+        assert_eq!(access_for("GET", "/api/v1/planner"), Ok(Access::Read));
+        assert_eq!(access_for("GET", "/api/v1/finance"), Ok(Access::Read));
+        assert_eq!(
+            access_for("GET", "/api/v1/export/characters.csv"),
+            Ok(Access::Read)
+        );
+        // Изменение данных — право «Изменение статов и проходок».
+        assert_eq!(access_for("POST", "/api/v1/characters"), Ok(Access::Modify));
+        assert_eq!(
+            access_for("PATCH", "/api/v1/dungeon-passes/Mag_1"),
+            Ok(Access::Modify)
+        );
+        assert_eq!(
+            access_for("POST", "/api/v1/marathons/m1/marks"),
+            Ok(Access::Modify)
+        );
+        assert_eq!(
+            access_for("POST", "/api/v1/marathons/m1/adjust"),
+            Ok(Access::Modify)
+        );
+        assert_eq!(
+            access_for("PATCH", "/api/v1/parties/p1"),
+            Ok(Access::Modify)
+        );
+        // Запуск выбранных персонажей — право «Запуск и закрытие окон».
+        assert_eq!(
+            access_for("POST", "/api/v1/launch/selection"),
+            Ok(Access::LaunchClose)
         );
         assert_eq!(access_for("GET", "/other"), Err("not_found"));
         assert_eq!(

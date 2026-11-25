@@ -251,7 +251,22 @@ curl -s -X PATCH -H "Authorization: Bearer ${shown}" -H "Content-Type: applicati
 
 # Запустить пати (ответ 202 и jobId)
 curl -s -X POST -H "Authorization: Bearer ${shown}" -H "Content-Type: application/json" \\
-  -d '{"partyName":"Основа"}' ${base}/api/v1/launch/party`;
+  -d '{"partyName":"Основа"}' ${base}/api/v1/launch/party
+
+# Запустить выбранных персонажей в заданном порядке
+curl -s -X POST -H "Authorization: Bearer ${shown}" -H "Content-Type: application/json" \\
+  -d '{"characterIds":["Mag_1","Luchnik_2"]}' ${base}/api/v1/launch/selection
+
+# Марафоны: задания, прогресс и итоги
+curl -s -H "Authorization: Bearer ${shown}" ${base}/api/v1/marathons
+
+# Отметить день в марафоне
+curl -s -X POST -H "Authorization: Bearer ${shown}" -H "Content-Type: application/json" \\
+  -d '{"characterId":"Mag_1","taskId":"t1","date":"2026-11-24"}' \\
+  ${base}/api/v1/marathons/m1/marks
+
+# Выгрузить список в CSV (файл сохранится как tvinoferma_characters_ДАТА.csv)
+curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters.csv`;
   }
 
   function renderRecipe() {
