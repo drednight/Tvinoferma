@@ -210,9 +210,9 @@ pub fn write_response(
     body: &[u8],
 ) -> io::Result<()> {
     let mut out = Vec::with_capacity(256 + body.len());
-    out.extend_from_slice(format!("HTTP/1.1 {} {}\r\n", status, reason(status)).as_bytes());
+    out.extend_from_slice(format!("HTTP/1.1 {status} {}\r\n", reason(status)).as_bytes());
     for (name, value) in headers {
-        out.extend_from_slice(format!("{}: {}\r\n", name, value).as_bytes());
+        out.extend_from_slice(format!("{name}: {value}\r\n").as_bytes());
     }
     out.extend_from_slice(b"Connection: close\r\n");
     out.extend_from_slice(format!("Content-Length: {}\r\n\r\n", body.len()).as_bytes());
