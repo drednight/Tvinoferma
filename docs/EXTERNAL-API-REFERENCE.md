@@ -765,9 +765,12 @@ curl -s -H "Authorization: Bearer $TF_API_TOKEN" "$BASE/finance"
 приложения, поэтому отметка не сбрасывается и не расходится с календарём.
 
 ```json
-{ "entry": { "id": "pe1", "title": "Собрать пати", "date": "2026-11-25", "time": "19:00", "status": "todo" },
-  "changed": ["status"] }
+{ "entry": { "id": "pe1", "title": "Собрать пати", "date": "2026-11-25", "time": "19:00", "status": "done" },
+  "statusDate": "2026-11-25", "statusValue": "done", "changed": ["status"] }
 ```
+
+`statusDate` и `statusValue` — состояние за запрошенный день: у повторов оно своё
+на каждый день, поэтому в ответе видно, что именно отмечено.
 
 ```bash
 curl -s -X PATCH -H "Authorization: Bearer $TF_API_TOKEN" -H "Content-Type: application/json" \

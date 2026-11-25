@@ -175,6 +175,9 @@ describe('внешний API: правки планировщика', () => {
     // Статус записи не изменился: отмечен был конкретный день повтора.
     expect(state.plannerEntries[0].status).toBe('todo');
     expect(state.plannerEntries[0].statusByDate['2026-11-25']).toBe('done');
+    // В ответе видно, что отмечен именно запрошенный день.
+    expect(result.body.statusDate).toBe('2026-11-25');
+    expect(result.body.statusValue).toBe('done');
   });
 
   it('POST /planner/entries: запись создаётся и попадает в календарь', async () => {

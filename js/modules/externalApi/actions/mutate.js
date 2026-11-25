@@ -17,7 +17,7 @@
 
 import { DEFAULT_STATS } from '../../characters/stateManager.js';
 import { rememberStatsBefore } from '../../characters/statsHistory.js';
-import { normalizePlannerEntry, setEntryStatusForDate } from '../../dashboard/planner.js';
+import { entryStatusForDate, normalizePlannerEntry, setEntryStatusForDate } from '../../dashboard/planner.js';
 import { CURRENCY_IDS, DEFAULT_CURRENCY, normalizeOperation } from '../../finance/model.js';
 import { errorBody } from '../errors.js';
 
@@ -822,11 +822,15 @@ export async function patchPlannerEntry(state, id, body, deps) {
   const entry = findPlannerEntry(state, id);
   if (!entry) throw new ApiError(404, 'no_such_entry', 'Запись планировщика не найдена');
   const changed = [];
+  // День, к которому относится статус: явно заданный или собственный день записи.
+  // У повторов состояние своё на каждый день, поэтому в ответе оно идёт отдельно.
+  let statusDate = String(entry.date || '');
   if (body.moveToDate !== undefined) {
     const date = String(body.moveToDate || '');
     if (!PLANNER_DATE_RE.test(date)) {
       throw new ApiError(422, 'invalid_value', 'moveToDate: ожидается YYYY-MM-DD');
     }
+    statusDate = date;
     if (entry.date !== date) {
       entry.date = date;
       changed.push('date');
@@ -861,6 +865,7 @@ export async function patchPlannerEntry(state, id, body, deps) {
     if (body.date !== undefined && !PLANNER_DATE_RE.test(date)) {
       throw new ApiError(422, 'invalid_value', 'date: ожидается YYYY-MM-DD');
     }
+    statusDate = date;
     if (setEntryStatusForDate(entry, date, status)) changed.push('status');
   }
   if (changed.length) {
@@ -876,6 +881,10 @@ export async function patchPlannerEntry(state, id, body, deps) {
       time: entry.time ?? '',
       status: entry.status ?? null
     },
+    // Состояние на запрошенный день: у повтора оно своё, поэтому «сделано вчера»
+    // не выглядит как «сделано сегодня».
+    statusDate,
+    statusValue: entryStatusForDate(entry, statusDate),
     changed
   };
 }

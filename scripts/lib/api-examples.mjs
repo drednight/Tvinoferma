@@ -113,10 +113,10 @@ export function renderExamplesMarkdown(catalog) {
         lines.push('');
         lines.push('#### Если придёт ошибка');
         lines.push('');
-        lines.push('| Код | Что значит | Что делать |');
-        lines.push('| --- | --- | --- |');
+        lines.push('| Код | Что делать |');
+        lines.push('| --- | --- |');
         recipe.errors.forEach(error => {
-          lines.push(`| ${error.status} \`${error.code}\` | ${error.why.split('.')[0]}. | ${error.why} |`);
+          lines.push(`| ${error.status} \`${error.code}\` | ${error.why} |`);
         });
       }
       lines.push('');

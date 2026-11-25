@@ -546,7 +546,8 @@
             ['moveToDate', 'тело', 'string', 'Перенести запись на другой день.'],
             ['title, time', 'тело', 'string', 'Текст записи: название и время ЧЧ:ММ.']
           ],
-          response: '{ entry: { id, title, date, time, status }, changed: [ … ] }.',
+          response:
+            '{ entry: { id, title, date, time, status }, statusDate, statusValue, changed: [ … ] }. statusDate и statusValue — состояние за запрошенный день: у повторов оно своё.',
           example: 'PATCH /planner/entries/pe_1',
           exampleBody: { status: 'done', date: '2026-11-24' }
         },
