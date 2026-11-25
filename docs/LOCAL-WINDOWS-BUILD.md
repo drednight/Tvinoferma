@@ -70,7 +70,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows-
 Не обходите корпоративную политику, запрещающую выполнение скриптов.
 
 По умолчанию выполняются `npm ci`, lint, проверка форматирования, типов и
-Tauri release build без упаковки. Используются `tauri.acceptance.conf.json` и
+Tauri release build без упаковки. Перед `npm ci` скрипт сверяет уже установленное
+дерево с `package-lock.json` (версии и `integrity`): если всё совпадает — печатает
+`Dependencies already match package-lock.json; npm ci skipped.` и переустановку не
+делает. Это защита от Windows-ошибки `EPERM` на занятом нативном модуле (rolldown/vite);
+при любом расхождении `npm ci` выполняется как обычно. Используются `tauri.acceptance.conf.json` и
 Cargo feature `acceptance` вместе; несовпадающая пара блокирует запуск. Отдельный
 каталог `src-tauri/target/acceptance` не перезаписывает обычную сборку. Frontend
 собирается автоматически через `beforeBuildCommand`. Cargo использует `--locked`, LTO выключен и codegen-units=16,
@@ -140,6 +144,16 @@ SmartScreen может предупредить об отсутствии под
 - Ошибка линкера/Windows SDK: проверьте C++ workload и SDK в Visual Studio Installer.
 - `npm ci` не скачивает пакет (в том числе SheetJS): проверьте интернет/прокси,
   затем повторите без `-SkipInstall`. Не отключайте TLS и не меняйте lock-файл наугад.
+- `EPERM: operation not permitted, unlink …\@rolldown\binding-win32-x64-msvc\…node`
+  (или другой `.node` в `node_modules`): файл занят другим процессом, а `npm ci`
+  удаляет `node_modules` целиком. Обычно это запущенный `npm run dev` /
+  `vitest --watch`, открытый редактор с фоновым watcher или антивирус. Закройте их
+  (проверить процессы: `Get-Process node -ErrorAction SilentlyContinue`), добавьте
+  папку проекта в исключения антивируса и повторите сборку.
+  Если дерево зависимостей уже совпадает с `package-lock.json`, скрипт печатает
+  `Dependencies already match package-lock.json; npm ci skipped.` и не запускает
+  `npm ci` вовсе — это строгая проверка версий и `integrity`, а не доверие флагу.
+  `-SkipInstall` остаётся ручным обходом: он **не** подтверждает соответствие lock-файлу.
 - Cargo сообщает, что lock-файл требует обновления: не удаляйте его; пришлите ошибку.
 - Сообщение о грязной копии: сначала посмотрите `git status --short`; скрипт ничего не сбрасывает.
 - Ошибка компиляции Rust: это полезный результат — Windows-компиляция новых правок

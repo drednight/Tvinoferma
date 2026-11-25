@@ -34,6 +34,69 @@ function Invoke-Checked {
     }
 }
 
+function Test-DependenciesMatchLock {
+    # Дешёвая строгая замена `npm ci`: сверяем установленное дерево с корневым
+    # package-lock.json и требуем наличия CLI tauri. Отвечает «да» только если:
+    #   1. каждый установленный пакет есть в lock с тем же version и integrity;
+    #   2. каждый обязательный пакет из lock установлен;
+    #   3. node_modules/.bin/tauri.cmd на месте (иначе сборка не стартует).
+    # Необязательные пакеты (нативные сборки других ОС) не требуем.
+    if (-not (Test-Path -LiteralPath 'node_modules/.bin/tauri.cmd' -PathType Leaf)) { return $false }
+    if (-not (Test-Path -LiteralPath 'node_modules/.package-lock.json' -PathType Leaf)) { return $false }
+    $script = @'
+const fs = require('fs');
+const path = require('path');
+const root = JSON.parse(fs.readFileSync('package-lock.json', 'utf8')).packages || {};
+const tree = JSON.parse(fs.readFileSync('node_modules/.package-lock.json', 'utf8')).packages || {};
+let problems = 0;
+let checked = 0;
+// 1. Установленное совпадает с lock по версии и (если известна обоим) по integrity.
+for (const [name, meta] of Object.entries(tree)) {
+  if (!name || meta.link) continue;
+  const expected = root[name];
+  // Пакеты, установленные как транзитивные уже после записи lock (npm пишет
+  // node_modules/.package-lock.json сам), не считаем ошибкой: сверит npm ci.
+  if (!expected) continue;
+  checked += 1;
+  if (expected.version !== meta.version) problems += 1;
+  if (expected.integrity && meta.integrity && expected.integrity !== meta.integrity) problems += 1;
+}
+// 2. Каждый обязательный пакет из lock действительно установлен и на диске.
+for (const [name, meta] of Object.entries(root)) {
+  if (!name || meta.link || meta.optional || meta.dev) continue;
+  if (!tree[name]) { problems += 1; continue; }
+  if (!fs.existsSync(path.join(name, 'package.json'))) problems += 1;
+}
+// 3. dev-пакеты, от которых зависит сама сборка, тоже обязательны.
+for (const name of ['node_modules/vite', 'node_modules/@tauri-apps/cli']) {
+  if (!fs.existsSync(path.join(name, 'package.json'))) problems += 1;
+}
+// Страховка: пустой или вырожденный lock не должен считаться совпадением.
+if (checked < 100) problems += 1;
+process.stdout.write(problems === 0 ? 'yes' : 'no:' + problems);
+'@
+    $answer = & node -e $script
+    if ($LASTEXITCODE -ne 0) { return $false }
+    return ($answer -eq 'yes')
+}
+
+function Format-InstallFailure {
+    # npm ci удаляет node_modules целиком. На Windows нативный .node-файл
+    # (rolldown/vite, esbuild) может быть занят запущенным dev-сервером, редактором
+    # или антивирусом — удаление падает с EPERM -4048. Подсказываем причину, а не
+    # показываем сырой стек.
+    param([string]$Output)
+    if ($Output -match 'EPERM' -and $Output -match 'unlink') {
+        $busy = @(
+            'Закройте `npm run dev`, `npm run demo`, `vitest --watch` и окно VS Code/JetBrains с открытым проектом',
+            'Остановите антивирус/индексатор на папке проекта или добавьте её в исключения',
+            'Завершите оставшиеся node.exe: Get-Process node -ErrorAction SilentlyContinue | Stop-Process'
+        )
+        return "npm ci не смог удалить занятый файл в node_modules (EPERM). Повторите после того, как:`n - " + ($busy -join "`n - ") + "`nЕсли дерево зависимостей уже совпадает с lock-файлом, допустимо `-SkipInstall`."
+    }
+    return $null
+}
+
 function Read-Git {
     param([string[]]$Arguments)
     $lines = & git @Arguments
@@ -144,7 +207,30 @@ try {
     $env:SKIP_GIT_HOOKS = '1'
 
     if (-not $SkipInstall) {
-        Invoke-Checked -Program 'npm.cmd' -Arguments @('ci', '--no-audit', '--no-fund')
+        # Если дерево зависимостей уже точно совпадает с lock-файлом, `npm ci` только
+        # переустановит те же пакеты — и на Windows может упасть с EPERM на занятом
+        # нативном модуле. Проверка дешёвая и строгая, поэтому переустановку пропускаем.
+        if (Test-DependenciesMatchLock) {
+            Write-Host 'Dependencies already match package-lock.json; npm ci skipped.'
+        } else {
+            # Вывод идёт через cmd-перенаправление в файл: в PowerShell 5.1 `2>&1`
+            # у нативной команды превращает stderr в ErrorRecord, а при
+            # $ErrorActionPreference = 'Stop' — в исключение вместо кода возврата.
+            $installLog = Join-Path ([System.IO.Path]::GetTempPath()) "tvinoferma-npm-ci-$([guid]::NewGuid().ToString('N')).log"
+            try {
+                & cmd.exe /d /c ('npm.cmd ci --no-audit --no-fund > "' + $installLog + '" 2>&1')
+                $installCode = $LASTEXITCODE
+                $installOutput = if (Test-Path -LiteralPath $installLog) { Get-Content -LiteralPath $installLog -Raw } else { '' }
+                if ($installOutput) { Write-Host $installOutput.TrimEnd() }
+                if ($installCode -ne 0) {
+                    $explained = Format-InstallFailure -Output ([string]$installOutput)
+                    if ($explained) { throw $explained }
+                    throw "npm.cmd failed (exit $installCode). See the diagnostic output above."
+                }
+            } finally {
+                Remove-Item -LiteralPath $installLog -ErrorAction SilentlyContinue
+            }
+        }
     } elseif (-not (Test-Path 'node_modules/.bin/tauri.cmd')) {
         throw '-SkipInstall requires existing dependencies. Run again without -SkipInstall.'
     } else {
