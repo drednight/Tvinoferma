@@ -802,7 +802,8 @@ mod tests {
     fn comparison_is_exact() {
         let token = "0123456789abcdef".repeat(4);
         assert!(constant_time_equal(&token, &token));
-        let other = format!("{}f", &token[..63]);
+        // Последний символ токена — «f», поэтому «0» гарантированно отличается.
+        let other = format!("{}0", &token[..63]);
         assert!(!constant_time_equal(&token, &other));
         assert!(!constant_time_equal(&token, &token[..32]));
     }

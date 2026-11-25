@@ -303,7 +303,8 @@ mod tests {
     fn broken_requests_are_rejected() {
         assert!(parse_head(b"garbage").is_none());
         assert!(parse_head(b"GET /x HTTP/1.1\r\nBadHeader\r\n\r\n").is_none());
-        assert!(parse_head(b"GET /x HTTP/1.1").is_none());
+        // Строка запроса без версии протокола — не HTTP.
+        assert!(parse_head(b"GET /x").is_none());
         assert!(parse_head(b"GET x HTTP/1.1\r\n\r\n").is_none());
     }
 
