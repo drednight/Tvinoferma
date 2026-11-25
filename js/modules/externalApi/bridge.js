@@ -29,6 +29,41 @@ const CLOSE_TTL_MS = 30 * 60 * 1000;
 /** Форматы выгрузки: `txt` — тот же CSV, для клиентов, которым так удобнее. */
 const EXPORT_FORMATS = new Set(['csv', 'json', 'txt']);
 
+/** Подписи полей для адресных ответов (`{ stat: "hp", label: "HP" }`). */
+const FIELD_LABELS = {
+  endurance: 'Выносливость',
+  intelligence: 'Интеллект',
+  strength: 'Сила',
+  agility: 'Ловкость',
+  hp: 'HP',
+  mp: 'MP',
+  levelBonus: 'Бонус уровня',
+  physAttack: 'Физ. атака',
+  physDefense: 'Физ. защита',
+  magAttack: 'Маг. атака',
+  magDefense: 'Маг. защита',
+  critChance: 'Крит, %',
+  critDamage: 'Крит. урон',
+  atkSpeed: 'Скорость атаки',
+  evasion: 'Уклонение',
+  accuracy: 'Меткость',
+  pa: 'PA',
+  pz: 'PZ',
+  morale: 'Дух',
+  pvePa: 'PvE PA',
+  pvePz: 'PvE PZ',
+  physPenetration: 'Физ. пробивание',
+  magPenetration: 'Маг. пробивание',
+  weapon: 'Оружие',
+  armor: 'Доспех',
+  relic: 'Реликвия'
+};
+
+/** Подпись по ключу поля; неизвестный ключ возвращается как есть. */
+function fieldLabel(key) {
+  return FIELD_LABELS[String(key)] || String(key);
+}
+
 /** Текст ошибки для ответа: без стеков и внутренностей. */
 function errorMessage(error) {
   return String(error?.message || error || 'Неизвестная ошибка');
@@ -60,17 +95,35 @@ function requireScope(scope) {
   if (scope === 'launchClose' && !settings.allowLaunchClose) throw denied('Запуск и закрытие окон');
 }
 
+/**
+ * Путь из запроса. Rust присылает его как есть (в percent-encoding), поэтому
+ * `..` проверяем и в сыром виде, и после декодирования: `%2e%2e%2f` — тот же
+ * выход из каталога. Управляющие символы (в том числе перевод строки) не
+ * пропускаем: они не должны попасть в журнал и ответ.
+ */
 function normalizePath(path) {
   const text = String(path || '/');
-  // Сервер передаёт только ASCII-путь без `..`; повторно проверяем на всякий случай.
-  if (!text.startsWith('/') || text.includes('..') || !/^[\x20-\x7e]*$/.test(text)) {
+  if (!text.startsWith('/')) throw new ApiError(404, 'not_found', 'Неизвестный путь');
+  let decoded;
+  try {
+    decoded = decodeURIComponent(text);
+  } catch {
+    throw new ApiError(400, 'invalid_json', 'Некорректный адрес запроса');
+  }
+  // eslint-disable-next-line no-control-regex -- проверяем именно управляющие символы
+  if (text.includes('..') || decoded.includes('..') || /[\u0000-\u001f\u007f]/.test(decoded)) {
     throw new ApiError(404, 'not_found', 'Неизвестный путь');
   }
   return text;
 }
 
-function jsonBody(body) {
+/**
+ * Тело запроса как объект. `allowNumber` — для маршрутов, где законно «голое»
+ * число (`PATCH /dungeon-passes/{pass}` с телом `5`): так короче в curl/PowerShell.
+ */
+function jsonBody(body, { allowNumber = false } = {}) {
   if (body === null || body === undefined) return null;
+  if (allowNumber && typeof body === 'number') return body;
   if (typeof body !== 'object' || Array.isArray(body)) {
     throw new ApiError(400, 'invalid_json', 'Тело запроса должно быть JSON-объектом');
   }
@@ -194,10 +247,65 @@ export async function routeRequest(request, deps = {}) {
   }
 
   if (method === 'GET' && path.startsWith('/api/v1/characters/')) {
-    const { publicCharacters } = await load('characters', () => import('./actions/read.js'));
     const id = decodeSegment(path.slice('/api/v1/characters/'.length));
-    const rows = await load('windowRows', () => readWindowRows());
-    const list = publicCharacters(state, '', { running: runningByCharIdOf(rows) }).characters;
+
+    // Адресные данные: /stats, /stats/{stat}, /dungeon-passes, /dungeon-passes/{pass}.
+    // Разбираем путь до общего `/{id}`, чтобы `Маг_1/stats` не стал карточкой
+    // персонажа с id «Маг_1/stats».
+    const parts = id.split('/');
+    if (parts.length >= 2 && (parts[1] === 'stats' || parts[1] === 'dungeon-passes')) {
+      const read = await load('readAction', () => import('./actions/read.js'));
+      const rows = await load('windowRows', () => readWindowRows());
+      const running = runningByCharIdOf(rows);
+      const charId = parts[0];
+      // Подписи для человека (`hp` → «HP») — из общей таблицы: та же, что на странице.
+      const labelOf = (await load('labels', () => fieldLabel)) || null;
+      const options = { running, labels: labelOf };
+      if (parts[1] === 'stats') {
+        if (parts.length === 2) {
+          const data = read.characterStats(state, charId, options);
+          if (!data) throw new ApiError(404, 'no_such_character', 'Персонаж не найден');
+          return { status: 200, body: data };
+        }
+        if (parts.length === 3) {
+          const data = read.characterStat(state, charId, parts[2], options);
+          if (!data) throw new ApiError(404, 'no_such_character', 'Персонаж не найден');
+          if (data.unknown !== undefined) {
+            throw new ApiError(
+              422,
+              'invalid_value',
+              `Неизвестный стат «${data.unknown}»: список — GET /characters/${charId}/stats`
+            );
+          }
+          return { status: 200, body: data };
+        }
+        throw new ApiError(404, 'not_found', 'Неизвестный путь API');
+      }
+      // dungeon-passes
+      if (parts.length === 2) {
+        const data = read.characterPasses(state, charId, options);
+        if (!data) throw new ApiError(404, 'no_such_character', 'Персонаж не найден');
+        return { status: 200, body: data };
+      }
+      if (parts.length === 3) {
+        const data = read.characterPass(state, charId, parts[2], options);
+        if (!data) throw new ApiError(404, 'no_such_character', 'Персонаж не найден');
+        if (data.unknown !== undefined) {
+          throw new ApiError(
+            422,
+            'invalid_value',
+            `Неизвестная проходка «${data.unknown}»: weapon/оружие, armor/доспех, relic/реликвия`
+          );
+        }
+        return { status: 200, body: data };
+      }
+      throw new ApiError(404, 'not_found', 'Неизвестный путь API');
+    }
+
+    const { publicCharacters } = await load('characters', () => import('./actions/read.js'));
+    const list = publicCharacters(state, '', {
+      running: runningByCharIdOf(await load('windowRows', () => readWindowRows()))
+    }).characters;
     const character = list.find(row => String(row.id) === id) || null;
     if (!character) throw new ApiError(404, 'no_such_character', 'Персонаж не найден');
     return { status: 200, body: { character } };
@@ -304,6 +412,38 @@ export async function routeRequest(request, deps = {}) {
   }
 
   // --- Изменение ---
+  // Адресная запись: один стат или одна проходка в адресе. Проверяем до общего
+  // PATCH /characters/{id}, иначе «Маг_1/stats/hp» ушёл бы в общий патч.
+  if (method === 'PATCH' && path.startsWith('/api/v1/characters/')) {
+    const rest = decodeSegment(path.slice('/api/v1/characters/'.length));
+    const parts = rest.split('/');
+    if (parts.length >= 3 && parts[1] === 'stats') {
+      requireScope('modify');
+      const { patchCharacterStat } = await load('mutate', () => import('./actions/mutate.js'));
+      if (parts.length !== 3) throw new ApiError(404, 'not_found', 'Неизвестный путь API');
+      const result = await patchCharacterStat(state, parts[0], parts[2], jsonBody(body), {
+        persist,
+        assertStateWriteAvailable,
+        renderCharacters: deps.renderCharacters,
+        now
+      });
+      return { status: 200, body: result };
+    }
+    if (parts.length >= 3 && parts[1] === 'dungeon-passes') {
+      requireScope('modify');
+      const { patchCharacterPass } = await load('mutate', () => import('./actions/mutate.js'));
+      if (parts.length !== 3) throw new ApiError(404, 'not_found', 'Неизвестный путь API');
+      // «Голое» число в теле — законно: `-d 5`.
+      const result = await patchCharacterPass(state, parts[0], parts[2], jsonBody(body, { allowNumber: true }), {
+        persist,
+        assertStateWriteAvailable,
+        renderCharacters: deps.renderCharacters,
+        now
+      });
+      return { status: 200, body: result };
+    }
+  }
+
   if (method === 'PATCH' && path.startsWith('/api/v1/characters/')) {
     requireScope('modify');
     const { patchCharacter } = await load('mutate', () => import('./actions/mutate.js'));

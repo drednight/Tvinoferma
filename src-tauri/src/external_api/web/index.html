@@ -33,6 +33,11 @@
           <button id="connect" type="button" class="btn">Подключиться</button>
           <button id="forget" type="button" class="btn ghost">Забыть токен</button>
         </div>
+        <nav class="xapi-nav" aria-label="Разделы страницы">
+          <button type="button" class="xapi-nav-item is-on" data-tab="panel" aria-current="page">Данные</button>
+          <button type="button" class="xapi-nav-item" data-tab="playground">Тестовый запрос</button>
+          <button type="button" class="xapi-nav-item" data-tab="docs">Справочник API</button>
+        </nav>
         <div class="xapi-status" role="status" aria-live="polite">
           <span class="xapi-chip" data-chip="server">сервер: не подключено</span>
           <span class="xapi-chip" data-chip="port">порт: —</span>
@@ -45,7 +50,7 @@
         </p>
       </section>
 
-      <section class="xapi-block" id="panel" aria-labelledby="panel-title" hidden>
+      <section class="xapi-block xapi-tabpanel" id="panel" data-panel="panel" aria-labelledby="panel-title" hidden>
         <h2 id="panel-title">Данные</h2>
         <div class="xapi-grid">
           <div class="xapi-col">
@@ -59,6 +64,67 @@
             <div id="windows" class="xapi-cards"></div>
           </div>
         </div>
+      </section>
+
+      <section class="xapi-block xapi-tabpanel" id="playground" data-panel="playground" aria-labelledby="playground-title" hidden>
+        <h2 id="playground-title">Тестовый запрос</h2>
+        <p class="xapi-note">
+          Любой запрос можно выполнить прямо здесь: соберите адрес, нажмите «Отправить» и посмотрите ответ с
+          кодом и заголовками. Кнопки под полем подставляют готовые примеры — начните с «Карточка персонажа».
+        </p>
+        <div class="xapi-play">
+          <label class="xapi-field">
+            Метод
+            <select id="play-method">
+              <option value="GET" selected>GET</option>
+              <option value="POST">POST</option>
+              <option value="PATCH">PATCH</option>
+              <option value="DELETE">DELETE</option>
+            </select>
+          </label>
+          <label class="xapi-field xapi-field-grow">
+            Путь
+            <input id="play-path" type="text" autocomplete="off" spellcheck="false" placeholder="/api/v1/characters" />
+          </label>
+          <button id="play-send" type="button" class="btn">Отправить</button>
+        </div>
+        <label class="xapi-field">
+          Тело запроса (JSON — для POST и PATCH; для PATCH проходки можно просто число)
+          <textarea id="play-body" rows="5" spellcheck="false" placeholder='{"value": 150}'></textarea>
+        </label>
+        <div class="xapi-play-actions">
+          <button id="play-clear" type="button" class="btn ghost small">Очистить</button>
+          <button id="play-copy" type="button" class="btn ghost small">Скопировать как curl</button>
+          <span id="play-status" class="xapi-note" role="status" aria-live="polite"></span>
+        </div>
+        <h3 class="xapi-sub">Готовые примеры</h3>
+        <div id="play-presets" class="xapi-presets"></div>
+        <h3 class="xapi-sub">Ответ</h3>
+        <div class="xapi-play-response">
+          <div class="xapi-status">
+            <span class="xapi-chip" data-chip="play-code">код: —</span>
+            <span class="xapi-chip" data-chip="play-time">время: —</span>
+            <span class="xapi-chip" data-chip="play-type">тип: —</span>
+            <span class="xapi-chip" data-chip="play-size">размер: —</span>
+          </div>
+          <pre id="play-out" class="xapi-code" tabindex="0">Здесь появится ответ сервера.</pre>
+        </div>
+      </section>
+
+      <section class="xapi-block xapi-tabpanel" id="docs" data-panel="docs" aria-labelledby="docs-title" hidden>
+        <h2 id="docs-title">Справочник API</h2>
+        <p class="xapi-note">
+          Все методы с параметрами, ответами и примерами. У каждого метода есть кнопка «Попробовать»: она
+          подставляет запрос в «Тестовый запрос». Полный текст контракта — <code>docs/EXTERNAL-API.md</code>.
+        </p>
+        <div class="xapi-docs-search">
+          <label class="xapi-field xapi-field-grow">
+            Поиск по методам
+            <input id="docs-filter" type="search" autocomplete="off" placeholder="hp, проходк, марафон, export…" />
+          </label>
+        </div>
+        <div id="docs-toc" class="xapi-toc"></div>
+        <div id="docs-body" class="xapi-docs"></div>
       </section>
 
       <section class="xapi-block" aria-labelledby="log-title">
@@ -109,6 +175,7 @@
         <p class="xapi-note" id="recipe-copied" role="status" aria-live="polite"></p>
       </section>
     </main>
+    <script src="/docs.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>

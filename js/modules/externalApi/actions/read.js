@@ -438,3 +438,120 @@ export function publicFinance(state) {
     }
   };
 }
+
+/* ------------------------------------------------------------------ */
+/*  Адресные данные: поля и проходки по отдельности                     */
+/* ------------------------------------------------------------------ */
+
+/** Проходки — свои ключи; статы перечислены в `DEFAULT_STATS`. */
+export const PASS_FIELDS = ['weapon', 'armor', 'relic'];
+
+/**
+ * Карточка персонажа для адресных маршрутов: берём её целиком (с теми же
+ * правилами белого списка), чтобы `running` и названия пати были как в `/characters`.
+ */
+function addressedCharacter(state, id, running) {
+  const characters = Array.isArray(state?.characters) ? state.characters : [];
+  const character = characters.find(char => String(char.id) === String(id));
+  if (!character) return null;
+  return publicCharacter(character, { running });
+}
+
+/**
+ * `GET /characters/{id}/stats` — все статы разом, с подписями для человека.
+ *
+ * `labels` — необязательная функция `(key) => string` (её даёт мост, чтобы у
+ * страницы и API была одна таблица названий). Без неё ключи остаются ключами.
+ */
+export function characterStats(state, id, { running = null, labels = null } = {}) {
+  const character = addressedCharacter(state, id, running);
+  if (!character) return null;
+  const stats = character.stats || {};
+  const row = { id: character.id, nick: character.nick };
+  const list = [];
+  for (const [key, value] of Object.entries(stats)) {
+    row[key] = value;
+    list.push({ key, label: labels ? labels(key) : null, value });
+  }
+  return { character: row, stats: list, count: list.length };
+}
+
+/**
+ * `GET /characters/{id}/stats/{stat}` — одно значение стата.
+ * Форма ответа повторяет адресный запрос: `{ id, nick, stat, label, value }`.
+ */
+export function characterStat(state, id, stat, { running = null, labels = null } = {}) {
+  const character = addressedCharacter(state, id, running);
+  if (!character) return null;
+  const key = String(stat || '').trim();
+  if (!Object.prototype.hasOwnProperty.call(character.stats || {}, key)) return { unknown: key };
+  return {
+    id: character.id,
+    nick: character.nick,
+    stat: key,
+    label: labels ? labels(key) : null,
+    value: Number(character.stats[key]) || 0
+  };
+}
+
+/**
+ * `GET /characters/{id}/dungeon-passes` — все проходки: сумма и каждая по отдельности.
+ * `stats.dungeonPasses` в карточке персонажа — тот же объект; здесь он разложен
+ * на строки, чтобы проще было писать отчёты.
+ */
+export function characterPasses(state, id, { running = null, labels = null } = {}) {
+  const character = addressedCharacter(state, id, running);
+  if (!character) return null;
+  const passes = character.dungeonPasses || { weapon: 0, armor: 0, relic: 0 };
+  const list = PASS_FIELDS.map(key => ({
+    key,
+    label: labels ? labels(key) : null,
+    value: Number(passes[key]) || 0
+  }));
+  return {
+    id: character.id,
+    nick: character.nick,
+    total: list.reduce((sum, row) => sum + row.value, 0),
+    dungeonPasses: { ...passes },
+    passes: list
+  };
+}
+
+/**
+ * `GET /characters/{id}/dungeon-passes/{pass}` — одно число проходок.
+ * Имена проходам даны по-русски и по-английски (`weapon`/`оружие`), и это
+ * не «магия API»: тот же перевод нужен и в `PATCH`.
+ */
+export function characterPass(state, id, pass, { running = null, labels = null } = {}) {
+  const character = addressedCharacter(state, id, running);
+  if (!character) return null;
+  const key = passKey(pass);
+  if (!key) return { unknown: String(pass || '') };
+  return {
+    id: character.id,
+    nick: character.nick,
+    pass: key,
+    label: labels ? labels(key) : null,
+    value: Number(character.dungeonPasses?.[key]) || 0
+  };
+}
+
+/** Русские и английские имена проходок → ключ состояния. */
+const PASS_ALIASES = {
+  weapon: 'weapon',
+  оружие: 'weapon',
+  armor: 'armor',
+  armour: 'armor',
+  доспех: 'armor',
+  armor_armor: 'armor',
+  relic: 'relic',
+  реликвия: 'relic'
+};
+
+/** Ключ проходки по имени из адреса или `null`, если имя неизвестно. */
+export function passKey(name) {
+  const text = String(name || '')
+    .trim()
+    .toLowerCase();
+  return PASS_ALIASES[text] || null;
+}

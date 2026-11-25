@@ -399,8 +399,232 @@ pre:focus-visible {
     monospace;
 }
 
+/* --- Вкладки страницы --- */
+
+.xapi-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.xapi-nav-item {
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+
+.xapi-nav-item:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.xapi-nav-item.is-on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+/* --- Тестовый запрос --- */
+
+.xapi-play {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.xapi-play select,
+.xapi-play input {
+  min-height: 36px;
+}
+
+.xapi-field-grow {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+textarea {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--text);
+  font:
+    12.5px/1.5 'Cascadia Code',
+    Consolas,
+    monospace;
+  resize: vertical;
+}
+
+.xapi-play-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 4px;
+}
+
+.xapi-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.xapi-preset {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.xapi-preset:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.xapi-play-response .xapi-code {
+  max-height: 420px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* --- Справочник --- */
+
+.xapi-docs-search {
+  margin-bottom: 12px;
+}
+
+.xapi-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.xapi-toc-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  text-decoration: none;
+}
+
+.xapi-toc-link:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.xapi-toc-count {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-faint);
+  font-size: 0.72rem;
+}
+
+.xapi-doc-group {
+  margin-bottom: 26px;
+  scroll-margin-top: 16px;
+}
+
+.xapi-doc-group h3 {
+  margin: 0 0 4px;
+}
+
+.xapi-doc {
+  margin: 14px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+
+.xapi-doc-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.xapi-doc-method {
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.xapi-doc-method.is-get {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.xapi-doc-method.is-post {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.xapi-doc-method.is-patch {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.xapi-doc-path {
+  color: var(--text);
+  font-size: 0.86rem;
+  word-break: break-all;
+}
+
+.xapi-doc h4 {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+}
+
+.xapi-doc h5 {
+  margin: 14px 0 6px;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.xapi-code-sm {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+
+.xapi-doc[hidden],
+.xapi-doc-group[hidden] {
+  display: none;
+}
+
 @media (max-width: 820px) {
   .xapi-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .xapi-play {
+    flex-wrap: wrap;
   }
 }
