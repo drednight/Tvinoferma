@@ -18,6 +18,7 @@ import {
   resetToken,
   syncExternalApi
 } from '../modules/externalApi/index.js';
+import { auditLine, errorCatalogRows } from '../modules/externalApi/errors.js';
 
 const PORT_DEFAULT = 47831;
 
@@ -47,17 +48,30 @@ export function tokenText(settings, status) {
   return `Токен хранится в хранилище учётных данных ОС${when}. Повторно показать его нельзя — только перевыпустить.`;
 }
 
-/** Строки журнала: время, метод, путь, код, длительность. Без тел запросов. */
+/**
+ * Строки журнала: время, метод, путь, код, длительность. Без тел запросов.
+ *
+ * Ошибки подписаны по-русски из общего каталога (`errors.js`): «Значение не
+ * принято (422)» читается лучше, чем голое `422`. Успешные вызовы остаются
+ * короткими — подпись только у ошибок.
+ */
 export function auditLines(entries) {
   if (!Array.isArray(entries) || !entries.length) return ['Журнал пуст.'];
   return entries
     .slice()
     .reverse()
     .map(entry => {
-      const at = new Date(Number(entry.atMs) || 0);
-      const time = Number.isNaN(at.getTime()) ? '—' : at.toLocaleTimeString('ru-RU', { hour12: false });
-      return `${time}  ${entry.method}  ${entry.path}  → ${entry.status}  (${Number(entry.ms) || 0} мс)`;
+      const status = Number(entry.status) || 0;
+      // Подпись только у ошибок: успешные вызовы читаются короче без неё.
+      const code = status >= 400 ? entry.code || statusTitle(status) : '';
+      return auditLine({ ...entry, code });
     });
+}
+
+/** Подпись по HTTP-статусу, когда кода в записи нет (старые записи Rust). */
+function statusTitle(status) {
+  const row = errorCatalogRows().find(entry => entry.status === status);
+  return row ? row.code : '';
 }
 
 /** Страница API: адрес для браузера и пример `curl` с токеном в переменной окружения. */

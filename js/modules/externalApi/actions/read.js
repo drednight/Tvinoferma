@@ -9,6 +9,8 @@
 // Функции не читают DOM и не зовут Tauri сами: всё, что нужно, приходит аргументами
 // (state, список окон). Поэтому их можно проверить тестами без приложения.
 
+import { DEFAULT_STATS } from '../../characters/stateManager.js';
+
 /** Поля персонажа, которые видит внешняя программа. */
 const CHARACTER_FIELDS = [
   'id',
@@ -109,8 +111,213 @@ export function publicCharacter(char, { running = null } = {}) {
   return out;
 }
 
+/** Проходки — свои ключи; статы перечислены в `DEFAULT_STATS`. */
+export const PASS_FIELDS = ['weapon', 'armor', 'relic'];
+
 /**
- * Параметры списка персонажей: `party` (id или название) и `fields`.
+ * Поля персонажа, которые можно спросить в `fields`. Вложенные — через точку:
+ * `stats.hp`, `dungeonPasses.weapon`. `running` — окно игры (может быть null).
+ *
+ * Статы и проходки перечислены по отдельности и берутся из тех же списков, что
+ * адресные маршруты (`DEFAULT_STATS`, `PASS_FIELDS`): новый стат появляется в
+ * API сам, без правки второй таблицы. Первым идёт `id` — по нему строки
+ * различимы, поэтому он добавляется в ответ всегда.
+ */
+export const CHARACTER_FIELD_NAMES = [
+  'id',
+  'nick',
+  'class',
+  'level',
+  'favorite',
+  'sky',
+  'sky.name',
+  'sky.level',
+  'partyIds',
+  'mainPartyId',
+  'stats',
+  ...Object.keys(DEFAULT_STATS).map(key => `stats.${key}`),
+  'dungeonPasses',
+  ...PASS_FIELDS.map(key => `dungeonPasses.${key}`),
+  'ancientCoins',
+  'isLoggedIn',
+  'lastLoginCheck',
+  'updatedAt',
+  'notes',
+  'tags',
+  'coinHistory',
+  'createdAt',
+  'running',
+  'running.pid',
+  'running.title'
+];
+
+/** Русские подписи для отчётов и страницы (`fields=hp` → `{ "HP": 120 }`). */
+const RUSSIAN_FIELD_LABELS = {
+  id: 'id',
+  nick: 'Ник',
+  class: 'Класс',
+  level: 'Уровень',
+  favorite: 'Избранный',
+  sky: 'Небо',
+  'sky.name': 'Небо',
+  'sky.level': 'Уровень неба',
+  partyIds: 'Пати',
+  mainPartyId: 'Основная пати',
+  ancientCoins: 'Древние монеты',
+  isLoggedIn: 'Вход проверен',
+  lastLoginCheck: 'Проверка входа',
+  updatedAt: 'Обновлён',
+  notes: 'Заметки',
+  tags: 'Теги',
+  coinHistory: 'История монет',
+  createdAt: 'Создан',
+  running: 'Окно игры',
+  'running.pid': 'PID окна',
+  'running.title': 'Заголовок окна'
+};
+
+const STAT_LABELS = {
+  endurance: 'Выносливость',
+  intelligence: 'Интеллект',
+  strength: 'Сила',
+  agility: 'Ловкость',
+  hp: 'HP',
+  mp: 'MP',
+  levelBonus: 'Бонус уровня',
+  physAttack: 'Физ. атака',
+  physDefense: 'Физ. защита',
+  magAttack: 'Маг. атака',
+  magDefense: 'Маг. защита',
+  critChance: 'Крит, %',
+  critDamage: 'Крит. урон',
+  atkSpeed: 'Скорость атаки',
+  evasion: 'Уклонение',
+  accuracy: 'Меткость',
+  pa: 'PA',
+  pz: 'PZ',
+  morale: 'Дух',
+  pvePa: 'PvE PA',
+  pvePz: 'PvE PZ',
+  physPenetration: 'Физ. пробивание',
+  magPenetration: 'Маг. пробивание'
+};
+
+/** Является ли поле вложенным (`stats.hp`). */
+function isNestedField(field) {
+  return String(field).includes('.');
+}
+
+/**
+ * Значение поля по имени: `stats.hp`, `dungeonPasses.weapon`, `sky.name`.
+ * Отсутствующее значение — `null`, а не `undefined`: в JSON это различимо.
+ */
+function fieldValue(row, field) {
+  let current = row;
+  for (const part of String(field).split('.')) {
+    if (current === null || current === undefined) return null;
+    current = current[part];
+  }
+  return current === undefined ? null : current;
+}
+
+/**
+ * Русская подпись поля — настоящая, а не транслитерация:
+ * `stats.hp` → «HP», `dungeonPasses.weapon` → «Проходки: оружие».
+ * @param {string} field
+ */
+export function fieldLabel(field) {
+  const text = String(field);
+  if (RUSSIAN_FIELD_LABELS[text]) return RUSSIAN_FIELD_LABELS[text];
+  const [head, tail] = text.split('.');
+  if (head === 'stats' && tail) return STAT_LABELS[tail] || `Стат: ${tail}`;
+  if (head === 'dungeonPasses' && tail) return `Проходки: ${PASS_RU[tail] || tail}`;
+  if (head === 'running' && tail) return RUSSIAN_FIELD_LABELS[`running.${tail}`] || `Окно: ${tail}`;
+  return text;
+}
+
+/** Русские имена проходок строчными: «оружие», «доспех», «реликвия». */
+const PASS_RU = { weapon: 'оружие', armor: 'доспех', relic: 'реликвия' };
+
+/**
+ * Строка персонажа только из запрошенных полей. `flat: true` — плоские ключи,
+ * совпадающие с именами полей (`stats.hp`), удобно для pandas и Excel:
+ * `{"id": "Mag_1", "stats.hp": 120}`. `flat: false` — вложенная форма
+ * `{"id": "Mag_1", "stats": {"hp": 120}}`, как в полной карточке.
+ */
+export function pickCharacterFields(row, fields, { flat = true } = {}) {
+  // `id` остаётся всегда: без него строки списка неразличимы, а остальные
+  // запросы ссылаются на персонажа именно по нему.
+  const requested = (Array.isArray(fields) ? fields : []).filter(field => field !== 'id');
+  const list = requested.length ? ['id', ...requested] : CHARACTER_FIELD_NAMES;
+  const out = {};
+  for (const field of list) {
+    const value = fieldValue(row, field);
+    if (flat || !isNestedField(field)) {
+      // `id` в плоском виде остаётся `id`: по нему склеиваются списки.
+      out[field] = value;
+      continue;
+    }
+    // `stats.hp` во вложенном виде: контейнер создаётся заранее, иначе цикл
+    // собирал бы только `out.stats` без `hp` (порядок полей произвольный).
+    const [head, tail] = field.split('.');
+    if (!out[head] || typeof out[head] !== 'object') out[head] = {};
+    if (tail !== undefined) out[head][tail] = value;
+  }
+  return out;
+}
+
+/**
+ * Русская версия строки: `{"id": "Mag_1", "Класс": "Маг", "Проходки: оружие": 3}`.
+ *
+ * `values` — уже выбранные значения по полям (`{ "class": "Маг", … }`): подпись
+ * ключа меняется, а значение остаётся тем же. `row` нужен, когда `values` нет.
+ * `id` не переводим — на него ссылаются остальные запросы.
+ */
+export function localizeRow(row, fields, values = null) {
+  const out = {};
+  let list = Array.isArray(fields) && fields.length ? fields : null;
+  const source = values || row || {};
+  if (!list) {
+    // Полная карточка: перечисляем поля так же, как они лежат в ответе. Вложенные
+    // объекты, которые не подписаны по отдельности (`stats`, `dungeonPasses`,
+    // `sky`), разворачиваем в точечные пути — иначе подпись им не находится.
+    list = [];
+    for (const key of Object.keys(source)) {
+      const value = source[key];
+      // Объект без своей подписи — это контейнер (`stats`, `dungeonPasses`, `sky`):
+      // подписываем его содержимое. Пустой или null — оставляем одной строкой.
+      const container = value && typeof value === 'object' && !Array.isArray(value) && !RUSSIAN_FIELD_LABELS[key];
+      if (container && Object.keys(value).length) {
+        for (const inner of Object.keys(value)) list.push(`${key}.${inner}`);
+      } else list.push(key);
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(source, 'id') && !list.includes('id')) {
+    list = ['id', ...list];
+  }
+  for (const field of list) {
+    const key = field === 'id' ? 'id' : fieldLabel(field);
+    if (Object.prototype.hasOwnProperty.call(source, field)) out[key] = source[field];
+    else out[key] = fieldValue(source, field);
+  }
+  return out;
+}
+
+/** Неизвестные поля из запроса — чтобы ответить понятной ошибкой, а не молчанием. */
+export function unknownFields(fields) {
+  return (fields || []).filter(field => !CHARACTER_FIELD_NAMES.includes(String(field).trim()));
+}
+
+/**
+ * Параметры списка персонажей:
+ *
+ * - `fields` — какие поля вернуть (через запятую, вложенные — через точку);
+ * - `party` — id или название пати;
+ * - `lang` — `en` (по умолчанию) или `ru`: подписи полей по-русски;
+ * - `flat` — `true`/`false`: плоские ключи (`stats.hp`) или вложенные (`stats.hp` внутри `stats`);
+ * - `sort` — `id` (по умолчанию), `nick`, `level` или `none` (порядок хранения);
+ * - `order` — `asc` (по умолчанию) или `desc` для `sort`.
+ *
  * @param {{ parties?: any[] }} state
  * @param {string} query строка запроса после `?` (уже без `?`)
  */
@@ -121,17 +328,50 @@ export function characterFilter(state, query) {
     .split(',')
     .map(value => value.trim())
     .filter(Boolean);
-  return { party, fields };
+  const lang =
+    String(params.get('lang') || 'en')
+      .trim()
+      .toLowerCase() === 'ru'
+      ? 'ru'
+      : 'en';
+  const flatParam = String(params.get('flat') || '')
+    .trim()
+    .toLowerCase();
+  const flat = flatParam === '' ? true : !['false', '0', 'nested', 'no'].includes(flatParam);
+  const sortParam = String(params.get('sort') || 'id')
+    .trim()
+    .toLowerCase();
+  const sort = ['id', 'nick', 'level', 'none'].includes(sortParam) ? sortParam : 'id';
+  const order =
+    String(params.get('order') || 'asc')
+      .trim()
+      .toLowerCase() === 'desc'
+      ? 'desc'
+      : 'asc';
+  return { party, fields, lang, flat, sort, order };
+}
+
+/** Сравнение значений для `sort`: числа — как числа, строки — без регистра. */
+function compareValues(a, b, order) {
+  let result;
+  if (typeof a === 'number' && typeof b === 'number') result = a - b;
+  else result = String(a ?? '').localeCompare(String(b ?? ''), 'ru', { numeric: true, sensitivity: 'base' });
+  return order === 'desc' ? -result : result;
 }
 
 /**
- * Список персонажей для ответа API с фильтром по пати и выбором полей.
+ * Список персонажей для ответа API.
+ *
+ * По умолчанию — **все** персонажи, отсортированные по `id`: так список можно
+ * читать глазами и сравнивать между вызовами. `fields` оставляет только
+ * запрошенные поля — «id, класс, уровень и проходки» это одна строка в адресе.
+ *
  * @param {{ characters?: any[], parties?: any[] }} state
  * @param {string} query
  * @param {{ running?: Map<string, any> | null }} [options]
  */
 export function publicCharacters(state, query = '', options = {}) {
-  const { party, fields } = characterFilter(state, query);
+  const { party, fields, lang, flat, sort, order } = characterFilter(state, query);
   const characters = Array.isArray(state?.characters) ? state.characters : [];
   let list = characters;
   if (party) {
@@ -149,14 +389,20 @@ export function publicCharacters(state, query = '', options = {}) {
   }
   const running = options.running || null;
   const rows = list.map(char => publicCharacter(char, { running })).filter(Boolean);
-  const picked = fields.length
-    ? rows.map(row => {
-        const out = { id: row.id };
-        for (const field of fields) if (field in row) out[field] = row[field];
-        return out;
-      })
-    : rows;
-  return { characters: picked };
+  if (sort !== 'none') {
+    const key = sort === 'id' ? row => String(row.id) : row => row[sort];
+    rows.sort((a, b) => compareValues(key(a), key(b), order));
+  }
+  const picked = fields.length ? rows.map(row => pickCharacterFields(row, fields, { flat })) : rows;
+  // Подписи строятся по тем полям, что реально вернулись: в плоской строке ключи
+  // уже собраны (`dungeonPasses.weapon` одним ключом), поэтому список берём из
+  // значений и подписываем его, а не восстанавливаем из адреса запроса.
+  const localized = lang === 'ru' ? picked.map(row => localizeRow(null, null, row)) : picked;
+  return {
+    characters: localized,
+    count: localized.length,
+    fields: fields.length ? fields : null
+  };
 }
 
 /**
@@ -442,9 +688,6 @@ export function publicFinance(state) {
 /* ------------------------------------------------------------------ */
 /*  Адресные данные: поля и проходки по отдельности                     */
 /* ------------------------------------------------------------------ */
-
-/** Проходки — свои ключи; статы перечислены в `DEFAULT_STATS`. */
-export const PASS_FIELDS = ['weapon', 'armor', 'relic'];
 
 /**
  * Карточка персонажа для адресных маршрутов: берём её целиком (с теми же

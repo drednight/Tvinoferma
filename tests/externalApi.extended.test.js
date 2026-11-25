@@ -300,10 +300,12 @@ describe('внешний API: персонажи и проходки', () => {
     expect(json).not.toContain('p@ss');
     expect(json).not.toContain('gc@example.com');
     expect(json).not.toContain('game.exe');
-    // А нужное для твин-фермы — отдаёт.
-    expect(characters[0]).toHaveProperty('dungeonPasses.weapon', 2);
-    expect(characters[0]).toHaveProperty('tags');
-    expect(characters[0]).toHaveProperty('coinHistory');
+    // А нужное для твин-фермы — отдаёт. Список отсортирован по id, поэтому
+    // ищем персонажа по id, а не по позиции.
+    const mag = characters.find(row => row.id === 'Mag_1');
+    expect(mag).toHaveProperty('dungeonPasses.weapon', 2);
+    expect(mag).toHaveProperty('tags');
+    expect(mag).toHaveProperty('coinHistory');
   });
 
   it('пати: название и цвет меняются, пустое название — отказ', async () => {

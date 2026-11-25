@@ -17,6 +17,7 @@
 
 import { DEFAULT_STATS } from '../../characters/stateManager.js';
 import { rememberStatsBefore } from '../../characters/statsHistory.js';
+import { errorBody } from '../errors.js';
 
 export const MAX_STAT_VALUE = 1_000_000_000;
 export const MAX_BULK = 100;
@@ -37,22 +38,9 @@ export class ApiError extends Error {
   }
 }
 
-/** Код ошибки для статуса — единое место, чтобы ответы не расходились. */
-export function errorBody(error) {
-  const status = Number(error?.status) || 500;
-  // Текст произвольного исключения наружу не отдаём: в нём бывают пути и значения
-  // полей. Клиент получает код и общее сообщение, подробности — в журнале приложения.
-  const known = error?.code && typeof error.code === 'string' && status !== 500;
-  return {
-    status,
-    body: {
-      error: {
-        code: String(error?.code || 'internal_error'),
-        message: known ? String(error.message || 'Ошибка') : 'Внутренняя ошибка приложения'
-      }
-    }
-  };
-}
+// Формат ответа об ошибке — один на всё API: см. `errors.js`. Реэкспорт нужен,
+// чтобы существующие вызовы `errorBody` из моста и тестов не менялись.
+export { errorBody };
 
 function isPlainObject(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value);

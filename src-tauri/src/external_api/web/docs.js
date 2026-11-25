@@ -111,13 +111,16 @@
           method: '—',
           path: 'Коды ошибок',
           scope: '—',
-          summary: 'Единый формат {"error":{"code","message"}}.',
+          summary: 'Единый формат: {"error":{"code","message"}} — код всегда машиночитаемый.',
           description:
-            'Код всегда в теле и всегда машиночитаемый: 400 invalid_json/bad_request/confirm_required, 401 unauthorized, 403 forbidden_host/forbidden_scope/forbidden, 404 not_found/no_such_character/no_such_party/no_such_marathon/no_such_task, 405 method_not_allowed, 408 timeout, 409 launch_not_ready/marathon_not_ready, 413 payload_too_large, 415 unsupported_media_type, 422 invalid_value, 423 storage_blocked, 429 launch_busy/too_many_requests, 500 internal_error/save_failed, 503 app_not_ready/too_many_connections, 504 timeout.',
+            'Ошибка приходит одним и тем же объектом: error.code — короткий код латиницей (на него можно ветвиться в программе), error.message — объяснение по-русски для человека. Ниже — полный список кодов по группам: столбиком, чтобы было видно, что означает каждый.',
           params: [],
-          response: '{"error":{"code":"invalid_value","message":"Неизвестный стат «nope»: …"}}',
-          example: 'HTTP/1.1 422 Unprocessable Entity\n{"error":{"code":"invalid_value","message":"…"}}',
-          exampleBody: null
+          response: '{"error":{"code":"invalid_value","message":"Неизвестные поля: hp, mana. Допустимые: id, nick, class, …, magPenetration"}}',
+          example: 'HTTP/1.1 422 Unprocessable Entity\n{\n  "error": {\n    "code": "invalid_value",\n    "message": "Неизвестные поля: hp, mana"\n  }\n}',
+          exampleBody: null,
+          // Таблица рисуется не разметкой, а данными: app.js строит из них
+          // столбики по статусу. Так список кодов не расходится со стилем страницы.
+          errorTable: true
         }
       ]
     },
@@ -165,17 +168,21 @@
           method: 'GET',
           path: '/characters',
           scope: 'чтение',
-          summary: 'Все персонажи со статами, проходками и признаком запущенного окна.',
+          summary: 'Список всех персонажей — по умолчанию по id, с выбором полей одним запросом.',
           description:
-            'Секретов в ответе нет: контакты, пароль, путь запуска и куки не отдаются никогда. party — id или название пати: список сузится до её состава. fields — через запятую: вернуть только эти поля (id остаётся всегда), удобно для узких отчётов.',
+            'Возвращаются все персонажи, отсортированные по id: список читается глазами и не переезжает между вызовами. fields — через запятую (вложенные через точку): id, класс, уровень и проходки это один запрос. lang=ru подписывает ключи по-русски, flat=false даёт вложенные объекты вместо плоских ключей. Секретов в ответе нет: контакты, пароль, путь запуска и куки не отдаются никогда.',
           params: [
-            ['party', 'query', 'string', 'id или название пати (без регистра).'],
-            ['fields', 'query', 'string', 'Список полей через запятую, например id,nick,hp.'],
+            ['party', 'query', 'string', 'id или название пати (без регистра): только её состав.'],
+            ['fields', 'query', 'string', 'Поля через запятую; вложенные — через точку (stats.hp, dungeonPasses.weapon). id остаётся всегда. Неизвестное поле → 422 со списком допустимых.'],
+            ['lang', 'query', 'string', 'en (по умолчанию) или ru — подписи по-русски: «Класс», «Проходки: оружие».'],
+            ['flat', 'query', 'boolean', 'true (по умолчанию) — ключи «dungeonPasses.weapon»; false — вложенный объект dungeonPasses.'],
+            ['sort', 'query', 'string', 'id (по умолчанию), nick, level или none — порядок хранения.'],
+            ['order', 'query', 'string', 'asc (по умолчанию) или desc.'],
             ['running', 'в ответе', 'object|null', 'Окно игры, если запущено: { pid, title, charId, nick }.']
           ],
           response:
-            '{ characters: [{ id, nick, class, level, favorite, partyIds, mainPartyId, sky, stats, dungeonPasses, ancientCoins, tags, coinHistory, notes, createdAt, updatedAt, running }] }.',
-          example: 'GET /characters?party=Основа&fields=id,nick,level,dungeonPasses',
+            '{ characters: [{ id, class, level, "dungeonPasses.weapon", … }], count, fields }. Без fields — полная карточка каждого.',
+          example: 'GET /characters?fields=id,class,level,dungeonPasses',
           exampleBody: null
         },
         {
@@ -633,8 +640,65 @@
   // Какие поля существуют — для подсказок на странице.
   const fieldLists = {
     stats: STATS.map(([key, label]) => ({ key, label })),
-    passes: PASSES.map(([key, label, ru]) => ({ key, label, ru }))
+    passes: PASSES.map(([key, label, ru]) => ({ key, label, ru })),
+    // Поля, которые можно просить в `fields` (вложенные — через точку).
+    characterFields: [
+      'id',
+      'nick',
+      'class',
+      'level',
+      'favorite',
+      'sky',
+      'sky.name',
+      'sky.level',
+      'partyIds',
+      'mainPartyId',
+      'stats',
+      'stats.endurance',
+      'stats.intelligence',
+      'stats.strength',
+      'stats.agility',
+      'stats.hp',
+      'stats.mp',
+      'stats.levelBonus',
+      'stats.physAttack',
+      'stats.physDefense',
+      'stats.magAttack',
+      'stats.magDefense',
+      'stats.critChance',
+      'stats.critDamage',
+      'stats.atkSpeed',
+      'stats.evasion',
+      'stats.accuracy',
+      'stats.pa',
+      'stats.pz',
+      'stats.morale',
+      'stats.pvePa',
+      'stats.pvePz',
+      'stats.physPenetration',
+      'stats.magPenetration',
+      'dungeonPasses',
+      'dungeonPasses.weapon',
+      'dungeonPasses.armor',
+      'dungeonPasses.relic',
+      'ancientCoins',
+      'isLoggedIn',
+      'lastLoginCheck',
+      'updatedAt',
+      'notes',
+      'tags',
+      'coinHistory',
+      'createdAt',
+      'running',
+      'running.pid',
+      'running.title'
+    ]
   };
 
-  window.TF_API_DOCS = { groups, fieldLists };
+  // Коды ошибок из общего каталога JS: один источник правды, чтобы страница и
+  // журнал приложения не разошлись. Если `errors.js` не подключён — список пуст,
+  // и страница покажет мягкую подсказку вместо пустой таблицы.
+  const errorCatalog = window.TF_ERROR_CATALOG || null;
+
+  window.TF_API_DOCS = { groups, fieldLists, errorCatalog };
 })();

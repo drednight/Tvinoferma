@@ -59,6 +59,9 @@
   }
 
   const PLAY_PRESETS = () => [
+    ['Все персонажи по id', 'GET', '/api/v1/characters', ''],
+    ['id, класс, уровень, проходки', 'GET', '/api/v1/characters?fields=id,class,level,dungeonPasses', ''],
+    ['По-русски, столбиком', 'GET', '/api/v1/characters?fields=id,class,level,dungeonPasses&lang=ru&flat=false', ''],
     ['Карточка персонажа', 'GET', `/api/v1/characters/${sampleCharId()}`, ''],
     ['Только HP', 'GET', `/api/v1/characters/${sampleCharId()}/stats/hp`, ''],
     ['Все проходки', 'GET', `/api/v1/characters/${sampleCharId()}/dungeon-passes`, ''],
@@ -343,6 +346,64 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
   /*  Тестовый запрос                                                   */
   /* ------------------------------------------------------------------ */
 
+  /**
+   * Подсказка «что можно спросить»: поля персонажа кнопками, по группам.
+   *
+   * Группы — не украшение: 49 полей одним облаком не читаются, а так видно,
+   * что статы и проходки спрашиваются точечно (`stats.hp`, `dungeonPasses.weapon`).
+   */
+  function renderHints() {
+    const box = $('#play-hints');
+    if (!box) return;
+    const fields = (docs.fieldLists && docs.fieldLists.characterFields) || [];
+    const groups = [
+      {
+        title: 'Основное',
+        match: field => ['id', 'nick', 'class', 'level', 'favorite', 'partyIds', 'mainPartyId', 'ancientCoins', 'notes', 'tags'].includes(field)
+      },
+      {
+        title: 'Небо и окно игры',
+        match: field => field.startsWith('sky') || field.startsWith('running')
+      },
+      { title: 'Проходки', match: field => field.startsWith('dungeonPasses.') },
+      { title: 'Статы', match: field => field.startsWith('stats.') }
+    ];
+    const used = new Set();
+    const html = groups
+      .map(group => {
+        const items = fields.filter(field => !used.has(field) && group.match(field));
+        items.forEach(field => used.add(field));
+        if (!items.length) return '';
+        const chips = items
+          .map(field => `<button type="button" class="xapi-hint-chip" data-field="${escapeHtml(field)}">${escapeHtml(field)}</button>`)
+          .join('');
+        return `<div class="xapi-hint-group"><span class="xapi-hint-title">${escapeHtml(group.title)}</span><div class="xapi-hints">${chips}</div></div>`;
+      })
+      .join('');
+    box.innerHTML = `
+      <p class="xapi-note">Нажмите поля — они соберутся в <code>?fields=…</code>. Статы и проходки можно спрашивать по одному.</p>
+      ${html}
+      <button type="button" class="btn ghost small" id="play-use-fields">Подставить выбранные поля в запрос</button>`;
+    const chosen = new Set();
+    for (const chip of box.querySelectorAll('[data-field]'))
+      chip.addEventListener('click', () => {
+        const field = chip.dataset.field;
+        if (chosen.has(field)) chosen.delete(field);
+        else chosen.add(field);
+        chip.classList.toggle('is-on', chosen.has(field));
+      });
+    const apply = box.querySelector('#play-use-fields');
+    if (apply)
+      apply.addEventListener('click', () => {
+        if (!chosen.size) return;
+        $('#play-method').value = 'GET';
+        $('#play-path').value = `/api/v1/characters?fields=${[...chosen].join(',')}`;
+        $('#play-body').value = '';
+        setChip('play-code', 'код: —', null);
+        $('#play-out').textContent = 'Нажмите «Отправить»: в ответе будут только выбранные поля.';
+      });
+  }
+
   function renderPresets() {
     const box = $('#play-presets');
     box.innerHTML = PLAY_PRESETS()
@@ -471,6 +532,37 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
       .replace('{набор}.{csv|json}', 'characters.csv');
   }
 
+  /**
+   * Коды ошибок столбиками по HTTP-статусу: слева цифра, справа — коды и
+   * подписи. Столбиком читается лучше, чем строкой через запятую.
+   */
+  function errorTableHtml() {
+    const rows = (docs.errorCatalog || []).slice();
+    if (!rows.length) return '<p class="xapi-note">Список кодов подключается из errors.js.</p>';
+    const byStatus = new Map();
+    for (const row of rows) {
+      if (!byStatus.has(row.status)) byStatus.set(row.status, []);
+      byStatus.get(row.status).push(row);
+    }
+    const columns = [...byStatus.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(
+        ([status, items]) => `<div class="xapi-err-col">
+          <div class="xapi-err-status">${status}</div>
+          ${items
+            .map(
+              item =>
+                `<div class="xapi-err-row"><code>${escapeHtml(item.code)}</code><span>${escapeHtml(item.title || '')}</span>${
+                  item.hint ? `<em>${escapeHtml(item.hint)}</em>` : ''
+                }</div>`
+            )
+            .join('')}
+        </div>`
+      )
+      .join('');
+    return `<div class="xapi-err-table">${columns}</div>`;
+  }
+
   function methodHtml(group, method) {
     const id = docsMethodId(group, method);
     const badge = method.method === '—' ? 'правило' : method.method;
@@ -496,6 +588,7 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
       </div>
       <h4>${escapeHtml(method.summary)}</h4>
       <p class="xapi-note">${escapeHtml(method.description)}</p>
+      ${method.errorTable ? errorTableHtml() : ''}
       <div class="xapi-doc-body">
         <h5>Параметры</h5>
         ${params}
@@ -708,6 +801,7 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
   fillBase();
   bind();
   renderPresets();
+  renderHints();
   showTab('panel');
   const saved = sessionStorage.getItem(storageKey);
   if (saved) {

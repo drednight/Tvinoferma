@@ -29,6 +29,8 @@ function mountPage() {
     headers: { get: () => 'application/json; charset=utf-8' },
     text: async () => '{"ok":true}'
   }));
+  // errors.js — каталог кодов для страницы (в Rust подключается тегом script).
+  new Function(read('errors.js'))();
   new Function(read('docs.js'))();
   new Function(read('app.js'))();
   return globalThis.window.TF_API_DOCS;
@@ -366,6 +368,107 @@ describe('документация и страница не расходятся
       expect(String(method.response).length).toBeGreaterThan(10);
       expect(String(method.description).length).toBeGreaterThan(30);
     }
+  });
+
+  it('коды ошибок на странице совпадают с каталогом errors.js', async () => {
+    const docs = mountPage();
+    const catalog = await import('../js/modules/externalApi/errors.js');
+    const expected = catalog.errorCatalogRows();
+    expect(docs.errorCatalog.length).toBe(expected.length);
+    expect(docs.errorCatalog.map(row => `${row.status} ${row.code}`)).toEqual(
+      expected.map(row => `${row.status} ${row.code}`)
+    );
+    // web/errors.js — копия для страницы: она не должна отставать от каталога.
+    const pageRows = new Function(`${read('errors.js')}; return window.TF_ERROR_CATALOG;`)();
+    expect(pageRows.map(row => `${row.status} ${row.code}`)).toEqual(expected.map(row => `${row.status} ${row.code}`));
+  });
+
+  it('ошибки нарисованы столбиками по статусу, с подписью у каждого кода', () => {
+    const docs = mountPage();
+    document.querySelector('[data-tab="docs"]').click();
+    const columns = document.querySelectorAll('.xapi-err-col');
+    expect(columns.length).toBeGreaterThan(10);
+    const rows = [...document.querySelectorAll('.xapi-err-row')];
+    expect(rows.length).toBe(docs.errorCatalog.length);
+    // У каждой строки есть код и читаемая подпись по-русски.
+    for (const row of rows) {
+      expect(row.querySelector('code').textContent).toMatch(/^[a-z_]+$/);
+      expect(row.querySelector('span').textContent.length).toBeGreaterThan(6);
+    }
+    // Статусы в столбиках идут по возрастанию — так список читается.
+    const statuses = [...columns].map(col => Number(col.querySelector('.xapi-err-status').textContent));
+    expect(statuses).toEqual([...statuses].sort((a, b) => a - b));
+  });
+
+  it('в тестовой строке есть чипы полей и они собирают fields=', () => {
+    mountPage();
+    const chips = [...document.querySelectorAll('.xapi-hint-chip')];
+    expect(chips.length).toBeGreaterThan(10);
+    for (const field of ['class', 'level', 'dungeonPasses.weapon', 'stats.hp']) {
+      expect(chips.some(chip => chip.dataset.field === field)).toBe(true);
+    }
+    for (const field of ['id', 'class', 'level', 'dungeonPasses.weapon']) {
+      chips.find(chip => chip.dataset.field === field).click();
+    }
+    document.getElementById('play-use-fields').click();
+    expect(document.getElementById('play-path').value).toBe(
+      '/api/v1/characters?fields=id,class,level,dungeonPasses.weapon'
+    );
+    // И такой запрос действительно отвечает (маршрут существует).
+  });
+
+  it('список полей страницы совпадает с CHARACTER_FIELD_NAMES', async () => {
+    const docs = mountPage();
+    const readApi = await import('../js/modules/externalApi/actions/read.js');
+    expect(docs.fieldLists.characterFields).toEqual(readApi.CHARACTER_FIELD_NAMES);
+  });
+
+  it('у списка персонажей описаны все параметры выбора — и на странице, и в справочнике', () => {
+    const docs = mountPage();
+    const list = docs.groups
+      .flatMap(group => group.methods)
+      .find(row => row.method === 'GET' && row.path === '/characters');
+    const names = list.params.map(param => param[0]);
+    for (const name of ['party', 'fields', 'lang', 'flat', 'sort', 'order']) expect(names).toContain(name);
+    // В описании — главное для пользователя: список всех, по id, поля одним запросом.
+    expect(list.summary).toMatch(/все/i);
+    expect(list.summary).toMatch(/по id/i);
+    expect(list.description).toMatch(/проходк/i);
+    // Пример действительно просит несколько полей сразу.
+    expect(list.example).toContain('fields=');
+    expect(list.example).toContain('dungeonPasses');
+    const markdown = readFileSync(resolve(process.cwd(), 'docs/EXTERNAL-API-REFERENCE.md'), 'utf8');
+    const section = markdown.slice(
+      markdown.indexOf('#### `GET /characters`'),
+      markdown.indexOf('#### `GET /characters/{id}`')
+    );
+    for (const name of ['party', 'fields', 'lang', 'flat', 'sort', 'order']) expect(section).toContain(`\`${name}\``);
+    expect(section).toMatch(/по id/i);
+    expect(section).toContain('dungeonPasses.weapon');
+  });
+
+  it('таблица кодов в справочнике совпадает с каталогом', async () => {
+    const catalog = await import('../js/modules/externalApi/errors.js');
+    const markdown = readFileSync(resolve(process.cwd(), 'docs/EXTERNAL-API-REFERENCE.md'), 'utf8');
+    const table = markdown.slice(markdown.indexOf('#### Все коды'), markdown.indexOf('### Справочники полей'));
+    for (const row of catalog.errorCatalogRows()) {
+      // Каждый код — отдельной строкой таблицы: «столбиком», как просил пользователь.
+      const line = new RegExp(`^\\| ${row.status} \\| \`${row.code}\` \\|`, 'm');
+      expect(table).toMatch(line);
+      expect(table).toContain(row.title);
+    }
+  });
+
+  it('в пресетах есть список всех персонажей и проходки одним запросом', () => {
+    mountPage();
+    const titles = [...document.querySelectorAll('.xapi-preset')].map(button => button.textContent);
+    expect(titles).toContain('Все персонажи по id');
+    expect(titles.join(' ')).toMatch(/проходки/i);
+    const all = [...document.querySelectorAll('.xapi-preset')].find(
+      button => button.textContent === 'Все персонажи по id'
+    );
+    all.click();
+    expect(document.getElementById('play-path').value).toBe('/api/v1/characters');
   });
 
   it('таблица «что можно делать» ссылается на существующие методы', () => {
