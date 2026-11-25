@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Внешний API Твинофермы</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <main class="xapi">
+      <header class="xapi-hero">
+        <span class="xapi-tag">локальная страница · работает, только пока запущена Твиноферма</span>
+        <h1>Внешний API Твинофермы</h1>
+        <p>
+          Эта страница открыта с самого приложения: <code id="base-url">http://127.0.0.1:47831</code>. Токен
+          создаётся и перевыпускается в приложении: <strong>Настройки → 🔌 Внешний API</strong>. Здесь он
+          хранится только до закрытия вкладки (<code>sessionStorage</code>) и в разметку не вшит.
+        </p>
+        <p class="xapi-hint">
+          Увидели эту страницу, но не включали API? Тогда доступ к ней на этом компьютере есть у любой
+          программы. Выключите сервер в настройках приложения.
+        </p>
+      </header>
+
+      <section class="xapi-block" aria-labelledby="connect-title">
+        <h2 id="connect-title">Подключение</h2>
+        <div class="xapi-connect">
+          <label class="xapi-field">
+            Токен
+            <input id="token" type="text" autocomplete="off" spellcheck="false" placeholder="64 символа из настроек" />
+          </label>
+          <button id="connect" type="button" class="btn">Подключиться</button>
+          <button id="forget" type="button" class="btn ghost">Забыть токен</button>
+        </div>
+        <div class="xapi-status" role="status" aria-live="polite">
+          <span class="xapi-chip" data-chip="server">сервер: не подключено</span>
+          <span class="xapi-chip" data-chip="port">порт: —</span>
+          <span class="xapi-chip" data-chip="scopes">права: —</span>
+          <span class="xapi-chip" data-chip="storage">запись: —</span>
+        </div>
+        <p class="xapi-note" id="connect-note">
+          Токен обязателен для всех запросов <code>/api/v1/*</code>. Нет токена — ответ
+          <code>401 unauthorized</code>.
+        </p>
+      </section>
+
+      <section class="xapi-block" id="panel" aria-labelledby="panel-title" hidden>
+        <h2 id="panel-title">Данные</h2>
+        <div class="xapi-grid">
+          <div class="xapi-col">
+            <h3 class="xapi-sub">Персонажи</h3>
+            <div id="characters" class="xapi-cards"><p class="xapi-note">Ещё не загружено.</p></div>
+            <h3 class="xapi-sub">Пати</h3>
+            <div id="parties" class="xapi-cards"></div>
+          </div>
+          <div class="xapi-col">
+            <h3 class="xapi-sub">Окна игры</h3>
+            <div id="windows" class="xapi-cards"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="xapi-block" aria-labelledby="log-title">
+        <h2 id="log-title">Журнал вызовов</h2>
+        <p class="xapi-note">
+          Последние 100 вызовов: время, метод, путь, код и длительность. Тел запросов и токена в журнале
+          нет. Кнопка «Обновить» перечитывает журнал из приложения.
+        </p>
+        <div class="xapi-status">
+          <button id="reload" type="button" class="btn secondary small">Обновить</button>
+          <button id="reload-audit" type="button" class="btn ghost small" hidden>Только журнал</button>
+        </div>
+        <div class="xapi-table-wrap">
+          <table class="xapi-table">
+            <thead>
+              <tr>
+                <th scope="col">Время</th>
+                <th scope="col">Метод</th>
+                <th scope="col">Путь</th>
+                <th scope="col">Код</th>
+                <th scope="col">Длительность</th>
+              </tr>
+            </thead>
+            <tbody id="audit-body">
+              <tr>
+                <td colspan="5" class="xapi-empty">Журнал пуст: вызовов ещё не было.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="xapi-block" aria-labelledby="examples-title">
+        <h2 id="examples-title">Примеры запросов</h2>
+        <p class="xapi-note">
+          Подставьте свой токен. Адрес — <code id="example-base">http://127.0.0.1:47831</code>. Полный контракт —
+          <code>docs/EXTERNAL-API.md</code> в репозитории.
+        </p>
+        <div class="xapi-tabs" role="tablist" aria-label="Язык примера">
+          <button type="button" class="xapi-tab is-on" data-recipe="curl" role="tab" aria-selected="true">curl</button>
+          <button type="button" class="xapi-tab" data-recipe="python" role="tab" aria-selected="false">Python</button>
+          <button type="button" class="xapi-tab" data-recipe="powershell" role="tab" aria-selected="false">
+            PowerShell
+          </button>
+        </div>
+        <pre id="recipe" class="xapi-code" tabindex="0"></pre>
+        <button id="copy-recipe" type="button" class="btn ghost small">Скопировать пример</button>
+        <p class="xapi-note" id="recipe-copied" role="status" aria-live="polite"></p>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

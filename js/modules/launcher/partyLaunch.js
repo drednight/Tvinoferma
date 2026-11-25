@@ -88,7 +88,7 @@ const errText = e => String(e?.message || e || 'неизвестная ошиб�
  * @param {any[]} characters
  * @param {import('./gameCenters.js').GcContext} [ctx]
  */
-async function runPreflight(characters, ctx = launchContext()) {
+export async function runPreflight(characters, ctx = launchContext()) {
   const facts = await readLaunchFacts();
   const l = state.settings?.launcher || {};
   return launchPreflight({
@@ -113,7 +113,7 @@ async function runPreflight(characters, ctx = launchContext()) {
  * @param {string|undefined} gcId явно выбранный лаунчер (`opts.gcId`) — он важнее большинства
  * @returns {{ ctx: import('./gameCenters.js').GcContext, gcId: string|undefined, gcName: string, count: number, total: number, distinct: number }}
  */
-function launchContextForGroup(characters, gcId) {
+export function launchContextForGroup(characters, gcId) {
   const base = launchContext();
   const empty = {
     ctx: gcId ? { ...base, preferredId: gcId } : base,

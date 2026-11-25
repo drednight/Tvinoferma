@@ -504,6 +504,10 @@ export async function boot() {
     try {
       await initDesktop();
       initNotifications();
+      // Внешний API: сервер поднимается по настройке, мост слушает событие из Rust.
+      // Не в приложении (браузер) вызов ничего не делает.
+      const { attachExternalApi } = await import('./modules/externalApi/index.js');
+      attachExternalApi();
     } catch (e) {
       console.error('[BOOT ERROR] Failed to init desktop features:', e);
     }

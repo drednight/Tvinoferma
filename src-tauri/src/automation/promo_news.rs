@@ -1,5 +1,5 @@
 //! Public news only: no character cookies, login, PIN activation, redirects or arbitrary URLs.
-use crate::parsers::{eval_and_wait, navigate_scoped, tf_log, QUIET_SCOPE};
+use crate::parsers::{eval_and_wait, navigate_scoped, QUIET_SCOPE};
 use serde_json::{json, Value};
 use std::time::Duration;
 use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindowBuilder};
@@ -48,7 +48,14 @@ pub async fn fetch_promo_news_page(
         &app,
         "news",
         "step",
-        format!("Обновление новостей: {}", if article.is_some() { "статья" } else { "список" }),
+        format!(
+            "Обновление новостей: {}",
+            if article.is_some() {
+                "статья"
+            } else {
+                "список"
+            }
+        ),
     );
     if browser.unwrap_or(false) {
         return browser_page(app, &url, article.is_some()).await;
@@ -221,7 +228,12 @@ async fn browser_page(app: AppHandle, url: &str, article: bool) -> Result<Value,
     // Unload article timers/resources; keep only the isolated reader infrastructure.
     let _ = window.navigate(Url::parse("about:blank").map_err(|_| "news_client")?);
     match &result {
-        Ok(_) => crate::parsers::tf_log(&app, "news", "ok", "Обновление новостей: браузерный читатель вернул страницу"),
+        Ok(_) => crate::parsers::tf_log(
+            &app,
+            "news",
+            "ok",
+            "Обновление новостей: браузерный читатель вернул страницу",
+        ),
         Err(err) => crate::parsers::tf_log(
             &app,
             "news",

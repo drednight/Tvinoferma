@@ -102,8 +102,14 @@ fn load_baseline(dir: &Path) -> Option<StateSummary> {
     Some(StateSummary {
         characters: value.get("characters")?.as_u64()?.min(u64::from(u32::MAX)) as u32,
         with_email: value.get("withEmail")?.as_u64()?.min(u64::from(u32::MAX)) as u32,
-        with_password: value.get("withPassword")?.as_u64()?.min(u64::from(u32::MAX)) as u32,
-        with_gc_accounts: value.get("withGcAccounts")?.as_u64()?.min(u64::from(u32::MAX)) as u32,
+        with_password: value
+            .get("withPassword")?
+            .as_u64()?
+            .min(u64::from(u32::MAX)) as u32,
+        with_gc_accounts: value
+            .get("withGcAccounts")?
+            .as_u64()?
+            .min(u64::from(u32::MAX)) as u32,
     })
 }
 
@@ -216,7 +222,10 @@ mod tests {
     #[test]
     fn summarize_tolerates_unexpected_shapes() {
         assert_eq!(summarize(&json!({})), StateSummary::default());
-        assert_eq!(summarize(&json!({ "characters": 5 })), StateSummary::default());
+        assert_eq!(
+            summarize(&json!({ "characters": 5 })),
+            StateSummary::default()
+        );
         assert_eq!(summarize(&json!([1, 2])), StateSummary::default());
     }
 
@@ -245,7 +254,10 @@ mod tests {
         fs::write(&path, vec![b'x'; DIAG_MAX_BYTES as usize + 1]).unwrap();
         append_line(&dir, "fresh");
         assert_eq!(fs::read_to_string(&path).unwrap(), "fresh\n");
-        assert_eq!(fs::metadata(dir.join(DIAG_ROTATED)).unwrap().len(), DIAG_MAX_BYTES + 1);
+        assert_eq!(
+            fs::metadata(dir.join(DIAG_ROTATED)).unwrap().len(),
+            DIAG_MAX_BYTES + 1
+        );
         let _ = fs::remove_dir_all(dir);
     }
 

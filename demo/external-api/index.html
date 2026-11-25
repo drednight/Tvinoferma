@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Твиноферма · Внешний API — макет страницы</title>
+    <link rel="stylesheet" href="../../css/core/variables.css" />
+    <link rel="stylesheet" href="../../css/core/base.css" />
+    <link rel="stylesheet" href="../../css/core/components.css" />
+    <link rel="stylesheet" href="./external-api.css" />
+  </head>
+  <body>
+    <main class="xapi">
+      <header class="xapi-hero">
+        <span class="xapi-tag">макет · вымышленные данные · запросы не отправляются</span>
+        <h1>Внешний API Твинофермы</h1>
+        <p>
+          Так будет выглядеть страничка, которую отдаёт сама Твиноферма по адресу
+          <code>http://127.0.0.1:47831/</code>. Она нужна для двух вещей: посмотреть и потрогать данные руками и
+          скопировать готовый запрос для своей программы.
+        </p>
+        <p class="xapi-answer">
+          <strong>Да, сторонняя программа сможет запускать окна.</strong> Запуск одного персонажа, пати целиком или
+          выбранных участников идёт тем же кодом, что и кнопки в приложении (<code>launchOne</code>,
+          <code>launchPartyByName</code>), только без диалогов. Изменение статов и проходок меняет базу Твинофермы, а не
+          значения в игре.
+        </p>
+        <nav class="xapi-nav" aria-label="Разделы макета">
+          <a href="#connect">Подключение</a>
+          <a href="#panel">Панель</a>
+          <a href="#calls">Журнал вызовов</a>
+          <a href="#recipes">Примеры</a>
+          <a href="#reference">Справочник</a>
+        </nav>
+        <p class="xapi-hint">
+          💡 Внизу — ссылка на документ с планом работ. Здесь всё работает только на странице: ни один запрос не уходит,
+          персонажи и окна вымышлены.
+        </p>
+      </header>
+
+      <section class="xapi-block" id="connect">
+        <h2>1 · Подключение</h2>
+        <p class="xapi-lead">
+          Токен создаётся в приложении: «Настройки → Приложение → 🔌 Внешний API». Он показывается один раз, полностью
+          или частями, и хранится в приложении как хеш. В макете подойдёт любой текст — кроме пустого.
+        </p>
+        <div class="xapi-connect">
+          <label class="xapi-field">
+            <span>Токен</span>
+            <input class="input" id="token" type="text" autocomplete="off" spellcheck="false" placeholder="tf_live_…" />
+          </label>
+          <button class="btn primary" id="connect-btn" type="button">Подключиться</button>
+          <button class="btn ghost" id="disconnect-btn" type="button">Отключиться</button>
+        </div>
+        <div class="xapi-status" id="status">
+          <span class="xapi-chip" data-chip="server">сервер: не подключено</span>
+          <span class="xapi-chip" data-chip="port">127.0.0.1:47831</span>
+          <span class="xapi-chip" data-chip="scopes">права: чтение · изменение · запуск</span>
+        </div>
+        <p class="xapi-note">
+          Почему так: порт слышит только этот компьютер, но открыть его может любая программа и любая вкладка браузера.
+          Поэтому без токена — <code>401</code>, с чужим <code>Host</code> — <code>403</code>, а CORS-заголовков нет
+          вовсе.
+        </p>
+      </section>
+
+      <section class="xapi-block" id="panel">
+        <h2>2 · Панель управления</h2>
+        <p class="xapi-lead">
+          Персонажи, статы и проходки редактируются здесь же; справа — пати, запущенные окна и ход задания на запуск.
+          Каждое действие попадает в журнал с точным запросом и ответом.
+        </p>
+
+        <div class="xapi-grid">
+          <div class="xapi-col">
+            <h3 class="xapi-sub">Персонажи</h3>
+            <div class="xapi-toolbar">
+              <label class="xapi-check">
+                <input type="checkbox" id="bulk-pass" />
+                Всем +1 «Реликвия» (массовое изменение)
+              </label>
+              <button class="btn secondary small" id="bulk-btn" type="button">Применить</button>
+            </div>
+            <div id="characters" class="xapi-cards"></div>
+          </div>
+
+          <div class="xapi-col">
+            <h3 class="xapi-sub">Пати</h3>
+            <div id="parties" class="xapi-cards"></div>
+
+            <h3 class="xapi-sub">Запущенные окна</h3>
+            <div id="windows" class="xapi-windows"></div>
+
+            <h3 class="xapi-sub">Задание</h3>
+            <div class="xapi-job" id="job">
+              <p class="muted">Заданий нет. Запустите персонажа или пати — здесь появится ход и итог.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="xapi-block" id="calls">
+        <h2>3 · Журнал вызовов</h2>
+        <p class="xapi-lead">
+          Последние 100 вызовов: время, метод, путь, код ответа и длительность. Тел и токенов в журнале нет — только
+          то, что нужно, чтобы понять «кто и что просил».
+        </p>
+        <div class="xapi-calls">
+          <div class="xapi-table-wrap">
+            <table class="xapi-table" id="calls-table">
+              <thead>
+                <tr>
+                  <th>Время</th>
+                  <th>Метод</th>
+                  <th>Путь</th>
+                  <th>Код</th>
+                  <th>мс</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="xapi-empty">
+                  <td colspan="5">Пока пусто — подключитесь и что-нибудь нажмите.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="xapi-pair">
+            <div>
+              <h4>Запрос</h4>
+              <pre id="req-json">—</pre>
+            </div>
+            <div>
+              <h4>Ответ</h4>
+              <pre id="res-json">—</pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="xapi-block" id="recipes">
+        <h2>4 · Как вызвать из своей программы</h2>
+        <p class="xapi-lead">
+          Три готовых примера. Токен подставляется из поля выше; в настоящем приложении его же нужно положить в
+          переменную окружения, а не в код.
+        </p>
+        <div class="xapi-tabs" role="tablist" aria-label="Язык примера">
+          <button type="button" class="xapi-tab is-on" data-recipe="curl" role="tab" aria-selected="true">curl</button>
+          <button type="button" class="xapi-tab" data-recipe="python" role="tab" aria-selected="false">Python</button>
+          <button type="button" class="xapi-tab" data-recipe="powershell" role="tab" aria-selected="false">
+            PowerShell
+          </button>
+          <button class="btn ghost small xapi-copy" type="button" data-copy-recipe>📋 Скопировать</button>
+        </div>
+        <pre class="xapi-code" id="recipe"></pre>
+      </section>
+
+      <section class="xapi-block" id="reference">
+        <h2>5 · Справочник</h2>
+        <p class="xapi-lead">
+          Полный контракт с телами запросов и ответов — в документе
+          <a href="../../docs/EXTERNAL-API.md">docs/EXTERNAL-API.md</a>. Здесь короткая шпаргалка.
+        </p>
+        <div class="xapi-table-wrap">
+          <table class="xapi-table">
+            <thead>
+              <tr>
+                <th>Запрос</th>
+                <th>Что делает</th>
+                <th>Настройка прав</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>GET /health</code></td>
+                <td>Версия, доступна ли запись, занят ли запуск</td>
+                <td>—</td>
+              </tr>
+              <tr>
+                <td><code>GET /characters</code></td>
+                <td>Персонажи со статами и проходками, без контактов</td>
+                <td>чтение</td>
+              </tr>
+              <tr>
+                <td><code>GET /characters/&#123;id&#125;</code></td>
+                <td>Один персонаж</td>
+                <td>чтение</td>
+              </tr>
+              <tr>
+                <td><code>PATCH /characters/&#123;id&#125;</code></td>
+                <td>Изменить статы и проходки, снимок в историю</td>
+                <td>изменение</td>
+              </tr>
+              <tr>
+                <td><code>POST /characters/bulk-update</code></td>
+                <td>До 100 персонажей за раз, частичный успех</td>
+                <td>изменение</td>
+              </tr>
+              <tr>
+                <td><code>GET /parties</code></td>
+                <td>Пати и порядок участников</td>
+                <td>чтение</td>
+              </tr>
+              <tr>
+                <td><code>GET /windows</code></td>
+                <td>Запущенные клиенты и их персонажи</td>
+                <td>чтение</td>
+              </tr>
+              <tr>
+                <td><code>POST /launch/character</code></td>
+                <td>Запуск одного окна → <code>202 jobId</code></td>
+                <td>запуск</td>
+              </tr>
+              <tr>
+                <td><code>POST /launch/party</code></td>
+                <td>Запуск пати или выбранных участников</td>
+                <td>запуск</td>
+              </tr>
+              <tr>
+                <td><code>GET /jobs/&#123;jobId&#125;</code></td>
+                <td>Ход и итог запуска</td>
+                <td>чтение</td>
+              </tr>
+              <tr>
+                <td><code>POST /windows/close</code></td>
+                <td>Закрыть окна, только с <code>confirm: true</code></td>
+                <td>запуск/закрытие</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <details class="xapi-more">
+          <summary>Коды ошибок, которые важно различать</summary>
+          <ul>
+            <li><code>401 unauthorized</code> — нет токена или он не тот. Токен в приложении можно перевыпустить.</li>
+            <li><code>403 forbidden_host</code> — запрос пришёл не на <code>127.0.0.1</code>/<code>localhost</code>.</li>
+            <li><code>403 forbidden_scope</code> — право выключено в настройках.</li>
+            <li><code>404 no_such_character</code> — персонажа с таким id нет (или он в архиве).</li>
+            <li><code>423 storage_blocked</code> — приложение в режиме «Сохранение остановлено», изменения запрещены.</li>
+            <li><code>429 launch_busy</code> — уже идёт внешний запуск; повторите позже.</li>
+            <li><code>400 confirm_required</code> — закрытие окон запрошено без <code>confirm: true</code>.</li>
+          </ul>
+        </details>
+      </section>
+
+      <footer class="xapi-foot">
+        <p>
+          План и контракт: <a href="../../docs/EXTERNAL-API.md">docs/EXTERNAL-API.md</a> · запуск макета:
+          <code>DEMO_ENTRY=/demo/external-api/index.html npm run demo</code> · <a href="../tools-modals.html">другие макеты</a>
+        </p>
+      </footer>
+    </main>
+
+    <script type="module" src="./external-api.js"></script>
+  </body>
+</html>
