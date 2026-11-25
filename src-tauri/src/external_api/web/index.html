@@ -35,6 +35,8 @@
         </div>
         <nav class="xapi-nav" aria-label="Разделы страницы">
           <button type="button" class="xapi-nav-item is-on" data-tab="panel" aria-current="page">Данные</button>
+          <button type="button" class="xapi-nav-item" data-tab="overview">Обзор</button>
+          <button type="button" class="xapi-nav-item" data-tab="actions">Действия</button>
           <button type="button" class="xapi-nav-item" data-tab="playground">Тестовый запрос</button>
           <button type="button" class="xapi-nav-item" data-tab="docs">Справочник API</button>
         </nav>
@@ -63,6 +65,62 @@
             <h3 class="xapi-sub">Окна игры</h3>
             <div id="windows" class="xapi-cards"></div>
           </div>
+        </div>
+      </section>
+
+      <section class="xapi-block xapi-tabpanel" id="overview" data-panel="overview" aria-labelledby="overview-title" hidden>
+        <h2 id="overview-title">Обзор</h2>
+        <p class="xapi-note">
+          Живая картина: марафоны с прогрессом, ближайшие записи планировщика, деньги и запущенные окна.
+          Данные обновляются при нажатии «Обновить» и после каждого изменения на вкладке «Действия».
+        </p>
+        <div class="xapi-play-actions">
+          <button id="overview-refresh" type="button" class="btn">Обновить</button>
+          <span id="overview-status" class="xapi-note" role="status" aria-live="polite"></span>
+        </div>
+        <div class="xapi-grid">
+          <div class="xapi-col">
+            <h3 class="xapi-sub">Марафоны</h3>
+            <div id="overview-marathons" class="xapi-cards"><p class="xapi-note">Ещё не загружено.</p></div>
+          </div>
+          <div class="xapi-col">
+            <h3 class="xapi-sub">Планировщик: ближайшие записи</h3>
+            <div id="overview-planner" class="xapi-cards"></div>
+            <h3 class="xapi-sub">Учёт</h3>
+            <div id="overview-finance" class="xapi-cards"></div>
+          </div>
+        </div>
+        <h3 class="xapi-sub">Окна игры</h3>
+        <div id="overview-windows" class="xapi-cards"></div>
+      </section>
+
+      <section class="xapi-block xapi-tabpanel" id="actions" data-panel="actions" aria-labelledby="actions-title" hidden>
+        <h2 id="actions-title">Действия</h2>
+        <p class="xapi-note">
+          Готовые кнопки вместо ручного ввода адресов: выберите действие, заполните поля — адрес и тело
+          соберутся сами. Кнопки с пометкой «⚠ подтверждение» сначала спрашивают, а затем показывают
+          «было → стало». Что уже отправлялось — видно в журнале ниже.
+        </p>
+        <div class="xapi-actions-search">
+          <input id="actions-filter" type="search" autocomplete="off" placeholder="Найти действие: стат, проходки, запуск, выгрузка…" />
+          <span class="xapi-note" id="actions-count"></span>
+        </div>
+        <div id="actions-list" class="xapi-actions-list"></div>
+        <div id="actions-form" class="xapi-action-form" hidden>
+          <div class="xapi-action-form-head">
+            <h3 id="action-title">Действие</h3>
+            <span class="xapi-chip" id="action-route"></span>
+          </div>
+          <p class="xapi-note" id="action-summary"></p>
+          <div id="action-fields" class="xapi-action-fields"></div>
+          <div class="xapi-play-actions">
+            <button id="action-send" type="button" class="btn">Выполнить</button>
+            <button id="action-open-playground" type="button" class="btn ghost small">Открыть в тестовой строке</button>
+            <button id="action-cancel" type="button" class="btn ghost small">Отмена</button>
+            <span id="action-status" class="xapi-note" role="status" aria-live="polite"></span>
+          </div>
+          <h3 class="xapi-sub">Результат</h3>
+          <pre id="action-out" class="xapi-code" tabindex="0">Здесь появится ответ сервера.</pre>
         </div>
       </section>
 
@@ -179,6 +237,7 @@
     </main>
     <script src="/errors.js"></script>
     <script src="/docs.js"></script>
+    <script src="/actions.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>

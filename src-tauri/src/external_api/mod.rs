@@ -63,6 +63,8 @@ const PAGE_JS: &str = include_str!("web/app.js");
 const PAGE_DOCS_JS: &str = include_str!("web/docs.js");
 /// Каталог кодов ошибок для страницы (генерируется из js/modules/externalApi/errors.js).
 const PAGE_ERRORS_JS: &str = include_str!("web/errors.js");
+/// Модель действий страницы: что можно нажать и какой запрос уйдёт (web/actions.js).
+const PAGE_ACTIONS_JS: &str = include_str!("web/actions.js");
 const CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'";
 
 /// Ответ из JS на запрос из реестра.
@@ -744,6 +746,14 @@ fn handle(app: &AppHandle, context: &ServeContext, request: http::Request) -> Re
                     200,
                     "text/javascript; charset=utf-8",
                     PAGE_ERRORS_JS,
+                    &ledger,
+                );
+            }
+            "/actions.js" => {
+                return Response::static_file(
+                    200,
+                    "text/javascript; charset=utf-8",
+                    PAGE_ACTIONS_JS,
                     &ledger,
                 );
             }

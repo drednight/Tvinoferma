@@ -40,6 +40,10 @@
   let latest = { characters: [], parties: [], windows: [] };
   let activeTab = 'panel';
   const docs = window.TF_API_DOCS || { groups: [], fieldLists: { stats: [], passes: [] } };
+  // Действия описаны данными (web/actions.js): разметка и запрос строятся по ним,
+  // поэтому кнопка не может разойтись с контрактом.
+  const actions = Array.isArray(window.TF_API_ACTIONS) ? window.TF_API_ACTIONS : [];
+  let activeAction = null;
 
   /** Подставить пример запроса в тестовую строку. */
   function useExample(path, method, bodyText) {
@@ -162,6 +166,13 @@
           }</div>
           ${parties}
           ${valuesHtml(char.stats, char.dungeonPasses)}
+          <div class="xapi-card-actions">
+            ${actionLink('character-card', 'Карточка', char.id)}
+            ${actionLink('character-stats', 'Статы', char.id)}
+            ${actionLink('character-passes', 'Проходки', char.id)}
+            ${actionLink('set-stat', 'Изменить стат', char.id)}
+            ${actionLink('launch-character', 'Запустить', char.id)}
+          </div>
         </article>`;
       })
       .join('');
@@ -189,6 +200,11 @@
       .join('');
   }
 
+  /** Ссылка-действие из карточки: открывает форму с уже подставленным значением. */
+  function actionLink(actionId, label, value) {
+    return `<button type="button" class="xapi-link" data-char-action="${escapeHtml(actionId)}" data-char-value="${escapeHtml(value)}">${escapeHtml(label)}</button>`;
+  }
+
   function renderWindows(windows) {
     const box = $('#windows');
     if (!Array.isArray(windows) || !windows.length) {
@@ -206,6 +222,9 @@
           <div class="xapi-meta">${escapeHtml(row.title || 'без заголовка')}${
             row.charId ? ` · ${escapeHtml(row.charId)}` : ''
           }</div>
+          <div class="xapi-card-actions">
+            <button type="button" class="xapi-link" data-char-action="close-windows" data-char-value="${Number(row.pid || 0)}">Закрыть окно</button>
+          </div>
         </article>`;
       })
       .join('');
@@ -340,6 +359,7 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
       else tab.removeAttribute('aria-current');
     }
     if (name === 'docs') renderDocs();
+    if (name === 'overview') loadOverview();
   }
 
   /* ------------------------------------------------------------------ */
@@ -603,6 +623,397 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
     </article>`;
   }
 
+  /* ------------------------------------------------------------------ */
+  /*  Вкладка «Обзор»: живая картина по всем разделам                    */
+  /* ------------------------------------------------------------------ */
+
+  const money = value =>
+    new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(Number(value) || 0);
+
+  /** Дата «2026-11-24» → «24.11.2026»; мусор не превращаем в NaN. */
+  function ruDate(value) {
+    const text = String(value ?? '').slice(0, 10);
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+    return match ? `${match[3]}.${match[2]}.${match[1]}` : String(value ?? '—');
+  }
+
+  function overviewCard(title, rows, note = '') {
+    return `<div class="xapi-card">
+      <div class="xapi-card-head"><strong>${escapeHtml(title)}</strong></div>
+      ${note ? `<p class="xapi-note">${escapeHtml(note)}</p>` : ''}
+      <dl class="xapi-kv">${rows
+        .map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`)
+        .join('')}</dl>
+    </div>`;
+  }
+
+  /** Марафоны: прогресс из totals (считает сервер), серии — отдельно. */
+  function renderOverviewMarathons(list) {
+    const box = $('#overview-marathons');
+    if (!list.length) {
+      box.innerHTML = '<p class="xapi-note">Марафонов нет.</p>';
+      return;
+    }
+    box.innerHTML = list
+      .map(marathon => {
+        if (marathon.kind === 'series') {
+          return overviewCard(marathon.title || marathon.id, [
+            ['Тип', 'папка марафонов'],
+            ['Внутри', `${(marathon.childIds || []).length} шт.`]
+          ]);
+        }
+        const totals = marathon.totals || null;
+        const rows = [
+          ['Сроки', `${ruDate(marathon.startDate)} — ${ruDate(marathon.endDate)}`],
+          ['Участников', String((marathon.participantIds || []).length)],
+          ['Заданий', String((marathon.tasks || []).length)]
+        ];
+        if (totals) {
+          rows.push(
+            ['Проверок', `${money(totals.checks)} / ${money(totals.maxChecks)} (${totals.percent}%)`],
+            ['Заданий сдано', `${money(totals.done)} из ${money(totals.cells)}`],
+            ['Монет', `${money(totals.coins)} / ${money(totals.maxCoins)}`]
+          );
+          if (totals.failing) rows.push(['Провалено', money(totals.failing)]);
+        }
+        return overviewCard(marathon.title || marathon.id, rows, marathon.status === 'completed' ? 'завершён' : '');
+      })
+      .join('');
+  }
+
+  /** Планировщик: только ближайшие — дальше человеку не нужно. */
+  function renderOverviewPlanner(entries) {
+    const box = $('#overview-planner');
+    const today = new Date().toISOString().slice(0, 10);
+    const next = entries
+      .filter(entry => !entry.date || String(entry.date).slice(0, 10) >= today)
+      .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+      .slice(0, 6);
+    if (!next.length) {
+      box.innerHTML = '<p class="xapi-note">Будущих записей нет.</p>';
+      return;
+    }
+    box.innerHTML = next
+      .map(entry =>
+        overviewCard(entry.title || entry.id, [
+          ['Когда', `${ruDate(entry.date)}${entry.time ? `, ${entry.time}` : ''}`],
+          ['Вид', String(entry.kind || '—')],
+          ['Повтор', String(entry.recurrence || 'нет')]
+        ])
+      )
+      .join('');
+  }
+
+  /** Учёт: сколько пришло и ушло, сколько открытых долгов. */
+  function renderOverviewFinance(finance) {
+    const box = $('#overview-finance');
+    const operations = finance.operations || [];
+    const income = operations.filter(op => op.kind === 'in').reduce((sum, op) => sum + (Number(op.amount) || 0), 0);
+    const outcome = operations.filter(op => op.kind === 'out').reduce((sum, op) => sum + (Number(op.amount) || 0), 0);
+    const loans = (finance.loans || []).filter(loan => !loan.closed);
+    const debt = loans.reduce((sum, loan) => sum + (Number(loan.amount) || 0), 0);
+    box.innerHTML = overviewCard(
+      'Итоги',
+      [
+        ['Операций', String(operations.length)],
+        ['Пришло', money(income)],
+        ['Ушло', money(outcome)],
+        ['Баланс', money(income - outcome)],
+        ['Открытых долгов', `${loans.length} на ${money(debt)}`],
+        ['Позиций в магазине', String((finance.shopItems || []).length)]
+      ],
+      `Курс золота: ${money(finance.settings?.goldRate)}`
+    );
+  }
+
+  /** Окна: кто открыт и сколько висит. */
+  function renderOverviewWindows(windows) {
+    const box = $('#overview-windows');
+    if (!windows.length) {
+      box.innerHTML = '<p class="xapi-note">Окон игры не запущено.</p>';
+      return;
+    }
+    box.innerHTML = windows
+      .map(window => {
+        const rows = [['PID', String(window.pid ?? '—')]];
+        if (window.nick) rows.push(['Персонаж', `${window.nick}${window.class ? ` (${window.class})` : ''}`]);
+        rows.push(['Подпись окна', String(window.title || '—')]);
+        if (window.startedAt) rows.push(['Запущено', String(window.startedAt)]);
+        if (window.elevated !== null && window.elevated !== undefined)
+          rows.push(['Права', window.elevated ? 'повышенные' : 'обычные']);
+        return overviewCard(window.nick || `PID ${window.pid}`, rows);
+      })
+      .join('');
+  }
+
+  /** Загрузить всё для обзора одним заходом; отказ одной части не скрывает другие. */
+  async function loadOverview() {
+    const status = $('#overview-status');
+    status.textContent = 'Загружаю…';
+    const [marathons, planner, finance, windows] = await Promise.all([
+      api('/api/v1/marathons'),
+      api('/api/v1/planner'),
+      api('/api/v1/finance'),
+      api('/api/v1/windows')
+    ]);
+    const failed = [];
+    const pick = (result, name, render) => {
+      if (result.ok && result.body) render(result.body);
+      else {
+        failed.push(`${name}: ${errorText(result)}`);
+        render({});
+      }
+    };
+    pick(marathons, 'марафоны', body => renderOverviewMarathons(Array.isArray(body.marathons) ? body.marathons : []));
+    pick(planner, 'планировщик', body => renderOverviewPlanner(Array.isArray(body.entries) ? body.entries : []));
+    pick(finance, 'учёт', body => renderOverviewFinance(body || {}));
+    pick(windows, 'окна', body => renderOverviewWindows(Array.isArray(body.windows) ? body.windows : []));
+    status.textContent = failed.length ? `Часть данных не загрузилась — ${failed.join('; ')}` : '';
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Вкладка «Действия»: форма → запрос → результат                     */
+  /* ------------------------------------------------------------------ */
+
+  /** Значения формы действия по умолчанию (учитывая уже загруженные списки). */
+  function actionDefaults(action) {
+    const values = {};
+    for (const field of action.fields || []) {
+      if (field.default !== undefined) values[field.name] = field.default;
+      else if (field.type === 'checkbox') values[field.name] = false;
+    }
+    // Персонажа и пати подставляем из загруженного: меньше ручного ввода.
+    const firstChar = latest.characters[0];
+    const firstParty = latest.parties[0];
+    for (const field of action.fields || []) {
+      if (field.type === 'character' && firstChar) values[field.name] = firstChar.id;
+      if (field.type === 'party' && firstParty) values[field.name] = firstParty.id;
+    }
+    return values;
+  }
+
+  /** Варианты выбора для поля: из загруженных данных или из описания. */
+  /**
+   * Поле «id персонажа/пати» — это select с подставленными вариантами, но рядом
+   * есть и ручной ввод: если список не загрузился (нет права чтения) или нужного
+   * id нет в списке, форма обязана работать, а не блокировать отправку.
+   */
+  function actionPickHtml(field, values, options, id) {
+    const hint = field.hint ? `<span class="xapi-field-hint">${escapeHtml(field.hint)}</span>` : '';
+    if (!options.length) {
+      return `<label class="xapi-field">${escapeHtml(field.label)}
+        <input id="${id}" type="text" data-field="${escapeHtml(field.name)}" value="${escapeHtml(String(values[field.name] ?? ''))}" autocomplete="off" spellcheck="false"${field.required ? ' required' : ''} />${hint}</label>`;
+    }
+    return `<label class="xapi-field">${escapeHtml(field.label)}
+      <select id="${id}" data-field="${escapeHtml(field.name)}"${field.required ? ' required' : ''}>
+        ${field.required ? '' : '<option value="">— не важно —</option>'}
+        ${options
+          .map(option => `<option value="${escapeHtml(option.value)}"${String(option.value) === String(values[field.name]) ? ' selected' : ''}>${escapeHtml(option.label)}</option>`)
+          .join('')}
+      </select>${hint}</label>`;
+  }
+  function actionOptions(field) {
+    if (field.options) return field.options.map(value => ({ value, label: value }));
+    if (field.type === 'character')
+      return latest.characters.map(char => ({ value: char.id, label: `${char.nick || char.id} (${char.id})` }));
+    if (field.type === 'party')
+      return latest.parties.map(party => ({ value: party.id, label: party.name || party.id }));
+    return [];
+  }
+
+  /** Поле формы: тип берётся из описания действия. */
+  function actionFieldHtml(field, values) {
+    const value = values[field.name] ?? '';
+    const id = `act-${field.name}`;
+    const required = field.required ? ' required' : '';
+    const hint = field.hint ? `<span class="xapi-field-hint">${escapeHtml(field.hint)}</span>` : '';
+    if (field.type === 'select' || field.type === 'character' || field.type === 'party') {
+      return actionPickHtml(field, values, actionOptions(field), id);
+    }
+    if (field.type === 'checkbox') {
+      const on = value === true || value === 'true';
+      return `<label class="xapi-field xapi-field-check"><input id="${id}" type="checkbox" data-field="${escapeHtml(field.name)}"${on ? ' checked' : ''} /> ${escapeHtml(field.label)}${hint}</label>`;
+    }
+    const type = field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text';
+    return `<label class="xapi-field">${escapeHtml(field.label)}
+      <input id="${id}" type="${type}" data-field="${escapeHtml(field.name)}" value="${escapeHtml(String(value))}" autocomplete="off" spellcheck="false"${required} />${hint}</label>`;
+  }
+
+  /** Прочитать значения формы. */
+  function readActionValues(action) {
+    const values = {};
+    for (const field of action.fields || []) {
+      const input = document.querySelector(`#action-fields [data-field="${field.name}"]`);
+      if (!input) continue;
+      if (field.type === 'checkbox') values[field.name] = !!input.checked;
+      else values[field.name] = String(input.value || '').trim();
+    }
+    return values;
+  }
+
+  /** Готовый путь и тело запроса по значениям формы. */
+  function buildActionRequest(action, values) {
+    const path = action.pathOf ? action.pathOf(values) : action.path;
+    const query = action.query ? action.query(values) : '';
+    const body = action.body ? action.body(values) : undefined;
+    return { path: `${path}${query}`, body };
+  }
+
+  /** Проверка обязательных полей: лучше сказать до запроса, чем получить 422. */
+  function missingActionFields(action, values) {
+    return (action.fields || [])
+      .filter(field => field.required && (values[field.name] === '' || values[field.name] === undefined || values[field.name] === null))
+      .map(field => field.label);
+  }
+
+  function renderActionsList() {
+    const box = $('#actions-list');
+    const query = String($('#actions-filter')?.value || '').trim().toLowerCase();
+    if (!actions.length) {
+      box.innerHTML = '<p class="xapi-note">Файл actions.js не подключён: список действий недоступен.</p>';
+      return;
+    }
+    const groups = new Map();
+    for (const action of actions) {
+      const text = `${action.title} ${action.summary} ${action.method} ${action.path}`.toLowerCase();
+      if (query && !text.includes(query)) continue;
+      if (!groups.has(action.group)) groups.set(action.group, []);
+      groups.get(action.group).push(action);
+    }
+    const shown = [...groups.values()].reduce((sum, listOf) => sum + listOf.length, 0);
+    const count = $('#actions-count');
+    if (count) count.textContent = query ? `найдено: ${shown} из ${actions.length}` : `всего действий: ${actions.length}`;
+    if (!shown) {
+      box.innerHTML = '<p class="xapi-note">Ничего не найдено: попробуйте «стат», «проходки», «запуск», «выгрузка».</p>';
+      return;
+    }
+    box.innerHTML = [...groups.entries()]
+      .map(
+        ([group, listOf]) => `<div class="xapi-action-group">
+          <h3 class="xapi-sub">${escapeHtml(group)}</h3>
+          <div class="xapi-actions-cards">${listOf
+            .map(action => {
+              const badge = action.danger ? '<span class="xapi-badge is-warn">⚠ подтверждение</span>' : '';
+              const scope = `<span class="xapi-badge is-idle">${escapeHtml(scopeLabel(action.scope))}</span>`;
+              return `<button type="button" class="xapi-action-card" data-action="${escapeHtml(action.id)}">
+                <span class="xapi-action-title">${escapeHtml(action.title)} ${badge}</span>
+                <span class="xapi-action-summary">${escapeHtml(action.summary)}</span>
+                <span class="xapi-action-route">${escapeHtml(action.method)} ${escapeHtml(action.path)} ${scope}</span>
+              </button>`;
+            })
+            .join('')}</div>
+        </div>`
+      )
+      .join('');
+    for (const card of box.querySelectorAll('[data-action]'))
+      card.addEventListener('click', () => openAction(card.dataset.action));
+  }
+
+  function scopeLabel(scope) {
+    if (scope === 'modify') return 'право: изменение';
+    if (scope === 'launchClose') return 'право: запуск';
+    return 'право: чтение';
+  }
+
+  /** Открыть форму действия. */
+  function openAction(id) {
+    const action = actions.find(item => item.id === id);
+    if (!action) return;
+    activeAction = action;
+    const values = actionDefaults(action);
+    $('#actions-form').hidden = false;
+    $('#action-title').textContent = action.title;
+    // Маршрут показываем с подставленными значениями; незаполненное — как есть,
+    // чтобы было видно, чего не хватает (например «{stat}»).
+    $('#action-route').textContent = `${action.method} ${action.path}`;
+    updateActionRoute();
+    $('#action-summary').textContent = action.summary;
+    $('#action-fields').innerHTML = (action.fields || []).length
+      ? action.fields.map(field => actionFieldHtml(field, values)).join('')
+      : '<p class="xapi-note">Параметров нет: запрос выполнится как есть.</p>';
+    $('#action-out').textContent = 'Здесь появится ответ сервера.';
+    $('#action-status').textContent = '';
+    // scrollIntoView есть не везде (например в jsdom) — без него форма всё равно работает.
+    $('#actions-form').scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  }
+
+  function closeAction() {
+    activeAction = null;
+    $('#actions-form').hidden = true;
+    $('#actions-list').hidden = false;
+  }
+
+  /** Обновить подпись маршрута по текущим значениям формы. */
+  function updateActionRoute() {
+    if (!activeAction) return;
+    const request = buildActionRequest(activeAction, readActionValues(activeAction));
+    $('#action-route').textContent = `${activeAction.method} ${request.path}`;
+  }
+
+  /** Выполнить действие: проверка → подтверждение → запрос → результат. */
+  async function runAction() {
+    const action = activeAction;
+    if (!action) return;
+    const values = readActionValues(action);
+    const missing = missingActionFields(action, values);
+    if (missing.length) {
+      $('#action-status').textContent = `Заполните: ${missing.join(', ')}.`;
+      return;
+    }
+    const request = buildActionRequest(action, values);
+    if (action.danger && action.confirmText && !window.confirm(action.confirmText(values))) {
+      $('#action-status').textContent = 'Отменено: подтверждение не получено.';
+      return;
+    }
+    const status = $('#action-status');
+    const button = $('#action-send');
+    button.disabled = true;
+    status.textContent = 'Отправляю…';
+    try {
+      const result = await api(request.path, {
+        method: action.method,
+        body: action.method === 'GET' ? undefined : request.body
+      });
+      renderActionResult(action, values, request, result);
+    } catch (error) {
+      status.textContent = `Сеть не ответила: ${error && error.message ? error.message : error}`;
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function renderActionResult(action, values, request, result) {
+    const status = $('#action-status');
+    const out = $('#action-out');
+    if (result.ok) {
+      const summary = action.result ? action.result(result.body, values) : 'готово';
+      status.textContent = `✅ ${result.status} · ${summary}`;
+      out.textContent = JSON.stringify(result.body, null, 2);
+      // Списки могли измениться (создали персонажа, переименовали пати) — обновим.
+      if (/^(POST|PATCH)$/.test(action.method)) {
+        refreshListsQuietly();
+        // Показанное в «Обзоре» тоже устарело — обновим тихо, без сообщений.
+        loadOverview().catch(() => {});
+      }
+      return;
+    }
+    status.textContent = `❌ ${errorText(result)}`;
+    out.textContent = `${request.path}\n\n${JSON.stringify(result.body, null, 2)}`;
+    // 403 — права выключены в настройках: подсказываем, где включить.
+    if (result.status === 403) status.textContent += ' Включите право в «Настройки → 🔌 Внешний API».';
+  }
+
+  /** Тихо обновить персонажей и пати после изменения, чтобы формы были актуальны. */
+  async function refreshListsQuietly() {
+    try {
+      const [characters, parties] = await Promise.all([api('/api/v1/characters'), api('/api/v1/parties')]);
+      if (characters.ok && characters.body) latest.characters = characters.body.characters || [];
+      if (parties.ok && parties.body) latest.parties = parties.body.parties || [];
+    } catch {
+      /* список не критичен: форма уже показала результат */
+    }
+  }
+
   function renderDocs() {
     const body = $('#docs-body');
     if (!docs.groups.length) {
@@ -701,6 +1112,8 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
     renderWindows(latest.windows);
     $('#panel').hidden = false;
     $('#reload-audit').hidden = false;
+    // Списки персонажей и пати могли поменяться — формы действий строятся из них.
+    renderActionsList();
     await loadAudit();
     return true;
   }
@@ -775,6 +1188,38 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
       if (event.key === 'Enter') sendPlay();
     });
     $('#docs-filter').addEventListener('input', filterDocs);
+    // Вкладка «Действия».
+    $('#overview-refresh')?.addEventListener('click', loadOverview);
+    $('#actions-filter')?.addEventListener('input', renderActionsList);
+    // Кнопки в карточках данных открывают форму действия с подставленным id.
+    for (const box of ['#characters', '#windows']) {
+      $(box)?.addEventListener('click', event => {
+        const button = event.target.closest('[data-char-action]');
+        if (!button) return;
+        const action = actions.find(item => item.id === button.dataset.charAction);
+        if (!action) return;
+        showTab('actions');
+        openAction(action.id);
+        const value = button.dataset.charValue;
+        // Подставить id в первое текстовое/выборочное поле (id персонажа или PID).
+        const field = action.fields.find(item => item.name === 'id' || item.name === 'pids' || item.name === 'jobId');
+        const input = field ? document.querySelector(`#action-fields [data-field="${field.name}"]`) : null;
+        if (input && value) {
+          input.value = value;
+          input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        }
+      });
+    }
+    $('#action-send')?.addEventListener('click', runAction);
+    $('#action-cancel')?.addEventListener('click', closeAction);
+    $('#action-open-playground')?.addEventListener('click', () => {
+      if (!activeAction) return;
+      const values = readActionValues(activeAction);
+      const request = buildActionRequest(activeAction, values);
+      useExample(request.path, activeAction.method, request.body ? JSON.stringify(request.body) : '');
+    });
+    // Живая подсказка маршрута: видно, какой адрес уйдёт на сервер.
+    $('#action-fields')?.addEventListener('input', updateActionRoute);
     $('#connect').addEventListener('click', connect);
     $('#forget').addEventListener('click', forget);
     $('#reload').addEventListener('click', reload);
@@ -802,6 +1247,7 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
   bind();
   renderPresets();
   renderHints();
+  renderActionsList();
   showTab('panel');
   const saved = sessionStorage.getItem(storageKey);
   if (saved) {
