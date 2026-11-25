@@ -36,6 +36,7 @@ import { DANGER_ACTIONS, clearParties, clearMarathons, clearCharacters } from '.
 import { balanceSettingsColumns } from './columns.js';
 import { bindGuides } from './guides.js';
 import { bindFeedback } from './feedback.js';
+import { bindExternalApiPanel } from './externalApiPanel.js';
 import { openExportDialog } from '../data/export.js';
 import { openImportDialog } from '../data/import.js';
 import '../core/taskLog.js'; // подключает вид логов «Скрипты» к единому модулю логов
@@ -624,6 +625,15 @@ function bindSettingInputs() {
         rescheduleUpdates();
       }
       if (path.startsWith('tray.') || path.startsWith('browser.')) await applyDesktopSettings();
+      // Внешний API: включение, порт и права должны применяться сразу, а не после
+      // перезапуска приложения. Сам вызов — в модуле вкладки (syncExternalApi).
+      if (path.startsWith('externalApi.'))
+        import('../modules/externalApi/index.js')
+          .then(m => m.syncExternalApi())
+          .then(result => {
+            if (!result.ok && result.error) toast(result.error, 'error');
+          })
+          .catch(error => console.warn('[EXTERNAL API]', error));
       if (path.startsWith('freshness.')) refreshFreshnessLabels(state.settings); // подсветка устаревших обновляется сразу
       if (path === 'security.useVault') {
         toast(
@@ -678,6 +688,7 @@ export function bindSettings() {
     bindCloudDiagnosticsPanel({ desktop: isTauri(), check: standaloneFiles && (() => standaloneFiles.check(true)) });
   }
   bindGuides();
+  bindExternalApiPanel();
   document.getElementById('marathon-site-html')?.addEventListener('change', async event => {
     const input = event.target;
     const file = input.files?.[0];

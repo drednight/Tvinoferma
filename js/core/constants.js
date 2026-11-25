@@ -250,5 +250,17 @@ export const DEFAULT_SETTINGS = {
   updates: {
     checkOnStartup: true,
     lastCheckedAt: null
+  },
+  // Внешний API для сторонних программ (docs/EXTERNAL-API.md). По умолчанию
+  // выключен: включение и токен — осознанное действие в «Настройки → 🔌 Внешний API».
+  // Токен в state.json не хранится: он лежит в хранилище ОС (core/secrets.js), здесь
+  // только отметка, что он создан, и когда.
+  externalApi: {
+    enabled: false,
+    port: 47831,
+    allowRead: true,
+    allowModify: false,
+    allowLaunchClose: false,
+    tokenCreatedAt: null
   }
 };

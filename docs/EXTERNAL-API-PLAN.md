@@ -1,7 +1,9 @@
 # Внешний API Твинофермы — короткий план
 
-Полный документ: [`docs/EXTERNAL-API.md`](./EXTERNAL-API.md) ·
-макет страницы: `demo/external-api/` (`DEMO_ENTRY=/demo/external-api/index.html npm run demo`)
+> Это первоначальная записка: она объясняет решения и порядок работ, но **не** является
+> актуальным контрактом. Контракт, безопасность, настройки и статус этапов ведутся в
+> [`docs/EXTERNAL-API.md`](./EXTERNAL-API.md) — при расхождении прав он.
+> Макет страницы: `demo/external-api/` (`DEMO_ENTRY=/demo/external-api/index.html npm run demo`).
 
 ---
 
@@ -29,11 +31,11 @@ Python / PowerShell / AHK
   │  HTTP на 127.0.0.1:47831, Bearer-токен
   ▼
 Rust: external_api  ── проверка Host и токена, лимиты, журнал
-  │  emit_to("main", "external-api-request", { requestId, action, payload })
+  │  emit_to("main", "external-api-request", { requestId, method, path, query, body })
   ▼
 JS главного окна  ── существующие функции приложения
   │  чтение state · normalizeStats · rememberStatsBefore · persist · launchOne
-  │  invoke("external_api_reply", { requestId, ok, data })
+  │  invoke("external_api_reply", { requestId, status, body })
   ▼
 HTTP-ответ
 ```
@@ -100,7 +102,8 @@ print(json.dumps(status["result"], ensure_ascii=False, indent=2))
 - **Bearer-токен**, сравнение постоянного времени; без токена `401`.
 - **Проверка `Host`** — защита от DNS rebinding, иначе `403`.
 - **Никакого CORS** — чужая вкладка браузера не сможет дергать `POST/PATCH`.
-- Токен хранится **как хеш** в `state.json` (показывается один раз), либо в Credential Manager.
+- Токен хранится в **хранилище ОС** (Windows Credential Manager, ключ `external-api-v1`);
+  в `state.json` — только отметка `tokenCreatedAt`. Повторно показать нельзя, только перевыпустить.
 - API **не отдаёт** контакты, пароли, куки, токены GameCenter и не принимает команды
   `factory_reset`, восстановления копий, `promo`/`transfer`/`shop`.
 - Права по группам: чтение · изменение · запуск/закрытие.
@@ -115,18 +118,23 @@ print(json.dumps(status["result"], ensure_ascii=False, indent=2))
 | Этап | Что делаем | Итог |
 | --- | --- | --- |
 | **M0** ✅ | контракт, безопасность, макет страницы | согласовать до кода |
-| **M1** | Rust-сервер + чтение (`health`, `characters`, `parties`, `windows`) | можно читать, менять нельзя |
-| **M2** | `PATCH`, `bulk-update`, история статов, ошибка `423` | можно менять статы и проходки |
-| **M3** | задания запуска, `launch/character`, `launch/party`, закрытие окон | можно запускать окна и пати |
-| **M4** | страница `GET /`, панель настроек, токен, справка, чек-лист Windows | готово к проверке на живом клиенте |
+| **M1** ✅ | Rust-сервер + чтение (`health`, `characters`, `parties`, `windows`) | можно читать, менять нельзя |
+| **M2** ✅ | `PATCH`, `bulk-update`, история статов, ошибка `423` | можно менять статы и проходки |
+| **M3** ✅ | задания запуска (в JS), `launch/character`, `launch/party`, закрытие окон | можно запускать окна и пати |
+| **M4** ✅ | страница `GET /`, панель настроек, токен, справка | осталась ручная приёмка на Windows |
 
-Код M1–M3 не требует новых Rust-зависимостей: `std::net` + поток (как в
-`cloud_oauth_callback.rs`) и уже подключённый `sha2`. Это важно: CI собирает с
-`--locked`, а локального `cargo` может не быть.
+Код M1–M3 не потребовал новых Rust-зависимостей: `std::net` + поток (как в
+`cloud_oauth_callback.rs`). Это важно: CI собирает с `--locked`, а локального `cargo`
+может не быть.
+
+Одно отступление от первоначального плана: **задания запуска (jobs) остались в JS**,
+отдельного `jobs.rs` нет. Результат задания — это результат `launchGroup`, который
+считается в JS; дублировать прогресс и отмену в Rust значило бы завести вторую правду.
+Реестр (`JobRegistry`, TTL 30 минут, одно активное) живёт в `actions/launch.js`.
 
 Переиспользуем, а не пишем заново: `normalizeStats`, `rememberStatsBefore`, `persist()`,
-`renderCharacters()`, `partyById`/`charactersInPartyOrdered`/`selectMembersById`,
-`launchOne`/`launchPartyByName`, очередь `startTask`, `runningClientDetails`/`closeClientsByPid`.
+`renderCharacters()`, `partyById`/`charactersInPartyOrdered`, `launchGroup`/`runPreflight`,
+очередь `startTask`, `runningClientDetails`/`windowRows`/`closeClientsByPid`.
 
 ---
 
@@ -139,18 +147,19 @@ print(json.dumps(status["result"], ensure_ascii=False, indent=2))
   закрытие окон по pid, журнал вызовов с телами, примеры `curl`/Python/PowerShell.
   Проверен в jsdom: 401 без токена, сохранение, запуск пати, закрытие, все три примера.
 
-Код приложения этот заход не менял — сначала согласуем контракт.
+С тех пор код приложения изменился: M1–M3 и настройки реализованы (см. §5 и
+`docs/EXTERNAL-API.md`, разделы 8 и 11).
 
 ---
 
-## 7. Что нужно решить
+## 7. Решения (приняты)
 
-1. Кто будет вызывать API: Python, PowerShell, AHK, Excel, свой сайт?
-2. Нужен ли запуск по расписанию (Планировщик Windows дёргает API)?
-3. Токен показывать один раз (хеш) или хранить в Credential Manager?
-4. Разрешать закрытие окон через API? (предлагаю да, только с `confirm: true`)
-5. Нужно ли массовое изменение статов/проходок?
-6. Порт `47831` подходит?
-7. Страничка в браузере по `127.0.0.1` — достаточно, или нужна вкладка внутри приложения?
+1. Клиент — любой: универсальный JSON API, примеры curl/Python/PowerShell на странице `/`.
+2. Запуск по расписанию — да, job-модель это позволяет.
+3. Токен — в хранилище ОС, повторно показывается только перевыпуском.
+4. Закрытие окон — да, только с `{"confirm": true}` и правом «Запуск и закрытие окон».
+5. Массовое изменение статов/проходок — да, до 100 персонажей.
+6. Порт `47831` — да, поле в настройках.
+7. Интерфейс — отдельная вкладка «🔌 Внешний API» в настройках; сама страница — браузер.
 
-Ответите — начну с M1 (сервер + чтение), дальше по этапам.
+Полные ответы с обоснованием — `docs/EXTERNAL-API.md` §10.

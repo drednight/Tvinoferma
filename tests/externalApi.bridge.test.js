@@ -1,0 +1,325 @@
+// tests/externalApi.bridge.test.js
+// Мост между Rust и JS и задания запуска (M3).
+//
+// 1. `routeRequest` — маршрутизация без сервера: подменяем всё, что ходит наружу.
+// 2. Права проверяются дважды: Rust и мост (на случай, если настройки поменяли
+//    между запросом и ответом).
+// 3. Закрытие окон требует `confirm: true` и PID из списка, а не id персонажа.
+// 4. Задание запуска: `202`, один активный, честные строки `skipped`.
+import { describe, it, expect, beforeEach } from 'vitest';
+import { state } from '../js/core/state.js';
+import { answer, parseCloseRequest, routeRequest } from '../js/modules/externalApi/bridge.js';
+import { JobRegistry, launchPartyJob, launchSummary, publicJob } from '../js/modules/externalApi/actions/launch.js';
+
+function setupSettings(overrides = {}) {
+  state.settings = state.settings || {};
+  state.settings.externalApi = {
+    enabled: true,
+    port: 47831,
+    allowRead: true,
+    allowModify: true,
+    allowLaunchClose: true,
+    tokenCreatedAt: '2026-11-24T10:00:00.000Z',
+    ...overrides
+  };
+}
+
+function setupState() {
+  state.characters = [
+    { id: 'Mag_1', nick: 'Маг', class: 'Маг', level: 100, partyIds: ['p-osnova'], stats: { hp: 1 }, dungeonPasses: {} },
+    {
+      id: 'Luchnik_2',
+      nick: 'Лучник',
+      class: 'Лучник',
+      level: 99,
+      partyIds: ['p-osnova'],
+      stats: {},
+      dungeonPasses: {}
+    },
+    { id: 'Zhrets_3', nick: 'Жрец', class: 'Жрец', level: 98, partyIds: ['p-farm'], stats: {}, dungeonPasses: {} }
+  ];
+  state.parties = [
+    { id: 'p-osnova', name: 'Основа', color: '#6e8ef8' },
+    { id: 'p-farm', name: 'Фарм', color: null }
+  ];
+}
+
+/** Зависимости моста: всё внешнее подменено, ни сети, ни Tauri. */
+function fakeDeps(overrides = {}) {
+  const calls = { persist: 0, closed: [], launched: [] };
+  return {
+    calls,
+    appVersion: '3.0.0',
+    buildProfile: 'stable',
+    storageWritable: true,
+    windowRows: [{ pid: 111, title: 'Маг — Маг', known: true, charId: 'Mag_1', nick: 'Маг' }],
+    jobs: new JobRegistry(),
+    closeClientsByPid: async pids => {
+      calls.closed.push(pids);
+      return { found: pids.length, closed: pids.length, failed: 0, denied: 0, elevated: false, details: [], error: '' };
+    },
+    characters: {
+      publicCharacters: (...args) => require_read().publicCharacters(...args),
+      publicParties: (...args) => require_read().publicParties(...args),
+      publicWindows: (...args) => require_read().publicWindows(...args)
+    },
+    mutate: {
+      patchCharacter: async (...args) =>
+        require_mutate().patchCharacter(...args, { persist: async () => {}, assertStateWriteAvailable: () => {} }),
+      bulkUpdate: async (...args) =>
+        require_mutate().bulkUpdate(...args, { persist: async () => {}, assertStateWriteAvailable: () => {} })
+    },
+    ...overrides
+  };
+}
+
+// Ленивые импорты: так тест видит те же модули, что и мост, но без циклической
+// инициализации на верхнем уровне файла.
+let readModule = null;
+let mutateModule = null;
+function require_read() {
+  return readModule;
+}
+function require_mutate() {
+  return mutateModule;
+}
+
+beforeEach(async () => {
+  readModule = await import('../js/modules/externalApi/actions/read.js');
+  mutateModule = await import('../js/modules/externalApi/actions/mutate.js');
+  setupSettings();
+  setupState();
+});
+
+describe('внешний API: маршрутизация моста', () => {
+  it('health: версия, права, запись и занятость запуска', async () => {
+    const result = await routeRequest({ method: 'GET', path: '/api/v1/health' }, fakeDeps());
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({
+      ok: true,
+      app: { version: '3.0.0', build: 'stable' },
+      api: { version: 1 },
+      storage: { writable: true },
+      scopes: { read: true, modify: true, launchClose: true },
+      launch: { busy: false }
+    });
+  });
+
+  it('GET /characters и /characters/{id}: секретов нет, неизвестный id — 404', async () => {
+    const list = await routeRequest({ method: 'GET', path: '/api/v1/characters' }, fakeDeps());
+    expect(list.body.characters).toHaveLength(3);
+    const one = await routeRequest({ method: 'GET', path: '/api/v1/characters/Mag_1' }, fakeDeps());
+    expect(one.body.character).toMatchObject({ id: 'Mag_1', nick: 'Маг' });
+    expect(JSON.stringify(one.body)).not.toContain('password');
+    const missing = await answer({ method: 'GET', path: '/api/v1/characters/Nope_9' }, fakeDeps());
+    expect(missing).toMatchObject({ status: 404, body: { error: { code: 'no_such_character' } } });
+  });
+
+  it('без права «изменение» — 403 forbidden_scope, и данные не меняются', async () => {
+    setupSettings({ allowModify: false });
+    const result = await answer(
+      { method: 'PATCH', path: '/api/v1/characters/Mag_1', body: { stats: { hp: 2 } } },
+      fakeDeps()
+    );
+    expect(result).toMatchObject({ status: 403, body: { error: { code: 'forbidden_scope' } } });
+    expect(state.characters[0].stats.hp).toBe(1);
+  });
+
+  it('без права «запуск» закрытие окон запрещено до любых действий', async () => {
+    setupSettings({ allowLaunchClose: false });
+    const deps = fakeDeps();
+    const result = await answer(
+      { method: 'POST', path: '/api/v1/windows/close', body: { pids: [111], confirm: true } },
+      deps
+    );
+    expect(result.status).toBe(403);
+    expect(deps.calls.closed).toEqual([]);
+  });
+
+  it('закрытие окон: без confirm — 400, с confirm — вызов с PID', async () => {
+    const deps = fakeDeps();
+    const denied = await answer({ method: 'POST', path: '/api/v1/windows/close', body: { pids: [111] } }, deps);
+    expect(denied).toMatchObject({ status: 400, body: { error: { code: 'confirm_required' } } });
+    expect(deps.calls.closed).toEqual([]);
+    const ok = await answer(
+      { method: 'POST', path: '/api/v1/windows/close', body: { pids: [111], confirm: true } },
+      deps
+    );
+    expect(ok.status).toBe(200);
+    expect(deps.calls.closed).toEqual([[111]]);
+    expect(ok.body).toMatchObject({ found: 1, closed: 1, failed: 0 });
+  });
+
+  it('неизвестный путь — 404, чужой метод — 404, тело не JSON — 400', async () => {
+    expect((await answer({ method: 'GET', path: '/api/v1/nope' }, fakeDeps())).status).toBe(404);
+    expect((await answer({ method: 'GET', path: '/api/v1/characters/..%2f..' }, fakeDeps())).status).toBe(404);
+    const bad = await answer({ method: 'PATCH', path: '/api/v1/characters/Mag_1', body: 'строка' }, fakeDeps());
+    expect(bad).toMatchObject({ status: 400, body: { error: { code: 'invalid_json' } } });
+  });
+
+  it('ответ всегда в формате { status, body } — даже если внутри исключение', async () => {
+    const result = await answer({ method: 'GET', path: '/api/v1/parties' }, { characters: null });
+    // `deps.characters = null` ломает загрузку модуля — мост обязан вернуть общий ответ.
+    expect(result).toHaveProperty('status');
+    expect(result.body).toHaveProperty('error');
+  });
+});
+
+describe('внешний API: закрытие окон — разбор тела', () => {
+  it('принимает только pids и confirm, PID — положительные целые без повторов', () => {
+    expect(parseCloseRequest({ pids: [1, 2], confirm: true })).toEqual([1, 2]);
+    expect(() => parseCloseRequest({ pids: [1], confirm: false })).toThrow(/confirm/);
+    expect(() => parseCloseRequest({ pids: [0], confirm: true })).toThrow(/PID/);
+    expect(() => parseCloseRequest({ pids: [1, 1], confirm: true })).toThrow(/Повторяющийся/);
+    expect(() => parseCloseRequest({ pids: [1], confirm: true, force: true })).toThrow(/Неизвестное поле/);
+    expect(() => parseCloseRequest({ pids: [], confirm: true })).toThrow(/pids/);
+  });
+});
+
+describe('внешний API: задания запуска', () => {
+  const preflightOk = async characters => ({
+    toLaunch: characters,
+    alreadyRunning: [],
+    noGc: [],
+    noSavedLogin: [],
+    total: characters.length
+  });
+
+  it('пати: memberIds фильтруются по составу, чужие id — в ignoredIds', async () => {
+    const jobs = new JobRegistry();
+    let launched = null;
+    const job = launchPartyJob(
+      state,
+      { partyName: 'Основа', memberIds: ['Mag_1', 'Чужой_9'] },
+      {
+        jobs,
+        members: (chars, partyId) => chars.filter(c => c.partyIds.includes(partyId)),
+        preflight: preflightOk,
+        launchGroup: async (title, chars) => {
+          launched = chars.map(c => c.id);
+          return chars.map(c => ({ id: c.id, nick: c.nick, ok: true, ms: 1000 }));
+        }
+      }
+    );
+    expect(job.status).toBe('running');
+    expect(job.kind).toBe('party');
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const done = await waitJob(jobs, job.id);
+    expect(launched).toEqual(['Mag_1']);
+    expect(done.status).toBe('done');
+    expect(done.result).toMatchObject({ requested: 1, launched: 1, failed: 0, ignoredIds: ['Чужой_9'] });
+  });
+
+  it('второй запуск во время первого — 429 launch_busy', async () => {
+    const jobs = new JobRegistry();
+    const slow = () => new Promise(resolve => setTimeout(() => resolve([{ id: 'Mag_1', ok: true }]), 50));
+    launchPartyJob(
+      state,
+      { partyName: 'Основа' },
+      {
+        jobs,
+        members: (chars, partyId) => chars.filter(c => c.partyIds.includes(partyId)),
+        preflight: preflightOk,
+        launchGroup: slow
+      }
+    );
+    expect(() =>
+      launchPartyJob(
+        state,
+        { partyName: 'Фарм' },
+        {
+          jobs,
+          members: (chars, partyId) => chars.filter(c => c.partyIds.includes(partyId)),
+          preflight: preflightOk,
+          launchGroup: slow
+        }
+      )
+    ).toThrow(/уже идёт запуск/i);
+  });
+
+  it('нет пати — 404, нет персонажа — 404, пустой memberIds — 422', () => {
+    const jobs = new JobRegistry();
+    const deps = { jobs, members: (chars, partyId) => chars.filter(c => c.partyIds.includes(partyId)) };
+    expect(() => launchPartyJob(state, { partyName: 'Нет такой' }, deps)).toThrow(/Пати не найдена/);
+    expect(() => launchPartyJob(state, { partyName: 'Основа', memberIds: ['Нет_1'] }, deps)).toThrow(
+      /Ни один memberIds/
+    );
+  });
+
+  it('итог: skipped с причиной no_saved_login, already_running считается отдельно', () => {
+    const requested = [
+      { id: 'A', nick: 'А' },
+      { id: 'B', nick: 'Б' },
+      { id: 'C', nick: 'В' }
+    ];
+    const pre = {
+      alreadyRunning: [{ char: { id: 'C' } }],
+      noGc: [],
+      noSavedLogin: [{ id: 'B' }]
+    };
+    const summary = launchSummary(requested, [{ id: 'A', nick: 'А', ok: true, ms: 500 }], pre, 900);
+    expect(summary).toMatchObject({ requested: 3, launched: 1, skipped: 2, failed: 0, alreadyRunning: 1 });
+    expect(summary.items.map(row => [row.id, row.status, row.error])).toEqual([
+      ['A', 'ok', null],
+      ['B', 'skipped', 'no_saved_login'],
+      ['C', 'skipped', 'already_running']
+    ]);
+  });
+
+  it('ошибка запуска — задание failed, но ответ HTTP был 202 и остаётся читаемым', async () => {
+    const jobs = new JobRegistry();
+    const job = launchPartyJob(
+      state,
+      { partyName: 'Основа' },
+      {
+        jobs,
+        members: (chars, partyId) => chars.filter(c => c.partyIds.includes(partyId)),
+        preflight: preflightOk,
+        launchGroup: async () => {
+          throw new Error('GameCenter не найден');
+        }
+      }
+    );
+    expect(job.id).toMatch(/^job_/);
+    const done = await waitJob(jobs, job.id);
+    expect(done.status).toBe('failed');
+    expect(done.result.error).toContain('GameCenter');
+    // Публичная копия не отдаёт внутренние поля реестра.
+    expect(publicJob({ ...done, lazy: true })).not.toHaveProperty('lazy');
+  });
+
+  it('проверка «некого запускать» завершает задание как done со строками skipped', async () => {
+    const jobs = new JobRegistry();
+    const job = launchPartyJob(
+      state,
+      { partyName: 'Основа' },
+      {
+        jobs,
+        members: (chars, partyId) => chars.filter(c => c.partyIds.includes(partyId)),
+        preflight: async characters => ({
+          toLaunch: [],
+          alreadyRunning: [],
+          noGc: [],
+          noSavedLogin: characters,
+          total: characters.length
+        }),
+        launchGroup: async () => {
+          throw new Error('не должен вызываться');
+        }
+      }
+    );
+    const done = await waitJob(jobs, job.id);
+    expect(done.status).toBe('done');
+    expect(done.result.items.every(row => row.status === 'skipped' && row.error === 'no_saved_login')).toBe(true);
+  });
+});
+
+/** Дождаться завершения задания в фоне (без таймеров «на глаз»). */
+async function waitJob(jobs, id, attempts = 200) {
+  for (let i = 0; i < attempts; i++) {
+    const job = jobs.get(id);
+    if (job && job.status !== 'running' && job.status !== 'queued') return publicJob(job);
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  throw new Error('Задание не завершилось за отведённое время');
+}

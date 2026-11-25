@@ -16,6 +16,7 @@
 //! - `injection` — (заготовка) панель и CSS поверх страниц игры;
 //! - `autostart` — запуск вместе с Windows (запись в `Run`, режим «в трее»);
 //! - `elevate` — помощник с правами администратора: подписать окна игры от администратора без перезапуска;
+//! - `external_api` — локальный HTTP-сервер для сторонних программ: чтение, изменение статов и проходок, запуск окон (по умолчанию выключен);
 //! - `layout_sync` — копирование образца layout поверх остальных `.ini` папки Layout (команды — `commands/layout.rs`);
 //! - `launcher`  — запуск GameCenter (VK Play) для аккаунта, подтверждение «Запустить новую копию клиента», закрытие клиентов игры.
 //!
@@ -51,6 +52,7 @@ mod cloud_outbox_store;
 mod commands;
 mod cookie_bank;
 mod elevate;
+mod external_api;
 mod game_macros;
 mod guild;
 mod injection;
@@ -124,6 +126,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(tray::TraySettings::default())
         .manage(windows::BrowserSettings::default())
+        .manage(external_api::ExternalApiState::default())
         .setup(|app| {
             // Регистрируем приложение как источник уведомлений сразу: тогда оно находится
             // в поиске Windows и появляется в «Параметры → Уведомления» ещё до первого уведомления
@@ -249,6 +252,14 @@ pub fn run() {
             commands::secrets::secrets_get_many,
             commands::secrets::secrets_set_many,
             commands::secrets::secrets_delete_many,
+            // Внешний API: статус, запуск/остановка, ответ моста, журнал вызовов
+            external_api::external_api_start,
+            external_api::external_api_stop,
+            external_api::external_api_status,
+            external_api::external_api_client_ready,
+            external_api::external_api_reply,
+            external_api::external_api_audit,
+            external_api::external_api_clear_audit,
             // Экспериментальная локальная авторизация; обмен файлами ещё не подключён.
             commands::cloud_credentials::cloud_credential_read,
             commands::cloud_credentials::cloud_credential_binding_read,
@@ -361,9 +372,11 @@ pub fn run() {
         ])
         .build(context)
         .expect("error while building tauri application")
-        .run(|_, event| {
+        .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
                 game_macros::shutdown_mirror();
+                // Порт внешнего API освобождается сразу, а не по завершении процесса.
+                external_api::shutdown(app);
             }
         });
 }
