@@ -240,10 +240,23 @@ export async function routeRequest(request, deps = {}) {
   }
 
   if (method === 'GET' && path === '/api/v1/characters') {
-    const { publicCharacters } = await load('characters', () => import('./actions/read.js'));
+    const read = await load('characters', () => import('./actions/read.js'));
+    // Неизвестное поле в `fields` — ошибка, а не тихий пропуск: иначе клиент
+    // получил бы строки без нужной колонки и не понял, почему её нет.
+    const requested = String(query.get('fields') || '')
+      .split(',')
+      .map(value => value.trim())
+      .filter(Boolean);
+    const wrong = read.unknownFields(requested);
+    if (wrong.length) {
+      throw new ApiError(
+        422,
+        'invalid_value',
+        `Неизвестные поля: ${wrong.join(', ')}. Допустимые: ${read.CHARACTER_FIELD_NAMES.join(', ')}`
+      );
+    }
     const rows = await load('windowRows', () => readWindowRows());
-    const byCharId = runningByCharIdOf(rows);
-    return { status: 200, body: publicCharacters(state, query.toString(), { running: byCharId }) };
+    return { status: 200, body: read.publicCharacters(state, query.toString(), { running: runningByCharIdOf(rows) }) };
   }
 
   if (method === 'GET' && path.startsWith('/api/v1/characters/')) {

@@ -11,7 +11,9 @@ import {
   publicParties,
   publicWindows,
   runningByCharId,
-  characterFilter
+  characterFilter,
+  CHARACTER_FIELD_NAMES,
+  unknownFields
 } from '../js/modules/externalApi/actions/read.js';
 
 const character = () => ({
@@ -100,21 +102,122 @@ describe('внешний API: чтение персонажей', () => {
   });
 
   it('список: фильтр по названию и по id пати, выбор полей', () => {
+    // По умолчанию — все персонажи, отсортированные по id (так просил пользователь).
     const all = publicCharacters(state());
-    expect(all.characters.map(c => c.id)).toEqual(['Mag_1', 'Luchnik_2', 'Zhrets_3']);
+    expect(all.characters.map(c => c.id)).toEqual(['Luchnik_2', 'Mag_1', 'Zhrets_3']);
     const byName = publicCharacters(state(), 'party=Основа');
-    expect(byName.characters.map(c => c.id)).toEqual(['Mag_1', 'Luchnik_2']);
+    expect(byName.characters.map(c => c.id)).toEqual(['Luchnik_2', 'Mag_1']);
     const byId = publicCharacters(state(), 'party=p-farm');
     expect(byId.characters.map(c => c.id)).toEqual(['Mag_1', 'Zhrets_3']);
     const light = publicCharacters(state(), 'party=p-farm&fields=nick,stats');
     expect(Object.keys(light.characters[0]).sort()).toEqual(['id', 'nick', 'stats']);
   });
 
+  it('один запрос отдаёт несколько полей сразу — включая проходки', () => {
+    // Именно этот набор просил пользователь: id, класс, уровень и проходки.
+    const one = publicCharacters(state(), 'fields=id,class,level,dungeonPasses');
+    expect(Object.keys(one.characters[0])).toEqual(['id', 'class', 'level', 'dungeonPasses']);
+    const row = one.characters.find(c => c.id === 'Mag_1');
+    expect(row.class).toBe('Маг');
+    expect(typeof row.level).toBe('number');
+    expect(row.dungeonPasses.weapon).toBeGreaterThanOrEqual(0);
+    expect(one.fields).toEqual(['id', 'class', 'level', 'dungeonPasses']);
+    expect(one.count).toBe(3);
+    // Точечные проходки — плоским ключом, как в pandas/Excel.
+    const flat = publicCharacters(state(), 'fields=dungeonPasses.weapon,dungeonPasses.armor');
+    expect(Object.keys(flat.characters[0]).sort()).toEqual(['dungeonPasses.armor', 'dungeonPasses.weapon', 'id']);
+    // Вложенный вид — по явному запросу. Персонажа ищем по id: список
+    // отсортирован по id, и позиция в нём ничего не значит.
+    const nested = publicCharacters(state(), 'fields=dungeonPasses.weapon&flat=false');
+    const mag = nested.characters.find(c => c.id === 'Mag_1');
+    expect(mag.dungeonPasses).toEqual({ weapon: 3 });
+    // Статы — так же, по имени, без потери id. Отсутствующий стат — `null`,
+    // а не пропущенный ключ: строка одинаковая у всех персонажей.
+    const attack = publicCharacters(state(), 'fields=stats.physAttack');
+    expect(attack.characters.find(c => c.id === 'Mag_1')['stats.physAttack']).toBe(12000);
+    expect(attack.characters.find(c => c.id === 'Luchnik_2')['stats.physAttack']).toBeNull();
+    expect(attack.characters.every(c => typeof c.id === 'string')).toBe(true);
+  });
+
+  it('все допустимые поля перечислены в ответе-ошибке и работают', () => {
+    // Мусор в `fields` отсекается, а список допустимых — из одного места.
+    expect(unknownFields(['id', 'hp', 'статы'])).toEqual(['hp', 'статы']);
+    for (const field of CHARACTER_FIELD_NAMES) expect(unknownFields([field])).toEqual([]);
+    // Вложенные поля есть в списке, иначе их нельзя было бы попросить.
+    for (const field of ['stats.hp', 'dungeonPasses.weapon', 'dungeonPasses.armor', 'dungeonPasses.relic']) {
+      expect(CHARACTER_FIELD_NAMES).toContain(field);
+    }
+  });
+
+  it('`lang=ru` подписывает поля по-русски и не теряет id', () => {
+    const ru = publicCharacters(state(), 'fields=class,level,dungeonPasses.weapon&lang=ru');
+    const row = ru.characters.find(c => c.id === 'Mag_1');
+    expect(row).toBeTruthy();
+    if (!row) return;
+    expect(Object.keys(row)).toEqual(['id', 'Класс', 'Уровень', 'Проходки: оружие']);
+    expect(row['Класс']).toBe('Маг');
+    expect(row['Проходки: оружие']).toEqual(expect.any(Number));
+    // Вложенный вид тоже подписывается (иначе значение терялось бы).
+    const nested = publicCharacters(state(), 'fields=dungeonPasses.weapon&flat=false&lang=ru');
+    expect(nested.characters.find(c => c.id === 'Mag_1')?.['Проходки: оружие']).toBe(3);
+    // Полная карточка: вложенные объекты разворачиваются в подписи, id остаётся.
+    const full = publicCharacters(state(), 'lang=ru');
+    const card = full.characters.find(c => c.id === 'Mag_1');
+    expect(card).toBeTruthy();
+    if (!card) return;
+    expect(card.id).toBe('Mag_1');
+    // Статы разворачиваются в подписи: в фикстуре есть только эти два.
+    expect(card['Физ. атака']).toBe(12000);
+    expect(card['Крит, %']).toBe(18);
+    // Ключ, которого у персонажа нет, в полную карточку не попадает — иначе
+    // ответ раздувался бы нулями.
+    expect(card).not.toHaveProperty('HP');
+    expect(card['Ник']).toBeTruthy();
+  });
+
+  it('сортировка: по id по умолчанию, явно — по нику и уровню, `none` — порядок хранения', () => {
+    const base = publicCharacters(state());
+    expect(base.characters.map(c => c.id)).toEqual([...base.characters.map(c => c.id)].sort());
+    const byNick = publicCharacters(state(), 'sort=nick');
+    expect(byNick.characters.map(c => c.nick)).toEqual(
+      ['Лучник', 'Маг', 'Жрец'].sort((a, b) => a.localeCompare(b, 'ru'))
+    );
+    const desc = publicCharacters(state(), 'sort=level&order=desc');
+    const levels = desc.characters.map(c => c.level);
+    expect(levels).toEqual([...levels].sort((a, b) => b - a));
+    expect(publicCharacters(state(), 'sort=none').characters.length).toBe(3);
+  });
+
   it('параметры списка разбираются без падения на мусоре', () => {
-    expect(characterFilter(state(), '')).toEqual({ party: '', fields: [] });
+    // Значения по умолчанию: по id, по возрастанию, плоские поля, английские ключи.
+    expect(characterFilter(state(), '')).toEqual({
+      party: '',
+      fields: [],
+      lang: 'en',
+      flat: true,
+      sort: 'id',
+      order: 'asc'
+    });
     expect(characterFilter(state(), 'party=%D0%9E%D1%81%D0%BD%D0%BE%D0%B2%D0%B0&fields=nick,')).toEqual({
       party: 'Основа',
-      fields: ['nick']
+      fields: ['nick'],
+      lang: 'en',
+      flat: true,
+      sort: 'id',
+      order: 'asc'
+    });
+    // Мусор в параметрах не ломает разбор: берутся безопасные значения.
+    expect(characterFilter(state(), 'sort=что&order=вверх&lang=fr&flat=может')).toMatchObject({
+      lang: 'en',
+      flat: true,
+      sort: 'id',
+      order: 'asc'
+    });
+    expect(characterFilter(state(), 'sort=level&order=desc&lang=ru&flat=false')).toMatchObject({
+      lang: 'ru',
+      flat: false,
+      sort: 'level',
+      order: 'desc'
     });
   });
 
@@ -126,8 +229,9 @@ describe('внешний API: чтение персонажей', () => {
     const map = runningByCharId(rows);
     expect(map.size).toBe(1);
     const list = publicCharacters(state(), '', { running: map });
-    expect(list.characters[0].running).toEqual({ pid: 111, title: 'Маг — Маг' });
-    expect(list.characters[1].running).toBeNull();
+    const byId = Object.fromEntries(list.characters.map(row => [row.id, row]));
+    expect(byId.Mag_1.running).toEqual({ pid: 111, title: 'Маг — Маг' });
+    expect(byId.Luchnik_2.running).toBeNull();
   });
 
   it('пати: участники в порядке запуска и цвет', () => {

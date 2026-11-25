@@ -69,7 +69,12 @@ function fakeDeps(overrides = {}) {
         'publicMarathonById',
         'marathonParticipants',
         'publicPlanner',
-        'publicFinance'
+        'publicFinance',
+        // Адресные маршруты и проверка `fields` используют эти экспорты.
+        'unknownFields',
+        'CHARACTER_FIELD_NAMES',
+        'fieldLabel',
+        'passKey'
       ].map(name => [name, (...args) => require_read()[name](...args)])
     ),
     // Моки изменения: сохранение «успешно», запись разрешена, время фиксировано.

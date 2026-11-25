@@ -87,34 +87,61 @@ curl -s -H "Authorization: Bearer $TF_API_TOKEN" \
 
 ### Формат ошибок
 
-Все ошибки одинаковы — JSON с машиночитаемым кодом:
+Все ошибки одинаковы, у любой есть машиночитаемый код и объяснение по-русски:
 
 ```json
-{ "error": { "code": "invalid_value", "message": "Неизвестный стат «nope»: список — GET /characters/Mag_1/stats" } }
+{
+  "error": {
+    "code": "invalid_value",
+    "message": "Неизвестные поля: hp, mana. Допустимые: id, nick, class, …"
+  }
+}
 ```
 
-| HTTP | `code` | Когда |
-| --- | --- | --- |
-| 400 | `invalid_json` | Тело не разобралось или это не объект |
-| 400 | `bad_request` | Строка запроса не разбирается как HTTP |
-| 400 | `confirm_required` | Закрытие окон без `{"confirm": true}` |
-| 401 | `unauthorized` | Нет или неверный Bearer-токен |
-| 403 | `forbidden_host` | `Host` не `127.0.0.1:<порт>` / `localhost:<порт>` |
-| 403 | `forbidden_scope` | Право выключено в настройках |
-| 403 | `forbidden` | `OPTIONS` или запрос со сторонней страницы |
-| 404 | `not_found` | Неизвестный путь |
-| 404 | `no_such_character` / `no_such_party` / `no_such_marathon` / `no_such_task` | Нет такой сущности |
-| 405 | `method_not_allowed` | Метод не поддержан (например, `DELETE`) |
-| 408 | `timeout` | Запрос не получен целиком за 5 с |
-| 409 | `launch_not_ready` / `marathon_not_ready` | Запускать некого / действие над папкой марафонов |
-| 413 | `payload_too_large` | Заголовки > 16 КиБ или тело > 64 КиБ |
-| 415 | `unsupported_media_type` | Тело не `application/json` |
-| 422 | `invalid_value` | Значение вне диапазона, неизвестное поле, неизвестный стат/проходка |
-| 423 | `storage_blocked` | Запись состояния остановлена защитой |
-| 429 | `launch_busy` / `too_many_requests` | Уже идёт запуск / лимит частоты (`Retry-After`) |
-| 500 | `internal_error` / `save_failed` | Сбой приложения / не удалось сохранить |
-| 503 | `app_not_ready` / `too_many_connections` | Главное окно не загрузилось / много соединений |
-| 504 | `timeout` | JS не ответил за 15 с |
+* `error.code` — короткий код латиницей, по нему ветвятся программы. Состав кодов
+  не меняется между версиями API; новые коды добавляются, старые не переименовываются.
+* `error.message` — текст для человека. Его можно показывать, но не разбирать: он
+  может уточняться между версиями.
+
+Один и тот же формат даёт и JS-мост, и HTTP-слой Rust — в том числе для ошибок
+транспорта и перегрузки. Тело ошибки никогда не содержит секретов и путей.
+
+#### Все коды
+
+Столбиком — по одному коду на строку, чтобы каждый было видно отдельно:
+
+| HTTP | `code` | Подпись | Что сделать |
+| --- | --- | --- | --- |
+| 400 | `bad_request` | Некорректный запрос | Строка запроса не похожа на HTTP. |
+| 400 | `confirm_required` | Нужно подтверждение | Добавьте {"confirm": true}. |
+| 400 | `invalid_json` | Тело не разобралось | Проверьте JSON и что тело — объект. |
+| 401 | `unauthorized` | Токен не принят | Проверьте Bearer-токен из настроек. |
+| 403 | `forbidden` | Запрос запрещён | CORS не поддерживается: запрос со сторонней страницы. |
+| 403 | `forbidden_host` | Неверный Host | Обращайтесь на 127.0.0.1 или localhost. |
+| 403 | `forbidden_scope` | Право выключено | Включите нужную галочку в настройках. |
+| 404 | `no_such_character` | Персонаж не найден | Сверьте id со списком: GET /characters возвращает их все. |
+| 404 | `no_such_marathon` | Марафон не найден | Список — GET /marathons. |
+| 404 | `no_such_party` | Пати не найдена | Список — GET /parties. |
+| 404 | `no_such_task` | Задание не найдено | Список заданий — в GET /marathons/{id}. |
+| 404 | `not_found` | Не найдено | Проверьте адрес в справочнике. |
+| 405 | `method_not_allowed` | Метод не поддерживается | Проверьте GET/POST/PATCH в справочнике. |
+| 408 | `timeout` | Таймаут запроса | Запрос не дошёл целиком за 5 секунд. |
+| 409 | `launch_not_ready` | Запускать некого | Список персонажей для запуска пуст. |
+| 409 | `marathon_not_ready` | Это папка марафонов | Выберите марафон внутри папки. |
+| 413 | `payload_too_large` | Слишком большой запрос | Заголовки до 16 КиБ, тело до 64 КиБ. |
+| 415 | `unsupported_media_type` | Неверный Content-Type | Для тела нужен application/json. |
+| 422 | `invalid_value` | Значение не принято | Проверьте значения полей: допустимые перечислены в тексте ошибки. |
+| 423 | `storage_blocked` | Запись остановлена | Снимите защиту «Сохранение остановлено». |
+| 429 | `launch_busy` | Уже идёт запуск | Дождитесь завершения задания. |
+| 429 | `too_many_requests` | Слишком часто | 60 запросов в минуту; см. Retry-After. |
+| 500 | `internal_error` | Внутренняя ошибка | Подробности — в журнале приложения. |
+| 500 | `save_failed` | Не удалось сохранить | Изменение в памяти, но на диск не легло. |
+| 503 | `app_not_ready` | Приложение не готово | Главное окно ещё загружается. |
+| 503 | `too_many_connections` | Слишком много соединений | Не больше 16 одновременно. |
+| 504 | `gateway_timeout` | Приложение не ответило | JS не уложился в 15 секунд. |
+
+Сообщение зависит от места: например `invalid_value` в `fields` перечисляет
+допустимые поля, а в `dungeon-passes` — допустимые проходки.
 
 ### Справочники полей
 
@@ -210,7 +237,10 @@ curl -s -H "Authorization: Bearer $TF_API_TOKEN" "$BASE/audit"
 
 #### `GET /characters`
 
-Список всех персонажей со статами, проходками и признаком запущенного окна.
+**Список всех персонажей** со статами, проходками и признаком запущенного окна.
+По умолчанию возвращаются все персонажи, **отсортированные по id** — так список
+читается глазами и не «переезжает» между вызовами.
+
 Секретов в ответе нет: контакты, пароль, путь запуска и куки не отдаются.
 
 **Право:** чтение.
@@ -218,9 +248,62 @@ curl -s -H "Authorization: Bearer $TF_API_TOKEN" "$BASE/audit"
 | Имя | Где | Тип | Описание |
 | --- | --- | --- | --- |
 | `party` | query | string | id или название пати (без регистра) — список сузится до состава |
-| `fields` | query | string | Поля через запятую (`id` всегда остаётся), например `id,nick,hp` |
+| `fields` | query | string | Какие поля вернуть, через запятую. Вложенные — через точку: `stats.hp`, `dungeonPasses.weapon`. `id` остаётся всегда. Неизвестное поле → `422 invalid_value` со списком допустимых |
+| `lang` | query | string | `en` (по умолчанию) — ключи как есть; `ru` — подписи по-русски: «Класс», «Уровень», «Проходки: оружие». Значения не меняются |
+| `flat` | query | boolean | `true` (по умолчанию) — плоские ключи (`"stats.hp": 120`), удобно для CSV/Excel; `false` — вложенные объекты (`"stats": {"hp": 120}`) |
+| `sort` | query | string | `id` (по умолчанию), `nick`, `level` или `none` — порядок хранения |
+| `order` | query | string | `asc` (по умолчанию) или `desc` |
+
+**Одним запросом — несколько полей.** Например, id, класс, уровень и проходки:
+
+```bash
+curl -s -H "Authorization: Bearer $TF_API_TOKEN" "$BASE/characters?fields=id,class,level,dungeonPasses"
+```
 
 Ответ:
+
+```json
+{
+  "characters": [
+    { "id": "Luchnik_2", "class": "Лучник", "level": 99,
+      "dungeonPasses": { "weapon": 2, "armor": 1, "relic": 0 } },
+    { "id": "Mag_1", "class": "Маг", "level": 100,
+      "dungeonPasses": { "weapon": 3, "armor": 1, "relic": 0 } }
+  ],
+  "count": 2,
+  "fields": ["id", "class", "level", "dungeonPasses"]
+}
+```
+
+Плоский вид (по умолчанию) — те же данные одной строкой на персонажа:
+
+```json
+{ "characters": [
+  { "id": "Mag_1", "class": "Маг", "level": 100, "dungeonPasses.weapon": 3, "dungeonPasses.armor": 1, "dungeonPasses.relic": 0 }
+] }
+```
+
+По-русски — `&lang=ru`: ключи подписаны, значения те же:
+
+```json
+{ "characters": [
+  { "id": "Mag_1", "Класс": "Маг", "Уровень": 100, "Проходки: оружие": 3, "Проходки: доспех": 1, "Проходки: реликвия": 0 }
+] }
+```
+
+<details>
+<summary>Все поля, которые можно просить в <code>fields</code></summary>
+
+`id`, `nick`, `class`, `level`, `favorite`, `sky`, `sky.name`, `sky.level`,
+`partyIds`, `mainPartyId`, `stats`, `stats.<стат>` (например `stats.hp`,
+`stats.physAttack`), `dungeonPasses`, `dungeonPasses.weapon`,
+`dungeonPasses.armor`, `dungeonPasses.relic`, `ancientCoins`, `isLoggedIn`,
+`lastLoginCheck`, `updatedAt`, `notes`, `tags`, `coinHistory`, `createdAt`,
+`running`, `running.pid`, `running.title`.
+
+</details>
+
+Полная карточка (без `fields`):
 
 ```json
 {
@@ -234,7 +317,9 @@ curl -s -H "Authorization: Bearer $TF_API_TOKEN" "$BASE/audit"
       "notes": "", "createdAt": "2026-01-01T00:00:00Z", "updatedAt": "2026-11-25T12:00:00Z",
       "running": { "pid": 4321, "title": "Маг — Маг", "charId": "Mag_1", "nick": "Маг" }
     }
-  ]
+  ],
+  "count": 1,
+  "fields": null
 }
 ```
 

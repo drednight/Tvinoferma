@@ -164,10 +164,25 @@ Python / PowerShell            Rust: external_api
 
 ### 4.3. `GET /characters`
 
-Список персонажей без секретов.
+**Все персонажи списком, по умолчанию отсортированные по `id`.** Без секретов.
 
-Параметры: `party` (id или название, необязательно), `fields` (через запятую,
-по умолчанию `stats,dungeonPasses,running`).
+Параметры:
+
+| Имя | Где | Тип | Описание |
+| --- | --- | --- | --- |
+| `party` | query | string | id или название пати (необязательно) |
+| `fields` | query | string | Поля через запятую; вложенные — через точку. `id` остаётся всегда |
+| `lang` | query | string | `en` (по умолчанию) или `ru` — подписи по-русски |
+| `flat` | query | boolean | `true` (по умолчанию) — плоские ключи, `false` — вложенные объекты |
+| `sort` | query | string | `id` (по умолчанию), `nick`, `level`, `none` |
+| `order` | query | string | `asc` (по умолчанию) или `desc` |
+
+Одним запросом можно попросить сразу несколько полей:
+`GET /api/v1/characters?fields=id,class,level,dungeonPasses` →
+`{"characters":[{"id":"Mag_1","class":"Маг","level":100,"dungeonPasses":{…}}],"count":1,"fields":[…]}`.
+По умолчанию вместо `dungeonPasses` возвращаются плоские ключи
+`"dungeonPasses.weapon": 3`; `flat=false` даёт вложенный объект. Неизвестное поле —
+`422 invalid_value` со списком допустимых (`CHARACTER_FIELD_NAMES`).
 
 ```json
 {
@@ -1010,10 +1025,12 @@ JS (`js/modules/externalApi/`):
 
 | Файл | Что проверяет |
 | --- | --- |
-| `tests/externalApi.read.test.js` (7) | белый список полей, фильтр по пати, `fields`, окна |
+| `tests/externalApi.read.test.js` (11) | белый список полей, фильтр по пати, `fields` (плоско/вложенно/`lang=ru`), сортировка, окна |
+| `tests/externalApiErrors.test.js` (9) | каталог кодов: подписи, совпадение с Rust, страницей и справочником, журнал |
 | `tests/externalApi.mutate.test.js` (14) | диапазоны, `423`, история, bulk, коды ошибок |
 | `tests/externalApi.bridge.test.js` (22) | маршрутизация, права, `confirm`, задания, `429`, выгрузки, марафоны, `load()` |
 | `tests/externalApi.extended.test.js` (20) | марафоны, отметки/поправки, карточка, создание, пати, CSV, выбор для запуска |
+| `tests/externalApiDocs.test.js` (29) | страница и справочник не расходятся: методы, параметры списка, таблица кодов, чипы полей |
 | `tests/externalApiDemo.test.js` (12) | макет страницы `demo/external-api/` |
 | `tests/settingsLayout.test.js` | группа `api` в настройках |
 | `tests/settingsGuides.test.js` | справка `external-api` ссылается на существующие id |
