@@ -22,6 +22,20 @@ import { auditLine, errorCatalogRows } from '../modules/externalApi/errors.js';
 
 const PORT_DEFAULT = 47831;
 
+/**
+ * Подпись профиля сборки для строки статуса.
+ *
+ * В тестовой сборке API работает намеренно, но пользователь должен видеть, что
+ * это тестовый сервер: у него другой порт и другой токен. Без пометки легко
+ * решить, что тестовая сборка «сломала» рабочую настройку.
+ */
+export function profileNote(status) {
+  const profile = String(status?.profile || '');
+  if (profile === 'acceptance-shared') return ' ⚠️ ТЕСТОВАЯ СБОРКА с общими данными: это не рабочий сервер.';
+  if (profile === 'acceptance') return ' ⚠️ Тестовая сборка: это не рабочий сервер.';
+  return '';
+}
+
 /** Строка статуса сервера. */
 export function statusText(status, { tauri = true } = {}) {
   if (!tauri) return 'Внешний API работает только в приложении, а не в браузере.';
@@ -36,7 +50,7 @@ export function statusText(status, { tauri = true } = {}) {
     scopes.launchClose ? 'запуск и закрытие' : null
   ].filter(Boolean);
   const ready = status.clientReady === false ? ' Окно ещё подключается: запросы временно получают 503.' : '';
-  return `✅ Сервер работает на http://127.0.0.1:${port} · права: ${names.length ? names.join(', ') : 'нет'}.${ready}`;
+  return `✅ Сервер работает на http://127.0.0.1:${port} · права: ${names.length ? names.join(', ') : 'нет'}.${profileNote(status)}${ready}`;
 }
 
 /** Строка про токен: создан ли и когда. Сам токен здесь не появляется никогда. */

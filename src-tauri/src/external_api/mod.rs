@@ -37,6 +37,14 @@ use auth::{Access, RateLimiter, Scopes};
 
 /// Порт по умолчанию. Документация: `docs/EXTERNAL-API.md`.
 pub const DEFAULT_PORT: u16 = 47831;
+/// Порт по умолчанию в тестовых сборках (`acceptance`, `acceptance-shared`).
+///
+/// Тестовая и стабильная сборки — разные процессы, и обе могут быть запущены
+/// одновременно. Разные порты по умолчанию не дают им делить один адрес: иначе
+/// вторая сборка молча не стартует с «порт занят», а клиент попадает не в то
+/// приложение. Порт остаётся настраиваемым — это защита от случайности, а не
+/// жёсткое ограничение.
+pub const ACCEPTANCE_DEFAULT_PORT: u16 = 47832;
 /// Сколько ждём ответ из JS. Запуск окон отвечает сразу (`202 jobId`),
 /// поэтому 15 секунд хватает и на самый медленный запрос.
 const REPLY_TIMEOUT: Duration = Duration::from_secs(15);
@@ -137,6 +145,9 @@ pub struct ApiStatus {
     pub client_ready: bool,
     /// Сколько вызовов в журнале (не больше 100).
     pub logged: usize,
+    /// Профиль сборки: `stable`, `acceptance`, `acceptance-shared`. Панель
+    /// настроек показывает его, чтобы тестовый API был виден сразу.
+    pub profile: String,
 }
 
 /// Параметры запуска, которые проверяются до создания потока.
@@ -151,8 +162,26 @@ pub struct StartOptions {
     pub scopes: Scopes,
 }
 
+/// Порт, который подставляется, если клиент его не передал.
 fn default_port() -> u16 {
-    DEFAULT_PORT
+    if crate::profile::app_build_profile() == "stable" {
+        DEFAULT_PORT
+    } else {
+        ACCEPTANCE_DEFAULT_PORT
+    }
+}
+
+/// Подставить порт по профилю, если клиент прислал умолчание стабильной сборки.
+///
+/// JS присылает сохранённый в настройках порт (по умолчанию `47831`). В тестовой
+/// сборке такое «умолчание» означает, что пользователь порт не выбирал — тогда
+/// подставляем порт профиля. Явно выбранный другой порт не трогаем.
+fn port_for_profile(port: u16) -> u16 {
+    if crate::profile::app_build_profile() != "stable" && port == DEFAULT_PORT {
+        ACCEPTANCE_DEFAULT_PORT
+    } else {
+        port
+    }
 }
 
 /// Проверка токена: 64 шестнадцатеричных символа, как его генерирует JS
@@ -196,6 +225,7 @@ fn status_of(inner: &Inner, audit: &Audit) -> ApiStatus {
             error: inner.last_error.clone(),
             client_ready: server.ready.load(Ordering::SeqCst),
             logged: audit.count(),
+            profile: crate::profile::app_build_profile().to_string(),
         },
         None => ApiStatus {
             running: false,
@@ -205,6 +235,7 @@ fn status_of(inner: &Inner, audit: &Audit) -> ApiStatus {
             error: inner.last_error.clone(),
             client_ready: false,
             logged: audit.count(),
+            profile: crate::profile::app_build_profile().to_string(),
         },
     }
 }
@@ -235,17 +266,20 @@ struct ServeContext {
 /// с другими — перезапускает (порт и токен могли поменяться в настройках).
 ///
 /// # Errors
-/// Порт вне диапазона, токен не того формата, порт занят другой программой,
-/// сборка не стабильная (`acceptance` не должна делить порт с рабочей копией).
+/// Порт вне диапазона, токен не того формата, порт занят другой программой.
+///
+/// Тестовые сборки (`acceptance`, `acceptance-shared`) тоже запускают API: он
+/// нужен, чтобы проверить контракт на живой сборке. Изоляция обеспечивается
+/// другими средствами: порт по умолчанию свой (`ACCEPTANCE_DEFAULT_PORT`), токен
+/// лежит в хранилище ОС под своим именем (`profile::VAULT_SERVICE`), а ответ
+/// `GET /health` показывает профиль сборки полем `app.build`.
 #[tauri::command]
 pub fn external_api_start(
     app: AppHandle,
     state: State<'_, ExternalApiState>,
-    options: StartOptions,
+    mut options: StartOptions,
 ) -> Result<ApiStatus, String> {
-    if crate::profile::app_build_profile() != "stable" {
-        return Err("Внешний API выключен в тестовой сборке".into());
-    }
+    options.port = port_for_profile(options.port);
     if !(1024..=65535).contains(&options.port) {
         return Err("Порт должен быть в диапазоне 1024–65535".into());
     }
@@ -863,7 +897,23 @@ fn handle(app: &AppHandle, context: &ServeContext, request: http::Request) -> Re
 
 #[cfg(test)]
 mod tests {
-    use super::{constant_time_equal, valid_token, DEFAULT_PORT};
+    use super::{
+        constant_time_equal, port_for_profile, valid_token, ACCEPTANCE_DEFAULT_PORT, DEFAULT_PORT,
+    };
+
+    #[test]
+    fn acceptance_builds_get_their_own_default_port() {
+        // Тестовая и стабильная сборки могут работать одновременно: умолчание
+        // `47831` в тестовой сборке переезжает на порт профиля, а явно
+        // выбранный пользователем порт остаётся как есть.
+        assert_ne!(ACCEPTANCE_DEFAULT_PORT, DEFAULT_PORT);
+        // Профиль в тестовом прогоне — `stable`, поэтому функция возвращает
+        // вход без изменений; проверяем саму форму правила.
+        assert_eq!(port_for_profile(DEFAULT_PORT), DEFAULT_PORT);
+        assert_eq!(port_for_profile(50000), 50000);
+        assert_eq!(port_for_profile(1024), 1024);
+        assert_eq!(port_for_profile(65535), 65535);
+    }
 
     #[test]
     fn token_format_is_64_hex_characters() {
