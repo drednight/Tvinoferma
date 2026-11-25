@@ -38,6 +38,7 @@
           <button type="button" class="xapi-nav-item" data-tab="overview">Обзор</button>
           <button type="button" class="xapi-nav-item" data-tab="actions">Действия</button>
           <button type="button" class="xapi-nav-item" data-tab="playground">Тестовый запрос</button>
+          <button type="button" class="xapi-nav-item" data-tab="recipes">Рецепты</button>
           <button type="button" class="xapi-nav-item" data-tab="docs">Справочник API</button>
         </nav>
         <div class="xapi-status" role="status" aria-live="polite">
@@ -171,6 +172,29 @@
         </div>
       </section>
 
+      <section class="xapi-block xapi-tabpanel" id="recipes" data-panel="recipes" aria-labelledby="recipes-title" hidden>
+        <h2 id="recipes-title">Рецепты</h2>
+        <p class="xapi-note">
+          Готовые сценарии: когда запрос нужен, как он выглядит, что придёт в ответ и что этот ответ значит.
+          Тот же набор собран в <code>docs/EXTERNAL-API-EXAMPLES.md</code> — из того же каталога, поэтому текст и
+          страница не расходятся.
+        </p>
+        <div class="xapi-docs-search">
+          <label class="xapi-field xapi-field-grow">
+            Поиск по рецептам
+            <input id="recipes-filter" type="search" autocomplete="off" placeholder="планировщик, деньги, 403…" />
+          </label>
+        </div>
+        <div class="xapi-tabs" role="tablist" aria-label="Язык примера">
+          <button type="button" class="xapi-tab is-on" data-recipe-lang="curl" role="tab" aria-selected="true">curl</button>
+          <button type="button" class="xapi-tab" data-recipe-lang="python" role="tab" aria-selected="false">Python</button>
+          <button type="button" class="xapi-tab" data-recipe-lang="powershell" role="tab" aria-selected="false">
+            PowerShell
+          </button>
+        </div>
+        <div id="recipes-body" class="xapi-docs"></div>
+      </section>
+
       <section class="xapi-block xapi-tabpanel" id="docs" data-panel="docs" aria-labelledby="docs-title" hidden>
         <h2 id="docs-title">Справочник API</h2>
         <p class="xapi-note">
@@ -238,6 +262,7 @@
     <script src="/errors.js"></script>
     <script src="/docs.js"></script>
     <script src="/actions.js"></script>
+    <script src="/recipes.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>

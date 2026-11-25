@@ -119,6 +119,8 @@ pub fn access_for(method: &str, path: &str) -> Result<Access, &'static str> {
         | ("GET", ["windows"])
         | ("GET", ["jobs", _])
         | ("GET", ["export", _])
+        // Сводка «как дела»: что сейчас в приложении (счётчики, сегодняшние дела, баланс).
+        | ("GET", ["status"])
         | ("GET", ["audit"]) => Ok(Access::Read),
         ("PATCH", ["characters", _])
         | ("PATCH", ["characters", _, "stats", _])
@@ -128,7 +130,11 @@ pub fn access_for(method: &str, path: &str) -> Result<Access, &'static str> {
         | ("PATCH", ["dungeon-passes", _])
         | ("POST", ["marathons", _, "marks"])
         | ("POST", ["marathons", _, "adjust"])
-        | ("PATCH", ["parties", _]) => Ok(Access::Modify),
+        | ("PATCH", ["parties", _])
+        // Планировщик и учёт: правка записи, новая запись, новая операция в реестре.
+        | ("PATCH", ["planner", "entries", _])
+        | ("POST", ["planner", "entries"])
+        | ("POST", ["finance", "operations"]) => Ok(Access::Modify),
         ("POST", ["launch", "character"])
         | ("POST", ["launch", "party"])
         | ("POST", ["launch", "selection"])
@@ -294,6 +300,8 @@ mod tests {
         );
         assert_eq!(access_for("GET", "/api/v1/planner"), Ok(Access::Read));
         assert_eq!(access_for("GET", "/api/v1/finance"), Ok(Access::Read));
+        // Сводка «как дела» — чтение.
+        assert_eq!(access_for("GET", "/api/v1/status"), Ok(Access::Read));
         assert_eq!(
             access_for("GET", "/api/v1/export/characters.csv"),
             Ok(Access::Read)
@@ -344,6 +352,19 @@ mod tests {
         );
         assert_eq!(
             access_for("PATCH", "/api/v1/parties/p1"),
+            Ok(Access::Modify)
+        );
+        // Планировщик и учёт — изменение.
+        assert_eq!(
+            access_for("PATCH", "/api/v1/planner/entries/e1"),
+            Ok(Access::Modify)
+        );
+        assert_eq!(
+            access_for("POST", "/api/v1/planner/entries"),
+            Ok(Access::Modify)
+        );
+        assert_eq!(
+            access_for("POST", "/api/v1/finance/operations"),
             Ok(Access::Modify)
         );
         // Запуск выбранных персонажей — право «Запуск и закрытие окон».

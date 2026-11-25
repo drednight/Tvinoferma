@@ -95,6 +95,27 @@ function seedState() {
     }
   ];
   state.parties = [{ id: 'p-osnova', name: 'Основа', members: ['Mag_1'] }];
+  state.plannerEntries = [
+    {
+      id: 'pl1',
+      title: 'Ежедневка',
+      date: '2026-11-24',
+      time: '',
+      durationMinutes: 60,
+      kind: 'task',
+      priority: 'normal',
+      recurrence: 'none',
+      status: 'todo',
+      statusByDate: {},
+      notes: ''
+    }
+  ];
+  state.finance = {
+    operations: [],
+    shopItems: [],
+    loans: [],
+    settings: { goldRate: 0, commissionPct: 2, goldRateAt: null, opening: { gold: 100, coins: 0 } }
+  };
   state.marathons = [
     {
       id: 'm1',
@@ -129,7 +150,7 @@ describe('страница API: вкладка «Действия»', () => {
         else if (field.type === 'list') values[field.name] = 'Mag_1';
         // Идентификаторы берём из подготовленного состояния, иначе проверяем
         // только форму маршрута: сервер ответит «не найдено» по делу.
-        else if (field.name === 'id') values[field.name] = 'm1';
+        else if (field.name === 'id') values[field.name] = action.id === 'planner-entry' ? 'pl1' : 'm1';
         else if (field.name === 'jobId') values[field.name] = 'job_1';
         else if (field.name === 'taskId') values[field.name] = 't1';
         else values[field.name] = 'x';

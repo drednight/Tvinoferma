@@ -167,6 +167,19 @@
       fields: []
     },
     {
+      id: 'status',
+      group: 'Чтение данных',
+      title: 'Сводка «как дела»',
+      summary: 'Один запрос: счётчики, дела на сегодня, баланс, права и занятость запуска.',
+      method: 'GET',
+      path: '/api/v1/status',
+      scope: 'read',
+      fields: [],
+      result: body =>
+        `персонажей: ${body.counts?.characters ?? 0}; окон: ${body.counts?.windows ?? 0}; ` +
+        `дел на сегодня: ${body.today?.done ?? 0} из ${body.today?.total ?? 0}`
+    },
+    {
       id: 'audit',
       group: 'Чтение данных',
       title: 'Журнал вызовов',
@@ -399,6 +412,119 @@
       }),
       confirmText: values => `Поправка ${values.value} для ${values.characterId} в задании ${values.taskId}?`,
       result: body => `поправка: ${body.value ?? body.adjust ?? '—'}`
+    },
+    {
+      id: 'planner-entry',
+      group: 'Изменение данных',
+      title: 'Задача в планировщике',
+      summary: 'Отметить выполненной, перенести на другой день, поправить название и заметку.',
+      method: 'PATCH',
+      path: '/api/v1/planner/entries/{id}',
+      scope: 'modify',
+      fields: [
+        { name: 'id', label: 'Запись', type: 'text', required: true, hint: 'id из «Планировщика».' },
+        {
+          name: 'status',
+          label: 'Статус',
+          type: 'select',
+          options: ['todo', 'doing', 'done'],
+          default: 'done'
+        },
+        {
+          name: 'date',
+          label: 'День статуса',
+          type: 'date',
+          hint: 'Для повтора — конкретный день; пусто — день самой записи.'
+        },
+        { name: 'moveToDate', label: 'Перенести на', type: 'date', hint: 'Пусто — не переносить.' },
+        { name: 'title', label: 'Название', type: 'text' },
+        { name: 'time', label: 'Время', type: 'text', hint: 'ЧЧ:ММ' }
+      ],
+      pathOf: values => `/api/v1/planner/entries/${encodeURIComponent(values.id)}`,
+      body: values => {
+        const body = { status: values.status || 'done' };
+        if (values.date) body.date = values.date;
+        if (values.moveToDate) body.moveToDate = values.moveToDate;
+        if (values.title) body.title = values.title;
+        if (values.time) body.time = values.time;
+        return body;
+      },
+      result: body => `изменено: ${(body.changed || []).join(', ') || 'ничего'}`
+    },
+    {
+      id: 'planner-add',
+      group: 'Изменение данных',
+      title: 'Новая задача',
+      summary: 'Добавить запись в календарь планировщика.',
+      method: 'POST',
+      path: '/api/v1/planner/entries',
+      scope: 'modify',
+      fields: [
+        { name: 'title', label: 'Название', type: 'text', required: true },
+        { name: 'date', label: 'Дата', type: 'date' },
+        { name: 'time', label: 'Время', type: 'text', hint: 'ЧЧ:ММ' },
+        { name: 'durationMinutes', label: 'Длительность, мин', type: 'number' },
+        {
+          name: 'kind',
+          label: 'Тип',
+          type: 'select',
+          options: ['task', 'event', 'note'],
+          default: 'task'
+        },
+        {
+          name: 'priority',
+          label: 'Приоритет',
+          type: 'select',
+          options: ['low', 'normal', 'high'],
+          default: 'normal'
+        },
+        {
+          name: 'recurrence',
+          label: 'Повтор',
+          type: 'select',
+          options: ['none', 'daily', 'weekly', 'monthly'],
+          default: 'none'
+        },
+      ],
+      body: values => {
+        const body = { title: String(values.title || '').trim() };
+        if (values.date) body.date = values.date;
+        if (values.time) body.time = values.time;
+        if (values.durationMinutes !== '') body.durationMinutes = num(values.durationMinutes);
+        if (values.kind) body.kind = values.kind;
+        if (values.priority) body.priority = values.priority;
+        if (values.recurrence) body.recurrence = values.recurrence;
+        return body;
+      },
+      result: body => `создано: ${body.entry?.title || '—'}`
+    },
+    {
+      id: 'finance-operation',
+      group: 'Изменение данных',
+      title: 'Запись в реестр денег',
+      summary: 'Приход или расход: сумма, валюта, комментарий.',
+      method: 'POST',
+      path: '/api/v1/finance/operations',
+      scope: 'modify',
+      fields: [
+        { name: 'kind', label: 'Тип', type: 'select', options: ['in', 'out'], default: 'out' },
+        { name: 'amount', label: 'Сумма', type: 'number', required: true },
+        { name: 'currency', label: 'Валюта', type: 'select', options: ['gold', 'coins'], default: 'gold' },
+        { name: 'date', label: 'Дата', type: 'date' },
+        { name: 'counterparty', label: 'Контрагент', type: 'text' },
+        { name: 'note', label: 'Комментарий', type: 'text' }
+      ],
+      body: values => {
+        const body = { kind: values.kind || 'out', amount: num(values.amount) ?? 0 };
+        if (values.currency) body.currency = values.currency;
+        if (values.date) body.date = values.date;
+        if (values.counterparty) body.counterparty = values.counterparty;
+        if (values.note) body.note = values.note;
+        return body;
+      },
+      confirmText: values =>
+        `Записать ${values.kind === 'in' ? 'приход' : 'расход'} ${values.amount} ${values.currency || 'gold'}?`,
+      result: body => `${body.operation?.kind === 'in' ? 'приход' : 'расход'} ${body.operation?.amount ?? '—'}`
     },
 
     /* ------------------------------ запуск и окна ------------------------------ */

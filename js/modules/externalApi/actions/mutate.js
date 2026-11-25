@@ -17,6 +17,8 @@
 
 import { DEFAULT_STATS } from '../../characters/stateManager.js';
 import { rememberStatsBefore } from '../../characters/statsHistory.js';
+import { entryStatusForDate, normalizePlannerEntry, setEntryStatusForDate } from '../../dashboard/planner.js';
+import { CURRENCY_IDS, DEFAULT_CURRENCY, normalizeOperation } from '../../finance/model.js';
 import { errorBody } from '../errors.js';
 
 export const MAX_STAT_VALUE = 1_000_000_000;
@@ -760,4 +762,255 @@ function passKeyOf(name) {
     реликвия: 'relic'
   };
   return map[text] || null;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Планировщик: правка и новая запись                                */
+/* ------------------------------------------------------------------ */
+
+/** Статусы записи в списке дел — те же, что у интерфейса. */
+const PLANNER_STATUSES = new Set(['todo', 'doing', 'done']);
+/** Дата в формате календаря планировщика. */
+const PLANNER_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** Время в формате «ЧЧ:ММ». */
+const PLANNER_TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+/**
+ * Найти запись планировщика по id.
+ * @param {any} state
+ * @param {string} id
+ */
+function findPlannerEntry(state, id) {
+  const entries = Array.isArray(state.plannerEntries) ? state.plannerEntries : [];
+  return entries.find(item => String(item.id) === String(id)) || null;
+}
+
+/**
+ * `PATCH /planner/entries/{id}`: статус, название, время и перенос записи.
+ *
+ * Поля:
+ * - `status` — статус записи (`todo`, `doing`, `done`);
+ * - `date` — день, к которому относится статус. Для повторяющейся записи это
+ *   конкретный день повтора: у неё своё состояние на каждый день, и «сделал вчера»
+ *   не должен означать «сделал сегодня»;
+ * - `moveToDate` — перенести запись на другой день (собственный день записи);
+ * - `title`, `time` — текст записи.
+ *
+ * Статус меняется через модуль планировщика: завести здесь второе правило — значит
+ * потом разойтись с интерфейсом.
+ *
+ * @param {any} state
+ * @param {string} id
+ * @param {any} body
+ * @param {{
+ *   persist: () => Promise<void>,
+ *   renderPlanner?: () => void,
+ *   now?: () => string,
+ *   assertStateWriteAvailable: () => void
+ * }} deps
+ */
+export async function patchPlannerEntry(state, id, body, deps) {
+  if (!isPlainObject(body)) throw new ApiError(422, 'invalid_value', 'Тело запроса должно быть объектом');
+  const allowed = new Set(['status', 'date', 'moveToDate', 'title', 'time']);
+  for (const key of Object.keys(body)) {
+    if (!allowed.has(key)) throw new ApiError(422, 'invalid_value', `Неизвестное поле «${key}»`);
+  }
+  if (!Object.keys(body).length) {
+    throw new ApiError(422, 'invalid_value', 'Нужно хотя бы одно поле: status, date, moveToDate, title или time');
+  }
+  assertWritable(deps.assertStateWriteAvailable);
+  const entry = findPlannerEntry(state, id);
+  if (!entry) throw new ApiError(404, 'no_such_entry', 'Запись планировщика не найдена');
+  const changed = [];
+  // День, к которому относится статус: явно заданный или собственный день записи.
+  // У повторов состояние своё на каждый день, поэтому в ответе оно идёт отдельно.
+  let statusDate = String(entry.date || '');
+  if (body.moveToDate !== undefined) {
+    const date = String(body.moveToDate || '');
+    if (!PLANNER_DATE_RE.test(date)) {
+      throw new ApiError(422, 'invalid_value', 'moveToDate: ожидается YYYY-MM-DD');
+    }
+    statusDate = date;
+    if (entry.date !== date) {
+      entry.date = date;
+      changed.push('date');
+    }
+  }
+  if (body.title !== undefined) {
+    const title = String(body.title || '')
+      .trim()
+      .slice(0, 160);
+    if (!title) throw new ApiError(422, 'invalid_value', 'title не может быть пустым');
+    if (entry.title !== title) {
+      entry.title = title;
+      changed.push('title');
+    }
+  }
+  if (body.time !== undefined) {
+    const time = String(body.time || '');
+    if (time && !PLANNER_TIME_RE.test(time)) {
+      throw new ApiError(422, 'invalid_value', 'time: ожидается ЧЧ:ММ или пустая строка');
+    }
+    if (String(entry.time || '') !== time) {
+      entry.time = time;
+      changed.push('time');
+    }
+  }
+  if (body.status !== undefined) {
+    const status = String(body.status || '');
+    if (!PLANNER_STATUSES.has(status)) {
+      throw new ApiError(422, 'invalid_value', 'status: todo, doing или done');
+    }
+    const date = body.date !== undefined ? String(body.date) : String(entry.date || '');
+    if (body.date !== undefined && !PLANNER_DATE_RE.test(date)) {
+      throw new ApiError(422, 'invalid_value', 'date: ожидается YYYY-MM-DD');
+    }
+    statusDate = date;
+    if (setEntryStatusForDate(entry, date, status)) changed.push('status');
+  }
+  if (changed.length) {
+    entry.updatedAt = (deps.now || (() => new Date().toISOString()))();
+    await persistOrThrow(deps);
+    deps.renderPlanner?.();
+  }
+  return {
+    entry: {
+      id: String(entry.id),
+      title: String(entry.title || ''),
+      date: entry.date ?? null,
+      time: entry.time ?? '',
+      status: entry.status ?? null
+    },
+    // Состояние на запрошенный день: у повтора оно своё, поэтому «сделано вчера»
+    // не выглядит как «сделано сегодня».
+    statusDate,
+    statusValue: entryStatusForDate(entry, statusDate),
+    changed
+  };
+}
+
+/**
+ * `POST /planner/entries`: новая запись в календаре.
+ *
+ * Запись создаётся тем же нормализатором, что и в интерфейсе: иначе у записей из API
+ * были бы другие правила (дата по умолчанию, длительность, статус), и список дел
+ * вёл бы себя по-разному в зависимости от того, откуда пришла запись.
+ *
+ * @param {any} state
+ * @param {any} body
+ * @param {{
+ *   persist: () => Promise<void>,
+ *   renderPlanner?: () => void,
+ *   now?: () => string,
+ *   assertStateWriteAvailable: () => void
+ * }} deps
+ */
+export async function createPlannerEntry(state, body, deps) {
+  if (!isPlainObject(body)) throw new ApiError(422, 'invalid_value', 'Тело запроса должно быть объектом');
+  const allowed = new Set(['title', 'date', 'time', 'durationMinutes', 'kind', 'priority', 'recurrence']);
+  for (const key of Object.keys(body)) {
+    if (!allowed.has(key)) throw new ApiError(422, 'invalid_value', `Неизвестное поле «${key}»`);
+  }
+  const title = String(body.title || '')
+    .trim()
+    .slice(0, 160);
+  if (!title) throw new ApiError(422, 'invalid_value', 'title обязателен');
+  if (body.date !== undefined && !PLANNER_DATE_RE.test(String(body.date || ''))) {
+    throw new ApiError(422, 'invalid_value', 'date: ожидается YYYY-MM-DD');
+  }
+  if (body.time !== undefined && String(body.time || '') && !PLANNER_TIME_RE.test(String(body.time))) {
+    throw new ApiError(422, 'invalid_value', 'time: ожидается ЧЧ:ММ или пустая строка');
+  }
+  assertWritable(deps.assertStateWriteAvailable);
+  const entry = normalizePlannerEntry({
+    title,
+    date: body.date ?? undefined,
+    time: body.time ?? undefined,
+    durationMinutes: body.durationMinutes ?? undefined,
+    kind: body.kind ?? undefined,
+    priority: body.priority ?? undefined,
+    recurrence: body.recurrence ?? undefined
+  });
+  state.plannerEntries = Array.isArray(state.plannerEntries) ? state.plannerEntries : [];
+  state.plannerEntries.push(entry);
+  await persistOrThrow(deps);
+  deps.renderPlanner?.();
+  return {
+    entry: {
+      id: String(entry.id),
+      title: String(entry.title || ''),
+      date: entry.date ?? null,
+      time: entry.time ?? '',
+      status: entry.status ?? null
+    }
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Учёт: новая операция в реестре                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `POST /finance/operations`: новая запись в реестре денег.
+ *
+ * Реестр — единственная правда о деньгах (см. js/modules/finance/model.js), поэтому
+ * запись создаётся его же нормализатором: округление под валюту и запрет нулевой
+ * суммы должны быть одинаковыми у записей из интерфейса и из API.
+ *
+ * @param {any} state
+ * @param {any} body
+ * @param {{
+ *   persist: () => Promise<void>,
+ *   renderFinance?: () => void,
+ *   now?: () => string,
+ *   assertStateWriteAvailable: () => void
+ * }} deps
+ */
+export async function addFinanceOperation(state, body, deps) {
+  if (!isPlainObject(body)) throw new ApiError(422, 'invalid_value', 'Тело запроса должно быть объектом');
+  const allowed = new Set(['kind', 'amount', 'currency', 'date', 'counterparty', 'note', 'characterId']);
+  for (const key of Object.keys(body)) {
+    if (!allowed.has(key)) throw new ApiError(422, 'invalid_value', `Неизвестное поле «${key}»`);
+  }
+  const kind = body.kind === undefined ? 'out' : String(body.kind);
+  if (kind !== 'in' && kind !== 'out') {
+    throw new ApiError(422, 'invalid_value', 'kind: in (приход) или out (расход)');
+  }
+  const amount = Number(body.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new ApiError(422, 'invalid_value', 'amount: сумма должна быть положительным числом');
+  }
+  const currency = body.currency === undefined ? DEFAULT_CURRENCY : String(body.currency);
+  if (!CURRENCY_IDS.includes(currency)) {
+    throw new ApiError(422, 'invalid_value', `currency: допустимо ${CURRENCY_IDS.join(', ')}`);
+  }
+  if (body.date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(String(body.date || ''))) {
+    throw new ApiError(422, 'invalid_value', 'date: ожидается YYYY-MM-DD');
+  }
+  assertWritable(deps.assertStateWriteAvailable);
+  const operation = normalizeOperation({
+    kind,
+    amount,
+    currency,
+    date: body.date ?? undefined,
+    counterparty: body.counterparty ?? undefined,
+    note: body.note ?? undefined,
+    source: 'manual'
+  });
+  state.finance = state.finance && typeof state.finance === 'object' ? state.finance : {};
+  state.finance.operations = Array.isArray(state.finance.operations) ? state.finance.operations : [];
+  state.finance.operations.push(operation);
+  await persistOrThrow(deps);
+  deps.renderFinance?.();
+  return {
+    operation: {
+      id: String(operation.id),
+      kind: operation.kind,
+      amount: Number(operation.amount) || 0,
+      currency: operation.currency,
+      date: operation.date ?? null,
+      counterparty: String(operation.counterparty || ''),
+      note: String(operation.note || '')
+    }
+  };
 }
