@@ -793,8 +793,17 @@ default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img
   «в браузере сервер не запускается»; отдельной строкой — включённые права и
   `clientReady === false` → «главное окно ещё не подключилось» (`503 app_not_ready`).
 - **Кнопки**: `#external-api-open` «Открыть страницу API» (в приложении — через
-  `plugin-shell`, в браузере — новая вкладка), `#external-api-copy-curl` — пример
+  `plugin-shell`, в браузере — новая вкладка) и `#external-api-copy-curl` — пример
   `curl -s -H "Authorization: Bearer $TF_API_TOKEN" http://127.0.0.1:<порт>/api/v1/health`.
+
+  Адрес берётся **по фактическому порту работающего сервера** (поле `port` в
+  `external_api_status`), а не из поля настроек: в тестовой сборке Rust
+  подставляет `47832`, пока в настройках остаётся `47831`. Если сервер не
+  запущен, используется сохранённый порт; если порт в настройках ещё не применён
+  (сервер слушает старый), кнопка ведёт туда, где сервер реально слушает. Правило
+  то же, что в Rust (`port_for_profile`): умолчание `47831` в тестовом профиле
+  заменяется на `47832`, явно выбранный порт остаётся как есть. Проверка —
+  `tests/externalApiAcceptanceProfile.test.js`.
 - **Токен** `#external-api-rotate` «Перевыпустить», `#external-api-forget` «Удалить»,
   строка `#external-api-token-status` («создан 24.11.2026, 12:00»). Новое значение
   показывается **один раз** в `#external-api-token-reveal` / `#external-api-token-value`

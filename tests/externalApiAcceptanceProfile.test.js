@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { statusText, profileNote } from '../js/settings/externalApiPanel.js';
+import { statusText, profileNote, apiPort, apiPageUrl, curlExample } from '../js/settings/externalApiPanel.js';
 
 const ROOT = resolve(process.cwd(), 'src-tauri/src/external_api');
 const rust = readFileSync(resolve(ROOT, 'mod.rs'), 'utf8');
@@ -56,6 +56,39 @@ describe('внешний API в тестовой сборке', () => {
     expect(statusText({ running: true, port: 47831, scopes: { read: true }, profile: 'stable' })).not.toMatch(
       /Тестовая/
     );
+  });
+
+  it('кнопка «Открыть страницу API» ведёт на фактический порт сервера', () => {
+    // Главный баг: кнопка брала порт из настроек, а Rust в тестовой сборке
+    // подставляет 47832 — открывалась пустая (или чужая) страница.
+    expect(apiPageUrl({ status: { port: 47832, profile: 'acceptance' }, settings: { port: 47831 } })).toBe(
+      'http://127.0.0.1:47832/'
+    );
+    // Сервер не запущен — правило то же, что в Rust: умолчание переезжает.
+    expect(apiPageUrl({ status: null, settings: { port: 47831 }, profile: 'acceptance' })).toBe(
+      'http://127.0.0.1:47832/'
+    );
+    expect(apiPageUrl({ status: null, settings: { port: 47831 }, profile: 'stable' })).toBe('http://127.0.0.1:47831/');
+    // Явно выбранный порт не подменяется ни в одном профиле.
+    expect(apiPort({ settings: { port: 50000 }, profile: 'acceptance' })).toBe(50000);
+    expect(apiPort({ status: { port: 50001 }, settings: { port: 50000 } })).toBe(50001);
+    // Пример curl — на том же порту, что и страница.
+    expect(curlExample(apiPort({ status: { port: 47832 } }))).toContain('127.0.0.1:47832');
+  });
+
+  it('правило порта в JS совпадает с Rust (`port_for_profile`)', () => {
+    // Один и тот же набор случаев прогоняется через обе реализации: если
+    // поменять одну и забыть другую, адрес на экране разойдётся с сервером.
+    const portFn = rust.slice(rust.indexOf('fn port_for_profile'), rust.indexOf('/// Проверка токена'));
+    expect(portFn).toContain('app_build_profile() != "stable"');
+    expect(portFn).toContain('port == DEFAULT_PORT');
+    expect(portFn).toContain('ACCEPTANCE_DEFAULT_PORT');
+    // Те же константы и то же условие — в JS.
+    const js = readFileSync(resolve(process.cwd(), 'js/settings/externalApiPanel.js'), 'utf8');
+    const fn = js.slice(js.indexOf('export function apiPort'), js.indexOf('/** Адрес страницы API'));
+    expect(fn).toContain('PORT_DEFAULT_ACCEPTANCE');
+    expect(fn).toContain('=== PORT_DEFAULT');
+    expect(fn).toContain("startsWith('acceptance')");
   });
 
   it('в панели настроек порт тестовой сборки объяснён', () => {
