@@ -55,7 +55,15 @@ describe('голосование в панели клана', () => {
       events: [],
       parties: [],
       selfNick: '',
-      polls: [{ ...poll(), options: [{ id: '501', text: [{ text: 'Первый' }], selected: true }, { id: '502', text: [{ text: 'Второй' }], selected: false }] }]
+      polls: [
+        {
+          ...poll(),
+          options: [
+            { id: '501', text: [{ text: 'Первый' }], selected: true },
+            { id: '502', text: [{ text: 'Второй' }], selected: false }
+          ]
+        }
+      ]
     });
     // Тоггл варианта — локальный выбор, голос пока не уходит.
     optionButton('501').click();

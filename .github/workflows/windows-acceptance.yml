@@ -32,6 +32,12 @@ on:
       - 'src-tauri/src/automation/**'
       - 'src-tauri/src/parsers.rs'
       - 'src-tauri/src/pool.rs'
+      # Тестовая сборка всегда стартует от администратора: права и метка экземпляра.
+      - 'src-tauri/src/elevate.rs'
+      - 'src-tauri/src/instance.rs'
+      - 'src-tauri/src/lib.rs'
+      - 'src-tauri/src/autostart.rs'
+      - 'js/desktop/autostart.js'
       - 'js/modules/characters/stateManager.js'
       # Marathon projection and embedded parser fixes need a fresh native executable too.
       - 'js/modules/cloudSync/marathonExport.js'

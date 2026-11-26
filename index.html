@@ -281,6 +281,7 @@
         <div class="settings-layout">
         <nav class="settings-nav" aria-label="Разделы настроек">
           <a class="settings-nav-item" href="#settings-app"><span class="settings-nav-icon" aria-hidden="true">🎮</span><span class="settings-nav-copy"><strong>Приложение</strong><small>Запуск игры, окна, трей, уведомления</small></span></a>
+          <a class="settings-nav-item" href="#settings-api"><span class="settings-nav-icon" aria-hidden="true">🔌</span><span class="settings-nav-copy"><strong>Внешний API</strong><small>Сторонние программы и токен</small></span></a>
           <a class="settings-nav-item" href="#settings-sync"><span class="settings-nav-icon" aria-hidden="true">🔄</span><span class="settings-nav-copy"><strong>Синхронизация</strong><small>Компьютеры, скрипты и диагностика</small></span></a>
           <a class="settings-nav-item" href="#settings-updates"><span class="settings-nav-icon" aria-hidden="true">⬆</span><span class="settings-nav-copy"><strong>Обновления</strong><small>Проверка и установка версий</small></span></a>
           <a class="settings-nav-item" href="#settings-data"><span class="settings-nav-icon" aria-hidden="true">🗄</span><span class="settings-nav-copy"><strong>Данные и безопасность</strong><small>Копии, экспорт, пароли</small></span></a>
@@ -330,6 +331,7 @@
             <p class="muted" style="margin: 0 0 4px 24px;">Если выключить, окно всё равно получит название «Ник — Класс», но значок останется игровым. После запуска Твиноферма проверит, что значки и названия применились ко всем окнам, и повторит попытку.</p>
             <label><input type="checkbox" data-setting="launcher.notify" /> После запуска показать одну строку: сколько окон запущено и за какое время (ошибки показываются всегда)</label>
             <label title="Если окно этого персонажа («Ник — Класс») уже открыто, запуск для него пропускается и очередь идёт к следующему. Работает, пока включено «Подписывать окна игры»."><input type="checkbox" data-setting="launcher.skipRunning" /> Пропускать персонажей, у которых окно игры уже запущено</label>
+            <label title="Перед запуском пати показывает список участников (все отмечены по умолчанию), чтобы можно было снять тех, кого запускать не нужно. Запуск из трея и быстрая команда макроса по-прежнему запускают всю пати без окна."><input type="checkbox" data-setting="launcher.askBeforeLaunch" /> Перед запуском пати спрашивать, кого запускать</label>
             <label title="Перед запуском пати Твиноферма проверяет: нет ли GameCenter, запомнен ли вход, не запущены ли окна от администратора.">Проверки перед запуском:
               <select class="input" data-setting="launcher.preflight" data-value-type="string">
                 <option value="issues">показывать при проблемах</option>
@@ -485,6 +487,70 @@
         </details>
             </div>
           </div>
+        </section>
+        <section class="settings-group" id="settings-api" aria-labelledby="settings-api-title">
+          <header class="settings-group-head"><h3 id="settings-api-title">Внешний API</h3><p class="muted">Локальный сервер для ваших программ: чтение, статы и проходки, запуск окон.</p></header>
+          <details class="panel fold" id="settings-external-api">
+            <summary>
+              <h3>🔌 Внешний API</h3>
+              <p class="muted">Сторонние программы на этом компьютере могут читать персонажей, менять статы и проходки, запускать окна игры.</p>
+            </summary>
+            <p class="muted" style="margin-top: 0;">
+              Сервер слушает только <code>127.0.0.1</code> и работает лишь из приложения, а не из браузера.
+              Любая программа на этом компьютере видит порт, поэтому доступ закрыт токеном, а по умолчанию сервер выключен.
+              Контракт и коды ошибок — <code>docs/EXTERNAL-API.md</code>; полный адрес показан ниже в строке статуса — он зависит от порта.
+            </p>
+            <p class="muted">
+              В тестовой сборке API тоже работает, но на своём порту <code>47832</code> и со своим токеном —
+              чтобы не мешать рабочей версии. Порт по умолчанию меняется только для тестовых сборок;
+              явно выбранный порт остаётся прежним.
+            </p>
+            <div class="settings-checks">
+              <label><input type="checkbox" data-setting="externalApi.enabled" /> Разрешить внешним программам управлять Твинофермой</label>
+            </div>
+            <div class="settings-checks" id="external-api-permissions">
+              <label><input type="checkbox" data-setting="externalApi.allowRead" /> Чтение: персонажи, пати, окна игры, журнал</label>
+              <label><input type="checkbox" data-setting="externalApi.allowModify" /> Изменение статов и проходок</label>
+              <label><input type="checkbox" data-setting="externalApi.allowLaunchClose" /> Запуск и закрытие окон игры</label>
+            </div>
+            <div class="settings-checks">
+              <label>Порт
+                <input class="input" type="number" min="1024" max="65535" step="1" style="width: 120px;" data-setting="externalApi.port" />
+                <span class="muted">1024–65535, по умолчанию 47831 (в тестовой сборке — 47832)</span>
+              </label>
+            </div>
+            <p class="muted" id="external-api-status" role="status" aria-live="polite">Сервер не запущен.</p>
+            <div class="row gap" style="flex-wrap: wrap;">
+              <button class="btn secondary" type="button" id="external-api-open">Открыть страницу API</button>
+              <button class="btn secondary" type="button" id="external-api-copy-curl">Скопировать пример curl</button>
+            </div>
+            <div class="settings-checks" style="margin-top: 12px;">
+              <strong>Токен</strong>
+              <p class="muted" style="margin: 4px 0 8px;">
+                Хранится в хранилище учётных данных ОС, а не в <code>state.json</code>; повторно показать его нельзя —
+                только перевыпустить. Перевыпуск сразу отключает старые программы.
+              </p>
+              <div class="row gap" style="flex-wrap: wrap;">
+                <button class="btn secondary" type="button" id="external-api-rotate">Перевыпустить токен</button>
+                <button class="btn ghost" type="button" id="external-api-forget">Удалить токен</button>
+              </div>
+              <p class="muted" id="external-api-token-status" role="status" aria-live="polite"></p>
+              <div id="external-api-token-reveal" hidden>
+                <p><strong>Новый токен — сохраните его сейчас:</strong></p>
+                <p><code id="external-api-token-value" style="word-break: break-all;"></code></p>
+                <button class="btn secondary small" type="button" id="external-api-token-copy">Скопировать токен</button>
+              </div>
+            </div>
+            <div class="settings-checks" style="margin-top: 12px;">
+              <strong>Последние вызовы</strong>
+              <p class="muted" style="margin: 4px 0 8px;">Время, метод, путь, код и длительность. Тел запросов и токена в журнале нет.</p>
+              <div id="external-api-audit" class="muted" style="font-family: monospace; font-size: 0.8rem; max-height: 220px; overflow: auto;">Журнал пуст.</div>
+              <div class="row gap" style="flex-wrap: wrap; margin-top: 8px;">
+                <button class="btn ghost small" type="button" id="external-api-audit-refresh">Обновить журнал</button>
+                <button class="btn ghost small" type="button" id="external-api-audit-clear">Очистить журнал</button>
+              </div>
+            </div>
+          </details>
         </section>
         <section class="settings-group" id="settings-sync" aria-labelledby="settings-sync-title">
           <header class="settings-group-head"><h3 id="settings-sync-title">Синхронизация</h3><p class="muted">Фоновые проверки, свежесть данных и диагностика.</p></header>

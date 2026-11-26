@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   launchGroup: vi.fn(),
+  launchPartyByName: vi.fn(),
   closePartyWindows: vi.fn(),
   closeClientsByPid: vi.fn(),
   runningClientDetails: vi.fn(),
@@ -19,6 +20,7 @@ vi.mock('../js/core/storage.js', () => ({
 }));
 vi.mock('../js/modules/launcher/partyLaunch.js', () => ({
   launchGroup: mocks.launchGroup,
+  launchPartyByName: mocks.launchPartyByName,
   closePartyWindows: mocks.closePartyWindows,
   showCloseReport: mocks.showCloseReport
 }));
@@ -157,8 +159,8 @@ describe('кнопка закрытия окон в карточке пати', 
     closeBtn('Фарм').click();
     await vi.waitFor(() => expect(mocks.closePartyWindows).toHaveBeenCalledWith('Фарм'));
     cardOf('Основа').querySelector('.launch-party-action-btn').click();
-    await vi.waitFor(() => expect(mocks.launchGroup).toHaveBeenCalled());
-    expect(mocks.launchGroup.mock.calls[0][0]).toContain('Основа');
+    await vi.waitFor(() => expect(mocks.launchPartyByName).toHaveBeenCalled());
+    expect(mocks.launchPartyByName.mock.calls[0][0]).toBe('Основа');
   });
 });
 

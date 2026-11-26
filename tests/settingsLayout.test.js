@@ -175,6 +175,7 @@ describe('смысловые группы настроек', () => {
     const doc = new DOMParser().parseFromString(html, 'text/html');
     for (const [group, ids] of Object.entries({
       app: ['settings-system', 'settings-launcher', 'settings-browser', 'settings-tray', 'settings-notifications'],
+      api: ['settings-external-api', 'external-api-status', 'external-api-audit'],
       sync: ['settings-scripts', 'settings-freshness', 'log-hub-panel', 'parser-health-panel'],
       updates: ['settings-update-panel'],
       data: ['settings-backups', 'settings-transfer', 'settings-security'],

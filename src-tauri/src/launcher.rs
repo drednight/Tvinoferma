@@ -159,6 +159,8 @@ mod win {
         // слоту окна: Tauri v2 не ставит `ICON_BIG`, а без него панель задач рисует пустой лист.
         fn LoadIconW(instance: *mut c_void, resource_id: *const u16) -> *mut c_void;
         fn GetModuleHandleW(name: *const u16) -> *mut c_void;
+        // Окно сообщения: на старте приложения (до появления своего окна) иначе не сказать
+        fn MessageBoxW(hwnd: Hwnd, text: *const u16, caption: *const u16, kind: u32) -> i32;
     }
 
     #[link(name = "kernel32")]
@@ -563,6 +565,41 @@ mod win {
         }
     }
 
+    /// Жив ли ещё процесс с таким PID.
+    ///
+    /// `OpenProcess` с правом `SYNCHRONIZE` на процессы администратора не даёт прав:
+    /// отказ в доступе (5) означает, что процесс есть и он выше нас, а «нет такого
+    /// процесса» (87) — что PID уже не существует. Иначе ждём сигнала о завершении:
+    /// процесс ещё жив — дескриптор не сработал.
+    pub fn process_running(pid: u32) -> bool {
+        const SYNCHRONIZE: u32 = 0x0010_0000;
+        const ERROR_ACCESS_DENIED: u32 = 5;
+        const WAIT_TIMEOUT: u32 = 0x0102;
+        unsafe {
+            let h = OpenProcess(SYNCHRONIZE, 0, pid);
+            if h.is_null() {
+                return GetLastError() == ERROR_ACCESS_DENIED;
+            }
+            let result = WaitForSingleObject(h, 0);
+            CloseHandle(h);
+            result == WAIT_TIMEOUT
+        }
+    }
+
+    /// Показать окно сообщения Windows. Нужно на старте, когда окна приложения ещё нет.
+    pub fn message_box(text: &str, caption: &str) {
+        // MB_OK (кнопка «ОК») вместе со значком предупреждения.
+        const FLAGS: u32 = 0x0000_0030;
+        unsafe {
+            MessageBoxW(
+                std::ptr::null_mut(),
+                wide(text).as_ptr(),
+                wide(caption).as_ptr(),
+                FLAGS,
+            );
+        }
+    }
+
     /// Есть ли у токена процесса права администратора. `Err(код)` — токен открыть не удалось.
     fn token_elevated(process: *mut c_void) -> Result<bool, u32> {
         const TOKEN_QUERY: u32 = 0x0008;
@@ -788,6 +825,12 @@ mod win {
         let verb = wide("runas");
         let file = wide(exe);
         let params = wide(params);
+        // Рабочий каталог копии: при повышении прав оболочка Windows иначе запускает
+        // программу из system32, а тестовая сборка лежит в своей папке и ждёт её.
+        let dir = std::env::current_dir()
+            .ok()
+            .map(|path| wide(&path.display().to_string()));
+        let dir_ptr = dir.as_ref().map_or(std::ptr::null(), |d| d.as_ptr());
         let mut info = ShellExecuteInfoW {
             cb_size: std::mem::size_of::<ShellExecuteInfoW>() as u32,
             // Без ожидания дескриптор процесса не нужен: он всё равно никому не передаётся.
@@ -796,7 +839,7 @@ mod win {
             lp_verb: verb.as_ptr(),
             lp_file: file.as_ptr(),
             lp_parameters: params.as_ptr(),
-            lp_directory: std::ptr::null(),
+            lp_directory: dir_ptr,
             n_show: SW_HIDE,
             rest: [0; 9],
         };
@@ -895,6 +938,11 @@ mod win {
     pub fn kill_process(_pid: u32) -> Result<(), u32> {
         Err(1)
     }
+    pub fn process_running(_pid: u32) -> bool {
+        false
+    }
+    /// Окно сообщения Windows — только на Windows
+    pub fn message_box(_text: &str, _caption: &str) {}
     pub fn is_elevated() -> bool {
         false
     }
@@ -3337,6 +3385,38 @@ pub fn launcher_find_dialogs() -> Vec<String> {
 /// Запущена ли Твиноферма с правами администратора.
 pub(crate) fn self_elevated() -> bool {
     win::is_elevated()
+}
+
+/// Жив ли ещё процесс с таким PID (`false` — такого процесса нет).
+///
+/// Нужен тестовой сборке: перед повышением прав надо понять, не запущен ли уже
+/// экземпляр этой же программы.
+pub fn process_running(pid: u32) -> bool {
+    win::process_running(pid)
+}
+
+/// Есть ли у другого процесса права администратора (`None` — узнать не удалось).
+///
+/// Отказ в доступе к токену означает «процесс выше нас», то есть права есть.
+pub fn process_elevated(pid: u32) -> Option<bool> {
+    win::process_elevated(pid)
+}
+
+/// Полный путь к исполняемому файлу процесса.
+///
+/// `None` — узнать не удалось (например, процесс от администратора, а мы нет).
+pub fn process_image_path(pid: u32) -> Option<String> {
+    win::process_image_path(pid)
+}
+
+/// Показать окно сообщения Windows: на старте приложения своего окна ещё нет.
+pub fn show_message_box(text: &str, caption: &str) {
+    win::message_box(text, caption)
+}
+
+/// Завершить процесс по PID. `false` — не удалось (например, процесс от администратора).
+pub fn terminate_process(pid: u32) -> bool {
+    win::kill_process(pid).is_ok()
 }
 
 /// Запускает эту же программу с правами администратора и ждёт её.

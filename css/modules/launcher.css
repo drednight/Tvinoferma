@@ -419,3 +419,77 @@
 .promo-alert-row td {
   background: rgba(247, 118, 142, 0.08);
 }
+
+/* Выбор состава запуска пати (launchSelection.js) */
+.plp-count {
+  margin: 0 0 8px;
+  font-size: 0.9em;
+  color: var(--text-dim);
+}
+.plp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+.plp-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  cursor: pointer;
+  user-select: none;
+}
+.plp-row:hover {
+  border-color: var(--border-strong, var(--accent));
+}
+.plp-check {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  accent-color: var(--accent);
+}
+.plp-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.plp-ico {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 6px;
+  object-fit: cover;
+}
+.plp-ico-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-3, var(--border));
+  font-size: 0.78em;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+.plp-badge {
+  flex: none;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-1, transparent);
+  color: var(--text-dim);
+  font-size: 0.74em;
+  white-space: nowrap;
+}
+.plp-nick {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plp-class {
+  font-size: 0.8em;
+}

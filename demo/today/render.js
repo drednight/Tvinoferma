@@ -99,7 +99,11 @@ function marathon(state) {
 // input:checked внутри [data-guild-poll] и обрабатывает событие submit.
 const pollParts = parts =>
   (Array.isArray(parts) ? parts : [])
-    .map(part => (part.href ? `<a href="${esc(part.href)}" target="_blank" rel="noopener noreferrer">${esc(part.text)}</a>` : esc(part.text)))
+    .map(part =>
+      part.href
+        ? `<a href="${esc(part.href)}" target="_blank" rel="noopener noreferrer">${esc(part.text)}</a>`
+        : esc(part.text)
+    )
     .join('');
 function demoPollHtml(poll) {
   if (!poll) return '';
