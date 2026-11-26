@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Внешний API Твинофермы</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <main class="xapi">
+      <header class="xapi-hero">
+        <span class="xapi-tag">локальная страница · работает, только пока запущена Твиноферма</span>
+        <h1>Внешний API Твинофермы</h1>
+        <p>
+          Эта страница открыта с самого приложения: <code id="base-url">http://127.0.0.1:47831</code>. Токен
+          создаётся и перевыпускается в приложении: <strong>Настройки → 🔌 Внешний API</strong>. Здесь он
+          хранится только до закрытия вкладки (<code>sessionStorage</code>) и в разметку не вшит.
+        </p>
+        <p class="xapi-hint">
+          Увидели эту страницу, но не включали API? Тогда доступ к ней на этом компьютере есть у любой
+          программы. Выключите сервер в настройках приложения.
+        </p>
+      </header>
+
+      <section class="xapi-block" aria-labelledby="connect-title">
+        <h2 id="connect-title">Подключение</h2>
+        <div class="xapi-connect">
+          <label class="xapi-field">
+            Токен
+            <input id="token" type="text" autocomplete="off" spellcheck="false" placeholder="64 символа из настроек" />
+          </label>
+          <button id="connect" type="button" class="btn">Подключиться</button>
+          <button id="forget" type="button" class="btn ghost">Забыть токен</button>
+        </div>
+        <nav class="xapi-nav" aria-label="Разделы страницы">
+          <button type="button" class="xapi-nav-item is-on" data-tab="panel" aria-current="page">Данные</button>
+          <button type="button" class="xapi-nav-item" data-tab="overview">Обзор</button>
+          <button type="button" class="xapi-nav-item" data-tab="actions">Действия</button>
+          <button type="button" class="xapi-nav-item" data-tab="playground">Тестовый запрос</button>
+          <button type="button" class="xapi-nav-item" data-tab="recipes">Рецепты</button>
+          <button type="button" class="xapi-nav-item" data-tab="docs">Справочник API</button>
+        </nav>
+        <div class="xapi-status" role="status" aria-live="polite">
+          <span class="xapi-chip" data-chip="server">сервер: не подключено</span>
+          <span class="xapi-chip" data-chip="port">порт: —</span>
+          <span class="xapi-chip" data-chip="scopes">права: —</span>
+          <span class="xapi-chip" data-chip="storage">запись: —</span>
+        </div>
+        <p class="xapi-note" id="connect-note">
+          Токен обязателен для всех запросов <code>/api/v1/*</code>. Нет токена — ответ
+          <code>401 unauthorized</code>.
+        </p>
+      </section>
+
+      <section class="xapi-block xapi-tabpanel" id="panel" data-panel="panel" aria-labelledby="panel-title" hidden>
+        <h2 id="panel-title">Данные</h2>
+        <div class="xapi-grid">
+          <div class="xapi-col">
+            <h3 class="xapi-sub">Персонажи</h3>
+            <div id="characters" class="xapi-cards"><p class="xapi-note">Ещё не загружено.</p></div>
+            <h3 class="xapi-sub">Пати</h3>
+            <div id="parties" class="xapi-cards"></div>
+          </div>
+          <div class="xapi-col">
+            <h3 class="xapi-sub">Окна игры</h3>
+            <div id="windows" class="xapi-cards"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="xapi-block xapi-tabpanel" id="overview" data-panel="overview" aria-labelledby="overview-title" hidden>
+        <h2 id="overview-title">Обзор</h2>
+        <p class="xapi-note">
+          Живая картина: марафоны с прогрессом, ближайшие записи планировщика, деньги и запущенные окна.
+          Данные обновляются при нажатии «Обновить» и после каждого изменения на вкладке «Действия».
+        </p>
+        <div class="xapi-play-actions">
+          <button id="overview-refresh" type="button" class="btn">Обновить</button>
+          <span id="overview-status" class="xapi-note" role="status" aria-live="polite"></span>
+        </div>
+        <div class="xapi-grid">
+          <div class="xapi-col">
+            <h3 class="xapi-sub">Марафоны</h3>
+            <div id="overview-marathons" class="xapi-cards"><p class="xapi-note">Ещё не загружено.</p></div>
+          </div>
+          <div class="xapi-col">
+            <h3 class="xapi-sub">Планировщик: ближайшие записи</h3>
+            <div id="overview-planner" class="xapi-cards"></div>
+            <h3 class="xapi-sub">Учёт</h3>
+            <div id="overview-finance" class="xapi-cards"></div>
+          </div>
+        </div>
+        <h3 class="xapi-sub">Окна игры</h3>
+        <div id="overview-windows" class="xapi-cards"></div>
+      </section>
+
+      <section class="xapi-block xapi-tabpanel" id="actions" data-panel="actions" aria-labelledby="actions-title" hidden>
+        <h2 id="actions-title">Действия</h2>
+        <p class="xapi-note">
+          Готовые кнопки вместо ручного ввода адресов: выберите действие, заполните поля — адрес и тело
+          соберутся сами. Кнопки с пометкой «⚠ подтверждение» сначала спрашивают, а затем показывают
+          «было → стало». Что уже отправлялось — видно в журнале ниже.
+        </p>
+        <div class="xapi-actions-search">
+          <input id="actions-filter" type="search" autocomplete="off" placeholder="Найти действие: стат, проходки, запуск, выгрузка…" />
+          <span class="xapi-note" id="actions-count"></span>
+        </div>
+        <div id="actions-list" class="xapi-actions-list"></div>
+        <div id="actions-form" class="xapi-action-form" hidden>
+          <div class="xapi-action-form-head">
+            <h3 id="action-title">Действие</h3>
+            <span class="xapi-chip" id="action-route"></span>
+          </div>
+          <p class="xapi-note" id="action-summary"></p>
+          <div id="action-fields" class="xapi-action-fields"></div>
+          <div class="xapi-play-actions">
+            <button id="action-send" type="button" class="btn">Выполнить</button>
+            <button id="action-open-playground" type="button" class="btn ghost small">Открыть в тестовой строке</button>
+            <button id="action-cancel" type="button" class="btn ghost small">Отмена</button>
+            <span id="action-status" class="xapi-note" role="status" aria-live="polite"></span>
+          </div>
+          <h3 class="xapi-sub">Результат</h3>
+          <pre id="action-out" class="xapi-code" tabindex="0">Здесь появится ответ сервера.</pre>
+        </div>
+      </section>
+
+      <section class="xapi-block xapi-tabpanel" id="playground" data-panel="playground" aria-labelledby="playground-title" hidden>
+        <h2 id="playground-title">Тестовый запрос</h2>
+        <p class="xapi-note">
+          Любой запрос можно выполнить прямо здесь: соберите адрес, нажмите «Отправить» и посмотрите ответ с
+          кодом и заголовками. Кнопки под полем подставляют готовые примеры — начните с «Карточка персонажа».
+        </p>
+        <div class="xapi-play">
+          <label class="xapi-field">
+            Метод
+            <select id="play-method">
+              <option value="GET" selected>GET</option>
+              <option value="POST">POST</option>
+              <option value="PATCH">PATCH</option>
+              <option value="DELETE">DELETE</option>
+            </select>
+          </label>
+          <label class="xapi-field xapi-field-grow">
+            Путь
+            <input id="play-path" type="text" autocomplete="off" spellcheck="false" placeholder="/api/v1/characters" />
+          </label>
+          <button id="play-send" type="button" class="btn">Отправить</button>
+        </div>
+        <label class="xapi-field">
+          Тело запроса (JSON — для POST и PATCH; для PATCH проходки можно просто число)
+          <textarea id="play-body" rows="5" spellcheck="false" placeholder='{"value": 150}'></textarea>
+        </label>
+        <div class="xapi-play-actions">
+          <button id="play-clear" type="button" class="btn ghost small">Очистить</button>
+          <button id="play-copy" type="button" class="btn ghost small">Скопировать как curl</button>
+          <span id="play-status" class="xapi-note" role="status" aria-live="polite"></span>
+        </div>
+        <h3 class="xapi-sub">Что можно спросить</h3>
+        <div id="play-hints"></div>
+        <h3 class="xapi-sub">Готовые примеры</h3>
+        <div id="play-presets" class="xapi-presets"></div>
+        <h3 class="xapi-sub">Ответ</h3>
+        <div class="xapi-play-response">
+          <div class="xapi-status">
+            <span class="xapi-chip" data-chip="play-code">код: —</span>
+            <span class="xapi-chip" data-chip="play-time">время: —</span>
+            <span class="xapi-chip" data-chip="play-type">тип: —</span>
+            <span class="xapi-chip" data-chip="play-size">размер: —</span>
+          </div>
+          <pre id="play-out" class="xapi-code" tabindex="0">Здесь появится ответ сервера.</pre>
+        </div>
+      </section>
+
+      <section class="xapi-block xapi-tabpanel" id="recipes" data-panel="recipes" aria-labelledby="recipes-title" hidden>
+        <h2 id="recipes-title">Рецепты</h2>
+        <p class="xapi-note">
+          Готовые сценарии: когда запрос нужен, как он выглядит, что придёт в ответ и что этот ответ значит.
+          Тот же набор собран в <code>docs/EXTERNAL-API-EXAMPLES.md</code> — из того же каталога, поэтому текст и
+          страница не расходятся.
+        </p>
+        <div class="xapi-docs-search">
+          <label class="xapi-field xapi-field-grow">
+            Поиск по рецептам
+            <input id="recipes-filter" type="search" autocomplete="off" placeholder="планировщик, деньги, 403…" />
+          </label>
+        </div>
+        <div class="xapi-tabs" role="tablist" aria-label="Язык примера">
+          <button type="button" class="xapi-tab is-on" data-recipe-lang="curl" role="tab" aria-selected="true">curl</button>
+          <button type="button" class="xapi-tab" data-recipe-lang="python" role="tab" aria-selected="false">Python</button>
+          <button type="button" class="xapi-tab" data-recipe-lang="powershell" role="tab" aria-selected="false">
+            PowerShell
+          </button>
+        </div>
+        <div id="recipes-body" class="xapi-docs"></div>
+      </section>
+
+      <section class="xapi-block xapi-tabpanel" id="docs" data-panel="docs" aria-labelledby="docs-title" hidden>
+        <h2 id="docs-title">Справочник API</h2>
+        <p class="xapi-note">
+          Все методы с параметрами, ответами и примерами. У каждого метода есть кнопка «Попробовать»: она
+          подставляет запрос в «Тестовый запрос». Полный текст контракта — <code>docs/EXTERNAL-API.md</code>.
+        </p>
+        <div class="xapi-docs-search">
+          <label class="xapi-field xapi-field-grow">
+            Поиск по методам
+            <input id="docs-filter" type="search" autocomplete="off" placeholder="hp, проходк, марафон, export…" />
+          </label>
+        </div>
+        <div id="docs-toc" class="xapi-toc"></div>
+        <div id="docs-body" class="xapi-docs"></div>
+      </section>
+
+      <section class="xapi-block" aria-labelledby="log-title">
+        <h2 id="log-title">Журнал вызовов</h2>
+        <p class="xapi-note">
+          Последние 100 вызовов: время, метод, путь, код и длительность. Тел запросов и токена в журнале
+          нет. Кнопка «Обновить» перечитывает журнал из приложения.
+        </p>
+        <div class="xapi-status">
+          <button id="reload" type="button" class="btn secondary small">Обновить</button>
+          <button id="reload-audit" type="button" class="btn ghost small" hidden>Только журнал</button>
+        </div>
+        <div class="xapi-table-wrap">
+          <table class="xapi-table">
+            <thead>
+              <tr>
+                <th scope="col">Время</th>
+                <th scope="col">Метод</th>
+                <th scope="col">Путь</th>
+                <th scope="col">Код</th>
+                <th scope="col">Длительность</th>
+              </tr>
+            </thead>
+            <tbody id="audit-body">
+              <tr>
+                <td colspan="5" class="xapi-empty">Журнал пуст: вызовов ещё не было.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="xapi-block" aria-labelledby="examples-title">
+        <h2 id="examples-title">Примеры запросов</h2>
+        <p class="xapi-note">
+          Подставьте свой токен. Адрес — <code id="example-base">http://127.0.0.1:47831</code>. Полный контракт —
+          <code>docs/EXTERNAL-API.md</code> в репозитории.
+        </p>
+        <div class="xapi-tabs" role="tablist" aria-label="Язык примера">
+          <button type="button" class="xapi-tab is-on" data-recipe="curl" role="tab" aria-selected="true">curl</button>
+          <button type="button" class="xapi-tab" data-recipe="python" role="tab" aria-selected="false">Python</button>
+          <button type="button" class="xapi-tab" data-recipe="powershell" role="tab" aria-selected="false">
+            PowerShell
+          </button>
+        </div>
+        <pre id="recipe" class="xapi-code" tabindex="0"></pre>
+        <button id="copy-recipe" type="button" class="btn ghost small">Скопировать пример</button>
+        <p class="xapi-note" id="recipe-copied" role="status" aria-live="polite"></p>
+      </section>
+    </main>
+    <script src="/errors.js"></script>
+    <script src="/docs.js"></script>
+    <script src="/actions.js"></script>
+    <script src="/recipes.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>

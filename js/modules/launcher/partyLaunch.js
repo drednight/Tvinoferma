@@ -88,7 +88,7 @@ const errText = e => String(e?.message || e || 'неизвестная ошиб�
  * @param {any[]} characters
  * @param {import('./gameCenters.js').GcContext} [ctx]
  */
-async function runPreflight(characters, ctx = launchContext()) {
+export async function runPreflight(characters, ctx = launchContext()) {
   const facts = await readLaunchFacts();
   const l = state.settings?.launcher || {};
   return launchPreflight({
@@ -113,7 +113,7 @@ async function runPreflight(characters, ctx = launchContext()) {
  * @param {string|undefined} gcId явно выбранный лаунчер (`opts.gcId`) — он важнее большинства
  * @returns {{ ctx: import('./gameCenters.js').GcContext, gcId: string|undefined, gcName: string, count: number, total: number, distinct: number }}
  */
-function launchContextForGroup(characters, gcId) {
+export function launchContextForGroup(characters, gcId) {
   const base = launchContext();
   const empty = {
     ctx: gcId ? { ...base, preferredId: gcId } : base,
@@ -616,7 +616,7 @@ export async function launchOne(char, opts = {}) {
   return launchGroup(`Запуск игры: ${char.nick}`, [char], opts);
 }
 
-/** Запуск пати по названию (меню трея и вкладка «Пати»). */
+/** Запуск пати по названию (меню трея, вкладка «Пати», «Сегодня», палитра команд). */
 export async function launchPartyByName(name, opts = {}) {
   const { partyByName, charactersInPartyOrdered } = await import('../parties/membership.js');
   const party = partyByName(state.parties, name);
@@ -626,9 +626,49 @@ export async function launchPartyByName(name, opts = {}) {
   }
   // Именно порядок пати, а не общий порядок списка персонажей: его задаёт перетаскивание
   // участников в карточке («⠿» → «изменить порядок запуска»), и запускаться надо в нём же.
+  let members = charactersInPartyOrdered(state.characters, party.id);
+
+  if (Array.isArray(opts.memberIds)) {
+    const { selectMembersById } = await import('./launchSelection.js');
+    const { selected } = selectMembersById(members, opts.memberIds);
+    members = selected;
+    if (!members.length) {
+      toast('Выберите хотя бы одного персонажа для запуска', 'warning');
+      return null;
+    }
+  } else if (
+    isTauri() &&
+    state.settings?.launcher?.askBeforeLaunch !== false &&
+    opts.interactive !== false &&
+    members.length > 1
+  ) {
+    let runningIds;
+    try {
+      const { matchRunningClients } = await import('./preflight.js');
+      const facts = await readLaunchFacts();
+      if (facts.clients) {
+        runningIds = new Set(matchRunningClients(members, facts.clients).keys());
+      }
+    } catch {
+      /* не удалось прочитать открытые окна — показываем список без бейджей */
+    }
+    const { openLaunchPicker } = await import('./launchSelection.js');
+    const picked = await openLaunchPicker({
+      partyName: party.name,
+      members,
+      runningIds
+    });
+    if (!picked) return null;
+    members = picked;
+    if (!members.length) {
+      toast('Выберите хотя бы одного персонажа для запуска', 'warning');
+      return null;
+    }
+  }
+
   // `partyId` уходит в экран проверки, чтобы «Исправить» открыл «GameCenter и персонажи»
   // уже отфильтрованными по этой пати, а не по всему списку.
-  return launchGroup(`Запуск игры: ${party.name}`, charactersInPartyOrdered(state.characters, party.id), {
+  return launchGroup(`Запуск игры: ${party.name}`, members, {
     partyId: party.id,
     ...opts
   });
