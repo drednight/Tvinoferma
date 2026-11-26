@@ -18,6 +18,7 @@ vi.mock('../js/core/ui.js', () => ({
 }));
 vi.mock('../js/modules/launcher/partyLaunch.js', () => ({
   launchGroup: vi.fn(),
+  launchPartyByName: vi.fn(),
   closePartyWindows: vi.fn(),
   showCloseReport: vi.fn()
 }));
@@ -79,13 +80,11 @@ describe('кнопка «Запуск» уважает порядок участ
       c.partyOrder = { p1: { a: 3, b: 2, c: 1 }[c.id] };
     });
     renderParties();
-    partyLaunch.launchGroup.mockClear();
+    partyLaunch.launchPartyByName.mockClear();
     document.querySelector('.launch-party-action-btn[data-party-name="Основа"]').click();
     await flush();
-    expect(partyLaunch.launchGroup).toHaveBeenCalledTimes(1);
-    // Раньше сюда уходил сырой список из состояния — окна шли в другой последовательности
-    expect(partyLaunch.launchGroup.mock.calls[0][1].map(c => c.id)).toEqual(['c', 'b', 'a']);
-    expect(partyLaunch.launchGroup.mock.calls[0][2].partyId).toBeTruthy();
+    expect(partyLaunch.launchPartyByName).toHaveBeenCalledWith('Основа', { partyId: 'p1' });
+    expect(order(state.characters, 'p1').map(c => c.id)).toEqual(['c', 'b', 'a']);
   });
 
   it('группа «без пати» запускается в порядке общего списка', async () => {

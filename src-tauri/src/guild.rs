@@ -75,7 +75,11 @@ fn clan_window(app: &AppHandle) -> Option<WebviewWindow> {
 ///
 /// Создаётся только из `async` команд: на Windows создание окна из синхронной команды приводит
 /// к взаимной блокировке, и `invoke` тогда не возвращается.
-fn create_clan_window(app: &AppHandle, label: &str, visible: bool) -> Result<WebviewWindow, String> {
+fn create_clan_window(
+    app: &AppHandle,
+    label: &str,
+    visible: bool,
+) -> Result<WebviewWindow, String> {
     let url = Url::parse(GUILD_URL).map_err(|e| e.to_string())?;
     let origin =
         serde_json::to_string(&url.origin().ascii_serialization()).map_err(|e| e.to_string())?;
@@ -148,12 +152,25 @@ pub async fn guild_sync(app: AppHandle) -> Result<serde_json::Value, String> {
     if SYNC_BUSY.swap(true, Ordering::SeqCst) {
         return Err("busy".into());
     }
-    crate::parsers::tf_log(&app, "guild", "step", "Синхронизация клана: чтение сводки профиля");
+    crate::parsers::tf_log(
+        &app,
+        "guild",
+        "step",
+        "Синхронизация клана: чтение сводки профиля",
+    );
     let result = run_sync(&app).await;
     match &result {
         Ok(value) => {
-            let events = value.get("events").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
-            let parties = value.get("parties").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+            let events = value
+                .get("events")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len())
+                .unwrap_or(0);
+            let parties = value
+                .get("parties")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len())
+                .unwrap_or(0);
             crate::parsers::tf_log(
                 &app,
                 "guild",
@@ -168,7 +185,12 @@ pub async fn guild_sync(app: AppHandle) -> Result<serde_json::Value, String> {
                 "busy" => "уже идёт синхронизация",
                 other => other,
             };
-            crate::parsers::tf_log(&app, "guild", "warn", format!("Синхронизация клана: {hint}"));
+            crate::parsers::tf_log(
+                &app,
+                "guild",
+                "warn",
+                format!("Синхронизация клана: {hint}"),
+            );
         }
     }
     SYNC_BUSY.store(false, Ordering::SeqCst);
@@ -242,9 +264,10 @@ async fn wait_for_window_ready(win: &WebviewWindow) -> Result<(), String> {
         let Ok(url) = win.url() else { continue };
         // Hash с готовностью может остаться от прошлого цикла: читаем его только
         // после того, как скрипт заново опубликовал актуальное значение.
-        match crate::parsers::read_hash_payload(url.as_str(), READY_HASH) {
-            Some((None, serde_json::Value::Bool(true))) => return Ok(()),
-            _ => {}
+        if let Some((None, serde_json::Value::Bool(true))) =
+            crate::parsers::read_hash_payload(url.as_str(), READY_HASH)
+        {
+            return Ok(());
         }
     }
     Err("timeout".into())
@@ -316,7 +339,14 @@ pub async fn guild_set_response(
         &app,
         "guild",
         "step",
-        format!("Отметка ивента {event_id}: {}", if response == "yes" { "Пойду" } else { "Не пойду" }),
+        format!(
+            "Отметка ивента {event_id}: {}",
+            if response == "yes" {
+                "Пойду"
+            } else {
+                "Не пойду"
+            }
+        ),
     );
     let result = run_respond(&app, &event_id, &response).await;
     SYNC_BUSY.store(false, Ordering::SeqCst);
@@ -367,7 +397,11 @@ async fn send_response(
         serde_json::Value::String(response.to_string())
     ))
     .map_err(|e| e.to_string())?;
-    let label = if response == "yes" { "Пойду" } else { "Не пойду" };
+    let label = if response == "yes" {
+        "Пойду"
+    } else {
+        "Не пойду"
+    };
     match wait_for_hash(win, ACTION_HASH, Duration::from_secs(RESPOND_TIMEOUT_SECS)).await {
         Ok(v) => {
             let ok = v.get("ok").and_then(|o| o.as_bool()).unwrap_or(false);
@@ -501,7 +535,11 @@ async fn send_responses(
                     "ok": ok,
                     "message": message,
                 }));
-                let label = if response == "yes" { "Пойду" } else { "Не пойду" };
+                let label = if response == "yes" {
+                    "Пойду"
+                } else {
+                    "Не пойду"
+                };
                 if ok {
                     crate::parsers::tf_log(
                         win.app_handle(),
@@ -525,7 +563,11 @@ async fn send_responses(
                     "ok": false,
                     "message": error,
                 }));
-                let label = if response == "yes" { "Пойду" } else { "Не пойду" };
+                let label = if response == "yes" {
+                    "Пойду"
+                } else {
+                    "Не пойду"
+                };
                 crate::parsers::tf_log(
                     win.app_handle(),
                     "guild",
@@ -570,7 +612,10 @@ pub async fn guild_vote_poll(
         &app,
         "guild",
         "step",
-        format!("Голосование в опросе {poll_id}: варианты [{}]", option_ids.join(", ")),
+        format!(
+            "Голосование в опросе {poll_id}: варианты [{}]",
+            option_ids.join(", ")
+        ),
     );
     let result = run_vote(&app, &poll_id, &option_ids).await;
     SYNC_BUSY.store(false, Ordering::SeqCst);

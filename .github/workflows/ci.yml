@@ -25,6 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-frontend
+      - run: npm run check:text
       - run: npm run lint
       - run: npm run format:check
       - run: npm run typecheck

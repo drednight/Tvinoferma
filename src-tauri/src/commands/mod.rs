@@ -14,6 +14,7 @@ pub mod factory_reset;
 pub mod layout;
 pub mod secrets;
 pub mod state;
+mod state_diag;
 mod state_files;
 
 use std::fs;

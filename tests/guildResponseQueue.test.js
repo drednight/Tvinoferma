@@ -152,10 +152,7 @@ describe('отложенный перенос ответов в кланер', (
     // Первый бросок busy, повтор через паузу — POST ушёл.
     expect(send).toHaveBeenCalledTimes(2);
     expect(entries).toEqual([]);
-    expect(task.log).not.toHaveBeenCalledWith(
-      expect.stringContaining('Событие 1: ответ не получен'),
-      'warn'
-    );
+    expect(task.log).not.toHaveBeenCalledWith(expect.stringContaining('Событие 1: ответ не получен'), 'warn');
   });
 
   it('при login в верификации вызывает onLogin (поднять окно для входа)', async () => {

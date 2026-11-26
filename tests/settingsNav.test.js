@@ -9,7 +9,7 @@ const body = html.slice(html.indexOf('<body>') + 6, html.indexOf('</body>')).rep
 describe('категории настроек: разметка', () => {
   it('каждая категория — карточка с обозначением, подписью и ссылкой на существующий раздел', () => {
     const items = [...doc.querySelectorAll('.settings-nav-item')];
-    expect(items).toHaveLength(7); // «Состояние парсеров» живёт внутри «Синхронизации»: отдельного раздела нет
+    expect(items).toHaveLength(8); // «Состояние парсеров» живёт внутри «Синхронизации»: отдельного раздела нет
     for (const item of items) {
       expect(item.querySelector('.settings-nav-icon'), item.textContent).not.toBeNull();
       expect(item.querySelector('.settings-nav-copy strong').textContent.length, item.textContent).toBeGreaterThan(3);
@@ -120,7 +120,10 @@ describe('категории настроек: подсветка', () => {
     expect(groups.length).toBeGreaterThan(1);
     expect(groups.filter(g => !g.hidden)).toHaveLength(1);
     expect(groups.find(g => !g.hidden).id).toBe('settings-app');
+    // Второй пункт — «Внешний API»: у него своя группа, а не «Синхронизация».
     document.querySelectorAll('.settings-nav-item')[1].click();
+    expect(groups.filter(g => !g.hidden).map(g => g.id)).toEqual(['settings-api']);
+    document.querySelectorAll('.settings-nav-item')[2].click();
     expect(groups.filter(g => !g.hidden).map(g => g.id)).toEqual(['settings-sync']);
   });
 

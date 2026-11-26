@@ -23,6 +23,33 @@ it('checks exit codes, source identity and dependency files; never publishes or 
   expect(script).toContain('[Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name]');
   expect(script).toContain('SEPARATE Windows test user');
 });
+it('does not die on a busy node_modules: verifies the tree before npm ci', () => {
+  // На Windows `npm ci` удаляет node_modules целиком. Нативный .node (rolldown/vite)
+  // может быть занят dev-сервером или антивирусом — удаление падает с EPERM -4048.
+  // Скрипт обязан: (1) сначала проверить, что дерево и так совпадает с lock,
+  // (2) при сбое объяснить причину по-русски, а не показать сырой стек.
+  expect(script).toContain('Test-DependenciesMatchLock');
+  expect(script).toContain('Dependencies already match package-lock.json; npm ci skipped.');
+  expect(script).toContain('Format-InstallFailure');
+  expect(script).toContain('EPERM');
+  expect(script).toContain('node_modules/.bin/tauri.cmd');
+  // Диагностика npm не должна проходить через `2>&1` в PowerShell: при
+  // $ErrorActionPreference='Stop' это превращает stderr нативной команды в
+  // исключение раньше, чем мы прочитаем код возврата. Перенаправление — в файл.
+  expect(script).not.toMatch(/& npm\.cmd ci[^\n]*2>&1/);
+  expect(script).toContain('cmd.exe /d /c');
+  // Подсказка о занятом файле перечисляет реальные причины и не обещает `-SkipInstall` молча.
+  for (const term of ['npm run dev', 'Get-Process node', '-SkipInstall']) expect(script).toContain(term);
+});
+
+it('guess-free dependency check: strict but not paranoid', () => {
+  // Правила проверки должны оставаться явными в тексте скрипта.
+  expect(script).toContain('meta.optional || meta.dev');
+  expect(script).toContain('checked < 100');
+  expect(script).toContain("'node_modules/vite'");
+  expect(script).toContain("'node_modules/@tauri-apps/cli'");
+});
+
 it('documents real Windows prerequisites, clean source and test-only limitations', () => {
   const doc = readFileSync('docs/LOCAL-WINDOWS-BUILD.md', 'utf8');
   for (const term of [
@@ -35,7 +62,9 @@ it('documents real Windows prerequisites, clean source and test-only limitations
     'НЕ проверены на Windows',
     'Linux',
     'Ctrl+Shift+B',
-    'I_HAVE_BACKUP_AND_ACCEPT_SHARED_DATA'
+    'I_HAVE_BACKUP_AND_ACCEPT_SHARED_DATA',
+    'EPERM',
+    'npm ci skipped'
   ])
     expect(doc).toContain(term);
 });

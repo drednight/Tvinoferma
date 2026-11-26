@@ -323,7 +323,8 @@ pub fn game_macro_overlay_preferences(
     topmost: bool,
     appearance: Option<serde_json::Value>,
 ) -> Result<(), String> {
-    if window.label() != "game-overlay" || !opacity.is_finite() || !(0.05..=1.0).contains(&opacity) {
+    if window.label() != "game-overlay" || !opacity.is_finite() || !(0.05..=1.0).contains(&opacity)
+    {
         return Err("Invalid overlay preferences".into());
     }
     window

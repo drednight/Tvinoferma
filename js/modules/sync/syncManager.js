@@ -348,7 +348,9 @@ export async function runAuthChecks(
 ) {
   const { retries, retryDelayMs } = scriptSettings();
   const task =
-    silent && chars.length === 1 ? null : startTask(title, { total: chars.length, cancelable: chars.length > 1, category: 'background' });
+    silent && chars.length === 1
+      ? null
+      : startTask(title, { total: chars.length, cancelable: chars.length > 1, category: 'background' });
   // Ждём своей очереди: пока идёт другой скрипт, работу не начинаем
   await task?.waitTurn();
   if (task?.cancelled) {

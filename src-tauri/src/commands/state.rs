@@ -1,4 +1,4 @@
-use super::{data_dir, state_files, state_path};
+use super::{data_dir, state_diag, state_files, state_path};
 use serde_json::Value;
 use std::fs;
 use std::path::Path;
@@ -66,7 +66,11 @@ pub fn load_state(app: AppHandle) -> Result<Option<Value>, String> {
     let dir = path
         .parent()
         .ok_or_else(|| "Не удалось определить папку данных".to_string())?;
-    load_state_at(&path, dir, super::backup::unix_now())
+    let state = load_state_at(&path, dir, super::backup::unix_now())?;
+    if let Some(value) = &state {
+        state_diag::record(dir, "load", super::backup::unix_now(), value);
+    }
+    Ok(state)
 }
 
 /// Точный JSON остаётся внутри локального процесса/IPC. Его нельзя логировать или
@@ -78,7 +82,11 @@ pub fn load_state_raw(app: AppHandle) -> Result<Option<String>, String> {
     let dir = path
         .parent()
         .ok_or_else(|| "Не удалось определить папку данных".to_string())?;
-    Ok(read_state_at(&path, dir, super::backup::unix_now())?.map(|(_, raw)| raw))
+    let loaded = read_state_at(&path, dir, super::backup::unix_now())?;
+    if let Some((value, _)) = &loaded {
+        state_diag::record(dir, "load", super::backup::unix_now(), value);
+    }
+    Ok(loaded.map(|(_, raw)| raw))
 }
 
 #[tauri::command]
@@ -88,7 +96,11 @@ pub async fn save_state(app: AppHandle, payload: Value) -> Result<(), String> {
         .map_err(|e| state_files::classify_write_error(e.to_string()))?;
     match tauri::async_runtime::spawn_blocking(move || {
         let _guard = lock_state_io()?;
-        write_atomic(&path, &raw)
+        write_atomic(&path, &raw)?;
+        if let Some(dir) = path.parent() {
+            state_diag::record(dir, "save", super::backup::unix_now(), &payload);
+        }
+        Ok::<(), String>(())
     })
     .await
     {
@@ -134,7 +146,11 @@ pub async fn save_state_if_unchanged(
         .map_err(|e| state_files::classify_write_error(e.to_string()))?;
     match tauri::async_runtime::spawn_blocking(move || {
         let _guard = lock_state_io()?;
-        save_if_unchanged_at(&path, &expected_raw, &raw)
+        save_if_unchanged_at(&path, &expected_raw, &raw)?;
+        if let Some(dir) = path.parent() {
+            state_diag::record(dir, "save", super::backup::unix_now(), &payload);
+        }
+        Ok::<(), String>(())
     })
     .await
     {

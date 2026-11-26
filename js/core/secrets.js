@@ -223,8 +223,8 @@ export async function hydrateSecrets(
         if (command === 'secrets_available' && result !== true) throw new Error(UNAVAILABLE);
         return result;
       } catch (error) {
-        if (!startupRetry || attempt >= 3) throw error;
-        await new Promise(resolve => setTimeout(resolve, 1000 * 2 ** attempt));
+        if (!startupRetry || attempt >= 5) throw error;
+        await new Promise(resolve => setTimeout(resolve, Math.min(15000, 1000 * 2 ** attempt)));
       }
     }
   };

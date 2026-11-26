@@ -1,0 +1,485 @@
+/* demo/external-api/external-api.css
+   Макет странички внешнего API. Цвета — только токены темы (css/core/variables.css),
+   чтобы страница выглядела частью приложения. */
+
+.xapi {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 30px 20px 80px;
+  display: grid;
+  gap: 22px;
+}
+
+.xapi code {
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  font-size: 0.85em;
+}
+
+/* --- Hero --- */
+
+.xapi-hero h1 {
+  margin: 10px 0 10px;
+  font-size: 1.6rem;
+  line-height: 1.2;
+}
+.xapi-hero p {
+  margin: 0 0 10px;
+  max-width: 92ch;
+  color: var(--text-dim);
+}
+.xapi-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border: 1px solid rgba(224, 175, 104, 0.45);
+  border-radius: var(--radius-pill);
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.xapi-answer {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--success);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text);
+}
+.xapi-hint {
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+.xapi-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 0;
+}
+.xapi-nav a {
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  text-decoration: none;
+}
+.xapi-nav a:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+/* --- Blocks --- */
+
+.xapi-block {
+  padding: 18px 20px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+}
+.xapi-block > h2 {
+  margin: 0 0 6px;
+  font-size: 1.12rem;
+}
+.xapi-lead {
+  margin: 0 0 14px;
+  max-width: 95ch;
+  color: var(--text-dim);
+  font-size: 0.88rem;
+}
+.xapi-sub {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+}
+
+/* --- Connection --- */
+
+.xapi-connect {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+.xapi-field {
+  display: grid;
+  gap: 4px;
+  min-width: 280px;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+.xapi-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 0;
+}
+.xapi-chip {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: 0.78rem;
+}
+.xapi-chip.is-ok {
+  border-color: rgba(158, 206, 106, 0.45);
+  background: var(--success-soft);
+  color: var(--success);
+}
+.xapi-chip.is-warn {
+  border-color: rgba(224, 175, 104, 0.45);
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.xapi-note {
+  margin: 12px 0 0;
+  color: var(--text-faint);
+  font-size: 0.82rem;
+  max-width: 95ch;
+}
+
+/* --- Panel grid --- */
+
+.xapi-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 20px;
+}
+@media (max-width: 960px) {
+  .xapi-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.xapi-col {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.xapi-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  color: var(--text-dim);
+  font-size: 0.84rem;
+}
+.xapi-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* --- Cards --- */
+
+.xapi-cards {
+  display: grid;
+  gap: 10px;
+}
+.xapi-card {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+.xapi-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.xapi-card-head strong {
+  font-size: 0.98rem;
+}
+.xapi-card-head .muted {
+  font-size: 0.8rem;
+}
+.xapi-badge {
+  margin-left: auto;
+  padding: 2px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-dim);
+  font-size: 0.72rem;
+}
+.xapi-badge.is-live {
+  border-color: rgba(158, 206, 106, 0.45);
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.xapi-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 6px;
+}
+.xapi-field-sm {
+  display: grid;
+  gap: 2px;
+  font-size: 0.72rem;
+  color: var(--text-faint);
+}
+.xapi-field-sm .input {
+  padding: 5px 8px;
+  font-size: 0.82rem;
+}
+.xapi-passes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.xapi-pass {
+  display: grid;
+  gap: 2px;
+  font-size: 0.72rem;
+  color: var(--text-faint);
+}
+.xapi-pass .input {
+  width: 84px;
+  padding: 5px 8px;
+  font-size: 0.82rem;
+}
+.xapi-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.xapi-dirty {
+  color: var(--warning);
+  font-size: 0.76rem;
+}
+
+/* --- Parties and windows --- */
+
+.xapi-party {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+.xapi-party-name {
+  font-weight: 600;
+}
+.xapi-party-members {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+}
+.xapi-party .btn {
+  margin-left: auto;
+}
+
+.xapi-windows {
+  display: grid;
+  gap: 6px;
+}
+.xapi-window {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 0.84rem;
+}
+.xapi-window .xapi-pid {
+  color: var(--text-faint);
+  font-size: 0.76rem;
+}
+.xapi-window .btn {
+  margin-left: auto;
+}
+
+/* --- Job --- */
+
+.xapi-job {
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  font-size: 0.85rem;
+}
+.xapi-job-bar {
+  height: 7px;
+  margin: 8px 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.xapi-job-bar > span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  transition: width var(--speed) var(--ease);
+}
+.xapi-job-rows {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 3px;
+  font-size: 0.8rem;
+}
+.xapi-job-rows li {
+  display: flex;
+  gap: 8px;
+}
+.xapi-job-rows .ok {
+  color: var(--success);
+}
+.xapi-job-rows .skip {
+  color: var(--warning);
+}
+.xapi-job-rows .err {
+  color: var(--danger);
+}
+
+/* --- Journal --- */
+
+.xapi-calls {
+  display: grid;
+  gap: 12px;
+}
+.xapi-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.xapi-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.xapi-table th,
+.xapi-table td {
+  padding: 7px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.xapi-table th {
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-weight: 600;
+}
+.xapi-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.xapi-table tbody tr.is-picked {
+  background: var(--accent-soft);
+}
+.xapi-table td.xapi-code-ok {
+  color: var(--success);
+}
+.xapi-table td.xapi-code-bad {
+  color: var(--danger);
+}
+.xapi-empty td {
+  color: var(--text-faint);
+  white-space: normal;
+}
+.xapi-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+@media (max-width: 860px) {
+  .xapi-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.xapi-pair h4 {
+  margin: 0 0 6px;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+.xapi-pair pre,
+.xapi-code {
+  margin: 0;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  overflow: auto;
+  max-height: 320px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* --- Recipes --- */
+
+.xapi-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.xapi-tab {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.xapi-tab.is-on {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.xapi-copy {
+  margin-left: auto;
+}
+
+/* --- Reference extras --- */
+
+.xapi-more {
+  margin-top: 12px;
+  padding: 10px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  font-size: 0.84rem;
+  color: var(--text-dim);
+}
+.xapi-more summary {
+  cursor: pointer;
+  color: var(--text);
+}
+.xapi-more ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+
+.xapi-foot {
+  color: var(--text-faint);
+  font-size: 0.8rem;
+  text-align: center;
+}

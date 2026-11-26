@@ -214,7 +214,7 @@ export function spanLabel(days) {
 
 // ── Нормализация ───────────────────────────────────────────────────────────
 
-function normalizeOperation(input = {}) {
+export function normalizeOperation(input = {}) {
   const currency = CURRENCY_IDS.includes(input.currency) ? input.currency : DEFAULT_CURRENCY;
   return {
     id: String(input.id || uid()),
