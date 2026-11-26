@@ -1,0 +1,72 @@
+tf — командная строка Твинофермы поверх внешнего API (127.0.0.1, токен из TF_API_TOKEN).
+
+Использование: tf <команда> [позиционные значения] [--флаг значение …] [--json]
+
+Служебные команды:
+  tf ls                     список команд (то же, что этот раздел)
+  tf describe <команда>    поля команды и пример запроса
+  tf call GET /characters   прямой запрос к API (то же право и тот же токен)
+  tf <команда> --yes        подтвердить изменение, запуск или закрытие окон
+
+
+Чтение данных:
+  tf list-characters                          GET /api/v1/characters  [чтение]
+  tf character-card <id>                      GET /api/v1/characters/{id}  [чтение]
+  tf character-stats <id>                     GET /api/v1/characters/{id}/stats  [чтение]
+  tf character-passes <id>                    GET /api/v1/characters/{id}/dungeon-passes  [чтение]
+  tf character-stat <id> <stat>               GET /api/v1/characters/{id}/stats/{stat}  [чтение]
+  tf character-pass <id> <pass>               GET /api/v1/characters/{id}/dungeon-passes/{pass}  [чтение]
+  tf list-parties                             GET /api/v1/parties  [чтение]
+  tf party-card <id>                          GET /api/v1/parties/{id}  [чтение]
+  tf list-marathons                           GET /api/v1/marathons  [чтение]
+  tf marathon-card <id>                       GET /api/v1/marathons/{id}  [чтение]
+  tf marathon-participants <id>               GET /api/v1/marathons/{id}/participants  [чтение]
+  tf list-windows                             GET /api/v1/windows  [чтение]
+  tf planner                                  GET /api/v1/planner  [чтение]
+  tf finance                                  GET /api/v1/finance  [чтение]
+  tf health                                   GET /api/v1/health  [чтение]
+  tf status                                   GET /api/v1/status  [чтение]
+  tf audit                                    GET /api/v1/audit  [чтение]
+
+Изменение данных:
+  tf set-stat <id> <stat> <value>             PATCH /api/v1/characters/{id}/stats/{stat}  [изм.]
+  tf set-pass <id> <value>                    PATCH /api/v1/characters/{id}/dungeon-passes/{pass}  [изм.]
+  tf bulk-pass <ids> <value>                  POST /api/v1/characters/bulk-update  [⚠ изм.]
+  tf patch-character <id>                     PATCH /api/v1/characters/{id}  [изм.]
+  tf create-character <nick>                  POST /api/v1/characters  [изм.]
+  tf rename-party <id> <name>                 PATCH /api/v1/parties/{id}  [изм.]
+  tf marathon-mark <id> <characterId> <taskId> <date>POST /api/v1/marathons/{id}/marks  [изм.]
+  tf marathon-adjust <id> <characterId> <taskId> <value>POST /api/v1/marathons/{id}/adjust  [изм.]
+  tf planner-entry <id>                       PATCH /api/v1/planner/entries/{id}  [изм.]
+  tf planner-add <title>                      POST /api/v1/planner/entries  [изм.]
+  tf finance-operation <amount>               POST /api/v1/finance/operations  [изм.]
+
+Запуск и окна:
+  tf launch-character <characterId>           POST /api/v1/launch/character  [изм.]
+  tf launch-party <partyId>                   POST /api/v1/launch/party  [изм.]
+  tf launch-selection <characterIds>          POST /api/v1/launch/selection  [изм.]
+  tf close-windows <pids>                     POST /api/v1/windows/close  [⚠ изм.]
+  tf job-status <jobId>                       GET /api/v1/jobs/{jobId}  [чтение]
+
+Выгрузки:
+  tf export <set>                             GET /api/v1/export/{set}.{format}  [чтение]
+
+Псевдонимы: characters → list-characters, parties → list-parties, marathons → list-marathons, windows → list-windows, jobs → job-status
+
+Глобальные флаги:
+  --base         адрес сервера, по умолчанию http://127.0.0.1:47831 (тестовая сборка — 47832)
+  --port         то же, что --base, но только порт
+  --token-file   файл с токеном; по умолчанию переменная окружения TF_API_TOKEN
+  --json         один JSON в stdout — для скриптов и агентов
+  --dry-run      показать запрос и не отправлять его
+  --yes          подтвердить действие (по умолчанию все изменение/запуск требуют его)
+  --wait         дождаться задания запуска и вернуть его итог
+  --wait-timeout сколько миллисекунд ждать задания, по умолчанию 600000
+  --timeout      сколько миллисекунд ждать ответ сервера, по умолчанию 20000
+  --out          выгрузить ответ в файл (для /export/*)
+  --help         краткая справка
+
+Права берутся из настроек приложения («Настройки → 🔌 Внешний API»): без нужного
+права команда получает 403 forbidden_scope — CLI подскажет, какое право включить.
+Коды выхода: 0 — успех (в том числе dry-run), 1 — отказ API, 2 — ошибка в командной строке, 3 — сервер не отвечает.
+

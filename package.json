@@ -16,6 +16,7 @@
     "version:bump": "node scripts/bump-version.mjs",
     "docs:api-examples": "node scripts/build-external-api-examples.mjs",
     "docs:api-examples:check": "node scripts/build-external-api-examples.mjs --check",
+    "tf": "node scripts/tf/tf.mjs",
     "lint": "eslint .",
     "typecheck": "tsc -p jsconfig.json",
     "format": "prettier --write .",
