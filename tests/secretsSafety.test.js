@@ -404,16 +404,16 @@ describe('bounded startup vault readiness', () => {
     expect(reads).toBe(2);
     expect(vault.calls.some(c => /set_many|delete_many/.test(c))).toBe(false);
   });
-  it('stops after four attempts, keeps characters intact and blocks writes if startup access never becomes ready', async () => {
+  it('stops after six attempts, keeps characters intact and blocks writes if startup access never becomes ready', async () => {
     vi.useFakeTimers();
     const invoke = vi.fn(async () => false);
     __setInvoke(invoke);
     const characters = [{ id: 'a', contacts: contact('unchanged') }];
     const before = structuredClone(characters);
     const pending = hydrateSecrets(characters, { requiresVault: true, startupRetry: true });
-    await vi.advanceTimersByTimeAsync(7000);
+    await vi.advanceTimersByTimeAsync(30000);
     expect(await pending).toMatchObject({ blocked: true });
-    expect(invoke).toHaveBeenCalledTimes(4);
+    expect(invoke).toHaveBeenCalledTimes(6);
     expect(characters).toEqual(before);
     await expect(prepareForDisk({ characters })).rejects.toThrow();
   });
@@ -428,6 +428,28 @@ describe('bounded startup vault readiness', () => {
       });
       expect(vault.calls).toEqual(['secrets_available', 'secrets_get_many']);
       expect(characters).toEqual(before);
+    }
+  });
+
+  it('на старте ждёт хранилище до ~30 секунд, затем блокирует запись', async () => {
+    vi.useFakeTimers();
+    try {
+      const invoke = vi.fn(async command => {
+        if (command === 'secrets_available') return false;
+        return {};
+      });
+      __setInvoke(invoke);
+      const run = hydrateSecrets([{ id: 'a', contacts: contact('x') }], {
+        requiresVault: true,
+        startupRetry: true
+      });
+      for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(15000);
+      const result = await run;
+      expect(result.blocked).toBe(true);
+      // 1 попытка + 5 повторов (паузы 1, 2, 4, 8, 15 с)
+      expect(invoke.mock.calls.filter(([command]) => command === 'secrets_available')).toHaveLength(6);
+    } finally {
+      vi.useRealTimers();
     }
   });
 });

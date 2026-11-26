@@ -228,6 +228,7 @@ export const DEFAULT_SETTINGS = {
     // окно к этому моменту уже запущено, и ждать нечего. Если на большой пати посыплются
     // ошибки запуска, поднимите здесь до 1–2 с.
     skipRunning: true, // не запускать персонажа, чьё окно игры уже открыто («Ник — Класс»): сразу переходить к следующему
+    askBeforeLaunch: true, // перед запуском пати спрашивать, кого именно запускать (все отмечены по умолчанию)
     preflight: 'issues', // экран проверок перед запуском: 'issues' — только при проблемах, 'always' — всегда, 'off' — никогда
     layoutDir: '', // папка Layout игры (Настройки → Запуск игры → «Layout»)
     layoutTemplate: '' // файл-образец layout, который копируется поверх остальных .ini в папке
@@ -249,5 +250,17 @@ export const DEFAULT_SETTINGS = {
   updates: {
     checkOnStartup: true,
     lastCheckedAt: null
+  },
+  // Внешний API для сторонних программ (docs/EXTERNAL-API.md). По умолчанию
+  // выключен: включение и токен — осознанное действие в «Настройки → 🔌 Внешний API».
+  // Токен в state.json не хранится: он лежит в хранилище ОС (core/secrets.js), здесь
+  // только отметка, что он создан, и когда.
+  externalApi: {
+    enabled: false,
+    port: 47831,
+    allowRead: true,
+    allowModify: false,
+    allowLaunchClose: false,
+    tokenCreatedAt: null
   }
 };

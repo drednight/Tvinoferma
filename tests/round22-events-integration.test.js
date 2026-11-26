@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Реальный storage (localStorage в jsdom), isTauri подменён в true.
-vi.mock('../js/core/storage.js', async (importOriginal) => {
+vi.mock('../js/core/storage.js', async importOriginal => {
   const actual = await importOriginal();
   return { ...actual, isTauri: () => true };
 });
 vi.mock('../js/core/ui.js', () => ({ toast: vi.fn() }));
 const winMocks = vi.hoisted(() => ({
   send: vi.fn(async () => ({ ok: true })),
-  sendBatch: vi.fn(async (events) => {
+  sendBatch: vi.fn(async events => {
     const results = [];
     for (const e of events) {
       const reply = await winMocks.send(e.eventId, e.response);
@@ -46,7 +46,9 @@ describe('интеграция: ответ на событие сохраняе�
     localStorage.clear();
     vi.useFakeTimers();
     winMocks.send.mockReset().mockResolvedValue({ ok: true });
-    winMocks.read.mockReset().mockResolvedValue({ events: [{ id: '1', response: 'yes' }], parties: [], selfNick: '', polls: [] });
+    winMocks.read
+      .mockReset()
+      .mockResolvedValue({ events: [{ id: '1', response: 'yes' }], parties: [], selfNick: '', polls: [] });
     state.settings.guild = {
       enabled: true,
       syncedAt: 123,

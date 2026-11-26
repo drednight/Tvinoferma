@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // Сохраняем реальный storage.js (localStorage-адаптер в jsdom), чтобы проверить,
 // что pendingResponses реально уходит на диск через полный путь respond.
 // isTauri подменяем в true: jsdom — не Tauri, иначе enabled() вернёт false.
-vi.mock('../js/core/storage.js', async (importOriginal) => {
+vi.mock('../js/core/storage.js', async importOriginal => {
   const actual = await importOriginal();
   return { ...actual, isTauri: () => true };
 });
@@ -11,7 +11,7 @@ vi.mock('../js/core/ui.js', () => ({ toast: vi.fn() }));
 vi.mock('../js/modules/guild/window.js', () => ({
   openGuild: vi.fn(),
   respondToEvent: vi.fn(async () => ({ ok: true })),
-  respondToEvents: vi.fn(async (events) => ({
+  respondToEvents: vi.fn(async events => ({
     ok: true,
     results: events.map(e => ({ eventId: e.eventId, response: e.response, ok: true, message: '' }))
   })),

@@ -92,6 +92,9 @@ async function init() {
   };
   let acknowledgedOpen = '';
   let windowSignature = '';
+  let latestParties = [];
+  let latestWindows = [];
+  let askBeforeLaunch = true;
   let recipientRevision = '',
     recipientDirty = false,
     recipientsPending = false;
@@ -249,11 +252,15 @@ async function init() {
     recipientLeader.disabled = !!data.busy || recipientsPending || !recipientRevision;
     const partySelect = document.getElementById('party-select'),
       selected = partySelect.value || data.partyId;
-    partySelect.replaceChildren(
-      new Option('Выберите пати', ''),
-      ...(data.parties || []).map(p => new Option(p.name, p.id))
-    );
+    latestParties = Array.isArray(data.parties) ? data.parties : [];
+    latestWindows = Array.isArray(data.windows) ? data.windows : [];
+    askBeforeLaunch = data.askBeforeLaunch !== false;
+    partySelect.replaceChildren(new Option('Выберите пати', ''), ...latestParties.map(p => new Option(p.name, p.id)));
     partySelect.value = selected || '';
+    if (data.busy) {
+      const picker = document.getElementById('party-launch-picker');
+      if (picker) picker.hidden = true;
+    }
     document.getElementById('party-launch').disabled = !!data.busy || !partySelect.value;
     document.getElementById('party-refresh').disabled = !!data.busy;
     document.getElementById('window-notice').textContent = data.windowNotice || 'Нажмите «Обновить окна».';
@@ -333,7 +340,9 @@ async function init() {
     document.body.classList.toggle('header-hidden', a.hideHeader);
     const menuHeaderToggleLabel = document.getElementById('menu-header-toggle-label');
     if (menuHeaderToggleLabel)
-      menuHeaderToggleLabel.textContent = a.hideHeader ? 'Показать заголовок и кнопки окна' : 'Скрыть заголовок и кнопки окна';
+      menuHeaderToggleLabel.textContent = a.hideHeader
+        ? 'Показать заголовок и кнопки окна'
+        : 'Скрыть заголовок и кнопки окна';
     const menuHeaderToggleBtn = document.getElementById('menu-header-toggle');
     if (menuHeaderToggleBtn) menuHeaderToggleBtn.setAttribute('aria-pressed', String(a.hideHeader));
     if (document.getElementById('appearance-screen').hidden) {
@@ -341,7 +350,8 @@ async function init() {
         'text-color': a.textColor,
         'key-color': a.keyColor,
         'command-color': a.commandColor
-      })) setColor(id, value);
+      }))
+        setColor(id, value);
       document.getElementById('font-size').value = String(a.fontSize);
       document.getElementById('hide-header').checked = a.hideHeader;
     }
@@ -466,16 +476,33 @@ async function init() {
     });
     closeMenu();
   };
-  document.querySelectorAll('[data-view]').forEach(button => (button.onclick = () => {
-    if (button.dataset.view === '__fold') { void foldClick(); return; }
-    showView(button.dataset.view);
-  }));
+  document.querySelectorAll('button[data-view]').forEach(
+    button =>
+      (button.onclick = () => {
+        if (button.dataset.view === '__fold') {
+          void foldClick();
+          return;
+        }
+        showView(button.dataset.view);
+      })
+  );
 
   // Палитра цветов: пары основных пресетов + выбор произвольного цвета свайдами.
   const COLOR_PALETTE = [
-    '#ff6b6b', '#ffb46b', '#f5cc76', '#7de4b4', '#83e8f5', '#b7c2ff',
-    '#c4a5ff', '#ffb3d9', '#d4ee85', '#eef1ff', '#cbd5e1', '#ffffff',
-    '#1a2233', '#000000'
+    '#ff6b6b',
+    '#ffb46b',
+    '#f5cc76',
+    '#7de4b4',
+    '#83e8f5',
+    '#b7c2ff',
+    '#c4a5ff',
+    '#ffb3d9',
+    '#d4ee85',
+    '#eef1ff',
+    '#cbd5e1',
+    '#ffffff',
+    '#1a2233',
+    '#000000'
   ];
   const colorPresets = {
     'text-color': TEXT_PRESETS,
@@ -523,6 +550,113 @@ async function init() {
       .forEach(input => (input.nextElementSibling.style.color = colors[input.value]));
   let partyBusy = false;
   document.getElementById('party-launch').disabled = true;
+  const partyPicker = document.getElementById('party-launch-picker');
+  const pickerList = document.getElementById('party-picker-list');
+  const pickerTitle = document.getElementById('party-picker-title');
+  const pickerCount = document.getElementById('party-picker-count');
+  const pickerConfirm = document.getElementById('party-picker-confirm');
+  const closeInlinePicker = () => {
+    if (partyPicker) partyPicker.hidden = true;
+  };
+  const updateInlinePickerCount = () => {
+    if (!pickerList || !pickerConfirm) return;
+    const boxes = [...pickerList.querySelectorAll('input[type="checkbox"]')];
+    const checked = boxes.filter(b => b.checked).length;
+    if (pickerCount) pickerCount.textContent = `Запустить: ${checked} из ${boxes.length}`;
+    pickerConfirm.textContent = `▶ Запустить (${checked})`;
+    pickerConfirm.disabled = checked === 0;
+  };
+  const sendOverlayPartyLaunch = async (partyId, memberIds) => {
+    if (partyBusy) return;
+    partyBusy = true;
+    document.getElementById('party-launch').disabled = true;
+    document.getElementById('party-refresh').disabled = true;
+    document.getElementById('party-close-all').disabled = true;
+    try {
+      await emitTo('main', 'game-overlay-party', {
+        action: 'party-launch',
+        partyId,
+        memberIds
+      });
+    } catch {
+      document.getElementById('window-notice').textContent =
+        'Не удалось отправить запрос. Откройте главное приложение.';
+      document.getElementById('party-refresh').disabled = false;
+      document.getElementById('party-close-all').disabled = false;
+      document.getElementById('party-launch').disabled = !document.getElementById('party-select').value;
+    } finally {
+      partyBusy = false;
+    }
+  };
+  const openInlinePicker = party => {
+    if (!partyPicker || !pickerList) return false;
+    const runningNames = new Set(
+      latestWindows.filter(w => w.known && w.name).map(w => String(w.name).trim().toLowerCase())
+    );
+    if (pickerTitle) pickerTitle.textContent = `Запуск «${party.name}» — кого запускаем:`;
+    pickerList.replaceChildren(
+      ...(party.members || []).map(member => {
+        const li = document.createElement('li');
+        const label = document.createElement('label');
+        label.className = 'rrow plp-ov-row';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.value = String(member.id);
+        input.checked = true;
+        const nick = document.createElement('span');
+        nick.className = 'nick';
+        nick.textContent = member.nick || member.id;
+        label.append(input, nick);
+        if (member.cls) {
+          const cls = document.createElement('span');
+          cls.className = 'party';
+          cls.textContent = member.cls;
+          label.append(cls);
+        }
+        if (
+          runningNames.has(
+            String(member.nick || '')
+              .trim()
+              .toLowerCase()
+          )
+        ) {
+          const badge = document.createElement('span');
+          badge.className = 'plp-ov-badge';
+          badge.textContent = 'уже запущено';
+          label.append(badge);
+        }
+        li.append(label);
+        return li;
+      })
+    );
+    partyPicker.dataset.partyId = party.id;
+    partyPicker.hidden = false;
+    updateInlinePickerCount();
+    return true;
+  };
+  if (pickerList) pickerList.onchange = updateInlinePickerCount;
+  const pickerAll = document.getElementById('party-picker-all');
+  if (pickerAll)
+    pickerAll.onclick = () => {
+      pickerList?.querySelectorAll('input[type="checkbox"]').forEach(b => (b.checked = true));
+      updateInlinePickerCount();
+    };
+  const pickerNone = document.getElementById('party-picker-none');
+  if (pickerNone)
+    pickerNone.onclick = () => {
+      pickerList?.querySelectorAll('input[type="checkbox"]').forEach(b => (b.checked = false));
+      updateInlinePickerCount();
+    };
+  const pickerCancel = document.getElementById('party-picker-cancel');
+  if (pickerCancel) pickerCancel.onclick = closeInlinePicker;
+  if (pickerConfirm)
+    pickerConfirm.onclick = () => {
+      const partyId = partyPicker?.dataset.partyId || document.getElementById('party-select').value;
+      const memberIds = [...(pickerList?.querySelectorAll('input[type="checkbox"]:checked') || [])].map(b => b.value);
+      if (!partyId || !memberIds.length) return;
+      closeInlinePicker();
+      void sendOverlayPartyLaunch(partyId, memberIds);
+    };
   const partyRequest = async (action, options = {}) => {
     if (partyBusy) return;
     partyBusy = true;
@@ -545,13 +679,29 @@ async function init() {
       partyBusy = false;
     }
   };
-  document.getElementById('party-select').onchange = () =>
-    (document.getElementById('party-launch').disabled = partyBusy || !document.getElementById('party-select').value);
-  document.getElementById('party-launch').onclick = () => partyRequest('party-launch');
+  document.getElementById('party-select').onchange = () => {
+    closeInlinePicker();
+    document.getElementById('party-launch').disabled = partyBusy || !document.getElementById('party-select').value;
+  };
+  document.getElementById('party-launch').onclick = () => {
+    const selectedId = document.getElementById('party-select').value;
+    const party = latestParties.find(p => p.id === selectedId);
+    if (
+      askBeforeLaunch !== false &&
+      Array.isArray(party?.members) &&
+      party.members.length > 1 &&
+      openInlinePicker(party)
+    )
+      return;
+    void partyRequest('party-launch');
+  };
   const closeButton = document.getElementById('party-close-all');
   const closeDropdown = document.getElementById('close-dropdown');
   const closeWindows = mode => {
-    if (mode === 'all') { void partyRequest('party-close-all'); return; }
+    if (mode === 'all') {
+      void partyRequest('party-close-all');
+      return;
+    }
     const closeTargets = [
       ...document.querySelectorAll(
         mode === 'selected' ? '[data-close-window]:checked' : '[data-close-window]:not(:disabled)'
@@ -593,7 +743,10 @@ async function init() {
   };
   if (menuBtn) menuBtn.onclick = toggleMenu;
   const floatingPanelToggle = document.getElementById('floating-panel-toggle');
-  if (floatingPanelToggle) floatingPanelToggle.onclick = () => { menu.hidden = false; };
+  if (floatingPanelToggle)
+    floatingPanelToggle.onclick = () => {
+      menu.hidden = false;
+    };
   document.addEventListener('click', event => {
     if (menu.hidden) return;
     const target = event.target;
@@ -606,12 +759,13 @@ async function init() {
 
   // Кнопка в хедере: скрыть/показать заголовок и кнопки окна (сразу, с синхронной чекбоксом).
   const headerToggle = document.getElementById('header-toggle');
-  if (headerToggle) headerToggle.onclick = () => {
-    const on = !document.body.classList.contains('header-hidden');
-    document.body.classList.toggle('header-hidden', on);
-    if (hideHeader) hideHeader.checked = on;
-    syncMenuHeaderToggle();
-  };
+  if (headerToggle)
+    headerToggle.onclick = () => {
+      const on = !document.body.classList.contains('header-hidden');
+      document.body.classList.toggle('header-hidden', on);
+      if (hideHeader) hideHeader.checked = on;
+      syncMenuHeaderToggle();
+    };
 
   // Кнопка в раскрывающемся меню: показать заголовок и кнопки окна, когда они скрыты
   // (меню открывается плавающей кнопкой ☰, поэтому нужен способ вернуть хедер).
@@ -623,12 +777,13 @@ async function init() {
     const label = document.getElementById('menu-header-toggle-label');
     if (label) label.textContent = hidden ? 'Показать заголовок и кнопки окна' : 'Скрыть заголовок и кнопки окна';
   };
-  if (menuHeaderToggle) menuHeaderToggle.onclick = () => {
-    const on = !document.body.classList.contains('header-hidden');
-    document.body.classList.toggle('header-hidden', on);
-    if (hideHeader) hideHeader.checked = on;
-    syncMenuHeaderToggle();
-  };
+  if (menuHeaderToggle)
+    menuHeaderToggle.onclick = () => {
+      const on = !document.body.classList.contains('header-hidden');
+      document.body.classList.toggle('header-hidden', on);
+      if (hideHeader) hideHeader.checked = on;
+      syncMenuHeaderToggle();
+    };
   syncMenuHeaderToggle();
 
   const themeGrid = document.getElementById('theme-grid');

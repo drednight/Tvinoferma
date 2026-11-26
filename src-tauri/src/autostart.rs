@@ -98,6 +98,9 @@ pub struct AutostartInfo {
     admin: bool,
     /// Сама Твиноферма сейчас запущена от администратора
     self_elevated: bool,
+    /// Имя задания в Планировщике: у тестовой сборки оно своё, и в подсказке нужно
+    /// называть именно его
+    task_name: String,
 }
 
 /// Состояние по записи `Run` и заданию Планировщика (задание важнее: оно запускает программу с правами администратора).
@@ -114,6 +117,7 @@ fn info_from(run: Option<String>, task: Option<(String, bool)>, exe: &str) -> Au
             path,
             admin,
             self_elevated: false,
+            task_name: crate::profile::AUTOSTART_TASK.to_string(),
         },
         None => AutostartInfo {
             supported: true,
@@ -124,6 +128,7 @@ fn info_from(run: Option<String>, task: Option<(String, bool)>, exe: &str) -> Au
             broken: false,
             admin: false,
             self_elevated: false,
+            task_name: crate::profile::AUTOSTART_TASK.to_string(),
         },
     }
 }
@@ -480,10 +485,18 @@ pub async fn autostart_status() -> Result<AutostartInfo, String> {
         .map_err(|e| e.to_string())?
 }
 
+/// Тестовая сборка всегда работает от администратора (см. `elevate::ensure_admin_start`).
+/// Значит, автозапуск тоже должен быть от администратора: обычная запись в `Run`
+/// запустила бы её без прав, и при входе в систему появлялся бы запрос UAC.
+fn admin_autostart_required() -> bool {
+    cfg!(feature = "acceptance")
+}
+
 fn apply(enabled: bool, minimized: bool, admin: bool) -> Result<AutostartInfo, String> {
     if cfg!(feature = "acceptance-shared") {
         return Err("Автозапуск недоступен в тестовой сборке с общим профилем".into());
     }
+    let admin = admin || admin_autostart_required();
     let has_task = task_read().is_some();
     if enabled && admin {
         // создаём задание (Windows спросит разрешение), и только потом убираем обычную запись, чтобы не стартовало дважды
