@@ -19,6 +19,8 @@ import { inputLabel, formatMirrorInput } from './inputTrace.js';
 import { compileComposition, executeComposition, compositionActions } from './composition.js';
 import { listen, emitTo } from '@tauri-apps/api/event';
 import { state } from '../../core/state.js';
+import { charactersInPartyOrdered } from '../parties/membership.js';
+import { selectMembersById } from '../launcher/launchSelection.js';
 import {
   normalizeGameMacros,
   commandVisible,
@@ -160,7 +162,16 @@ export function snapshot() {
   return {
     overlayOpenRequest,
     busy,
-    parties: (state.parties || []).map(({ id, name }) => ({ id, name })),
+    askBeforeLaunch: state.settings?.launcher?.askBeforeLaunch !== false,
+    parties: (state.parties || []).map(({ id, name }) => ({
+      id,
+      name,
+      members: charactersInPartyOrdered(state.characters, id).map(char => ({
+        id: String(char.id),
+        nick: String(char.nick || char.id),
+        cls: String(char.class || '')
+      }))
+    })),
     partyId: c.partyId,
     windows: overlayWindows,
     recipients: overlayRecipientSession?.public || null,
@@ -1176,6 +1187,7 @@ async function executeLegacy(command, c, hotkey = false, restore = true, prepare
     if (!party) throw new Error('no party');
     const { launchPartyByName } = await import('../launcher/partyLaunch.js');
     const result = await launchPartyByName(party.name, {
+      interactive: false,
       cancelled: () => cancelled,
       onProgress: progress => {
         launchProgress = progress;
@@ -1665,9 +1677,7 @@ export async function initGameMacros() {
         await broadcast();
         return;
       }
-      const character = row.charId
-        ? state.characters.find(c => String(c.id) === String(row.charId))
-        : null;
+      const character = row.charId ? state.characters.find(c => String(c.id) === String(row.charId)) : null;
       const title = windowTitle(character || { nick: row.nick, class: row.cls });
       const result = await applyWindowStyle({ pid, title, class: row.cls || null });
       overlayWindowNotice = applyStyleText(result) || `Окно ${row.nick || pid} переподключено.`;
@@ -2533,11 +2543,22 @@ export async function overlayPartyAction(request) {
     if (request.action === 'party-launch') {
       const party = (state.parties || []).find(p => p.id === request.partyId);
       if (!party) throw new Error('Выберите существующую пати.');
+      let memberIds;
+      if (Array.isArray(request.memberIds)) {
+        const ordered = charactersInPartyOrdered(state.characters, party.id);
+        const { selected, droppedIds } = selectMembersById(ordered, request.memberIds);
+        if (droppedIds.length) {
+          log(`Запуск пати «${party.name}»: отброшены неизвестные id (${droppedIds.join(', ')}).`);
+        }
+        if (!selected.length) throw new Error('Выберите хотя бы одного персонажа.');
+        memberIds = selected.map(m => String(m.id));
+      }
       overlayWindowNotice = `Запуск пати: ${party.name}…`;
       void broadcast();
       const { launchPartyByName } = await import('../launcher/partyLaunch.js');
       if (cancelled) throw new Error('Остановлено пользователем.');
       const result = await launchPartyByName(party.name, {
+        ...(memberIds ? { memberIds } : {}),
         cancelled: () => cancelled,
         onProgress: progress => {
           launchProgress = progress;

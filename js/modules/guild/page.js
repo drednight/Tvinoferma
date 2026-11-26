@@ -237,7 +237,7 @@ export async function syncGuild({ silent = false, retries = 3 } = {}) {
     } catch (error) {
       const code = String(error?.message || error);
       if ((code === 'login' || code === 'page') && attempt < retries) {
-        await new Promise((resolve) => setTimeout(resolve, 4000));
+        await new Promise(resolve => setTimeout(resolve, 4000));
         continue;
       }
       if (code === 'login' && !loginPromptShown) {

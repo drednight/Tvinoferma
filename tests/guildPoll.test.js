@@ -135,7 +135,12 @@ describe('скрипт окна клана: API и голосование', () =
       })
     );
     await waitHash('#TFETE1_');
-    expect(report('#TFETE1_').data.polls[0]).toMatchObject({ id: '901', title: [{ text: 'Опрос 901' }], loadError: true, options: [] });
+    expect(report('#TFETE1_').data.polls[0]).toMatchObject({
+      id: '901',
+      title: [{ text: 'Опрос 901' }],
+      loadError: true,
+      options: []
+    });
   });
 
   it('голосует только после проверки текущих вариантов и подтверждения сервера', async () => {

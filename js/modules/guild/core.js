@@ -142,8 +142,7 @@ export function parseEvents(document) {
       const noChecked = el.querySelector('input[type="radio"][value="no"]')?.checked === true;
       const confirmation = el.querySelector('.user__event-confirmation');
       const confirmedYes =
-        el.classList.contains('user__event-active') ||
-        (confirmation != null && confirmation.style.display !== 'none');
+        el.classList.contains('user__event-active') || (confirmation != null && confirmation.style.display !== 'none');
       let response = RESPONSE_NONE;
       if (noChecked) response = RESPONSE_NO;
       else if (confirmedYes) response = RESPONSE_YES;
@@ -245,7 +244,10 @@ export function parseGuildPollsList(document) {
   const grid = document.querySelector('.polls__grid') || document;
   return [...grid.querySelectorAll('.poll')]
     .map(el => {
-      if (el.classList.contains('closed') || /голосование закрыто/iu.test(clean(el.querySelector('.poll__closed')?.textContent)))
+      if (
+        el.classList.contains('closed') ||
+        /голосование закрыто/iu.test(clean(el.querySelector('.poll__closed')?.textContent))
+      )
         return null;
       const id = String(el.getAttribute('data-poll-id') || '').trim();
       if (!ID.test(id)) return null;

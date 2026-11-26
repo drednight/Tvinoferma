@@ -63,13 +63,32 @@ import { initUiActions, updateFabVisibility } from './core/uiActions.js';
 // Слушатели событий поиска марафонов на сайте
 import { initDiscoveryListener } from './modules/marathons/discoveryLauncher.js';
 
-function showStorageReadOnlyWarning(message) {
+function showStorageReadOnlyWarning(message, { retry = false } = {}) {
   const banner = document.getElementById('storage-readonly-banner');
   if (!banner) return;
   const text = banner.querySelector('[data-storage-warning-text]');
   if (text) text.textContent = message;
+  // «Повторить чтение» показываем только для сбоя чтения хранилища: перезагрузка окна
+  // повторит старт без перезапуска приложения. Кнопку добавляем в конец, чтобы не
+  // сдвигать кнопки других сценариев (конфликт, прерванное слияние).
+  banner.querySelector('[data-storage-retry]')?.closest('.health-banner-actions')?.remove();
+  if (retry) {
+    const actions = document.createElement('div');
+    actions.className = 'health-banner-actions';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn small';
+    button.dataset.storageRetry = '';
+    button.textContent = 'Повторить чтение';
+    actions.appendChild(button);
+    banner.appendChild(actions);
+  }
   banner.hidden = false;
 }
+
+document.getElementById('storage-readonly-banner')?.addEventListener('click', event => {
+  if (event.target.closest('[data-storage-retry]')) location.reload();
+});
 
 // A failed confirmation can mean that the file did change. Do not silently
 // retry with stale in-memory data; storage stops new writes in this context.
@@ -202,13 +221,16 @@ export async function boot() {
         conflict
           ? 'Открытые контакты и данные хранилища ОС различаются. Сохранение остановлено: файл данных и защищённая запись контактов на этом ПК содержат разные значения. Это не ошибка входа в Google или Яндекс. Нажмите «Сравнить контакты и выбрать источник» в этом предупреждении. Выберите актуальный источник после сравнения; перед заменой сохраняются прежние данные. Перезапуск сам по себе конфликт не решает; не удаляйте хранилище ОС и резервные копии.'
           : 'Учётные данные не удалось безопасно прочитать. Изменения не сохраняются; проверьте хранилище ОС и копии перед перезапуском. Копии state.json могут не содержать контакты.' +
-              diagnosticText
+              diagnosticText,
+        // Повторное чтение без перезапуска приложения: перезагрузка окна снова проходит старт.
+        // При конфликте данных повтор не предлагаем — там нужен выбор источника.
+        { retry: !conflict }
       );
       if (conflict && isTauri()) {
         attachVaultConflictRecovery({ raw, aliases: idAliases, review: vaultConflictReview() });
       } else {
         alert(
-          'Не удалось безопасно прочитать хранилище учётных данных. Запись и перенос контактов остановлены. Проверьте доступ к хранилищу ОС, исходные данные и резервные копии перед перезапуском. Копия state.json может не содержать контакты.' +
+          'Не удалось безопасно прочитать хранилище учётных данных. Запись и перенос контактов остановлены. Проверьте доступ к хранилищу ОС, исходные данные и резервные копии. Можно нажать «Повторить чтение» в предупреждении или перезапустить приложение. Копия state.json может не содержать контакты.' +
             diagnosticText
         );
       }
@@ -482,6 +504,10 @@ export async function boot() {
     try {
       await initDesktop();
       initNotifications();
+      // Внешний API: сервер поднимается по настройке, мост слушает событие из Rust.
+      // Не в приложении (браузер) вызов ничего не делает.
+      const { attachExternalApi } = await import('./modules/externalApi/index.js');
+      attachExternalApi();
     } catch (e) {
       console.error('[BOOT ERROR] Failed to init desktop features:', e);
     }

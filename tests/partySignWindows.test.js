@@ -16,6 +16,7 @@ vi.mock('../js/core/storage.js', () => ({
 }));
 vi.mock('../js/modules/launcher/partyLaunch.js', () => ({
   launchGroup: mocks.launchGroup,
+  launchPartyByName: vi.fn(),
   closePartyWindows: mocks.closePartyWindows,
   signPartyWindows: mocks.signPartyWindows
 }));

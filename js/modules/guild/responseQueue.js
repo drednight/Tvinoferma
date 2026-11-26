@@ -198,7 +198,10 @@ export function createResponseQueue({
     // pending-намерение больше не нужно — очищаем его, чтобы он не перекрывал сайт
     // и не перезаписывал его извне при следующем переносе.
     const kept = entries.filter(
-      row => !report?.events?.some(event => event.id === row.eventId && (event.response === 'yes' || event.response === 'no'))
+      row =>
+        !report?.events?.some(
+          event => event.id === row.eventId && (event.response === 'yes' || event.response === 'no')
+        )
     );
     if (kept.length !== entries.length) await save(kept);
   }
