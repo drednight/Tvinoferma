@@ -13,7 +13,7 @@
 // общую очередь сами.
 
 import { ApiError, errorBody } from './mutate.js';
-import { launchContextForGroup, runPreflight } from '../../launcher/partyLaunch.js';
+import { launchContextForGroup, launchGroup as defaultLaunchGroup, runPreflight } from '../../launcher/partyLaunch.js';
 
 /** Через сколько задание забывается (не дольше TTL в плане — 30 минут). */
 export const JOB_TTL_MS = 30 * 60 * 1000;
@@ -175,9 +175,10 @@ export function launchSummary(requested, results, pre, ms, ignoredIds = []) {
  * @param {'character' | 'party' | 'selection'} kind
  * @param {any[]} characters кого запускаем (уже в нужном порядке)
  * @param {{
- *   launchGroup: (title: string, chars: any[], opts: any) => Promise<any>,
+ *   launchGroup?: (title: string, chars: any[], opts: any) => Promise<any>, // по умолчанию — настоящий запуск
  *   preflight?: (chars: any[], ctx: any) => Promise<any>, // для тестов; по умолчанию — runPreflight
  *   gcId?: string,
+ *   partyId?: string, // id пати: нужен, чтобы макросы выбрали именно её
  *   ignoredIds?: string[]
  * }} deps
  */
@@ -225,7 +226,11 @@ export function startJob(registry, kind, characters, deps) {
         finish('done', launchSummary(requested, null, pre, registry.now() - started, ignoredIds));
         return;
       }
-      const results = await deps.launchGroup(
+      // Настоящий `launchGroup` берём из модуля, а не из `deps`: мост передаёт
+      // только реестр заданий, и до этой строки `deps.launchGroup` был `undefined`
+      // — любое внешнее задание умирало на `TypeError`. Подмена нужна тестам.
+      const launch = deps.launchGroup || defaultLaunchGroup;
+      const results = await launch(
         kind === 'party'
           ? 'Внешний API: запуск пати'
           : kind === 'selection'
@@ -235,6 +240,9 @@ export function startJob(registry, kind, characters, deps) {
         {
           interactive: false,
           gcId: deps.gcId,
+          // Пати выбирается для игровых макросов так же, как при запуске кнопкой:
+          // без `partyId` команда отработала бы по макросам предыдущей пати.
+          ...(deps.partyId ? { partyId: deps.partyId } : {}),
           // Прогресс берём из того же `onProgress`, что рисует журнал в интерфейсе:
           // `GET /jobs/{id}` должен показывать тот же процент и ту же строку этапа.
           onProgress: current => {
@@ -352,7 +360,7 @@ export function launchPartyJob(state, body, deps = {}) {
     selected = all.filter(member => wantedIds.has(String(member.id)));
     if (!selected.length) throw new ApiError(422, 'invalid_value', 'Ни один memberIds не входит в пати');
   }
-  return startJob(jobs, 'party', selected, { launchGroup, preflight, ignoredIds });
+  return startJob(jobs, 'party', selected, { launchGroup, preflight, ignoredIds, partyId: party.id });
 }
 
 /**
