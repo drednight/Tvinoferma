@@ -177,7 +177,7 @@ export const GUIDES = [
       )
     ],
     result:
-      'Ваша программа получает /api/v1/health, /characters, /parties и /windows с заголовком Authorization: Bearer <токен>. Изменения и запуск окон работают только при выданных правах.',
+      'Ваша программа получает /api/v1/health, /characters, /parties и /windows с заголовком Authorization: Bearer <токен>. Изменения и запуск окон работают только при выданных правах. Готовая командная строка для скриптов и ИИ-агентов — `tf` (`npm run tf -- status --json`): те же права, а изменения отправляются только с явным `--yes` (см. docs/AGENT-CLI.md).',
     notice: {
       tone: 'warning',
       title: 'Это доступ с вашего компьютера, а не «наружу»',

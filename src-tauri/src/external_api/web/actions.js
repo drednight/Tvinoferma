@@ -12,7 +12,7 @@
 //     scope: 'read' | 'modify' | 'launchClose',
 //     danger?: true,            // требует подтверждения перед отправкой
 //     confirmText?: string,     // что показываем в подтверждении
-//     fields: [{ name, label, type, required?, hint?, default?, options? }],
+//     fields: [{ name, label, type, required?, hint?, default?, options?, example? }],
 //     body?: (values) => object | undefined,   // тело запроса из значений формы
 //     query?: (values) => string,              // ?… для GET
 //     pathOf?: (values) => string,             // подстановка {id} и подобных
@@ -114,6 +114,40 @@
       result: body => `сумма проходок: ${body.total ?? '—'}`
     },
     {
+      // Один стат и одна проходка — отдельными карточками: внешнему клиенту (и `tf`)
+      // дешевле читать нужное поле, чем разбирать весь объект. Маршрут для этого есть,
+      // не хватало описания в каталоге.
+      id: 'character-stat',
+      group: 'Чтение данных',
+      title: 'Один стат',
+      summary: 'Значение одного стата с подписью: дешевле, чем читать все статы.',
+      method: 'GET',
+      path: '/api/v1/characters/{id}/stats/{stat}',
+      scope: 'read',
+      fields: [
+        { name: 'id', label: 'Персонаж', type: CHARACTER, required: true },
+        { name: 'stat', label: 'Стат', type: 'select', required: true, options: ['hp', 'mp', 'endurance', 'strength', 'agility', 'intelligence'] }
+      ],
+      pathOf: values => `/api/v1/characters/${encodeURIComponent(values.id)}/stats/${encodeURIComponent(values.stat)}`,
+      result: body => `${body.label || body.stat}: ${body.value ?? '—'}`
+    },
+    {
+      id: 'character-pass',
+      group: 'Чтение данных',
+      title: 'Одна проходка',
+      summary: 'Оружие, доспех или реликвия: значение, остаток и максимум.',
+      method: 'GET',
+      path: '/api/v1/characters/{id}/dungeon-passes/{pass}',
+      scope: 'read',
+      fields: [
+        { name: 'id', label: 'Персонаж', type: CHARACTER, required: true },
+        { name: 'pass', label: 'Проходка', type: 'select', required: true, options: ['weapon', 'armor', 'relic'] }
+      ],
+      pathOf: values =>
+        `/api/v1/characters/${encodeURIComponent(values.id)}/dungeon-passes/${encodeURIComponent(values.pass)}`,
+      result: body => `${body.nick || body.id}: ${body.label || body.pass} — ${body.value ?? '—'}`
+    },
+    {
       id: 'list-parties',
       group: 'Чтение данных',
       title: 'Пати с составом',
@@ -125,6 +159,18 @@
       result: body => `${(body.parties || []).length} пати`
     },
     {
+      id: 'party-card',
+      group: 'Чтение данных',
+      title: 'Одна пати',
+      summary: 'Состав и порядок запуска пати по её id.',
+      method: 'GET',
+      path: '/api/v1/parties/{id}',
+      scope: 'read',
+      fields: [{ name: 'id', label: 'Пати', type: PARTY, required: true }],
+      pathOf: values => `/api/v1/parties/${encodeURIComponent(values.id)}`,
+      result: body => `${body.party?.name || body.party?.id}: ${(body.party?.members || []).length} участников`
+    },
+    {
       id: 'list-marathons',
       group: 'Чтение данных',
       title: 'Марафоны',
@@ -134,6 +180,32 @@
       scope: 'read',
       fields: [],
       result: body => `${(body.marathons || []).length} марафон(ов)`
+    },
+    {
+      id: 'marathon-card',
+      group: 'Чтение данных',
+      title: 'Один марафон',
+      summary: 'Задания, прогресс и итоги одного марафона — без разбора всего списка.',
+      method: 'GET',
+      path: '/api/v1/marathons/{id}',
+      scope: 'read',
+      fields: [{ name: 'id', label: 'Марафон', type: 'text', required: true, hint: 'id из «Марафоны».' }],
+      pathOf: values => `/api/v1/marathons/${encodeURIComponent(values.id)}`,
+      result: body =>
+        `${body.marathon?.title || body.marathon?.id}: ${(body.marathon?.tasks || []).length} заданий, ` +
+        `${(body.marathon?.participantIds || []).length} участников`
+    },
+    {
+      id: 'marathon-participants',
+      group: 'Чтение данных',
+      title: 'Участники марафона',
+      summary: 'Кто участвует и что у каждого по заданиям.',
+      method: 'GET',
+      path: '/api/v1/marathons/{id}/participants',
+      scope: 'read',
+      fields: [{ name: 'id', label: 'Марафон', type: 'text', required: true }],
+      pathOf: values => `/api/v1/marathons/${encodeURIComponent(values.id)}/participants`,
+      result: body => `${(body.characters || []).length} участников, ${(body.parties || []).length} пати`
     },
     {
       id: 'list-windows',
@@ -165,6 +237,20 @@
       path: '/api/v1/finance',
       scope: 'read',
       fields: []
+    },
+    {
+      id: 'health',
+      group: 'Чтение данных',
+      title: 'Жив ли сервер',
+      summary: 'Версия, сборка, включённые права, доступна ли запись и занят ли запуск.',
+      method: 'GET',
+      path: '/api/v1/health',
+      scope: 'read',
+      fields: [],
+      result: body =>
+        `${body.app?.version || '?'} (${body.app?.build || '?'}); права: ` +
+        `${Object.entries(body.scopes || {}).filter(([, on]) => on).map(([name]) => name).join(', ') || 'нет'}; ` +
+        `запуск: ${body.launch?.busy ? 'занят' : 'свободен'}`
     },
     {
       id: 'status',
@@ -276,7 +362,14 @@
       scope: 'modify',
       danger: true,
       fields: [
-        { name: 'ids', label: 'Персонажи', type: 'list', required: true, hint: 'id через запятую или пробел.' },
+        {
+          name: 'ids',
+          label: 'Персонажи',
+          type: 'list',
+          required: true,
+          hint: 'id через запятую или пробел.',
+          example: 'Mag_1,Luchnik_2'
+        },
         { name: 'pass', label: 'Проходка', type: 'select', options: ['weapon', 'armor', 'relic'], default: 'weapon' },
         { name: 'value', label: 'Значение', type: 'number', required: true }
       ],
@@ -551,7 +644,7 @@
       scope: 'launchClose',
       fields: [
         { name: 'partyId', label: 'Пати', type: PARTY, required: true },
-        { name: 'memberIds', label: 'Только эти участники', type: 'list', hint: 'Пусто — вся пати.' }
+        { name: 'memberIds', label: 'Только эти участники', type: 'list', hint: 'Пусто — вся пати.', example: 'Mag_1' }
       ],
       body: values => {
         const body = { partyId: values.partyId };
@@ -569,7 +662,16 @@
       method: 'POST',
       path: '/api/v1/launch/selection',
       scope: 'launchClose',
-      fields: [{ name: 'characterIds', label: 'Персонажи', type: 'list', required: true, hint: 'Через запятую, порядок сохраняется.' }],
+      fields: [
+        {
+          name: 'characterIds',
+          label: 'Персонажи',
+          type: 'list',
+          required: true,
+          hint: 'Через запятую, порядок сохраняется.',
+          example: 'Mag_1,Luchnik_2'
+        }
+      ],
       body: values => ({ characterIds: list(values.characterIds) }),
       confirmText: values => `Запустить ${list(values.characterIds).length} персонаж(ей)?`,
       result: body => `задание: ${body.jobId || '—'}`
@@ -583,7 +685,16 @@
       path: '/api/v1/windows/close',
       scope: 'launchClose',
       danger: true,
-      fields: [{ name: 'pids', label: 'PID окон', type: 'list', required: true, hint: 'Через запятую, из «Окна игры».' }],
+      fields: [
+        {
+          name: 'pids',
+          label: 'PID окон',
+          type: 'list',
+          required: true,
+          hint: 'Через запятую, из «Окна игры».',
+          example: '4321,99'
+        }
+      ],
       body: values => ({ pids: list(values.pids).map(Number), confirm: true }),
       confirmText: values => `Закрыть ${list(values.pids).length} окно(окон)? Несохранённый прогресс игры потеряется.`,
       result: body => `закрыто: ${(body.closed || []).length}`
@@ -596,7 +707,9 @@
       method: 'GET',
       path: '/api/v1/jobs/{jobId}',
       scope: 'read',
-      fields: [{ name: 'jobId', label: 'Задание', type: 'text', required: true, hint: 'jobId из ответа на запуск.' }],
+      fields: [
+        { name: 'jobId', label: 'Задание', type: 'text', required: true, hint: 'jobId из ответа на запуск.', example: 'job_8f2c1a' }
+      ],
       pathOf: values => `/api/v1/jobs/${encodeURIComponent(values.jobId)}`,
       result: body => `${body.job?.state || '—'}${body.job?.done ? ' (готово)' : ''}`
     },
