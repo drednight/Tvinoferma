@@ -498,15 +498,12 @@ function bindPartyEvents(container) {
       e.stopPropagation();
       const name = launchBtn.dataset.partyName;
       const party = partyByName(state.parties, name);
-      // Именно `charactersInPartyOrdered`, а не `charactersInParty`: карточка пати нарисована
-      // в порядке перетаскивания, и запускать надо в том же порядке. Раньше здесь брался сырой
-      // список из состояния — окна открывались в другой последовательности, чем на экране.
-      const members = party
-        ? charactersInPartyOrdered(state.characters, party.id)
-        : state.characters.filter(c => hasNoParty(c, state.parties));
-      import('../launcher/partyLaunch.js').then(m =>
-        m.launchGroup(`Запуск игры: ${name}`, members, { partyId: party?.id })
-      );
+      if (party) {
+        import('../launcher/partyLaunch.js').then(m => m.launchPartyByName(name, { partyId: party.id }));
+      } else {
+        const members = state.characters.filter(c => hasNoParty(c, state.parties));
+        import('../launcher/partyLaunch.js').then(m => m.launchGroup(`Запуск игры: ${name}`, members));
+      }
       return;
     }
 

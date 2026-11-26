@@ -50,6 +50,7 @@ function normalizeLauncherSettings(input = {}) {
       ? Math.min(120, Math.max(0, delay))
       : DEFAULT_SETTINGS.launcher.delaySec;
   merged.skipRunning = merged.skipRunning !== false;
+  merged.askBeforeLaunch = merged.askBeforeLaunch !== false;
   merged.preflight = normalizePreflightMode(merged.preflight);
   merged.layoutDir = String(merged.layoutDir ?? '').trim();
   merged.layoutTemplate = String(merged.layoutTemplate ?? '').trim();
@@ -169,6 +170,16 @@ export function mergeSettings(input = {}) {
     launcher: normalizeLauncherSettings(input.launcher),
     tray: { ...DEFAULT_SETTINGS.tray, ...(input.tray || {}) },
     freshness: { ...DEFAULT_SETTINGS.freshness, ...(input.freshness || {}) },
-    updates: { ...DEFAULT_SETTINGS.updates, ...(input.updates || {}) }
+    updates: { ...DEFAULT_SETTINGS.updates, ...(input.updates || {}) },
+    // Порт — целое число в диапазоне 1024–65535: значение из старого файла или мусор
+    // не должно уронить запуск сервера, поэтому приводим здесь, а не в настройках экрана.
+    externalApi: {
+      ...DEFAULT_SETTINGS.externalApi,
+      ...(input.externalApi || {}),
+      port:
+        Number.isInteger(input.externalApi?.port) && input.externalApi.port >= 1024 && input.externalApi.port <= 65535
+          ? input.externalApi.port
+          : DEFAULT_SETTINGS.externalApi.port
+    }
   };
 }

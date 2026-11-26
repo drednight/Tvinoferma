@@ -66,8 +66,14 @@ export function createPollVoteQueue({
   async function enqueue(pollId, optionIds) {
     const id = String(pollId || '');
     const options = (Array.isArray(optionIds) ? optionIds : []).map(String);
-    if (!enabled() || !/^\d{1,12}$/.test(id) || !options.length || options.length > 200 ||
-        new Set(options).size !== options.length || options.some(id => !/^\d{1,12}$/.test(id))) {
+    if (
+      !enabled() ||
+      !/^\d{1,12}$/.test(id) ||
+      !options.length ||
+      options.length > 200 ||
+      new Set(options).size !== options.length ||
+      options.some(id => !/^\d{1,12}$/.test(id))
+    ) {
       return false;
     }
     lastAction = Date.now();
@@ -142,10 +148,16 @@ export function createPollVoteQueue({
         if (snapshot.every(row => confirmed(row, report))) break;
       }
       if (!enabled()) return;
-      const missing = snapshot.filter(row => getEntries().some(r => r.pollId === row.pollId) && !confirmed(row, report)).length;
+      const missing = snapshot.filter(
+        row => getEntries().some(r => r.pollId === row.pollId) && !confirmed(row, report)
+      ).length;
       await save(
         getEntries().flatMap(row =>
-          !snapshot.some(s => s.pollId === row.pollId) ? [row] : confirmed(row, report) ? [] : [{ ...row, failed: true }]
+          !snapshot.some(s => s.pollId === row.pollId)
+            ? [row]
+            : confirmed(row, report)
+              ? []
+              : [{ ...row, failed: true }]
         )
       );
       task.finish(
@@ -161,7 +173,11 @@ export function createPollVoteQueue({
       task?.finish('Не удалось подтвердить отправку. Голоса сохранены для повторной попытки.', 'warn');
       const rows = getEntries();
       try {
-        await save(rows.map(row => (snapshot.some(s => s.pollId === row.pollId) || !snapshot.length ? { ...row, failed: true } : row)));
+        await save(
+          rows.map(row =>
+            snapshot.some(s => s.pollId === row.pollId) || !snapshot.length ? { ...row, failed: true } : row
+          )
+        );
       } catch {
         /* остаются в памяти */
       }

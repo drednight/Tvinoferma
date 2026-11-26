@@ -52,7 +52,7 @@ function dumpSignals(el, index) {
   const no = radioState(el, 'no');
   const active = el.classList.contains('user__event-active');
   const conf = el.querySelector('.user__event-confirmation');
-  const confDisplay = conf ? (conf.style.display || '(стиль не задан)') : '(блока нет)';
+  const confDisplay = conf ? conf.style.display || '(стиль не задан)' : '(блока нет)';
   const oldResp = oldRadioResponse(el);
   const allChecked = [...el.querySelectorAll('input[type="radio"]:checked')].map(i => i.value);
   const snippet = (node, n = 180) => {
@@ -63,7 +63,9 @@ function dumpSignals(el, index) {
 
   console.log(`\n[${index}] ивент #${id}  «${title}»`);
   if (when) console.log(`    дата: ${when}`);
-  console.log(`    радио yes.checked = ${yn(yes)} | радио no.checked = ${yn(no)} | все checked = [${allChecked.join(', ')}]`);
+  console.log(
+    `    радио yes.checked = ${yn(yes)} | радио no.checked = ${yn(no)} | все checked = [${allChecked.join(', ')}]`
+  );
   console.log(`    класс user__event-active = ${yn(active)}`);
   console.log(`    блок .user__event-confirmation: ${conf ? 'есть' : 'НЕТ'} | display = ${confDisplay}`);
   console.log(`    что парсер «открыл» (радио): ${snippet(el.querySelector('.user__event-radio--wrap'))}`);

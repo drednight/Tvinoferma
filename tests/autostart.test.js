@@ -139,6 +139,36 @@ describe('автозапуск: переключатели в настройка
     );
   });
 
+  it('тестовая сборка: переключатель «от имени администратора» закреплён, подсказка объясняет почему', async () => {
+    // Тестовая сборка всегда работает от администратора: переключать это нельзя,
+    // а объяснить надо — иначе выглядит как «настройка не работает».
+    const invoke = vi.fn(async () => info({ enabled: true, minimized: true, current: true, admin: true }));
+    await bindAutostart({ invoke, profile: 'acceptance' });
+    const adm = document.getElementById('autostart-admin');
+    expect(adm.checked).toBe(true);
+    expect(adm.disabled).toBe(true);
+    await vi.waitFor(() =>
+      expect(document.getElementById('autostart-note').textContent).toContain('всегда работает от администратора')
+    );
+  });
+
+  it('тестовая сборка: переключатель остаётся закрытым после записи автозапуска', async () => {
+    // Регрессия: после записи автозапуска переключатель снова становился доступным,
+    // и человек мог снять галочку — а следующий запуск тогда шёл без прав.
+    const invoke = vi.fn(async cmd => {
+      if (cmd === 'autostart_set') return info({ enabled: true, minimized: true, current: true, admin: false });
+      return info({ enabled: true, minimized: true, current: true, admin: true });
+    });
+    await bindAutostart({ invoke, profile: 'acceptance' });
+    const adm = document.getElementById('autostart-admin');
+    const min = document.getElementById('autostart-minimized');
+    min.checked = false;
+    min.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('autostart_set', expect.anything()));
+    await vi.waitFor(() => expect(adm.disabled).toBe(true));
+    expect(adm.checked).toBe(true);
+  });
+
   it('не Windows: блок остаётся скрытым; ошибка записи показывается и состояние перечитывается', async () => {
     await bindAutostart({ invoke: async () => info({ supported: false }) });
     expect(document.getElementById('autostart-block').hidden).toBe(true);
@@ -252,5 +282,48 @@ describe('автозапуск: Rust', () => {
     expect(lib).toContain('autostart::autostart_status');
     expect(lib).toContain('autostart::autostart_set');
     expect(lib).toMatch(/started_minimized\(\)[\s\S]{0,200}hide\(\)/);
+  });
+
+  it('тестовая сборка запускает автозапуск от администратора', () => {
+    // Тестовая сборка всегда работает от администратора: обычная запись в `Run`
+    // запустила бы её без прав, и при входе в систему был бы запрос UAC.
+    const rs = readFileSync('src-tauri/src/autostart.rs', 'utf8');
+    expect(rs).toContain('fn admin_autostart_required()');
+    expect(rs).toMatch(/let admin = admin \|\| admin_autostart_required\(\)/);
+  });
+});
+
+describe('тестовая сборка: права администратора при старте', () => {
+  const read = file => readFileSync(file, 'utf8');
+
+  it('права берутся до сборки окна, иначе процесс без прав держит «один экземпляр»', () => {
+    const lib = read('src-tauri/src/lib.rs');
+    const elevateAt = lib.indexOf('elevate::ensure_admin_start()');
+    const builderAt = lib.indexOf('tauri::Builder::default()');
+    expect(elevateAt).toBeGreaterThan(-1);
+    expect(builderAt).toBeGreaterThan(-1);
+    expect(elevateAt).toBeLessThan(builderAt);
+  });
+
+  it('стабильная сборка ничего не меняет: функция сразу выходит', () => {
+    const elevate = read('src-tauri/src/elevate.rs');
+    expect(elevate).toContain('if cfg!(feature = "acceptance")');
+    expect(elevate).toContain('run_elevated_self_detached');
+    // Отказ в UAC не должен оставлять приложение без объяснения
+    expect(elevate).toContain('EXIT_UAC_CANCELLED');
+  });
+
+  it('запущенный экземпляр узнаётся по метке: иначе второй запуск спрашивал бы права заново', () => {
+    const instance = read('src-tauri/src/instance.rs');
+    const elevate = read('src-tauri/src/elevate.rs');
+    expect(instance).toContain('pub fn read_marker');
+    expect(instance).toContain('pub fn write_marker');
+    expect(elevate).toContain('crate::instance::read_marker()');
+    expect(elevate).toContain('crate::launcher::process_elevated');
+  });
+
+  it('метка пишется при старте и убирается при выходе', () => {
+    const lib = read('src-tauri/src/lib.rs');
+    expect(lib).toContain('instance::clear_marker()');
   });
 });
