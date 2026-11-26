@@ -60,6 +60,29 @@ export async function readToken() {
 }
 
 /**
+ * Текущий токен **без изменений**: только чтение хранилища ОС.
+ *
+ * Нужен для кнопки «Скопировать токен». Раньше значение показывали один раз —
+ * сразу после перевыпуска, и потерянная копия означала перевыпуск, а он роняет
+ * все уже настроенные программы (`401`). Копирование своего токена безопасно:
+ * хранилище ОС читает только это приложение, а запрос идёт из настроек, а не из сети.
+ * Ничего не создаёт и не перезаписывает — побочные эффекты у `peekToken` нет.
+ * @returns {Promise<{ ok: boolean, token?: string, absent?: boolean, error?: string }>}
+ */
+export async function peekToken() {
+  let token;
+  try {
+    token = await readToken();
+  } catch (error) {
+    return { ok: false, error: String(error?.message || error || READ_FAILED) };
+  }
+  if (!token) {
+    return { ok: false, absent: true, error: 'Токена ещё нет: включите сервер или перевыпустите токен' };
+  }
+  return { ok: true, token };
+}
+
+/**
  * Сохранить токен в хранилище ОС. Пустая строка удаляет запись.
  * @param {string} token
  */

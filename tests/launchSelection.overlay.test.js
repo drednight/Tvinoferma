@@ -156,6 +156,44 @@ describe('оверлей: встроенный выбор состава пат�
       expect(mocks.invoke).toHaveBeenCalledWith('game_macro_navigate', { action: 'party-launch', partyId: 'p1' })
     );
   });
+
+  it('«Кого запускать…» в оверлее работает всегда: список при выключенном спросе', async () => {
+    mocks.handlers.get('game-macro-snapshot')({
+      payload: {
+        askBeforeLaunch: false,
+        busy: false,
+        parties: [
+          {
+            id: 'p1',
+            name: 'Основа',
+            members: [
+              { id: 'a', nick: 'Аа', cls: 'Воин' },
+              { id: 'b', nick: 'Бб', cls: 'Маг' }
+            ]
+          }
+        ],
+        partyId: 'p1',
+        windows: []
+      }
+    });
+    const pick = document.querySelector('#party-launch-pick');
+    expect(pick).toBeTruthy();
+    expect(pick.textContent).toContain('Кого запускать');
+    expect(pick.disabled).toBe(false);
+
+    pick.click();
+    const picker = document.querySelector('#party-launch-picker');
+    expect(picker.hidden).toBe(false);
+    expect([...document.querySelectorAll('#party-picker-list .plp-ov-row')]).toHaveLength(2);
+    document.querySelector('#party-picker-confirm').click();
+    await vi.waitFor(() =>
+      expect(mocks.emitTo).toHaveBeenCalledWith('main', 'game-overlay-party', {
+        action: 'party-launch',
+        partyId: 'p1',
+        memberIds: ['a', 'b']
+      })
+    );
+  });
 });
 
 describe('runtime: фильтрация memberIds при party-launch из оверлея', () => {

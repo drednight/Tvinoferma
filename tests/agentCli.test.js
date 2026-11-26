@@ -301,7 +301,7 @@ describe('tf: токен, адрес и подсказки', () => {
     const result = await run({ argv: ['status', '--json'], env: {}, fetchImpl: fakeFetch([]) });
     expect(result.code).toBe(EXIT.usage);
     expect(result.stdout[0]).toContain('TF_API_TOKEN');
-    expect(result.stdout[0]).toContain('Перевыпустить токен');
+    expect(result.stdout[0]).toContain('Скопировать токен');
   });
 });
 

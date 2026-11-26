@@ -111,6 +111,17 @@ export function publicCharacter(char, { running = null } = {}) {
   return out;
 }
 
+/**
+ * Что НЕ попадает в `GET /characters` по умолчанию.
+ *
+ * Список запрашивают, чтобы увидеть, кто есть на ферме и до чего дожил: два десятка
+ * статов, заметки и история монет на каждого персонажа делают ответ втрое длиннее и
+ * в списке почти никогда не нужны. Полную карточку просят явно — `?full=true`,
+ * адресным маршрутом (`GET /characters/{id}`, `/stats`) или списком полей
+ * (`?fields=stats.hp`). `fields` перекрывает это правило: если статы назвали — они придут.
+ */
+export const LIST_OMITTED = ['stats', 'notes', 'coinHistory'];
+
 /** Проходки — свои ключи; статы перечислены в `DEFAULT_STATS`. */
 export const PASS_FIELDS = ['weapon', 'armor', 'relic'];
 
@@ -342,13 +353,19 @@ export function characterFilter(state, query) {
     .trim()
     .toLowerCase();
   const sort = ['id', 'nick', 'level', 'none'].includes(sortParam) ? sortParam : 'id';
+  // `full` — «верни полные карточки»: только явное «да», мусор трактуем как «нет».
+  const full = ['1', 'true', 'yes', 'да', 'full'].includes(
+    String(params.get('full') || '')
+      .trim()
+      .toLowerCase()
+  );
   const order =
     String(params.get('order') || 'asc')
       .trim()
       .toLowerCase() === 'desc'
       ? 'desc'
       : 'asc';
-  return { party, fields, lang, flat, sort, order };
+  return { party, fields, lang, flat, sort, order, full };
 }
 
 /** Сравнение значений для `sort`: числа — как числа, строки — без регистра. */
@@ -368,10 +385,12 @@ function compareValues(a, b, order) {
  *
  * @param {{ characters?: any[], parties?: any[] }} state
  * @param {string} query
- * @param {{ running?: Map<string, any> | null }} [options]
+ * @param {{ running?: Map<string, any> | null, forceFull?: boolean }} [options]
+ *   `forceFull` — игнорирует `?full` и отдаёт карточки целиком: адресным маршрутам
+ *   и выгрузке полнота нужна по смыслу, а `?full` — опция списка
  */
 export function publicCharacters(state, query = '', options = {}) {
-  const { party, fields, lang, flat, sort, order } = characterFilter(state, query);
+  const { party, fields, lang, flat, sort, order, full } = characterFilter(state, query);
   const characters = Array.isArray(state?.characters) ? state.characters : [];
   let list = characters;
   if (party) {
@@ -393,7 +412,11 @@ export function publicCharacters(state, query = '', options = {}) {
     const key = sort === 'id' ? row => String(row.id) : row => row[sort];
     rows.sort((a, b) => compareValues(key(a), key(b), order));
   }
-  const picked = fields.length ? rows.map(row => pickCharacterFields(row, fields, { flat })) : rows;
+  // Список по умолчанию — без тяжёлых полей (LIST_OMITTED). `fields` и `full`
+  // отменяют сокращение: просящий явно сказал, что им нужно.
+  const compact = !fields.length && !full && !options.forceFull;
+  const base = compact ? rows.map(withoutListHeavy) : rows;
+  const picked = fields.length ? base.map(row => pickCharacterFields(row, fields, { flat })) : base;
   // Подписи строятся по тем полям, что реально вернулись: в плоской строке ключи
   // уже собраны (`dungeonPasses.weapon` одним ключом), поэтому список берём из
   // значений и подписываем его, а не восстанавливаем из адреса запроса.
@@ -401,8 +424,20 @@ export function publicCharacters(state, query = '', options = {}) {
   return {
     characters: localized,
     count: localized.length,
-    fields: fields.length ? fields : null
+    fields: fields.length ? fields : null,
+    // Честный ответ на вопрос «почему тут нет статов»: режим списка виден, а не молчится.
+    detail: compact ? 'list' : fields.length ? 'picked' : 'full',
+    ...(compact ? { omitted: [...LIST_OMITTED], fullHint: '?full=true — вернуть карточки целиком' } : {})
   };
+}
+
+/** Строка списка без тяжёлых полей: копия, а не мутация — `rows` отдают и другие. */
+function withoutListHeavy(row) {
+  const out = {};
+  for (const [key, value] of Object.entries(row)) {
+    if (!LIST_OMITTED.includes(key)) out[key] = value;
+  }
+  return out;
 }
 
 /**

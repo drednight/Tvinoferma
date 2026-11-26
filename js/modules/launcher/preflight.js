@@ -155,6 +155,59 @@ export function launchPreflight({
  * @param {Preflight} pre
  * @param {string} mode 'issues' | 'always' | 'off'
  */
+/**
+ * Кого показывать в списке выбора состава прямо в окне проверок.
+ *
+ * Смысл списка — «скипнуть» конкретного персонажа, не отменяя весь запуск, и
+ * «запустить только этого». Поэтому готовые идут с чекбоксом, а проблемные —
+ * серыми и с причиной: их нельзя «оставить», пока не исправлено, и показывать
+ * для них пустую галочку значит обещать то, чего не будет.
+ *
+ * @param {Preflight} pre
+ * @param {{ droppedIds?: string[] | null }} [opts] `droppedIds` — кого уже сняли
+ *   вручную (второй круг окна после «Исправить»: решение человека не должно сбрасываться)
+ * @returns {Array<{ id: string, nick: string, className: string, kind: 'ready'|'blocked'|'running', note: string, checked: boolean }>}
+ */
+export function preflightMemberRows(pre, opts = {}) {
+  const dropped = Array.isArray(opts.droppedIds) ? new Set(opts.droppedIds.map(String)) : null;
+  const row = (char, kind, note = '') => ({
+    id: String(char?.id ?? ''),
+    nick: String(char?.nick ?? char?.id ?? ''),
+    className: String(char?.class || ''),
+    kind,
+    note,
+    checked: kind === 'ready' && !dropped?.has(String(char?.id))
+  });
+  return [
+    ...(pre.toLaunch || []).map(c => row(c, 'ready')),
+    ...(pre.noGc || []).map(c => row(c, 'blocked', 'нет GameCenter')),
+    ...(pre.noSavedLogin || []).map(c => row(c, 'blocked', 'не запомнен вход — окно открылось бы не тем аккаунтом')),
+    ...(pre.alreadyRunning || []).map(entry => row(entry?.char ?? entry, 'running', 'окно уже запущено'))
+  ];
+}
+
+/**
+ * Применить ручное «скипнуть»: убрать снятых из `toLaunch`.
+ *
+ * Храним СПИСОК СНЯТЫХ, а не список отмеченных. Разница видна после «Исправить и
+ * запустить»: персонаж, у которого не был запомнен вход, становится готовым, и
+ * «отмеченные» из первого круга его не включают — запуск молча обошёл бы того, кого
+ * человек как раз и починил. Снятый — факт на весь этот запуск, готовый — нет.
+ * Снятые возвращаются отдельно: это «скипнул сам», а не «не смог», и в журнале и
+ * в счётчике пропущенных их надо видеть отдельной строкой от ошибок.
+ * @param {Preflight} pre
+ * @param {string[]} droppedIds
+ * @returns {{ toLaunch: any[], manualSkips: any[] }}
+ */
+export function applyPreflightDrops(pre, droppedIds) {
+  const gone = new Set((Array.isArray(droppedIds) ? droppedIds : []).map(String));
+  const list = pre.toLaunch || [];
+  return {
+    toLaunch: list.filter(c => !gone.has(String(c.id))),
+    manualSkips: list.filter(c => gone.has(String(c.id)))
+  };
+}
+
 export function shouldShowPreflight(pre, mode) {
   const m = normalizePreflightMode(mode);
   if (m === 'off') return false;

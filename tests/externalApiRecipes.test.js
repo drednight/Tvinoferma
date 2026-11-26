@@ -192,6 +192,10 @@ describe('внешний API: вкладка «Рецепты» на стран�
     const visible = [...body.querySelectorAll('[data-recipe]')].filter(item => !item.hidden);
     expect(visible.length).toBeGreaterThan(0);
     expect(visible.length).toBeLessThan(catalog.recipes.length);
+    // Пустой результат надо объяснить, а не показывать пустой экран.
+    filter.value = 'такого-нет-в-каталоге';
+    filter.dispatchEvent(new window.Event('input', { bubbles: true }));
+    expect(document.getElementById('recipes-count').textContent).toMatch(/ни один рецепт/);
   });
 
   it('язык примера переключается: curl, Python и PowerShell', async () => {

@@ -94,7 +94,7 @@ async function init() {
   let windowSignature = '';
   let latestParties = [];
   let latestWindows = [];
-  let askBeforeLaunch = true;
+  let askBeforeLaunch = false;
   let recipientRevision = '',
     recipientDirty = false,
     recipientsPending = false;
@@ -254,14 +254,14 @@ async function init() {
       selected = partySelect.value || data.partyId;
     latestParties = Array.isArray(data.parties) ? data.parties : [];
     latestWindows = Array.isArray(data.windows) ? data.windows : [];
-    askBeforeLaunch = data.askBeforeLaunch !== false;
+    askBeforeLaunch = data.askBeforeLaunch === true;
     partySelect.replaceChildren(new Option('Выберите пати', ''), ...latestParties.map(p => new Option(p.name, p.id)));
     partySelect.value = selected || '';
     if (data.busy) {
       const picker = document.getElementById('party-launch-picker');
       if (picker) picker.hidden = true;
     }
-    document.getElementById('party-launch').disabled = !!data.busy || !partySelect.value;
+    setPartyLaunchDisabled(!!data.busy || !partySelect.value);
     document.getElementById('party-refresh').disabled = !!data.busy;
     document.getElementById('window-notice').textContent = data.windowNotice || 'Нажмите «Обновить окна».';
     const signature = JSON.stringify(data.windows || []);
@@ -549,7 +549,18 @@ async function init() {
       .querySelectorAll(`[name="${id}-choice"]`)
       .forEach(input => (input.nextElementSibling.style.color = colors[input.value]));
   let partyBusy = false;
-  document.getElementById('party-launch').disabled = true;
+  /**
+   * Обе кнопки запуска пати живуть и дышат вместе: «▶ Запустить пати» и «Кого
+   * запускать…». Разрешать выбор только когда основной запуск разрешён — иначе
+   * получается кнопка, которая нажимается, а запустить ничего не может.
+   */
+  function setPartyLaunchDisabled(disabled) {
+    for (const id of ['party-launch', 'party-launch-pick']) {
+      const button = document.getElementById(id);
+      if (button) button.disabled = disabled;
+    }
+  }
+  setPartyLaunchDisabled(true);
   const partyPicker = document.getElementById('party-launch-picker');
   const pickerList = document.getElementById('party-picker-list');
   const pickerTitle = document.getElementById('party-picker-title');
@@ -569,7 +580,7 @@ async function init() {
   const sendOverlayPartyLaunch = async (partyId, memberIds) => {
     if (partyBusy) return;
     partyBusy = true;
-    document.getElementById('party-launch').disabled = true;
+    setPartyLaunchDisabled(true);
     document.getElementById('party-refresh').disabled = true;
     document.getElementById('party-close-all').disabled = true;
     try {
@@ -583,7 +594,7 @@ async function init() {
         'Не удалось отправить запрос. Откройте главное приложение.';
       document.getElementById('party-refresh').disabled = false;
       document.getElementById('party-close-all').disabled = false;
-      document.getElementById('party-launch').disabled = !document.getElementById('party-select').value;
+      setPartyLaunchDisabled(!document.getElementById('party-select').value);
     } finally {
       partyBusy = false;
     }
@@ -660,7 +671,7 @@ async function init() {
   const partyRequest = async (action, options = {}) => {
     if (partyBusy) return;
     partyBusy = true;
-    document.getElementById('party-launch').disabled = true;
+    setPartyLaunchDisabled(true);
     document.getElementById('party-refresh').disabled = true;
     document.getElementById('party-close-all').disabled = true;
     try {
@@ -674,20 +685,22 @@ async function init() {
         'Не удалось отправить запрос. Откройте главное приложение.';
       document.getElementById('party-refresh').disabled = false;
       document.getElementById('party-close-all').disabled = false;
-      document.getElementById('party-launch').disabled = !document.getElementById('party-select').value;
+      setPartyLaunchDisabled(!document.getElementById('party-select').value);
     } finally {
       partyBusy = false;
     }
   };
   document.getElementById('party-select').onchange = () => {
     closeInlinePicker();
-    document.getElementById('party-launch').disabled = partyBusy || !document.getElementById('party-select').value;
+    setPartyLaunchDisabled(partyBusy || !document.getElementById('party-select').value);
   };
   document.getElementById('party-launch').onclick = () => {
     const selectedId = document.getElementById('party-select').value;
     const party = latestParties.find(p => p.id === selectedId);
+    // Обычное нажатие = вся пати без окна. Список «кого запускать» открывается либо
+    // включённым спросом, либо кнопкой «Кого запускать…» рядом — она активна всегда.
     if (
-      askBeforeLaunch !== false &&
+      askBeforeLaunch === true &&
       Array.isArray(party?.members) &&
       party.members.length > 1 &&
       openInlinePicker(party)
@@ -695,6 +708,15 @@ async function init() {
       return;
     void partyRequest('party-launch');
   };
+  const pickButton = document.getElementById('party-launch-pick');
+  if (pickButton)
+    pickButton.onclick = () => {
+      const party = latestParties.find(p => p.id === document.getElementById('party-select').value);
+      if (!party) return;
+      // Открыть список заново — отметки всегда «вся пати»: прошлый выбор не должен
+      // тихонько жить в списке до конца работы оверлея.
+      if (!openInlinePicker(party)) void partyRequest('party-launch');
+    };
   const closeButton = document.getElementById('party-close-all');
   const closeDropdown = document.getElementById('close-dropdown');
   const closeWindows = mode => {

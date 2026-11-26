@@ -41,9 +41,15 @@ import {
   kindLabel
 } from './gameCenters.js';
 import { launchBlocker } from './gcSettingsModal.js';
-import { launchPreflight, shouldShowPreflight, preflightLog, availableFixes } from './preflight.js';
+import {
+  launchPreflight,
+  shouldShowPreflight,
+  preflightLog,
+  availableFixes,
+  applyPreflightDrops
+} from './preflight.js';
 import { openPreflight } from './preflightDialog.js';
-import { recordLaunchRun } from './launchLog.js';
+import { recordLaunchRun, loadLaunchLog } from './launchLog.js';
 
 let activeLaunches = 0; // сколько запусков сейчас идёт (включая ожидание очереди)
 
@@ -368,18 +374,31 @@ export async function launchGroup(title, characters, opts = {}) {
     //     решил запустить то, что готово);
     //   — если после правки ничего не изменилось, второй экран не показываем вовсе.
     let fixedOnce = false;
+    // Ручной выбор состава: кого СНИМАЛИ галочкой в окне проверок (не наоборот —
+    // «отмеченные» потеряли бы того, кого починили между кругами окна).
+    /** @type {string[]} */
+    let droppedIds = [];
     while (opts.interactive !== false && shouldShowPreflight(pre, mode)) {
       currentCharacter = null;
       waitingForUser = true;
       task.setStep('Ожидаем действие пользователя в главном окне: проверка запуска');
-      const choice = await openPreflight(pre, { title, gameCenters: launchContext().gameCenters });
+      const choice = await openPreflight(pre, {
+        title,
+        gameCenters: launchContext().gameCenters,
+        // Отметки человек уже расставил — второй круг окна (после «Исправить») не
+        // должен их сбрасывать: правку вносил он, а не список.
+        droppedIds
+      });
       waitingForUser = false;
       if (!choice) {
         counts.cancelled = characters.length;
         task.finish('Отменено на экране проверки', 'warn');
         return null;
       }
-      if (choice !== 'fix') break; // «Запустить»: дальше запускаем, экран больше не нужен
+      // Строка — старая форма ответа ('launch' | 'fix'), объект — с составом.
+      const action = typeof choice === 'string' ? choice : choice.action;
+      if (Array.isArray(choice?.droppedIds)) droppedIds = choice.droppedIds;
+      if (action !== 'fix') break; // «Запустить»: дальше запускаем, экран больше не нужен
       const fixes = availableFixes(pre, launchContext());
       if (fixes.some(f => f.id === 'openGcWindow')) {
         if (fixedOnce) break; // окно уже открывали, второй раз по той же просьбе — нет
@@ -397,8 +416,16 @@ export async function launchGroup(title, characters, opts = {}) {
       pre = next;
       if (!changed) break; // пользователь ничего не доделал — незачем показывать то же самое
     }
+    // Снятые вручную — отдельная категория: их не «исправить», их так решили.
+    /** @type {any[]} */
+    let manualSkips = [];
+    if (droppedIds.length) {
+      const picked = applyPreflightDrops(pre, droppedIds);
+      manualSkips = picked.manualSkips;
+      pre = { ...pre, toLaunch: picked.toLaunch };
+    }
     const ready = pre.toLaunch;
-    const skipped = [...pre.noGc, ...pre.noSavedLogin];
+    const skipped = [...pre.noGc, ...pre.noSavedLogin, ...manualSkips];
     counts.alreadyRunning = pre.alreadyRunning.length;
     counts.skipped = skipped.length;
     if (!ready.length) {
@@ -423,6 +450,8 @@ export async function launchGroup(title, characters, opts = {}) {
     let lastDecorClientAt = 0;
     task.progress(0, ready.length);
     preflightLog(pre).forEach(l => task.log(l.text, l.level));
+    for (const char of manualSkips)
+      task.log(`${char.nick || char.id}: снят вручную — в этом запуске не участвует`, 'info');
 
     // Один GameCenter на всю пати (выбран до проверок): остальные запускаются из того, что у них есть
     const { gcId, gcName } = group;
@@ -588,6 +617,103 @@ function saveRunToHistory({ title, results, pre, ms, gcName }) {
   }
 }
 
+/**
+ * Участники пати в порядке запуска. Порядок тот же, что задаёт перетаскивание в
+ * карточке: «выбрать, кого запускать» и «запустить» должны показывать один список,
+ * иначе отметки относятся не к тем строкам.
+ * @param {string} name название пати
+ * @returns {Promise<{ party: any, members: any[] } | null>} null — пати нет
+ */
+async function partyLaunchTargets(name) {
+  const { partyByName, charactersInPartyOrdered } = await import('../parties/membership.js');
+  const party = partyByName(state.parties, name);
+  if (!party) return null;
+  return { party, members: charactersInPartyOrdered(state.characters, party.id) };
+}
+
+/**
+ * «Запустить не всех»: окно выбора состава. Этот путь не зависит от настройки
+ * «спрашивать перед запуском» и работает всегда.
+ *
+ * Почему отдельная кнопка, а не переключатель: спрос «кого запускать» нужен один раз —
+ * сегодня, для конкретного запуска. Держать окно на каждом запуске — значит получить
+ * модалку под обычной кнопкой «Запустить», и настройку выключают, а вместе с ней
+ * исчезает и разовый выбор. Здесь наоборот: обычный запуск молча поднимает всю пати,
+ * выбор — рядом, в стрелке «▾», в «Сегодня», в палитре команд и в оверлее.
+ * @param {string} name название пати
+ * @param {{ partyId?: string }} [opts]
+ * @returns {Promise<any[] | null>} результаты запуска; null — отменено или пати нет
+ */
+export async function launchPartyPicked(name, opts = {}) {
+  const found = await partyLaunchTargets(name);
+  if (!found) {
+    toast(`Пати «${name}» не найдена`, 'error');
+    return null;
+  }
+  const { party, members } = found;
+  if (!members.length) {
+    toast('В пати некого запускать', 'warning');
+    return null;
+  }
+  // Один участник — тоже показываем окно: «выбор есть всегда» должно означать именно это,
+  // а не «выбор есть, когда участников больше одного».
+  let runningIds;
+  try {
+    const { matchRunningClients } = await import('./preflight.js');
+    const facts = await readLaunchFacts();
+    if (facts.clients) runningIds = new Set(matchRunningClients(members, facts.clients).keys());
+  } catch {
+    /* не удалось прочитать открытые окна — показываем список без бейджей */
+  }
+  const { openLaunchPicker } = await import('./launchSelection.js');
+  const picked = await openLaunchPicker({ partyName: party.name, members, runningIds });
+  if (!picked) return null; // отмена — ничего не запускаем
+  if (!picked.length) {
+    toast('Выберите хотя бы одного персонажа для запуска', 'warning');
+    return null;
+  }
+  return launchPartyByName(name, { ...opts, partyId: party.id, memberIds: picked.map(m => m.id) });
+}
+
+/**
+ * Кто не поднялся в последний запуск этой пати: id для «повторить за отставших».
+ *
+ * Берём из журнала запусков, а не «на глаз»: у окна, которое не открылось, причина
+ * обычно временная (GameCenter ещё занят, антивирус досматривает файл), и человек,
+ * видя «3 из 5» в итоге, не должен вспоминать, кто именно остался.
+ * @param {string} name название пати
+ * @returns {string[]}
+ */
+export function partyLaunchMisses(name) {
+  const title = `Запуск игры: ${name}`;
+  const run = loadLaunchLog().find(entry => entry.title === title);
+  if (!run) return [];
+  return run.items.filter(item => item.status === 'failed').map(item => String(item.id));
+}
+
+/**
+ * «Запустить всех»: состав пати целиком, без окна выбора — второй пункт той же
+ * стрелки. Нужен, когда спрос включён и мешать ему не надо, но сегодня хочется
+ * просто поднять всю пати одним нажатием.
+ * @param {string} name название пати
+ * @param {{ partyId?: string }} [opts]
+ */
+export async function launchPartyAll(name, opts = {}) {
+  const found = await partyLaunchTargets(name);
+  if (!found) {
+    toast(`Пати «${name}» не найдена`, 'error');
+    return null;
+  }
+  const { party, members } = found;
+  if (!members.length) {
+    toast('В пати некого запускать', 'warning');
+    return null;
+  }
+  // `memberIds` = все: проверка «спрашивать или нет» в launchPartyByName не
+  // срабатывает, и окно не всплывёт. Снятие отметки в окне выбора — тоже список id.
+  return launchPartyByName(name, { ...opts, partyId: party.id, memberIds: members.map(m => m.id) });
+}
+
 /** Запуск одного персонажа (кнопка «▶» на карточке). Без пути к GameCenter открывает его карточку на блоке «Запуск игры». */
 export async function launchOne(char, opts = {}) {
   if (!char) return null;
@@ -638,7 +764,7 @@ export async function launchPartyByName(name, opts = {}) {
     }
   } else if (
     isTauri() &&
-    state.settings?.launcher?.askBeforeLaunch !== false &&
+    state.settings?.launcher?.askBeforeLaunch === true &&
     opts.interactive !== false &&
     members.length > 1
   ) {

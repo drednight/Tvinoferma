@@ -7,7 +7,8 @@
 //      «Попробовать» ведёт в 404 — это и случилось бы без проверки).
 //   2. Приёмы из запроса пользователя — /stats/{stat} и /dungeon-passes/{pass} —
 //      есть и в справочнике, и в маршрутах.
-//   3. Вкладки и тестовая строка работают: клик подставляет путь и метод.
+//   3. Вкладки работают: у карточки метода есть своя панель выполнения, а кнопка
+//      «→ в тестовую строку» переносит запрос в «Тестовый запрос» целиком.
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -115,17 +116,119 @@ describe('страница API: справочник', () => {
     expect(paths).toContain('PATCH /characters/{id}/stats/{stat}');
   });
 
-  it('«Попробовать» подставляет путь, метод и тело в тестовую строку', () => {
+  it('вкладка «Данные» просит полные карточки: без этого статы пропали бы молча', async () => {
+    // Список `/characters` по умолчанию лёгкий (без статов, заметок и истории
+    // монет). Панель страницы статы показывает — значит она обязана попросить
+    // `full=true`, иначе блок со статами опустеет без единой ошибки.
+    window.sessionStorage.setItem('tf-external-api-token', 'f'.repeat(64));
+    mountPage();
+    document.getElementById('reload').click();
+    await vi.waitFor(() => expect(globalThis.fetch.mock.calls.length).toBeGreaterThan(2));
+    const urls = globalThis.fetch.mock.calls.map(call => String(call[0]));
+    expect(urls).toContain('/api/v1/characters?full=true');
+    expect(urls).not.toContain('/api/v1/characters');
+    window.sessionStorage.clear();
+  });
+
+  it('оглавление ведёт к каждому методу, а не только к группам', () => {
+    const docs = mountPage();
+    document.querySelector('[data-tab="docs"]').click();
+    const total = docs.groups.reduce((sum, group) => sum + group.methods.length, 0);
+    const links = [...document.querySelectorAll('[data-toc-method]')];
+    expect(links.length).toBe(total);
+    expect(document.querySelectorAll('.xapi-toc-link').length).toBe(docs.groups.length);
+    // Ссылка, которая ведёт в никуда, — хуже отсутствия ссылки.
+    for (const link of links) expect(document.querySelector(link.getAttribute('href'))).toBeTruthy();
+    // Подписаны методом и путём: по «GET /characters» метод ищут, а не по «m-…».
+    // Правила (метод «—» — например, про адрес сервера) подписаны ссылкой: у них
+    // нет глагола, и это не пропуск навигации, а свой тип записи.
+    const rules = docs.groups.flatMap(group => group.methods).filter(method => method.method === '—').length;
+    const verbs = links.filter(link => /GET|POST|PATCH|DELETE/.test(link.textContent));
+    expect(verbs.length).toBe(total - rules);
+    for (const link of verbs) expect(link.textContent).toContain('/');
+  });
+
+  it('клик по методу в оглавлении ставит якорь и подсвечивает карточку', () => {
     mountPage();
     document.querySelector('[data-tab="docs"]').click();
-    const button = [...document.querySelectorAll('[data-try]')].find(row =>
-      row.dataset.try.endsWith('/dungeon-passes/weapon')
+    const link = document.querySelector('[data-toc-method]');
+    link.click();
+    const id = link.getAttribute('href').slice(1);
+    expect(location.hash).toBe(`#${id}`);
+    expect(document.getElementById(id).classList.contains('is-target')).toBe(true);
+  });
+
+  it('ссылка с якорем открывает страницу сразу на «Справочнике», а не на «Данных»', () => {
+    // Якорь из чата или из AGENTS.md («посмотри GET /characters») — это ссылка на
+    // карточку метода. Открыть её надо так, чтобы человеку не пришлось угадывать
+    // вкладку: на «Данных» такого id нет, и ссылка выглядела бы сломанной.
+    const docs = mountPage();
+    const target = `m-${docs.groups[0].id}-${docs.groups[0].methods[1].id}`;
+    location.hash = `#${target}`;
+    mountPage(); // повторный заход на страницу — ровно то, что делает браузер по ссылке
+    expect(document.getElementById('docs').hidden).toBe(false);
+    expect(document.getElementById(target)).toBeTruthy();
+    expect(document.getElementById(target).classList.contains('is-target')).toBe(true);
+    location.hash = '';
+  });
+
+  it('фильтр скрывает и ссылки оглавления — список не обещает лишнего', () => {
+    const docs = mountPage();
+    document.querySelector('[data-tab="docs"]').click();
+    const input = document.getElementById('docs-filter');
+    input.value = 'health';
+    input.dispatchEvent(new Event('input'));
+    const shownDocs = [...document.querySelectorAll('[data-doc]')].filter(el => !el.hidden).length;
+    const shownToc = [...document.querySelectorAll('[data-toc-method]')].filter(
+      link => !(link.closest('li') || link).hidden
+    ).length;
+    expect(shownToc).toBe(shownDocs);
+    expect(shownToc).toBeLessThan(docs.groups.reduce((sum, group) => sum + group.methods.length, 0));
+    expect(document.getElementById('docs-toc-count').textContent).toContain('показано');
+    // Группы, где ничего не подошло, исчезают из оглавления целиком.
+    expect([...document.querySelectorAll('[data-toc-group]')].filter(g => !g.hidden).length).toBeLessThan(
+      docs.groups.length
     );
-    expect(button).toBeTruthy();
-    button.click();
+  });
+
+  it('у каждого метода есть кнопка «ссылка» — адрес карточки можно скопировать', () => {
+    const docs = mountPage();
+    document.querySelector('[data-tab="docs"]').click();
+    const total = docs.groups.reduce((sum, group) => sum + group.methods.length, 0);
+    expect(document.querySelectorAll('[data-doc-link]').length).toBe(total);
+  });
+
+  it('«→ в тестовую строку» переносит запрос карточки в «Тестовый запрос»', () => {
+    mountPage();
+    document.querySelector('[data-tab="docs"]').click();
+    const panel = [...document.querySelectorAll('#docs-body [data-run]')].find(row =>
+      String(row.querySelector('.xapi-run-path').value).endsWith('/characters/Mag_1/dungeon-passes/weapon')
+    );
+    expect(panel).toBeTruthy();
+    panel.querySelector('[data-run-play]').click();
+    // Путь подставлен с id из справочника, метод и тело — тоже; вкладка открылась.
     expect(document.getElementById('play-path').value).toBe('/api/v1/characters/Mag_1/dungeon-passes/weapon');
     expect(document.getElementById('play-method').value).toBe('GET');
     expect(document.getElementById('playground').hidden).toBe(false);
+  });
+
+  it('пустой результат фильтра назван словами, а не пустым экраном', () => {
+    mountPage();
+    document.querySelector('[data-tab="docs"]').click();
+    const filter = document.getElementById('docs-filter');
+    const hint = document.getElementById('docs-filter-hint');
+    // Без токена фильтры по правам не включены — подсказка говорит об этом.
+    expect(hint.textContent).toContain('Подключитесь токеном');
+    filter.value = 'такого-нет-в-справочнике';
+    filter.dispatchEvent(new Event('input'));
+    expect(hint.textContent).toMatch(/ни один метод/);
+    expect(hint.classList.contains('is-empty')).toBe(true);
+    expect(filter.getAttribute('data-empty')).toBe('1');
+    filter.value = 'character';
+    filter.dispatchEvent(new Event('input'));
+    expect(hint.textContent).toMatch(/Показано методов: \d+ из \d+/);
+    expect(hint.classList.contains('is-empty')).toBe(false);
+    expect(filter.hasAttribute('data-empty')).toBe(false);
   });
 
   it('поиск сужает методы и скрывает пустые группы', () => {
@@ -183,13 +286,15 @@ describe('страница API: тестовая строка', () => {
 
   it('битый JSON в теле не отправляется и объясняет ошибку', async () => {
     mountPage();
-    globalThis.fetch.mockClear();
     document.getElementById('play-method').value = 'PATCH';
     document.getElementById('play-path').value = '/api/v1/characters/Mag_1';
     document.getElementById('play-body').value = '{ не json';
     document.getElementById('play-send').click();
     await new Promise(resolve => setTimeout(resolve, 0));
-    expect(globalThis.fetch).not.toHaveBeenCalled();
+    // Страница в этот момент сама дозагружает списки — проверяем именно попытку
+    // отправить битое тело: ни одного PATCH быть не должно.
+    const writes = globalThis.fetch.mock.calls.filter(([, options]) => (options && options.method) === 'PATCH');
+    expect(writes).toEqual([]);
     expect(document.getElementById('play-status').textContent).toContain('не JSON');
   });
 

@@ -61,7 +61,12 @@ function readPath(row, path) {
 /** Строки для набора: ровно те же данные, что отдаёт чтение, но плоскими строками. */
 function datasetRows(state, dataset, options) {
   if (dataset === 'characters') {
-    const { characters } = publicCharacters(state, options.query || '', { running: options.running || null });
+    // Выгрузка — плоская таблица со статами: сокращение списка её бы обеднило,
+    // поэтому просим полные карточки и не зависит от `?full` в query.
+    const { characters } = publicCharacters(state, options.query || '', {
+      running: options.running || null,
+      forceFull: true
+    });
     return characters;
   }
   if (dataset === 'parties') {
@@ -201,6 +206,7 @@ const DATASET_COLUMNS = {
  * @param {any} state
  * @param {string} dataset одно из `EXPORT_DATASETS`
  * @param {{ format?: 'csv' | 'json', query?: string, running?: Map<string, any> | null,
+ *           forceFull?: boolean,
  *           windowRows?: any[], totalsOf?: null | ((m: any) => any),
  *           now?: string, dateStamp?: string }} [options]
  * @returns {{ contentType: string, fileName: string, text: string, rows: number, columns: number }}

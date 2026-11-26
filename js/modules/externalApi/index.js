@@ -166,6 +166,30 @@ export async function rotateToken() {
   }
 }
 
+/**
+ * Текущий токен — чтобы скопировать его в скрипт, не перевыпуская.
+ *
+ * Значение читается из хранилища ОС. Если сервер включён, а токена там нет
+ * (например, запись удалили вручную), токен создаётся — ровно как при запуске
+ * сервера, и об этом говорится в ответе (`created: true`): так кнопка не оставляет
+ * пользователя с «пусто» без объяснения.
+ * @returns {Promise<{ ok: boolean, token?: string, created?: boolean, error?: string }>}
+ */
+export async function currentToken() {
+  const { peekToken } = await import('./token.js');
+  const found = await peekToken();
+  if (found.ok) return { ok: true, token: found.token, created: false };
+  if (!found.absent || !state.settings?.externalApi?.enabled) return { ok: false, error: found.error };
+  try {
+    const issued = await ensureToken();
+    state.settings.externalApi.tokenCreatedAt = new Date().toISOString();
+    await persist().catch(() => {});
+    return { ok: true, token: issued.token, created: true };
+  } catch (error) {
+    return { ok: false, error: String(error?.message || error || 'Не удалось прочитать токен') };
+  }
+}
+
 /** Удалить токен и остановить сервер: следующий запуск создаст новый. */
 export async function resetToken() {
   try {

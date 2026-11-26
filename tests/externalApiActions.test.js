@@ -32,29 +32,33 @@ async function mountPage({ fetchImpl = null } = {}) {
   const calls = [];
   globalThis.fetch = async (path, options = {}) => {
     calls.push({ path, method: options.method || 'GET', body: options.body });
-    if (fetchImpl) return fetchImpl(path, options);
+    // Разбираем адрес без запроса: страница вправе дописать `?full=true` или
+    // `?fields=…`, а фикстуры описывают маршруты. Сверять их со строкой запроса —
+    // значит ловить падение теста на каждом безобидном параметре.
+    const route = String(path).split('?')[0];
+    if (fetchImpl) return fetchImpl(route, options);
     const method = (options.method || 'GET').toUpperCase();
     const body =
-      path === '/api/v1/health'
+      route === '/api/v1/health'
         ? {
             ok: true,
             app: { version: '3.0.0' },
             scopes: { read: true, modify: true, launchClose: true },
             storage: { writable: true }
           }
-        : path === '/api/v1/characters' && method === 'GET'
+        : route === '/api/v1/characters' && method === 'GET'
           ? { characters: [{ id: 'Mag_1', nick: 'Маг', level: 100 }], count: 1, fields: null }
-          : path.startsWith('/api/v1/characters/') && path.includes('/stats/')
+          : route.startsWith('/api/v1/characters/') && route.includes('/stats/')
             ? { id: 'Mag_1', nick: 'Маг', stat: 'hp', value: 45, before: 40, changed: true }
-            : path.startsWith('/api/v1/characters/') && path.includes('/dungeon-passes/')
+            : route.startsWith('/api/v1/characters/') && route.includes('/dungeon-passes/')
               ? { id: 'Mag_1', nick: 'Маг', pass: 'weapon', value: 3, before: 1, total: 3, changed: true }
-              : path.startsWith('/api/v1/characters/')
+              : route.startsWith('/api/v1/characters/')
                 ? { character: { id: 'Mag_1', nick: 'Маг' } }
-                : path === '/api/v1/parties'
+                : route === '/api/v1/parties'
                   ? { parties: [{ id: 'p-osnova', name: 'Основа', members: [] }] }
-                  : path === '/api/v1/windows'
+                  : route === '/api/v1/windows'
                     ? { windows: [{ pid: 4321, title: 'Маг' }] }
-                    : path === '/api/v1/audit'
+                    : route === '/api/v1/audit'
                       ? { audit: [] }
                       : { id: 'Mag_1', nick: 'Маг', stat: 'hp', value: 45, before: 40, changed: true };
     return {

@@ -97,22 +97,41 @@
       group: 'read',
       title: 'Кто есть в твин-ферме',
       scenario:
-        'Своя программа хочет показать список персонажей: id, класс, уровень и проходки — и не тянуть лишние поля.',
+        'Своя программа хочет показать список персонажей: кто есть, какой класс, до чего дожил — и не утонуть в статах.',
       method: 'GET',
-      path: '/api/v1/characters?fields=id,nick,class,level,dungeonPasses',
+      path: '/api/v1/characters',
       template: '/api/v1/characters',
       scope: 'read',
       body: null,
       response: {
         characters: [
-          { id: 'Mag_1', nick: 'Маг', class: 'Маг', level: 100, dungeonPasses: { weapon: 2, armor: 1, relic: 0 } },
-          { id: 'Luchnik_2', nick: 'Лучник', class: 'Лучник', level: 99, dungeonPasses: { weapon: 1, armor: 1, relic: 0 } }
+          {
+            id: 'Mag_1',
+            nick: 'Маг',
+            class: 'Маг',
+            level: 100,
+            'dungeonPasses.weapon': 2,
+            'dungeonPasses.armor': 1,
+            'dungeonPasses.relic': 0
+          },
+          {
+            id: 'Luchnik_2',
+            nick: 'Лучник',
+            class: 'Лучник',
+            level: 99,
+            'dungeonPasses.weapon': 1,
+            'dungeonPasses.armor': 1,
+            'dungeonPasses.relic': 0
+          }
         ],
         count: 2,
-        fields: ['id', 'nick', 'class', 'level', 'dungeonPasses']
+        fields: null,
+        detail: 'list',
+        omitted: ['stats', 'notes', 'coinHistory'],
+        fullHint: '?full=true — вернуть карточки целиком'
       },
       explanation:
-        '`fields` ограничивает ответ: вложенные поля пишутся через точку (`stats.hp`, `dungeonPasses.weapon`). `count` — сколько строк вернулось после фильтра, а не сколько всего. Ещё полезно: `party` (только одна пати), `sort`/`order`, `lang=ru` — русские подписи.',
+        'Список по умолчанию — лёгкий: статы, заметки и историю монет он не отдаёт, а в ответе честно говорит об этом (`detail: "list"` и `omitted`). Нужны статы — попросите их: `?full=true` возвращает карточки целиком, `?fields=stats.hp,stats.critChance` — ровно названные поля (вложенные пишутся через точку), а адресный маршрут `GET /characters/{id}` полный всегда. `count` — сколько строк вернулось после фильтра, а не сколько всего. Ещё полезно: `party` (только одна пати), `sort`/`order`, `lang=ru` — русские подписи.',
       errors: [{ status: 422, code: 'invalid_value', why: 'В `fields` есть неизвестное поле — API отвечает списком допустимых имён.' }]
     },
     {
@@ -434,7 +453,7 @@
       body: null,
       response: { error: { code: 'unauthorized', message: 'Нужен заголовок Authorization: Bearer <токен>' } },
       explanation:
-        'Токен перевыпускается в приложении: «Настройки → 🔌 Внешний API → Перевыпустить». Старый токен после этого не работает. Бывает и другое: в заголовке `Bearer` без пробела, токен с пробелами или кавычками внутри — его надо вырезать целиком, без переносов строки.',
+        'Сначала сверьте значение: «Настройки → 🔌 Внешний API → Скопировать токен» читает его из хранилища и не меняет — это безопасная проверка. Перевыпуск («Перевыпустить») нужен, только если токен утёк: после него старый перестаёт работать, а обновить `TF_API_TOKEN` придётся во всех программах. Бывает и другое: в заголовке `Bearer` без пробела, токен с пробелами или кавычками внутри — его надо вырезать целиком, без переносов строки.',
       errors: []
     },
     {

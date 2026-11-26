@@ -420,6 +420,65 @@
   background: rgba(247, 118, 142, 0.08);
 }
 
+/* Выбор состава прямо в окне проверок (preflightDialog.js): строки короче, чем в
+   отдельном окне выбора, — здесь человек читает причины, а не выбирает из сотен. */
+.prl-members {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.prl-members-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 0.9em;
+}
+.prl-members-head .muted {
+  flex: 1 1 auto;
+}
+.prl-mrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+}
+.prl-mrow:hover {
+  background: var(--surface-2);
+}
+.prl-mmain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  cursor: pointer;
+}
+.prl-mnick {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prl-mdot {
+  width: 14px;
+  text-align: center;
+  color: var(--text-dim);
+}
+.prl-mrow-blocked .prl-mnick,
+.prl-mrow-running .prl-mnick {
+  color: var(--text-dim);
+}
+.prl-mnote {
+  flex: none;
+  font-size: 0.82em;
+}
+.prl-dialog-note {
+  margin: 6px 0 0;
+  color: var(--danger, #f7768e);
+}
+
 /* Выбор состава запуска пати (launchSelection.js) */
 .plp-count {
   margin: 0 0 8px;

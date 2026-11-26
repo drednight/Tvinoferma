@@ -114,6 +114,12 @@ export async function runTodayAction(action, { partyId, eventId, response, date,
     const party = state.parties.find(p => p.id === partyId);
     if (!party) return { ok: false, message: 'Выбранный отряд не найден в приложении.' };
     await (await import('../launcher/partyLaunch.js')).launchPartyByName(party.name);
+  } else if (action === 'launch-pick') {
+    // Тот же запуск, но с окном состава — и он работает независимо от настройки
+    // «спрашивать»: в «Сегодня» нет стрелки у кнопки, поэтому выбор вынесен отдельной кнопкой.
+    const party = state.parties.find(p => p.id === partyId);
+    if (!party) return { ok: false, message: 'Выбранный отряд не найден в приложении.' };
+    await (await import('../launcher/partyLaunch.js')).launchPartyPicked(party.name);
   } else if (action === 'windows') await (await import('../launcher/windowPicker.js')).openWindowPicker();
   else if (action === 'decorate-windows') {
     const { runningClientDetails, redecorateRunningWindows, redecorateText } = await import('../launcher/launch.js');

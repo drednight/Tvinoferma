@@ -265,8 +265,10 @@ it('places the decoration icon after running windows and displays progress witho
     return { ok: true };
   });
   const buttons = [...document.querySelectorAll('.rt-launch-actions button')];
-  expect(buttons.map(b => b.dataset.todayAction)).toEqual(['launch', 'windows', 'decorate-windows']);
-  buttons[2].click();
+  // «Кого запускать…» стоит сразу за запуском: обычный клик = вся пати, отметка
+  // участников — отдельной кнопкой (или ▾ на карточке пати).
+  expect(buttons.map(b => b.dataset.todayAction)).toEqual(['launch', 'launch-pick', 'windows', 'decorate-windows']);
+  buttons[3].click();
   await vi.waitFor(() => expect($('[data-today-decoration-progress]').textContent).toContain('50%'));
   expect($('[data-today-action="decorate-windows"]').disabled).toBe(true);
   $('[data-today-action="decorate-windows"]').click();
@@ -274,6 +276,22 @@ it('places the decoration icon after running windows and displays progress witho
   finish();
   await vi.waitFor(() => expect($('[data-today-action="decorate-windows"]').disabled).toBe(false));
   expect($('[data-today-decoration-progress]').textContent).toContain('100%');
+});
+
+it('запуск всей пати и выбор участников — две разные кнопки, модалка по «Запустить» не открывается', async () => {
+  const buttons = [...document.querySelectorAll('.rt-launch-actions button')];
+  const launch = buttons.find(button => button.dataset.todayAction === 'launch');
+  const pick = buttons.find(button => button.dataset.todayAction === 'launch-pick');
+  expect(pick.textContent.trim()).toBe('Кого запускать…');
+  // Обычный «Запустить выбранный отряд» — без окна состава: один вызов действия.
+  launch.click();
+  expect(mocks.actions.mock.calls.map(([action]) => action)).toEqual(['launch']);
+  // Выбор участников в «Сегодня» вынесен отдельной кнопкой: стрелки тут нет.
+  // Кнопку берём заново — после ответа действия панель перерисована, а кнопка
+  // до завершения предыдущего действия занята и не реагирует.
+  await new Promise(done => setTimeout(done, 0));
+  document.querySelector('.rt-launch-actions [data-today-action="launch-pick"]').click();
+  expect(mocks.actions.mock.calls.map(([action]) => action)).toEqual(['launch', 'launch-pick']);
 });
 
 it('opens the equipment explanation from the event info button', () => {

@@ -46,7 +46,7 @@
       id: 'list-characters',
       group: 'Чтение данных',
       title: 'Все персонажи',
-      summary: 'Список по id с классом, уровнем и проходками — один запрос вместо десяти.',
+      summary: 'Все персонажи по id: класс, уровень, проходки — без двух десятков статов на каждого.',
       method: 'GET',
       path: '/api/v1/characters',
       scope: 'read',
@@ -55,18 +55,26 @@
           name: 'fields',
           label: 'Поля',
           type: 'text',
-          hint: 'Через запятую; вложенные — через точку. Пусто — полная карточка.',
-          default: 'id,class,level,dungeonPasses'
+          hint: 'Через запятую; вложенные — через точку. Пусто — список без статов, заметок и истории монет.',
+          default: ''
         },
         { name: 'lang', label: 'Подписи', type: 'select', options: ['en', 'ru'], default: 'en' },
         { name: 'sort', label: 'Сортировка', type: 'select', options: ['id', 'nick', 'level', 'none'], default: 'id' },
         { name: 'order', label: 'Порядок', type: 'select', options: ['asc', 'desc'], default: 'asc' },
         { name: 'party', label: 'Только пати', type: PARTY },
-        { name: 'flat', label: 'Плоские ключи', type: 'checkbox', default: true }
+        { name: 'flat', label: 'Плоские ключи', type: 'checkbox', default: true },
+        {
+          name: 'full',
+          label: 'Полные карточки',
+          type: 'checkbox',
+          hint: 'Со статами, заметками и историей монет — ответ втрое длиннее.'
+        }
       ],
       query: values => {
         const params = new URLSearchParams();
         if (values.fields) params.set('fields', values.fields);
+        // `full` — только когда попросили: по умолчанию список лёгкий.
+        if (values.full === true || values.full === 'true') params.set('full', 'true');
         if (values.lang && values.lang !== 'en') params.set('lang', values.lang);
         if (values.sort && values.sort !== 'id') params.set('sort', values.sort);
         if (values.order && values.order !== 'asc') params.set('order', values.order);

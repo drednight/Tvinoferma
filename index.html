@@ -331,7 +331,7 @@
             <p class="muted" style="margin: 0 0 4px 24px;">Если выключить, окно всё равно получит название «Ник — Класс», но значок останется игровым. После запуска Твиноферма проверит, что значки и названия применились ко всем окнам, и повторит попытку.</p>
             <label><input type="checkbox" data-setting="launcher.notify" /> После запуска показать одну строку: сколько окон запущено и за какое время (ошибки показываются всегда)</label>
             <label title="Если окно этого персонажа («Ник — Класс») уже открыто, запуск для него пропускается и очередь идёт к следующему. Работает, пока включено «Подписывать окна игры»."><input type="checkbox" data-setting="launcher.skipRunning" /> Пропускать персонажей, у которых окно игры уже запущено</label>
-            <label title="Перед запуском пати показывает список участников (все отмечены по умолчанию), чтобы можно было снять тех, кого запускать не нужно. Запуск из трея и быстрая команда макроса по-прежнему запускают всю пати без окна."><input type="checkbox" data-setting="launcher.askBeforeLaunch" /> Перед запуском пати спрашивать, кого запускать</label>
+            <label title="Выключено (по умолчанию): «▶ Запустить» поднимает всю пати без окон выбора. Включено: перед запуском пати открывается список участников (все отмечены), чтобы снять тех, кого запускать не нужно. Выбор состава доступен и с выключенной настройкой — стрелка «▾» у кнопки запуска в пати, «Кого запускать…» в «Сегодня», в палитре команд и в оверлее. Запуск из трея и быстрая команда макроса всегда запускают всю пати без окна."><input type="checkbox" data-setting="launcher.askBeforeLaunch" /> Спрашивать, кого запускать, при нажатии «Запустить»</label>
             <label title="Перед запуском пати Твиноферма проверяет: нет ли GameCenter, запомнен ли вход, не запущены ли окна от администратора.">Проверки перед запуском:
               <select class="input" data-setting="launcher.preflight" data-value-type="string">
                 <option value="issues">показывать при проблемах</option>
@@ -527,19 +527,25 @@
             <div class="settings-checks" style="margin-top: 12px;">
               <strong>Токен</strong>
               <p class="muted" style="margin: 4px 0 8px;">
-                Хранится в хранилище учётных данных ОС, а не в <code>state.json</code>; повторно показать его нельзя —
-                только перевыпустить. Перевыпуск сразу отключает старые программы.
+                Хранится в хранилище учётных данных ОС, а не в <code>state.json</code>. Значение можно скопировать
+                или показать в любой момент — токен от этого не меняется. «Перевыпустить» нужен, только если токен
+                утёк: старый сразу перестаёт работать, и все настроенные программы получат <code>401</code>.
               </p>
               <div class="row gap" style="flex-wrap: wrap;">
-                <button class="btn secondary" type="button" id="external-api-rotate">Перевыпустить токен</button>
+                <button class="btn secondary" type="button" id="external-api-token-copy">Скопировать токен</button>
+                <button class="btn ghost" type="button" id="external-api-token-show">Показать токен</button>
+                <button class="btn ghost" type="button" id="external-api-rotate">Перевыпустить токен</button>
                 <button class="btn ghost" type="button" id="external-api-forget">Удалить токен</button>
               </div>
               <p class="muted" id="external-api-token-status" role="status" aria-live="polite"></p>
               <div id="external-api-token-reveal" hidden>
-                <p><strong>Новый токен — сохраните его сейчас:</strong></p>
+                <p class="muted" id="external-api-token-reveal-note"></p>
                 <p><code id="external-api-token-value" style="word-break: break-all;"></code></p>
-                <button class="btn secondary small" type="button" id="external-api-token-copy">Скопировать токен</button>
               </div>
+              <p class="hint">
+                Скрипту токен передают переменной окружения <code>TF_API_TOKEN</code> (или файлом
+                <code>TF_API_TOKEN_FILE</code>) — в аргументах командной строки его видеть не должен никто.
+              </p>
             </div>
             <div class="settings-checks" style="margin-top: 12px;">
               <strong>Последние вызовы</strong>

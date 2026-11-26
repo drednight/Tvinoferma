@@ -277,6 +277,13 @@ export function buildCommands(state, deps = {}) {
         run: () => deps.run?.('launch-party', p.name)
       });
       push({
+        id: `party-pick-${p.id}`,
+        title: `☑ Кого запускать: ${p.name}`,
+        group: 'Пати',
+        keywords: ['состав', 'выбрать', 'запуск', 'группа'],
+        run: () => deps.run?.('launch-party-pick', p.name)
+      });
+      push({
         id: `party-close-${p.id}`,
         title: `🛑 Закрыть окна пати: ${p.name}`,
         group: 'Пати',

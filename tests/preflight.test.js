@@ -277,7 +277,8 @@ describe('экран проверок', () => {
     expect(btn.textContent).toContain('Запустить остальных');
     expect(btn.textContent).toContain('(1)'); // запустится только «Аа»
     btn.click();
-    expect(await p).toBe('launch');
+    // экран отвечает объектом: действие + список тех, кого сняли вручную
+    expect(await p).toMatchObject({ action: 'launch', droppedIds: [] });
   });
 
   it('кнопки: «Исправить и запустить» есть, когда есть что исправить; выбор возвращается', async () => {
@@ -285,7 +286,7 @@ describe('экран проверок', () => {
     expect(document.querySelector('[data-act="fix"]').textContent).toContain('Исправить и запустить');
     expect(document.querySelector('[data-act="launch"]').textContent).toContain('(1)');
     document.querySelector('[data-act="fix"]').click();
-    expect(await p).toBe('fix');
+    expect(await p).toMatchObject({ action: 'fix' });
   });
 
   it('«Запустить» и «Отмена»; без исправлений кнопки «Исправить» нет', async () => {
@@ -293,7 +294,7 @@ describe('экран проверок', () => {
     const p = openPreflight(pre);
     expect(document.querySelector('[data-act="fix"]')).toBeNull();
     document.querySelector('[data-act="launch"]').click();
-    expect(await p).toBe('launch');
+    expect(await p).toMatchObject({ action: 'launch' });
     const q = openPreflight(pre);
     document.querySelector('[data-act="cancel"]').click();
     expect(await q).toBeNull();

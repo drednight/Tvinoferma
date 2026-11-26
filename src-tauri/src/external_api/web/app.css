@@ -762,6 +762,56 @@ textarea {
   scroll-margin-top: 16px;
 }
 
+/* Оглавление справочника: группы столбиком, внутри — каждый метод. Строкой
+   ссылки-чипы не влезали: 34 метода — это каша, а не навигация. */
+.xapi-toc {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px 16px;
+  margin-bottom: 18px;
+}
+.xapi-toc-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0 0 8px;
+  font-size: 0.8rem;
+}
+.xapi-toc-group ul {
+  margin: 6px 0 0;
+  padding: 0 0 0 10px;
+  list-style: none;
+  border-left: 1px solid var(--border);
+}
+.xapi-toc-item {
+  margin: 2px 0;
+}
+.xapi-toc-method {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  text-decoration: none;
+}
+.xapi-toc-method:hover,
+.xapi-toc-method:focus-visible {
+  color: var(--text);
+  text-decoration: underline;
+}
+.xapi-toc-method code {
+  font-size: 0.72rem;
+  color: var(--text-faint);
+}
+.xapi-doc.is-target {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.xapi-doc-link {
+  margin-left: auto;
+  flex: none;
+}
+
 .xapi-doc-group h3 {
   margin: 0 0 4px;
 }
@@ -897,6 +947,120 @@ textarea {
   color: var(--text-faint);
   font-size: 0.74rem;
   font-style: normal;
+}
+
+/* --- Живой запрос в карточке метода и рецепта --- */
+
+.xapi-run {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-soft);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.xapi-run-path-field input,
+.xapi-run-body-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font:
+    12.5px/1.5 'Cascadia Code',
+    Consolas,
+    monospace;
+}
+
+.xapi-run-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.xapi-run-params {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.xapi-run-params-label {
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.xapi-run-result {
+  display: grid;
+  gap: 6px;
+}
+
+.xapi-run-result [data-run-out] {
+  max-height: 340px;
+  overflow: auto;
+}
+
+.xapi-run [data-run-compare]:not([hidden]) {
+  padding-left: 10px;
+  border-left: 2px solid var(--accent);
+}
+
+/* Метод, право на которое выключено: видно до попытки, а не после 403. */
+.xapi-doc.is-blocked {
+  opacity: 0.72;
+  border-left-color: var(--warning, #b58900);
+}
+
+.xapi-doc.is-blocked .xapi-run {
+  border-left-color: var(--warning, #b58900);
+}
+
+/* --- Фильтры вкладок «Справочник» и «Рецепты» --- */
+
+.xapi-docs-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.xapi-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.xapi-check input {
+  margin: 0;
+}
+
+.xapi-check input:disabled {
+  opacity: 0.5;
+}
+
+/* Пустой результат: о нём говорят и поле поиска, и счётчик — иначе человек
+   видит пустое место и не понимает, что фильтр просто слишком узкий. */
+.xapi-docs-filter input[data-empty] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 1px var(--danger) inset;
+}
+
+#docs-filter-hint.is-empty,
+#recipes-count.is-empty {
+  color: var(--danger);
+}
+
+@media (max-width: 820px) {
+  .xapi-docs-filter {
+    align-items: stretch;
+  }
 }
 
 @media (max-width: 820px) {

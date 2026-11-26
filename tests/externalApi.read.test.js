@@ -6,6 +6,7 @@
 // в объект персонажа позже: ответ собирается по белому списку, а не копией.
 import { describe, it, expect } from 'vitest';
 import {
+  LIST_OMITTED,
   publicCharacter,
   publicCharacters,
   publicParties,
@@ -113,6 +114,32 @@ describe('внешний API: чтение персонажей', () => {
     expect(Object.keys(light.characters[0]).sort()).toEqual(['id', 'nick', 'stats']);
   });
 
+  it('список по умолчанию — все персонажи, но без статов; статы по запросу', () => {
+    const list = publicCharacters(state());
+    expect(list.characters.length).toBe(3);
+    const row = list.characters.find(c => c.id === 'Mag_1');
+    if (!row) return expect(row).toBeTruthy();
+    // Что в списке остаётся: опознавательные поля, проходки, пати, окно.
+    expect(row).toMatchObject({ id: 'Mag_1', nick: 'Маг', class: 'Маг', level: 100 });
+    // Что не приезжает: два десятка статов, заметки и история монет на каждого.
+    for (const key of LIST_OMITTED) expect(row).not.toHaveProperty(key);
+    // Сокращение видно из ответа, а не молчится: клиенту сказано, что убрать нечем.
+    expect(list).toMatchObject({ detail: 'list', omitted: [...LIST_OMITTED] });
+    expect(list.fullHint).toContain('full=true');
+
+    // `full=true` — та же карточка, что и раньше (обратная совместимость по флагу).
+    const full = publicCharacters(state(), 'full=true');
+    expect(full.detail).toBe('full');
+    expect(full.characters.find(c => c.id === 'Mag_1').stats.physAttack).toBe(12000);
+    expect(full.characters.find(c => c.id === 'Mag_1')).toHaveProperty('notes');
+    expect(full.omitted).toBeUndefined();
+
+    // `fields` перекрывает правило: попросил stats — получил stats.
+    const asked = publicCharacters(state(), 'fields=id,stats');
+    expect(Object.keys(asked.characters[0]).sort()).toEqual(['id', 'stats']);
+    expect(asked.detail).toBe('picked');
+  });
+
   it('один запрос отдаёт несколько полей сразу — включая проходки', () => {
     // Именно этот набор просил пользователь: id, класс, уровень и проходки.
     const one = publicCharacters(state(), 'fields=id,class,level,dungeonPasses');
@@ -160,8 +187,9 @@ describe('внешний API: чтение персонажей', () => {
     // Вложенный вид тоже подписывается (иначе значение терялось бы).
     const nested = publicCharacters(state(), 'fields=dungeonPasses.weapon&flat=false&lang=ru');
     expect(nested.characters.find(c => c.id === 'Mag_1')?.['Проходки: оружие']).toBe(3);
-    // Полная карточка: вложенные объекты разворачиваются в подписи, id остаётся.
-    const full = publicCharacters(state(), 'lang=ru');
+    // Полная карточка (`full=true`): вложенные объекты разворачиваются в подписи,
+    // id остаётся. Без `full` список статов не отдаёт — см. отдельный тест ниже.
+    const full = publicCharacters(state(), 'lang=ru&full=true');
     const card = full.characters.find(c => c.id === 'Mag_1');
     expect(card).toBeTruthy();
     if (!card) return;
@@ -196,7 +224,8 @@ describe('внешний API: чтение персонажей', () => {
       lang: 'en',
       flat: true,
       sort: 'id',
-      order: 'asc'
+      order: 'asc',
+      full: false
     });
     expect(characterFilter(state(), 'party=%D0%9E%D1%81%D0%BD%D0%BE%D0%B2%D0%B0&fields=nick,')).toEqual({
       party: 'Основа',
@@ -204,8 +233,13 @@ describe('внешний API: чтение персонажей', () => {
       lang: 'en',
       flat: true,
       sort: 'id',
-      order: 'asc'
+      order: 'asc',
+      full: false
     });
+    // `full` — только явное «да»: `full=1|true|yes|да|full`.
+    expect(characterFilter(state(), 'full=1')).toMatchObject({ full: true });
+    expect(characterFilter(state(), 'full=%D0%B4%D0%B0')).toMatchObject({ full: true });
+    expect(characterFilter(state(), 'full=maybe')).toMatchObject({ full: false });
     // Мусор в параметрах не ломает разбор: берутся безопасные значения.
     expect(characterFilter(state(), 'sort=что&order=вверх&lang=fr&flat=может')).toMatchObject({
       lang: 'en',

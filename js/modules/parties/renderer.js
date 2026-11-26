@@ -22,7 +22,7 @@ import { partyStyleVars } from './color.js';
 import { launchBlocker } from '../launcher/gcSettingsModal.js';
 import { getClassIconSrc } from '../../core/constants.js';
 import { runningWindows, onRunningWindows } from '../launcher/runningWindows.js';
-import { toast } from '../../core/ui.js';
+import { toast, openActionMenu } from '../../core/ui.js';
 
 // Функции цвета живут в color.js: ими пользуются ещё и список персонажей и окно настроек.
 // `partyHue` реэкспортируется — на него ссылаются тесты (viewsRedesign).
@@ -177,7 +177,15 @@ function partyCardHtml(name, members) {
                 <button class="pt-btn pt-btn-launch launch-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" ${activeMembers.length ? '' : 'disabled'}
                         title="${launchReady ? 'Запустить игру для активных участников по очереди (GameCenter выбирается по большинству участников)' : activeMembers.length ? `Готовы к запуску: ${launchReady} из ${activeMembers.length}. Остальным нужен GameCenter и запомненный вход — откроется экран проверки` : 'В пати нет активных персонажей'}">
                     ▶ Запустить <small>${launchReady}/${activeMembers.length}</small>
-                </button>
+                </button>${
+                  // Стрелка есть всегда, когда в пати кого выбирать (в том числе из одного
+                  // участника): обычный «Запустить» при этом окно не показывает. Пустой
+                  // состав — единственное исключение: рядом с заблокированной кнопкой
+                  // стрелка только обещала бы меню без пунктов.
+                  activeMembers.length
+                    ? `<button class="pt-btn pt-btn-icon pt-btn-caret" type="button" data-party-name="${escapeHtml(name)}" aria-haspopup="menu" aria-expanded="false" title="Как запускать: всех, выборочно или только отставших" aria-label="Варианты запуска пати ${escapeHtml(name)}">▾</button>`
+                    : ''
+                }
                 ${hasRunning ? `<button class="pt-btn pt-btn-icon sign-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" title="Подписать окна игры этой пати: вернуть название «Ник — Класс» и значок класса" aria-label="Подписать окна игры пати">🔖</button>` : ''}
                 ${activeMembers.length ? `<button class="pt-btn pt-btn-icon close-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" title="Закрыть окна игры этой пати (откроется список, если запущено больше окон)" aria-label="Закрыть окна игры пати">🛑</button>` : ''}
                 ${isDraggable ? `<button class="pt-btn pt-btn-icon edit-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" title="Состав, название и цвет пати">⚙</button>` : ''}
@@ -489,6 +497,48 @@ function bindPartyEvents(container) {
       if (isCurrentlyExpanded) expandedParties.delete(name);
       else expandedParties.add(name);
 
+      return;
+    }
+
+    // 1–. Стрелка рядом с запуском: всех / выборочно / за отставшими.
+    // Отдельная кнопка, а не меню на «▶ Запустить»: обычное нажатие должно остаться
+    // таким, каким его помнят, — в том числе продолжать слушать настройку
+    // «спрашивать перед запуском».
+    const caret = target.closest('.pt-btn-caret');
+    if (caret) {
+      e.stopPropagation();
+      const name = caret.dataset.partyName;
+      import('../launcher/partyLaunch.js')
+        .then(m => {
+          const misses = m.partyLaunchMisses(name);
+          openActionMenu(caret, [
+            {
+              id: 'all',
+              icon: '▶',
+              label: 'Запустить всех',
+              hint: 'Весь состав пати, без окна выбора',
+              onSelect: () => m.launchPartyAll(name)
+            },
+            {
+              id: 'pick',
+              icon: '☑',
+              label: 'Выбрать, кого запускать…',
+              hint: 'Отметить участников перед запуском — даже если спрос выключен',
+              onSelect: () => m.launchPartyPicked(name)
+            },
+            {
+              id: 'misses',
+              icon: '↻',
+              label: misses.length ? `Повторить за отставших (${misses.length})` : 'Повторить за отставших',
+              hint: misses.length
+                ? 'Запустить только тех, кто не поднялся в прошлый раз'
+                : 'В прошлый запуск этой пати все окна поднялись — повторять не за чем',
+              disabled: !misses.length,
+              onSelect: () => m.launchPartyByName(name, { memberIds: misses })
+            }
+          ]);
+        })
+        .catch(() => toast('Не удалось открыть варианты запуска', 'error'));
       return;
     }
 

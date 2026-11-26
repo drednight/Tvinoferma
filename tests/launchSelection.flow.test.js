@@ -21,7 +21,7 @@ const ch = (id, nick, order) => ({
   launch: { gcIds: ['gc-1'], gcAccounts: { 'gc-1': { nick } } }
 });
 
-let state, partyLaunch, renderPartiesGrid, mergeSettings;
+let state, partyLaunch, renderPartiesGrid, mergeSettings, DEFAULT_SETTINGS;
 const started = () =>
   invoke.mock.calls.filter(c => c[0] === 'launcher_start').map(c => String(c[1].charId).split('@')[0]);
 const pickerDialog = () => document.querySelector('.tf-dialog');
@@ -37,6 +37,7 @@ beforeEach(async () => {
   });
   vi.resetModules();
   ({ state, mergeSettings } = await import('../js/core/state.js'));
+  ({ DEFAULT_SETTINGS } = await import('../js/core/constants.js'));
   state.settings.launcher = {
     ...(state.settings.launcher || {}),
     gameCenters: [GC1],
@@ -54,9 +55,34 @@ beforeEach(async () => {
 });
 
 describe('настройка launcher.askBeforeLaunch', () => {
-  it('включена по умолчанию и сохраняет false при выключении', () => {
-    expect(mergeSettings({}).launcher.askBeforeLaunch).toBe(true);
-    expect(mergeSettings({ launcher: { askBeforeLaunch: false } }).launcher.askBeforeLaunch).toBe(false);
+  it('выключена по умолчанию и остаётся включённой, если её включили', () => {
+    expect(DEFAULT_SETTINGS.launcher.askBeforeLaunch).toBe(false);
+    expect(mergeSettings({}).launcher.askBeforeLaunch).toBe(false);
+    expect(mergeSettings({ launcher: { askBeforeLaunch: true } }).launcher.askBeforeLaunch).toBe(true);
+    // Мусор вместо флага не должен случайно включать окно
+    expect(mergeSettings({ launcher: { askBeforeLaunch: 'yes' } }).launcher.askBeforeLaunch).toBe(false);
+  });
+
+  it('без спроса обычное «Запустить» поднимает всю пати и не показывает окно', async () => {
+    state.settings.launcher.askBeforeLaunch = false;
+    renderPartiesGrid();
+    document.querySelector('.launch-party-action-btn[data-party-name="Основа"]').click();
+    // «Аа» уже с открытым окном и skipRunning → пропуск, остальные стартуют
+    await vi.waitFor(() => expect(started()).toEqual(['c', 'b']));
+    expect(pickerDialog()).toBeNull();
+  });
+
+  it('стрелка «▾» даёт окно выбора и при выключенном спросе', async () => {
+    state.settings.launcher.askBeforeLaunch = false;
+    renderPartiesGrid();
+    document.querySelector('.pt-btn-caret[data-party-name="Основа"]').click();
+    await vi.waitFor(() => expect(document.querySelector('.dropdown-menu[data-open]')).not.toBeNull());
+    const items = [...document.querySelectorAll('.dropdown-menu[data-open] button')];
+    const pick = items.find(b => b.textContent.includes('Выбрать, кого запускать'));
+    expect(pick).toBeTruthy();
+    pick.click();
+    await vi.waitFor(() => expect(pickerDialog()).not.toBeNull());
+    expect([...document.querySelectorAll('.plp-row')].map(r => r.dataset.memberId)).toEqual(['c', 'a', 'b']);
   });
 });
 

@@ -39,6 +39,14 @@
   let recipe = 'curl';
   let latest = { characters: [], parties: [], windows: [] };
   let activeTab = 'panel';
+  // Права текущего токена (из /health) и подпись списков. Нужны вкладкам
+  // «Справочник» и «Рецепты»: карточки показывают живые id и подсвечивают методы,
+  // под которые право выключено, — а без этого они выглядят как сломанные.
+  let grantedScopes = null;
+  /** Пример ответа из документации по id панели: `[data-run]` сверяет с ним живой ответ. */
+  const runExamples = new Map();
+  /** Id задания из последнего ответа: нужен, чтобы карточка /jobs/{jobId} была рабочей. */
+  let seenJobId = '';
   const docs = window.TF_API_DOCS || { groups: [], fieldLists: { stats: [], passes: [] } };
   // Действия описаны данными (web/actions.js): разметка и запрос строятся по ним,
   // поэтому кнопка не может разойтись с контрактом.
@@ -536,6 +544,310 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
   }
 
   /* ------------------------------------------------------------------ */
+  /*  Живой запрос в карточке: справочник и рецепты должны выполняться   */
+  /*  здесь, а не «подставь в другую вкладку и нажми там»               */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Право метода → ключ в `health.scopes`. Подписи в docs.js по-русски, в
+   * recipes.js — коды; оба варианта приходят из одних и тех же карточек.
+   */
+  const SCOPE_KEYS = {
+    'чтение': 'read',
+    read: 'read',
+    'изменение': 'modify',
+    modify: 'modify',
+    'запуск и закрытие': 'launchClose',
+    launchClose: 'launchClose'
+  };
+  const SCOPE_TITLES = {
+    read: 'чтение',
+    modify: 'изменение статов и проходок',
+    launchClose: 'запуск и закрытие окон'
+  };
+
+  /**
+   * Какое значение подставить чипу параметра, чтобы запрос из карточки сразу работал,
+   * а не возвращал 422 на пустом `?party=`. Известные имена — из `docs.js`; для
+   * неизвестных оставляем `name=` и курсор после знака: человек допишет сам.
+   */
+  const RUN_PARAM_SAMPLES = {
+    full: 'true',
+    flat: 'true',
+    lang: 'ru',
+    sort: 'nick',
+    order: 'asc',
+    fields: 'stats.hp',
+    format: 'csv'
+  };
+  function runParamSample(name) {
+    if (name === 'party') return (latest.parties[0] && (latest.parties[0].name || latest.parties[0].id)) || '';
+    return RUN_PARAM_SAMPLES[name] || '';
+  }
+
+  /** Строка «GET /api/v1/health» или просто путь → { method, path }; мусор → null. */
+  function parseRunLine(text) {
+    const parts = String(text || '').trim().split(/\s+/);
+    const method = parts.length > 1 ? parts[0].toUpperCase() : 'GET';
+    const path = parts.length > 1 ? parts[1] : parts[0];
+    if (!['GET', 'POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) return null;
+    if (!String(path).startsWith('/')) return null;
+    return { method, path };
+  }
+
+  /**
+   * Id из документации («Mag_1», «p-osnova») → id этого запуска, чтобы запрос из
+   * карточки работал, а не возвращал 404 на вымышленном персонаже.
+   */
+  function localizeExample(text) {
+    const charId = sampleCharId();
+    const partyId = (latest.parties[0] && latest.parties[0].id) || '';
+    return String(text)
+      .replace(/\{id\}/g, charId)
+      .replace(/\{charId\}/g, charId)
+      .replace(/Mag_1/g, charId)
+      .replace(/p-osnova/g, partyId || 'p-osnova');
+  }
+
+  /** Ключи формы ответа: для массива — ключи первой строки, иначе — свои. */
+  function shapeKeys(value) {
+    const source = Array.isArray(value) ? value[0] : value;
+    return source && typeof source === 'object' ? Object.keys(source) : [];
+  }
+
+  /**
+   * Чем живой ответ отличается от обещанного документом. Пустая строка — совпал.
+   * Это не украшение: расхождение значит, что `docs/EXTERNAL-API-EXAMPLES.md`
+   * устарел (или ответ изменили), и странице нельзя будет верить.
+   */
+  function compareShape(live, example) {
+    if (!example || typeof example === 'string' || live === null || live === undefined) return '';
+    const here = new Set(shapeKeys(live));
+    const promised = new Set(shapeKeys(example));
+    if (!here.size || !promised.size) return '';
+    const missing = [...promised].filter(key => !here.has(key));
+    const extra = [...here].filter(key => !promised.has(key));
+    if (!missing.length && !extra.length) return 'форма ответа совпала с примером из документации';
+    const bits = [];
+    if (missing.length) bits.push(`в живом ответе нет: ${missing.join(', ')}`);
+    if (extra.length) bits.push(`добавилось: ${extra.join(', ')}`);
+    return `форма ответа отличается от примера — ${bits.join('; ')}. Значит, устарел либо документ, либо ответ: сверьте web/recipes.js с API.`;
+  }
+
+  /**
+   * Панель выполнения внутри карточки: строка запроса (её можно поправить), тело,
+   * «Выполнить» и ответ под кнопками. Строит app.js, данные — из docs.js/recipes.js.
+   */
+  function runPanelHtml({ id, method, path, body, scope, params = [] }) {
+    const write = method !== 'GET';
+    const chips = params.length
+      ? `<div class="xapi-run-params"><span class="xapi-run-params-label">параметры:</span>${params
+          .map(
+            name =>
+              `<button type="button" class="xapi-hint-chip" data-run-param="${escapeHtml(name)}" title="Дописать «${escapeHtml(name)}${
+                runParamSample(name) ? `=${runParamSample(name)}` : '='
+              }» в строку запроса">${escapeHtml(name)}</button>`
+          )
+          .join('')}</div>`
+      : '';
+    const bodyField = write
+      ? `<label class="xapi-field xapi-run-body-field"><span>Тело запроса — JSON (для PATCH проходки можно просто число)</span><textarea class="xapi-run-body" rows="3" spellcheck="false">${escapeHtml(body || '')}</textarea></label>`
+      : '';
+    return `<div class="xapi-run" data-run="${escapeHtml(id)}" data-run-write="${write ? '1' : '0'}" data-run-scope="${escapeHtml(SCOPE_KEYS[scope] || '')}">
+      <label class="xapi-field xapi-run-path-field"><span>Запрос — путь от корня, можно поправить и добавить параметры</span><input class="xapi-run-path" value="${escapeHtml(`${method} ${path}`)}" spellcheck="false" autocomplete="off" /></label>
+      ${bodyField}
+      ${chips}
+      <div class="xapi-run-actions">
+        <button type="button" class="btn primary small" data-run-go>▶ Выполнить</button>
+        <button type="button" class="btn ghost small" data-run-play>→ в тестовую строку</button>
+        <button type="button" class="btn ghost small" data-run-copy hidden>⧉ скопировать ответ</button>
+        <span class="xapi-note" data-run-status role="status" aria-live="polite"></span>
+      </div>
+      <div class="xapi-run-result" data-run-result hidden>
+        <div class="xapi-status" data-run-chips></div>
+        <pre class="xapi-code xapi-code-sm" data-run-out tabindex="0"></pre>
+        <p class="xapi-note" data-run-compare></p>
+      </div>
+    </div>`;
+  }
+
+  /** Подпись списков, из которых карточки берут id: поменялись — вкладки перерисовываем. */
+  function referenceStampNow() {
+    const first = latest.characters[0];
+    return `${latest.characters.length}:${latest.parties.length}:${(first && first.id) || ''}`;
+  }
+
+  /** Панели рисуются строкой — обработчики навешиваем один раз после отрисовки. */
+  function bindRunPanels(root) {
+    for (const panel of root.querySelectorAll('[data-run]')) {
+      if (panel.dataset.bound === '1') continue;
+      panel.dataset.bound = '1';
+      const go = panel.querySelector('[data-run-go]');
+      const status = panel.querySelector('[data-run-status]');
+      const pathField = panel.querySelector('.xapi-run-path');
+      const disarm = () => {
+        if (panel.dataset.armed !== '1') return;
+        delete panel.dataset.armed;
+        go.textContent = '▶ Выполнить';
+      };
+      for (const field of panel.querySelectorAll('.xapi-run-path, .xapi-run-body'))
+        field.addEventListener('input', disarm);
+      go.addEventListener('click', () => {
+        const blocked = runBlockReason(panel);
+        if (blocked) {
+          status.textContent = blocked;
+          if (!token && tokenInput) tokenInput.focus();
+          return;
+        }
+        // Запрос, который меняет данные, не должен уходить с одного щелчка —
+        // карточка справочника выглядит как обычный текст, и про METHOD легко
+        // забыть. Первое нажатие готовит кнопку, второе выполняет.
+        if (panel.dataset.runWrite === '1' && panel.dataset.armed !== '1') {
+          panel.dataset.armed = '1';
+          go.textContent = '⚠ Подтвердить: запрос меняет данные';
+          status.textContent = 'Нажмите ещё раз, чтобы выполнить.';
+          return;
+        }
+        void runFromPanel(panel);
+      });
+      panel.querySelector('[data-run-play]').addEventListener('click', () => {
+        const parsed = parseRunLine(pathField.value) || { method: 'GET', path: '/api/v1/health' };
+        const bodyField = panel.querySelector('.xapi-run-body');
+        useExample(parsed.path, parsed.method, bodyField ? bodyField.value : '');
+      });
+      const copy = panel.querySelector('[data-run-copy]');
+      copy.addEventListener('click', async () => {
+        const text = panel.querySelector('[data-run-out]').textContent || '';
+        try {
+          await navigator.clipboard.writeText(text);
+          copy.textContent = '⧉ скопировано';
+          setTimeout(() => {
+            copy.textContent = '⧉ скопировать ответ';
+          }, 1600);
+        } catch {
+          status.textContent = 'Буфер недоступен: выделите ответ и скопируйте вручную.';
+        }
+      });
+      for (const chip of panel.querySelectorAll('[data-run-param]'))
+        chip.addEventListener('click', () => {
+          const name = chip.dataset.runParam;
+          const sample = runParamSample(name);
+          const current = pathField.value.trim();
+          // Параметр уже в строке: либо дописываем значение (если оно осталось пустым),
+          // либо молчим — дублировать `party=x&party=y` незачем.
+          if (current.includes(`${name}=`)) {
+            if (!sample || !new RegExp(`${name}=(?=&|$|\\s)`).test(current)) return;
+            pathField.value = current.replace(`${name}=`, `${name}=${sample}`);
+          } else {
+            pathField.value = `${current}${current.includes('?') ? '&' : '?'}${name}=${sample}`;
+          }
+          disarm();
+          pathField.focus();
+          const end = pathField.value.length;
+          pathField.setSelectionRange(end, end);
+        });
+    }
+  }
+
+  /**
+   * Почему запрос сейчас не выйдет: текст причины или пустая строка. Проверяется
+   * до подтверждения опасного метода — иначе человек вводит второе нажатие ради 403.
+   */
+  function runBlockReason(panel) {
+    const parsed = parseRunLine(panel.querySelector('.xapi-run-path').value);
+    if (!parsed) return 'Формат: «GET /api/v1/health». Метод можно не писать — будет GET.';
+    if (!token) return 'Нет токена: введите его в блоке «Подключение» и нажмите «Подключиться».';
+    if (parsed && /\/jobs\/job_1$/.test(parsed.path) && !seenJobId)
+      return 'Задания ещё не запускались: id из примера вернёт 404. Выполните запуск — страница подставит настоящий jobId.';
+    const scopeKey = panel.dataset.runScope;
+    if (grantedScopes && scopeKey && grantedScopes[scopeKey] !== true)
+      return `Право «${SCOPE_TITLES[scopeKey] || scopeKey}» выключено — сервер ответит 403. Включите его в «Настройки → 🔌 Внешний API».`;
+    return '';
+  }
+
+  async function runFromPanel(panel) {
+    const status = panel.querySelector('[data-run-status]');
+    const blocked = runBlockReason(panel);
+    if (blocked) {
+      status.textContent = blocked;
+      if (!token && tokenInput) tokenInput.focus();
+      return;
+    }
+    const parsed = parseRunLine(panel.querySelector('.xapi-run-path').value);
+    let body;
+    try {
+      body = parsePlayBody((panel.querySelector('.xapi-run-body') || {}).value);
+    } catch (error) {
+      status.textContent = error.message;
+      return;
+    }
+    const go = panel.querySelector('[data-run-go]');
+    const label = go.textContent;
+    go.disabled = true;
+    go.textContent = 'Выполняю…';
+    status.textContent = '';
+    try {
+      const headers = { Accept: 'application/json' };
+      headers.Authorization = `Bearer ${token}`;
+      if (body !== undefined) headers['Content-Type'] = 'application/json';
+      const startedAt = performance.now();
+      const response = await fetch(localizeExample(parsed.path), {
+        method: parsed.method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body)
+      });
+      const ms = Math.round(performance.now() - startedAt);
+      const text = await response.text();
+      let json = null;
+      try {
+        json = text ? JSON.parse(text) : null;
+      } catch {
+        json = null;
+      }
+      const size = new Blob([text]).size;
+      const result = panel.querySelector('[data-run-result]');
+      result.hidden = false;
+      panel.querySelector('[data-run-chips]').innerHTML = [
+        `<span class="xapi-chip ${response.ok ? 'is-ok' : 'is-bad'}">${escapeHtml(parsed.method)} ${response.status}</span>`,
+        `<span class="xapi-chip">${escapeHtml(formatMs(ms))}</span>`,
+        `<span class="xapi-chip">${size < 1024 ? `${size} Б` : `${(size / 1024).toFixed(1)} КБ`}</span>`
+      ].join('');
+      panel.querySelector('[data-run-out]').textContent =
+        json !== null ? JSON.stringify(json, null, 2) : text || '(пустой ответ)';
+      panel.querySelector('[data-run-copy]').hidden = false;
+      const compare = panel.querySelector('[data-run-compare]');
+      const note = response.ok ? compareShape(json, runExamples.get(panel.dataset.run)) : '';
+      if (compare) {
+        compare.textContent = note;
+        compare.hidden = !note;
+      }
+      status.textContent = response.ok
+        ? '✅ Ответ получен.'
+        : `❌ ${errorText({ status: response.status, body: json })}${
+            response.status === 403 ? ' Включите право в «Настройки → 🔌 Внешний API».' : ''
+          }`;
+      if (response.ok && json && typeof json.jobId === 'string') propagateJobId(json.jobId);
+      // Списки могли измениться — формы и подсказки обновляем так же, как во «Действиях».
+      if (/^(POST|PATCH|PUT|DELETE)$/.test(parsed.method) && response.ok) {
+        refreshListsQuietly();
+        loadOverview().catch(() => {});
+      }
+    } catch (error) {
+      status.textContent = `Запрос не ушёл: ${error && error.message ? error.message : error}`;
+    } finally {
+      go.disabled = false;
+      go.textContent = label;
+      disarmPanel(panel);
+    }
+  }
+
+  function disarmPanel(panel) {
+    if (panel.dataset.armed !== '1') return;
+    delete panel.dataset.armed;
+    panel.querySelector('[data-run-go]').textContent = '▶ Выполнить';
+  }
+
+  /* ------------------------------------------------------------------ */
   /*  Справочник                                                        */
   /* ------------------------------------------------------------------ */
 
@@ -548,15 +860,41 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
    * персонаж, пати или марафон в зависимости от маршрута, `{stat}` — hp,
    * `{pass}` — weapon, `{jobId}` — job_1, `{набор}.{csv|json}` — characters.csv.
    */
+  /**
+   * Появился настоящий id задания — переписываем его в строках запроса карточек
+   * `/jobs/{jobId}`. Вкладки ради этого не перерисовываем: ответ только что
+   * напечатали в этой же панели, и перерисовка выбросила бы её вместе с ним.
+   */
+  function propagateJobId(id) {
+    if (!id || id === seenJobId) return;
+    seenJobId = id;
+    for (const field of document.querySelectorAll('[data-run] .xapi-run-path')) {
+      if (!/\/jobs\/job_1(\s|$)/.test(field.value)) continue;
+      field.value = field.value.replace('job_1', seenJobId);
+      // Строка изменилась не руками человека, но подтверждение опасного метода
+      // всё равно снимаем: арминг относился к другому запросу.
+      const row = field.closest('[data-run]');
+      const go = row.querySelector('[data-run-go]');
+      if (row.dataset.armed) {
+        delete row.dataset.armed;
+        if (go) go.textContent = '▶ Выполнить';
+      }
+    }
+  }
+
   function fillExamplePath(path) {
     let out = String(path);
+    // id задания существует только после запуска: до него подставляем тот, что
+    // страница увидела в ответе, иначе «▶ Выполнить» в карточке /jobs/{jobId}
+    // возвращал бы 404 на вымышленный `job_1`.
+    if (out.includes('{jobId}') && seenJobId) out = out.replace('{jobId}', seenJobId);
     if (out.includes('/parties/')) out = out.replace('{id}', (latest.parties[0] && latest.parties[0].id) || 'p-osnova');
     else if (out.includes('/marathons/')) out = out.replace('{id}', 'm1');
     else out = out.replace('{id}', sampleCharId());
     return out
       .replace('{stat}', 'hp')
       .replace('{pass}', 'weapon')
-      .replace('{jobId}', 'job_1')
+      .replace('{jobId}', seenJobId || 'job_1')
       .replace('{набор}.{csv|json}', 'characters.csv');
   }
 
@@ -602,17 +940,28 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
           )
           .join('')}</tbody></table></div>`
       : '<p class="xapi-note">Параметров нет.</p>';
-    const canTry = method.method !== '—' && !String(method.path).startsWith('http');
-    const examplePath = canTry ? fillExamplePath(method.path) : method.path;
+    const canRun = method.method !== '—' && !String(method.path).startsWith('http');
+    const examplePath = canRun ? localizeExample(fillExamplePath(method.path)) : method.path;
     const bodyText = method.exampleBody ? JSON.stringify(method.exampleBody) : '';
-    const tryButton = canTry
-      ? `<button type="button" class="btn secondary small" data-try="${escapeHtml(examplePath)}" data-try-method="${escapeHtml(method.method)}" data-try-body="${escapeHtml(bodyText)}">Попробовать в тестовой строке</button>`
+    // Панель выполнения прямо в карточке метода. Кнопка «подставь в другую вкладку»
+    // была полумерой: ради одного запроса приходилось прыгать между вкладками
+    // и держать в голове, что куда вставилось.
+    const panel = canRun
+      ? runPanelHtml({
+          id: `doc-${id}`,
+          method: method.method,
+          path: `/api/v1${examplePath}`,
+          body: bodyText,
+          scope: method.scope,
+          params: [...new Set((method.params || []).filter(item => item[1] === 'query').flatMap(item => String(item[0]).split(',').map(name => name.trim())).filter(Boolean))]
+        })
       : '';
-    return `<article class="xapi-doc" id="${escapeHtml(id)}" data-doc>
+    return `<article class="xapi-doc" id="${escapeHtml(id)}" data-doc data-doc-scope="${escapeHtml(SCOPE_KEYS[method.scope] || '')}" data-doc-read="${method.method === 'GET' ? '1' : '0'}">
       <div class="xapi-doc-head">
         <span class="xapi-doc-method is-${String(method.method).toLowerCase()}">${escapeHtml(badge)}</span>
         <code class="xapi-doc-path">${escapeHtml(method.path)}</code>
         <span class="xapi-chip">право: ${escapeHtml(method.scope)}</span>
+        <button type="button" class="btn ghost small xapi-doc-link" data-doc-link="${escapeHtml(id)}" title="Скопировать ссылку на этот метод">🔗 ссылка</button>
       </div>
       <h4>${escapeHtml(method.summary)}</h4>
       <p class="xapi-note">${escapeHtml(method.description)}</p>
@@ -626,7 +975,7 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
         <pre class="xapi-code xapi-code-sm">${escapeHtml(
           `${method.method === '—' ? '' : `${method.method} `}${method.path}${bodyText ? `\n${bodyText}` : ''}`
         )}</pre>
-        ${tryButton}
+        ${panel}
       </div>
     </article>`;
   }
@@ -657,9 +1006,9 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
       .replace(/<токен>/g, token || '<токен>');
   }
 
-  /** Тело запроса для кнопки «Попробовать». */
+  /** Тело запроса: пример из каталога, но с id этого запуска. */
   function recipeBody(item) {
-    return item.body ? JSON.stringify(item.body) : '';
+    return item.body ? localizeExample(JSON.stringify(item.body)) : '';
   }
 
   function recipeHtml(item) {
@@ -670,8 +1019,12 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
           .join('')}</tbody></table></div>`
       : '';
     const response = typeof item.response === 'string' ? item.response : JSON.stringify(item.response, null, 2);
-    const tryButton = `<button type="button" class="btn secondary small" data-recipe-try="${escapeHtml(item.path)}" data-recipe-method="${escapeHtml(item.method)}" data-recipe-body="${escapeHtml(recipeBody(item))}">Попробовать в тестовой строке</button>`;
-    return `<article class="xapi-doc" data-recipe data-recipe-id="${escapeHtml(item.id)}">
+    // Выполнение идёт по шаблону пути (`template`) с подстановкой реальных id:
+    // `path` — это пример из документации, в нём «Mag_1», и на живом сервере
+    // такой запрос вернул бы 404.
+    const runLine = localizeExample(fillExamplePath(item.template || item.path));
+    runExamples.set(`recipe-${item.id}`, item.response);
+    return `<article class="xapi-doc" data-recipe data-recipe-id="${escapeHtml(item.id)}" data-recipe-scope="${escapeHtml(SCOPE_KEYS[item.scope] || '')}">
       <div class="xapi-doc-head">
         <span class="xapi-doc-method is-${escapeHtml(String(item.method).toLowerCase())}">${escapeHtml(item.method)}</span>
         <code class="xapi-doc-path">${escapeHtml(item.template || item.path)}</code>
@@ -682,8 +1035,15 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
       <div class="xapi-doc-body">
         <h5>Запрос</h5>
         <pre class="xapi-code xapi-code-sm" data-recipe-snippet>${escapeHtml(recipeSnippet(item, recipeLanguage))}</pre>
-        ${tryButton}
-        <h5>Ответ</h5>
+        ${runPanelHtml({
+          id: `recipe-${item.id}`,
+          method: item.method,
+          path: runLine,
+          body: recipeBody(item),
+          scope: item.scope,
+          params: []
+        })}
+        <h5>Ответ — как он описан в документации</h5>
         <pre class="xapi-code xapi-code-sm">${escapeHtml(response)}</pre>
         <h5>Что это значит</h5>
         <p class="xapi-note">${escapeHtml(item.explanation)}</p>
@@ -699,7 +1059,9 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
       body.innerHTML = '<p class="xapi-note">Рецепты не загрузились: файл recipes.js не подключён.</p>';
       return;
     }
-    if (body.dataset.rendered !== '1') {
+    const stamp = referenceStampNow();
+    if (body.dataset.stamp !== stamp) {
+      body.dataset.stamp = stamp;
       body.innerHTML = recipeGroupList
         .map(group => {
           const inGroup = recipeCatalog.filter(item => item.group === group.id);
@@ -710,12 +1072,7 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
           </section>`;
         })
         .join('');
-      body.dataset.rendered = '1';
-      for (const button of body.querySelectorAll('[data-recipe-try]')) {
-        button.addEventListener('click', () =>
-          useExample(button.dataset.recipeTry, button.dataset.recipeMethod, button.dataset.recipeBody)
-        );
-      }
+      bindRunPanels(body);
     }
     filterRecipes();
   }
@@ -738,15 +1095,20 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
     }
   }
 
-  /** Поиск: скрывает рецепты, где нет совпадения. */
+  /** Поиск и фильтр по правам: скрывают рецепты, где нет совпадения. */
   function filterRecipes() {
     const input = $('#recipes-filter');
     const query = (input ? input.value : '').trim().toLowerCase();
+    const onlyAvailable = !!$('#recipes-only-available') && $('#recipes-only-available').checked;
     let shown = 0;
     for (const group of document.querySelectorAll('[data-recipe-group]')) {
       let any = false;
       for (const item of group.querySelectorAll('[data-recipe]')) {
-        const hit = !query || item.textContent.toLowerCase().includes(query);
+        const key = item.dataset.recipeScope;
+        const blocked = !!grantedScopes && !!key && grantedScopes[key] !== true;
+        item.classList.toggle('is-blocked', blocked);
+        let hit = !query || item.textContent.toLowerCase().includes(query);
+        if (hit && onlyAvailable && blocked) hit = false;
         item.hidden = !hit;
         if (hit) any = true;
       }
@@ -755,6 +1117,16 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
     }
     if (query && shown === 0 && input) input.setAttribute('data-empty', '1');
     else if (input) input.removeAttribute('data-empty');
+    const counter = $('#recipes-count');
+    if (counter) {
+      counter.textContent =
+        query || onlyAvailable
+          ? shown
+            ? `показано ${shown} групп из ${recipeGroupList.length}`
+            : 'под фильтр не попал ни один рецепт — ослабьте запрос или снимите переключатель'
+          : `рецептов: ${recipeCatalog.length}`;
+      counter.classList.toggle('is-empty', (!!query || onlyAvailable) && !shown);
+    }
   }
 
   /* ------------------------------------------------------------------ */
@@ -1140,12 +1512,64 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
   /** Тихо обновить персонажей и пати после изменения, чтобы формы были актуальны. */
   async function refreshListsQuietly() {
     try {
-      const [characters, parties] = await Promise.all([api('/api/v1/characters'), api('/api/v1/parties')]);
+      // `full=true`: панель показывает статы и проходки каждой карточки, а список по
+      // умолчанию их не отдаёт — без флага блок со статами просто опустел бы.
+      const [characters, parties] = await Promise.all([
+        api('/api/v1/characters?full=true'),
+        api('/api/v1/parties')
+      ]);
       if (characters.ok && characters.body) latest.characters = characters.body.characters || [];
       if (parties.ok && parties.body) latest.parties = parties.body.parties || [];
     } catch {
       /* список не критичен: форма уже показала результат */
     }
+  }
+
+  /**
+   * Перейти к разделу справочника: вкладка «Справочник», прокрутка, подсветка.
+   *
+   * Адрес (`#m-chtenie-characters`) меняется сразу, поэтому ссылку можно
+   * скопировать из строки браузера и отдать другому — она приведёт ровно к одному
+   * методу, а не к началу страницы. Ссылки из оглавления настоящие, поэтому
+   * переход работает и без JS: обработчик добавляет только прокрутку и подсветку.
+   */
+  function goToDoc(hash) {
+    const id = String(hash || '').replace(/^#/, '');
+    if (!id) return false;
+    if (activeTab !== 'docs') showTab('docs');
+    const target = document.getElementById(id);
+    if (!target) return false;
+    if (location.hash !== `#${id}`) history.replaceState(null, '', `#${id}`);
+    // Прокрутка — украшение перехода: в окружении без разметки (тест jsdom) её нет,
+    // а адрес и подсветка должны работать там же.
+    target.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    target.classList.add('is-target');
+    setTimeout(() => target.classList.remove('is-target'), 1600);
+    return true;
+  }
+
+  /**
+   * Оглавление справочника: группа и каждый её метод отдельной строкой.
+   *
+   * Раньше были только ссылки на группы: при тридцати с лишним методах это
+   * «нажми и листай». Метод подписан методом и путём — так его находят по имени
+   * пути, а не по названию группы, и тот же текст служит ключом поиска.
+   */
+  function docsTocHtml() {
+    return docs.groups
+      .map(group => {
+        const items = group.methods
+          .map(
+            method =>
+              `<li class="xapi-toc-item"><a class="xapi-toc-method" data-toc-method href="#${escapeHtml(docsMethodId(group, method))}"><code>${escapeHtml(method.method)}</code><span>${escapeHtml(method.path)}</span></a></li>`
+          )
+          .join('');
+        return `<div class="xapi-toc-group" data-toc-group>
+          <a class="xapi-toc-link" href="#g-${escapeHtml(group.id)}">${escapeHtml(group.title)}<span class="xapi-toc-count">${group.methods.length}</span></a>
+          <ul class="xapi-toc-methods">${items}</ul>
+        </div>`;
+      })
+      .join('');
   }
 
   function renderDocs() {
@@ -1154,14 +1578,13 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
       body.innerHTML = '<p class="xapi-note">Справочник не загрузился: файл docs.js не подключён.</p>';
       return;
     }
-    const onlyOnce = body.dataset.rendered === '1';
-    if (!onlyOnce) {
-      $('#docs-toc').innerHTML = docs.groups
-        .map(
-          group =>
-            `<a class="xapi-toc-link" href="#g-${escapeHtml(group.id)}">${escapeHtml(group.title)} <span class="xapi-toc-count">${group.methods.length}</span></a>`
-        )
-        .join('');
+    // Карточки рисуются один раз, но в них подставлены id из «Данных»: поменялись
+    // списки (подключились, обновили) — значит пора перерисовать, а не показывать
+    // чужие «Mag_1» из документации.
+    const stamp = referenceStampNow();
+    if (body.dataset.stamp !== stamp) {
+      body.dataset.stamp = stamp;
+      $('#docs-toc').innerHTML = docsTocHtml();
       body.innerHTML = docs.groups
         .map(
           group => `<section class="xapi-doc-group" id="g-${escapeHtml(group.id)}" data-doc-group>
@@ -1171,39 +1594,130 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
       </section>`
         )
         .join('');
-      body.dataset.rendered = '1';
-      for (const button of body.querySelectorAll('[data-try]'))
-        button.addEventListener('click', () =>
-          useExample(`/api/v1${button.dataset.try}`, button.dataset.tryMethod, button.dataset.tryBody)
-        );
-      // Оглавление — настоящие ссылки: работают и без JS-переходов.
-      for (const link of document.querySelectorAll('.xapi-toc-link'))
+      bindRunPanels(body);
+      // Оглавление — настоящие ссылки: работают и без JS-переходов. Обработчик
+      // добавляет прокрутку и запись адреса; группы и методы идут одним путём.
+      for (const link of document.querySelectorAll('#docs-toc a[href^="#"]'))
         link.addEventListener('click', event => {
           event.preventDefault();
-          const target = document.querySelector(link.getAttribute('href'));
-          if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          goToDoc(link.getAttribute('href'));
+        });
+      // Кнопка «ссылка» в карточке метода: адрес в буфер — вставить в чат, задачу
+      // или AGENTS.md, чтобы другой человек открыл ровно этот метод.
+      for (const button of body.querySelectorAll('[data-doc-link]'))
+        button.addEventListener('click', async () => {
+          const url = `${location.origin}${location.pathname}#${button.dataset.docLink}`;
+          try {
+            await navigator.clipboard.writeText(url);
+            button.textContent = '🔗 скопировано';
+            setTimeout(() => {
+              button.textContent = '🔗 ссылка';
+            }, 1600);
+          } catch {
+            window.prompt('Скопируйте ссылку:', url);
+          }
         });
     }
     filterDocs();
+    // Ссылка с якорем важнее начала страницы: `#m-…` открывают ради конкретного метода.
+    if (location.hash) goToDoc(location.hash);
   }
 
-  /** Поиск: скрывает группы и методы, где нет совпадения. */
+  /**
+   * Доступность права для карточки: «изменение» и «запуск» выключены по умолчанию,
+   * и без этой отметки метод выглядит сломанным, хотя он просто закрыт токеном.
+   */
+  function docCardBlocked(doc) {
+    const key = doc.dataset.docScope;
+    return !!grantedScopes && !!key && grantedScopes[key] !== true;
+  }
+
+  /** Переключатели «только …» рядом с поиском. */
+  function syncDocsFilter() {
+    const available = $('#docs-only-available');
+    if (!available) return;
+    available.disabled = !grantedScopes;
+    if (!grantedScopes) available.checked = false;
+    filterDocs();
+  }
+
+  /**
+   * Подсказка под фильтрами. Пустой результат надо называть словами: без этого
+   * человек видит пустое место и не понимает, что фильтр просто слишком узкий.
+   */
+  function docsFilterHint(shown, total) {
+    const hint = $('#docs-filter-hint');
+    if (!hint) return;
+    const access = grantedScopes
+      ? 'Фильтры работают по правам вашего токена.'
+      : 'Подключитесь токеном — тогда появятся фильтры по правам.';
+    if (shown === total) {
+      hint.textContent = access;
+      hint.classList.remove('is-empty');
+      return;
+    }
+    hint.textContent = shown
+      ? `${access} Показано методов: ${shown} из ${total}.`
+      : `${access} Под фильтр не попал ни один метод — ослабьте запрос или снимите переключатели.`;
+    hint.classList.toggle('is-empty', !shown);
+  }
+
+  /** Все карточки методов: нужны, чтобы сказать «показано N из M». */
+  function docCards() {
+    return [...document.querySelectorAll('#docs-body [data-doc]')];
+  }
+
+  /** Поиск и фильтры: скрывают группы и методы, где нет совпадения. */
   function filterDocs() {
     const input = $('#docs-filter');
     const query = (input ? input.value : '').trim().toLowerCase();
+    const onlyRead = !!$('#docs-only-read') && $('#docs-only-read').checked;
+    const onlyAvailable = !!$('#docs-only-available') && $('#docs-only-available').checked;
+    let groups = 0;
     let shown = 0;
     for (const group of document.querySelectorAll('[data-doc-group]')) {
       let any = false;
       for (const doc of group.querySelectorAll('[data-doc]')) {
-        const hit = !query || doc.textContent.toLowerCase().includes(query);
+        doc.classList.toggle('is-blocked', docCardBlocked(doc));
+        let hit = !query || doc.textContent.toLowerCase().includes(query);
+        if (hit && onlyRead && doc.dataset.docRead !== '1') hit = false;
+        if (hit && onlyAvailable && docCardBlocked(doc)) hit = false;
         doc.hidden = !hit;
-        if (hit) any = true;
+        if (hit) {
+          any = true;
+          shown += 1;
+        }
       }
       group.hidden = !any;
-      if (any) shown += 1;
+      if (any) groups += 1;
     }
-    if (query && shown === 0 && input) input.setAttribute('data-empty', '1');
+    if (query && !shown && input) input.setAttribute('data-empty', '1');
     else if (input) input.removeAttribute('data-empty');
+    docsFilterHint(shown, docCards().length);
+    // Оглавление повторяет результат по карточкам: ссылка остаётся ровно там, где
+    // остался сам метод. Искать отдельно по подписям ссылок — два списка, которые
+    // неизбежно разъезжаются (текста в карточке больше, чем в подписи).
+    let tocHits = 0;
+    for (const tocGroup of document.querySelectorAll('[data-toc-group]')) {
+      let anyToc = false;
+      for (const link of tocGroup.querySelectorAll('[data-toc-method]')) {
+        const card = document.getElementById(String(link.getAttribute('href') || '').slice(1));
+        const hit = !!card && !card.hidden;
+        const item = link.closest('li') || link;
+        item.hidden = !hit;
+        if (hit) {
+          anyToc = true;
+          tocHits += 1;
+        }
+      }
+      tocGroup.hidden = !anyToc;
+    }
+    const counter = $('#docs-toc-count');
+    if (counter) {
+      const total = docs.groups.reduce((sum, group) => sum + group.methods.length, 0);
+      const filtered = query || onlyRead || onlyAvailable;
+      counter.textContent = filtered ? `показано ${tocHits} из ${total}` : `методов: ${total}`;
+    }
   }
 
   async function loadAll() {
@@ -1219,6 +1733,7 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
     setChip('server', `сервер: работает${info.app && info.app.version ? `, версия ${info.app.version}` : ''}`, 'ok');
     setChip('port', `порт: ${location.port || '—'}`, 'ok');
     const scopes = info.scopes || {};
+    grantedScopes = scopes;
     const scopeNames = [
       scopes.read ? 'чтение' : null,
       scopes.modify ? 'изменение' : null,
@@ -1231,8 +1746,11 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
       ? 'Токен принят. Все запросы ниже идут с ним.'
       : 'Токен принят, но запись состояния остановлена: изменения вернут 423 storage_blocked.';
 
+    // Список по умолчанию лёгкий (без статов), а «Данные» рисуют статы — поэтому
+    // страница просит полные карточки явно. Молча потерять блок со статами —
+    // значит оставить пользователя гадать, то ли их удалили, то ли не было.
     const [characters, parties, windows] = await Promise.all([
-      api('/api/v1/characters'),
+      api('/api/v1/characters?full=true'),
       api('/api/v1/parties'),
       api('/api/v1/windows')
     ]);
@@ -1244,10 +1762,23 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
     renderCharacters(latest.characters);
     renderParties(latest.parties);
     renderWindows(latest.windows);
-    $('#panel').hidden = false;
+    // «Данные» показываем, только если они и есть открытая вкладка: иначе загрузка
+    // прилепляла вторую панель под той, на которой человек стоит (две сразу).
+    if (activeTab === 'panel') $('#panel').hidden = false;
     $('#reload-audit').hidden = false;
     // Списки персонажей и пати могли поменяться — формы действий строятся из них.
     renderActionsList();
+    // Справочник и рецепты строятся из этих списков (в них подставлены id): после
+    // подключения они обязаны показывать ваши id, а не те, что были на экране до.
+    if (activeTab === 'docs') renderDocs();
+    if (activeTab === 'recipes') renderRecipes();
+    syncDocsFilter();
+    const recipesToggle = $('#recipes-only-available');
+    if (recipesToggle) {
+      recipesToggle.disabled = !grantedScopes;
+      if (!grantedScopes) recipesToggle.checked = false;
+    }
+    if (activeTab === 'recipes') renderRecipes();
     await loadAudit();
     return true;
   }
@@ -1277,6 +1808,7 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
 
   function forget() {
     token = '';
+    grantedScopes = null;
     sessionStorage.removeItem(storageKey);
     tokenInput.value = '';
     $('#panel').hidden = true;
@@ -1287,6 +1819,7 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
     setChip('scopes', 'права: —', null);
     setChip('storage', 'запись: —', null);
     $('#connect-note').textContent = 'Токен удалён из вкладки. Сами запросы от этого не выключаются.';
+    syncDocsFilter();
     renderRecipe();
   }
 
@@ -1322,8 +1855,15 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
       if (event.key === 'Enter') sendPlay();
     });
     $('#docs-filter').addEventListener('input', filterDocs);
+    for (const id of ['docs-only-read', 'docs-only-available'])
+      $(`#${id}`)?.addEventListener('change', filterDocs);
+    // Якорь, вставленный в адрес уже открытой страницы, тоже работает.
+    window.addEventListener('hashchange', () => {
+      if (location.hash) goToDoc(location.hash);
+    });
     // Вкладка «Рецепты».
     $('#recipes-filter')?.addEventListener('input', filterRecipes);
+    $('#recipes-only-available')?.addEventListener('change', filterRecipes);
     for (const tab of document.querySelectorAll('[data-recipe-lang]')) {
       tab.addEventListener('click', () => setRecipeLanguage(tab.dataset.recipeLang || 'curl'));
     }
@@ -1384,14 +1924,23 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
 
   fillBase();
   bind();
+  syncDocsFilter();
   renderPresets();
   renderHints();
   renderActionsList();
   showTab('panel');
+  // Якорь справочника (`#m-…`, `#g-…`) означает «открой справочник»: иначе ссылка
+  // привела бы на вкладку «Данные» и промахнулась бы по разделу, ради которого её
+  // и вставили (а ссылки на методы — это то, чем делятся в задачах и AGENTS.md).
+  if (/^#(m-|g-)/.test(location.hash)) showTab('docs');
   const saved = sessionStorage.getItem(storageKey);
   if (saved) {
     tokenInput.value = saved;
     token = saved;
+    // Токен уже в этой вкладке — значит человек уже подключался. Заставлять его
+    // жать «Подключиться» второй раз, чтобы увидеть данные и свои id в карточках,
+    // значит оставить страницу «пустой» при каждом возврате на неё.
+    loadAll().catch(() => setChip('server', 'сервер: недоступен', 'bad'));
   }
   renderRecipe();
 })();

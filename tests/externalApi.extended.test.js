@@ -295,7 +295,9 @@ describe('внешний API: персонажи и проходки', () => {
 
   it('чтение не отдаёт контакты, пароль и путь запуска', () => {
     const state = makeState();
-    const { characters } = publicCharacters(state);
+    // `full=true`: проверяется состав карточки, а не размер ответа — список по
+    // умолчанию статов и истории монет не отдаёт (см. tests/externalApi.read.test.js).
+    const { characters } = publicCharacters(state, 'full=true');
     const json = JSON.stringify(characters);
     expect(json).not.toContain('p@ss');
     expect(json).not.toContain('gc@example.com');
@@ -306,6 +308,10 @@ describe('внешний API: персонажи и проходки', () => {
     expect(mag).toHaveProperty('dungeonPasses.weapon', 2);
     expect(mag).toHaveProperty('tags');
     expect(mag).toHaveProperty('coinHistory');
+    // И в лёгком списке тоже нет ничего секретного — сокращение не должно открыть
+    // то, что закрыто всегда.
+    const light = JSON.stringify(publicCharacters(state).characters);
+    for (const secret of ['p@ss', 'gc@example.com', 'game.exe']) expect(light).not.toContain(secret);
   });
 
   it('пати: название и цвет меняются, пустое название — отказ', async () => {

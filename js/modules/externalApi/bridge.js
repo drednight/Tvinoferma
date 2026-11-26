@@ -371,8 +371,11 @@ export async function routeRequest(request, deps = {}) {
     }
 
     const { publicCharacters } = await load('characters', () => import('./actions/read.js'));
+    // Адресный маршрут — ЭТО карточка, поэтому полный: сокращение списка к нему
+    // не относится, и `GET /characters/{id}` обязан оставаться «всё про персонажа».
     const list = publicCharacters(state, '', {
-      running: runningByCharIdOf(await load('windowRows', () => readWindowRows()))
+      running: runningByCharIdOf(await load('windowRows', () => readWindowRows())),
+      forceFull: true
     }).characters;
     const character = list.find(row => String(row.id) === id) || null;
     if (!character) throw new ApiError(404, 'no_such_character', 'Персонаж не найден');

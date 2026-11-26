@@ -14,6 +14,7 @@ import {
   apiStatus,
   apiAudit,
   clearAudit,
+  currentToken,
   rotateToken,
   resetToken,
   syncExternalApi
@@ -88,13 +89,24 @@ export function statusText(status, { tauri = true } = {}) {
   return `✅ Сервер работает на http://127.0.0.1:${port} · права: ${names.length ? names.join(', ') : 'нет'}.${profileNote(status)}${ready}`;
 }
 
-/** Строка про токен: создан ли и когда. Сам токен здесь не появляется никогда. */
+/**
+ * Строка про токен: создан ли и когда. Само значение здесь не появляется —
+ * панель настроек не выводит секрет в обычную строку статуса, показ отдельно
+ * включается кнопкой и сам гаснет (см. `revealToken`).
+ *
+ * `status` влияет только на подсказку: если сервер остановлен, копировать токен
+ * всё равно можно (он лежит в хранилище), но клиенту это ничего не даст.
+ */
 export function tokenText(settings, status) {
   const created = settings?.tokenCreatedAt;
-  if (!created) return 'Токен ещё не создан: он появится при включении сервера.';
+  if (!created) {
+    return 'Токен ещё не создан: он появится при включении сервера — или нажмите «Скопировать токен».';
+  }
   const at = new Date(created);
   const when = Number.isNaN(at.getTime()) ? '' : ` (создан ${at.toLocaleString('ru-RU')})`;
-  return `Токен хранится в хранилище учётных данных ОС${when}. Повторно показать его нельзя — только перевыпустить.`;
+  const stopped =
+    status && status.running === false ? ' Сервер остановлен: значение токен не меняет, но запросы не примутся.' : '';
+  return `Токен в хранилище учётных данных ОС${when}. Его можно скопировать или показать снова; перевыпуск нужен, только если он утёк.${stopped}`;
 }
 
 /**
@@ -135,6 +147,50 @@ async function copyText(text) {
     return true;
   } catch {
     return false;
+  }
+}
+
+/** Сколько секунд показанное значение остаётся на экране. */
+const REVEAL_MS = 60_000;
+/** Видно ли сейчас значение токена (кнопка-переключатель и автоскрытие). */
+let revealed = false;
+/** @type {any} */
+let revealTimer = null;
+
+/**
+ * Показать токен в блоке `#external-api-token-reveal`.
+ * @param {string} token
+ * @param {'fresh' | 'current'} kind «fresh» — после перевыпуска, «current» — просто прочитали.
+ */
+function showToken(token, kind) {
+  const reveal = document.getElementById('external-api-token-reveal');
+  const value = document.getElementById('external-api-token-value');
+  const note = document.getElementById('external-api-token-reveal-note');
+  if (value) value.textContent = token;
+  if (note) {
+    note.textContent =
+      kind === 'fresh'
+        ? 'Новый токен — сохраните его сейчас: второй раз старый не восстановить.'
+        : 'Текущий токен — он не изменился. Через минуту строка снова скроется.';
+  }
+  if (reveal) reveal.hidden = false;
+  revealed = true;
+  if (revealTimer) clearTimeout(revealTimer);
+  revealTimer = setTimeout(() => hideToken(), REVEAL_MS);
+}
+
+/** Убрать значение из разметки и вернуть подпись кнопки. */
+function hideToken() {
+  const reveal = document.getElementById('external-api-token-reveal');
+  const value = document.getElementById('external-api-token-value');
+  const showButton = document.getElementById('external-api-token-show');
+  if (value) value.textContent = '';
+  if (reveal) reveal.hidden = true;
+  if (showButton) showButton.textContent = 'Показать токен';
+  revealed = false;
+  if (revealTimer) {
+    clearTimeout(revealTimer);
+    revealTimer = null;
   }
 }
 
@@ -223,10 +279,7 @@ export function bindExternalApiPanel() {
         toast(result.error || 'Не удалось перевыпустить токен', 'error');
         return;
       }
-      const reveal = document.getElementById('external-api-token-reveal');
-      const value = document.getElementById('external-api-token-value');
-      if (value) value.textContent = result.token;
-      if (reveal) reveal.hidden = false;
+      showToken(result.token, 'fresh');
       toast('Токен перевыпущен: старые программы получат 401', 'success');
       renderPanel();
     } finally {
@@ -234,10 +287,43 @@ export function bindExternalApiPanel() {
     }
   });
 
+  // Копирование читает токен из хранилища и НЕ показывает его: частый сценарий —
+  // «вставить в скрипт», и держать 64 символа на экране ради этого незачем.
+  // До этой правки единственный способ получить значение был «перевыпустить»,
+  // токен менялся, и все настроенные клиенты отваливались на 401.
   document.getElementById('external-api-token-copy')?.addEventListener('click', async () => {
-    const value = document.getElementById('external-api-token-value')?.textContent || '';
-    const ok = await copyText(value);
-    toast(ok ? 'Токен скопирован.' : 'Браузер не разрешил копирование.', ok ? 'success' : 'error');
+    const result = await currentToken();
+    if (!result.ok || !result.token) {
+      toast(result.error || 'Не удалось прочитать токен', 'error');
+      return;
+    }
+    const ok = await copyText(result.token);
+    const note = result.created ? ' Токен создан сейчас: раньше его не было.' : '';
+    toast(
+      ok ? `Токен скопирован, он не менялся.${note}` : 'Браузер не разрешил копирование.',
+      ok ? 'success' : 'error'
+    );
+  });
+
+  // Показ — по явной кнопке и на время: значение видно, пока его вставляют, потом
+  // гаснет само. Так секрет не остаётся в разметке окна, которое могут снять на скриншот.
+  const showButton = document.getElementById('external-api-token-show');
+  document.getElementById('external-api-token-show')?.addEventListener('click', async () => {
+    if (revealTimer) {
+      clearTimeout(revealTimer);
+      revealTimer = null;
+    }
+    if (revealed) {
+      hideToken();
+      return;
+    }
+    const result = await currentToken();
+    if (!result.ok || !result.token) {
+      toast(result.error || 'Не удалось прочитать токен', 'error');
+      return;
+    }
+    showToken(result.token, result.created ? 'fresh' : 'current');
+    if (showButton) showButton.textContent = 'Скрыть токен';
   });
 
   document.getElementById('external-api-forget')?.addEventListener('click', async () => {
@@ -246,8 +332,7 @@ export function bindExternalApiPanel() {
       toast(result.error || 'Не удалось удалить токен', 'error');
       return;
     }
-    const reveal = document.getElementById('external-api-token-reveal');
-    if (reveal) reveal.hidden = true;
+    hideToken();
     toast('Токен удалён: при следующем включении будет создан новый', 'info');
     renderPanel();
   });

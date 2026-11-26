@@ -114,6 +114,13 @@ export function createCommandRunner({ switchTab }) {
           await launchPartyByName(payload);
           return;
         }
+        case 'launch-party-pick': {
+          // У палитры команд нет стрелки у кнопки, поэтому разовый выбор состава —
+          // отдельная команда: искать «с зажатым Shift» в строке поиска бессмысленно.
+          const { launchPartyPicked } = await import('../modules/launcher/partyLaunch.js');
+          await launchPartyPicked(payload);
+          return;
+        }
         case 'close-party': {
           const { closePartyWindows } = await import('../modules/launcher/partyLaunch.js');
           await closePartyWindows(payload);

@@ -179,11 +179,18 @@
           Тот же набор собран в <code>docs/EXTERNAL-API-EXAMPLES.md</code> — из того же каталога, поэтому текст и
           страница не расходятся.
         </p>
-        <div class="xapi-docs-search">
+        <p class="xapi-note">
+          Каждый рецепт можно выполнить прямо здесь: «▶ Выполнить» отправит запрос этим приложением
+          и покажет настоящий ответ рядом с примером из документации. Ответы рецептов сверяются с
+          документом — если форма ответа разошлась, страница об этом скажет.
+        </p>
+        <div class="xapi-docs-search xapi-docs-filter">
           <label class="xapi-field xapi-field-grow">
             Поиск по рецептам
             <input id="recipes-filter" type="search" autocomplete="off" placeholder="планировщик, деньги, 403…" />
           </label>
+          <label class="xapi-check"><input id="recipes-only-available" type="checkbox" disabled /> только доступные моим правам</label>
+          <span id="recipes-count" class="xapi-note"></span>
         </div>
         <div class="xapi-tabs" role="tablist" aria-label="Язык примера">
           <button type="button" class="xapi-tab is-on" data-recipe-lang="curl" role="tab" aria-selected="true">curl</button>
@@ -198,16 +205,27 @@
       <section class="xapi-block xapi-tabpanel" id="docs" data-panel="docs" aria-labelledby="docs-title" hidden>
         <h2 id="docs-title">Справочник API</h2>
         <p class="xapi-note">
-          Все методы с параметрами, ответами и примерами. У каждого метода есть кнопка «Попробовать»: она
-          подставляет запрос в «Тестовый запрос». Полный текст контракта — <code>docs/EXTERNAL-API.md</code>.
+          Все методы с параметрами, ответами и примерами. В каждой карточке — строка запроса с вашими
+          id и кнопка «▶ Выполнить»: ответ приходит в эту же карточку, перепрыгивать в «Тестовый запрос»
+          не нужно. Изменяющие методы просят подтверждение вторым нажатием. Полный текст контракта —
+          <code>docs/EXTERNAL-API.md</code>.
         </p>
-        <div class="xapi-docs-search">
+        <div class="xapi-docs-search xapi-docs-filter">
           <label class="xapi-field xapi-field-grow">
             Поиск по методам
             <input id="docs-filter" type="search" autocomplete="off" placeholder="hp, проходк, марафон, export…" />
           </label>
+          <label class="xapi-check"><input id="docs-only-read" type="checkbox" /> только чтение (GET)</label>
+          <label class="xapi-check">
+            <input id="docs-only-available" type="checkbox" disabled /> только доступные моим правам
+          </label>
+          <span id="docs-filter-hint" class="xapi-note"></span>
         </div>
-        <div id="docs-toc" class="xapi-toc"></div>
+        <p class="xapi-toc-head">
+          <span id="docs-toc-count" class="muted"></span>
+          <span class="muted">Оглавление ведёт к каждому методу; ссылка на метод — кнопка «🔗 ссылка» в его карточке.</span>
+        </p>
+        <nav id="docs-toc" class="xapi-toc" aria-label="Методы справочника"></nav>
         <div id="docs-body" class="xapi-docs"></div>
       </section>
 
