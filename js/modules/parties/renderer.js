@@ -174,6 +174,7 @@ function partyCardHtml(name, members) {
                 <div class="pt-online" title="Онлайн: ${stats.onlineCount} из ${activeMembers.length} активных"><span style="width:${onlinePct}%"></span></div>
             </div>
             <div class="pt-actions">
+                <span class="pt-split">
                 <button class="pt-btn pt-btn-launch launch-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" ${activeMembers.length ? '' : 'disabled'}
                         title="${launchReady ? 'Запустить игру для активных участников по очереди (GameCenter выбирается по большинству участников)' : activeMembers.length ? `Готовы к запуску: ${launchReady} из ${activeMembers.length}. Остальным нужен GameCenter и запомненный вход — откроется экран проверки` : 'В пати нет активных персонажей'}">
                     ▶ Запустить <small>${launchReady}/${activeMembers.length}</small>
@@ -183,9 +184,10 @@ function partyCardHtml(name, members) {
                   // состав — единственное исключение: рядом с заблокированной кнопкой
                   // стрелка только обещала бы меню без пунктов.
                   activeMembers.length
-                    ? `<button class="pt-btn pt-btn-icon pt-btn-caret" type="button" data-party-name="${escapeHtml(name)}" aria-haspopup="menu" aria-expanded="false" title="Как запускать: всех, выборочно или только отставших" aria-label="Варианты запуска пати ${escapeHtml(name)}">▾</button>`
+                    ? `<button class="pt-btn pt-btn-caret" type="button" data-party-name="${escapeHtml(name)}" aria-haspopup="menu" aria-expanded="false" title="Как запускать: всех, выборочно или только отставших" aria-label="Варианты запуска пати ${escapeHtml(name)}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>`
                     : ''
                 }
+                </span>
                 ${hasRunning ? `<button class="pt-btn pt-btn-icon sign-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" title="Подписать окна игры этой пати: вернуть название «Ник — Класс» и значок класса" aria-label="Подписать окна игры пати">🔖</button>` : ''}
                 ${activeMembers.length ? `<button class="pt-btn pt-btn-icon close-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" title="Закрыть окна игры этой пати (откроется список, если запущено больше окон)" aria-label="Закрыть окна игры пати">🛑</button>` : ''}
                 ${isDraggable ? `<button class="pt-btn pt-btn-icon edit-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" title="Состав, название и цвет пати">⚙</button>` : ''}
@@ -511,32 +513,39 @@ function bindPartyEvents(container) {
       import('../launcher/partyLaunch.js')
         .then(m => {
           const misses = m.partyLaunchMisses(name);
-          openActionMenu(caret, [
-            {
-              id: 'all',
-              icon: '▶',
-              label: 'Запустить всех',
-              hint: 'Весь состав пати, без окна выбора',
-              onSelect: () => m.launchPartyAll(name)
-            },
-            {
-              id: 'pick',
-              icon: '☑',
-              label: 'Выбрать, кого запускать…',
-              hint: 'Отметить участников перед запуском — даже если спрос выключен',
-              onSelect: () => m.launchPartyPicked(name)
-            },
-            {
-              id: 'misses',
-              icon: '↻',
-              label: misses.length ? `Повторить за отставших (${misses.length})` : 'Повторить за отставших',
-              hint: misses.length
-                ? 'Запустить только тех, кто не поднялся в прошлый раз'
-                : 'В прошлый запуск этой пати все окна поднялись — повторять не за чем',
-              disabled: !misses.length,
-              onSelect: () => m.launchPartyByName(name, { memberIds: misses })
-            }
-          ]);
+          // Меню уходит в body, а не в карточку: у `.pt-card` overflow:hidden
+          // (скруглённые углы и раскрытие состава), и меню внутри неё обрезалось
+          // по границе карточки, накрытый список выглядел как сломанная вёрстка.
+          openActionMenu(
+            caret,
+            [
+              {
+                id: 'all',
+                icon: '▶',
+                label: 'Запустить всех',
+                hint: 'Весь состав пати, без окна выбора',
+                onSelect: () => m.launchPartyAll(name)
+              },
+              {
+                id: 'pick',
+                icon: '☑',
+                label: 'Выбрать, кого запускать…',
+                hint: 'Отметить участников перед запуском — даже если спрос выключен',
+                onSelect: () => m.launchPartyPicked(name)
+              },
+              {
+                id: 'misses',
+                icon: '↻',
+                label: misses.length ? `Повторить за отставших (${misses.length})` : 'Повторить за отставших',
+                hint: misses.length
+                  ? 'Запустить только тех, кто не поднялся в прошлый раз'
+                  : 'В прошлый запуск этой пати все окна поднялись — повторять не за чем',
+                disabled: !misses.length,
+                onSelect: () => m.launchPartyByName(name, { memberIds: misses })
+              }
+            ],
+            { portal: document.body }
+          );
         })
         .catch(() => toast('Не удалось открыть варианты запуска', 'error'));
       return;

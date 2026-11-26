@@ -284,19 +284,57 @@
   padding: 0;
   font-size: 1rem;
 }
-/* Стрелка у кнопки запуска: «всех / выборочно / за отставших». Прижата к кнопке и
-   тоньше обычных иконочных — это продолжение той же кнопки, а не отдельное действие. */
-.pt-btn-caret {
-  width: 24px;
-  margin-left: -8px;
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
-  padding: 0;
-  font-size: 0.8rem;
-  color: var(--text-dim);
+
+/* «▶ Запустить» и стрелка — одна кнопка надвое, а не две рядом. Обёртка держит
+   их в общем контейнере: одинаковая высота, склейка без двойной рамки, разделитель
+   вместо зазора. Без этого стрелка висела отдельным квадратиком и тянула ряд. */
+.pt-split {
+  display: flex;
+  flex: 1;
+  min-width: 0;
 }
-.pt-btn-caret:hover {
-  color: var(--text);
+.pt-split > .pt-btn {
+  border-radius: 0;
+}
+.pt-split > .pt-btn:first-child {
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+.pt-split > .pt-btn:last-child {
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  margin-left: -1px;
+}
+.pt-split:focus-within > .pt-btn {
+  border-color: hsl(var(--pt-h) var(--pt-s) 60% / 0.7);
+}
+
+/* Стрелка у кнопки запуска: «всех / выборочно / за отставших». В тех же цветах,
+   что и сама кнопка, — иначе она читается как лишняя кнопка в ряду. */
+.pt-btn-caret {
+  flex: 0 0 auto;
+  width: 30px;
+  padding: 0;
+  color: #fff;
+  background: hsl(var(--pt-h) var(--pt-s) 30% / 0.75);
+  border-left: 1px solid rgb(255 255 255 / 0.22);
+  opacity: 0.86;
+}
+.pt-btn-caret:hover,
+.pt-btn-caret[aria-expanded='true'] {
+  opacity: 1;
+  background: hsl(var(--pt-h) var(--pt-s) 26% / 0.9);
+}
+.pt-btn-caret svg {
+  transition: transform var(--speed) var(--ease);
+}
+.pt-btn-caret[aria-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+/* Пати без активных персонажей: кнопка тусклая, и стрелки рядом нет — но если
+   она всё же появится (состав меняется на глазах), полупрозрачность наследуется. */
+.pt-card.is-none .pt-btn-caret {
+  color: var(--text-dim);
+  background: var(--surface-2);
+  border-left-color: var(--border);
 }
 
 /* Кнопка выбора цвета пати была в карточке — теперь цвет меняется в настройках пати. */

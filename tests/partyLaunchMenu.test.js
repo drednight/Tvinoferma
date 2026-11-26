@@ -96,6 +96,29 @@ describe('стрелка вариантов запуска в карточке �
     expect(document.querySelector('.pt-btn-caret')).toBeNull();
   });
 
+  it('меню живёт во всплывающем слое, а не внутри карточки', async () => {
+    renderPartiesGrid();
+    const card = document.querySelector('.pt-card');
+    const opened = await openMenu();
+    // У `.pt-card` overflow:hidden (скруглённые углы, раскрытие состава): меню
+    // внутри неё обрезалось по границе карточки и накрывало список участников —
+    // со стороны это выглядело как сломанная структура пати.
+    expect(opened.closest('.pt-card')).toBeNull();
+    expect(opened.parentElement).toBe(document.body);
+    expect(card.querySelector('.dropdown-menu')).toBeNull();
+  });
+
+  it('стрелка — половина кнопки запуска, а не отдельная кнопка в ряду', () => {
+    renderPartiesGrid();
+    const split = document.querySelector('.pt-split');
+    expect(split).toBeTruthy();
+    expect([...split.children].map(el => el.className)).toEqual([
+      expect.stringContaining('pt-btn-launch'),
+      expect.stringContaining('pt-btn-caret')
+    ]);
+    expect(document.querySelector('.pt-btn-caret svg')).toBeTruthy();
+  });
+
   it('«выбрать, кого запускать» показывает окно, даже когда спрос выключен', async () => {
     expect(state.settings.launcher.askBeforeLaunch).toBe(false);
     renderPartiesGrid();
