@@ -40,7 +40,7 @@ jobs:
           cp public/assets/icons/app/icon.png _site/assets/icons/app/ 2>/dev/null || true
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: _site
 
