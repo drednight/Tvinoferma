@@ -40,9 +40,15 @@ const SCOPES = (() => {
   };
 })();
 
+const HTML = ['index.html', 'text/html; charset=utf-8'];
 const FILES = {
-  '/': ['index.html', 'text/html; charset=utf-8'],
-  '/index.html': ['index.html', 'text/html; charset=utf-8'],
+  // Те же адреса, что отдаёт Rust: страница сама решает, какой раздел показать.
+  '/': HTML,
+  '/index.html': HTML,
+  '/docs': HTML,
+  '/docs/': HTML,
+  '/recipes': HTML,
+  '/recipes/': HTML,
   '/app.css': ['app.css', 'text/css; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
   '/docs.js': ['docs.js', 'text/javascript; charset=utf-8'],

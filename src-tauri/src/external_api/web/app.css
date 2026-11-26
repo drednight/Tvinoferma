@@ -822,6 +822,9 @@ textarea {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-1);
+  /* Якорь (`#rp-…`, `#m-…`) не должен ставить карточку встык к верхнему краю —
+     пару пикселей воздуха надо, иначе первый заголовок выглядит отрезанным. */
+  scroll-margin-top: 16px;
 }
 
 .xapi-doc-head {
@@ -1055,6 +1058,191 @@ textarea {
 #docs-filter-hint.is-empty,
 #recipes-count.is-empty {
   color: var(--danger);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Отдельные страницы: /docs и /recipes                                */
+/*                                                                      */
+/*  Справочник и рецепты — не вкладки, а страницы: у каждой свой      */
+/*  адрес, своя шапка и двухколоночная раскладка. Консоль при этом     */
+/*  остаётся на «/» и те же разделы показывает ссылками — то есть      */
+/*  на метод можно сослаться и открыть его, не проваливаясь в табы.     */
+/* ------------------------------------------------------------------ */
+
+body[data-page='docs'] .xapi,
+body[data-page='recipes'] .xapi {
+  max-width: 1320px;
+}
+
+.xapi-page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 16px;
+  margin-bottom: 6px;
+}
+
+.xapi-page-head h2 {
+  margin: 0;
+  font-size: 1.34rem;
+}
+
+.xapi-crumb {
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.xapi-crumb:hover,
+.xapi-crumb:focus-visible {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+/* Переключатель двух страниц — сегменты, а не вкладки: страниц две, и они
+   одного уровня, прыгать между ними чаще, чем между разделами консоли. */
+.xapi-switch {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-1);
+}
+
+.xapi-switch-item {
+  padding: 5px 13px;
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.xapi-switch-item:hover {
+  color: var(--text);
+}
+
+.xapi-switch-item.is-on {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+/* Две колонки. Практичность здесь важнее красоты: список из 40 методов
+   без постоянно видимого поиска превращается в бег по вертикали, поэтому
+   панель слева липкая и прокручивается сама, а не вместе со страницей. */
+.xapi-page-layout {
+  display: grid;
+  grid-template-columns: minmax(232px, 296px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+  margin-top: 12px;
+}
+
+.xapi-rail {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 10px;
+  max-height: calc(100vh - 32px);
+  padding: 14px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+
+.xapi-rail .xapi-field {
+  display: grid;
+  gap: 6px;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+}
+
+.xapi-rail input[type='search'] {
+  width: 100%;
+}
+
+.xapi-rail .xapi-check {
+  font-size: 0.78rem;
+  white-space: normal;
+}
+
+.xapi-rail .xapi-note {
+  font-size: 0.76rem;
+}
+
+.xapi-rail .xapi-toc-head {
+  display: grid;
+  gap: 2px;
+  margin: 4px 0 0;
+}
+
+/* В колонке оглавление — столбиком: сетка «auto-fit» здесь не нужна, ширина
+   одна и та же, а прокрутка внутри панели важнее. */
+.xapi-rail .xapi-toc {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin: 0;
+}
+
+.xapi-rail .xapi-toc-link {
+  border: 0;
+  border-radius: var(--radius-xs);
+  padding: 4px 8px;
+  justify-content: space-between;
+  background: transparent;
+}
+
+.xapi-rail .xapi-toc-link:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.xapi-rail .xapi-toc-link.is-on {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.xapi-rail .xapi-toc-group ul {
+  padding-left: 12px;
+}
+
+.xapi-tabs-rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+
+.xapi-tabs-rail .xapi-tab {
+  padding: 4px 11px;
+  font-size: 0.78rem;
+}
+
+.xapi-page-main {
+  min-width: 0;
+}
+
+@media (max-width: 1040px) {
+  /* На узком экране панель уходит наверх и перестаёт липкой: боковая колонка
+     шириной 240px съела бы половину списка. */
+  .xapi-page-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+  .xapi-rail {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+  .xapi-switch {
+    margin-left: 0;
+  }
 }
 
 @media (max-width: 820px) {

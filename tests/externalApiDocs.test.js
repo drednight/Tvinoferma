@@ -23,6 +23,10 @@ const read = name => readFileSync(resolve(ROOT, name), 'utf8');
 function mountPage() {
   const html = read('index.html');
   const body = html.replace(/^[\s\S]*?<body>/, '<body>').replace(/<\/body>[\s\S]*$/, '</body>');
+  // Адрес страницы влияет на то, какой раздел открыт (у справок свои адреса),
+  // поэтому тест всегда начинает с «/» — но якорь сохраняет: ссылки вида
+  // `#m-…` проверяются именно так, как их вставляет человек.
+  window.history.replaceState(null, '', `/${window.location.hash || ''}`);
   document.documentElement.innerHTML = body;
   globalThis.fetch = vi.fn(async () => ({
     ok: true,
@@ -170,6 +174,50 @@ describe('страница API: справочник', () => {
     expect(document.getElementById(target)).toBeTruthy();
     expect(document.getElementById(target).classList.contains('is-target')).toBe(true);
     location.hash = '';
+  });
+
+  it('у справок свои адреса: /docs и /recipes, консоль остаётся на «/»', () => {
+    mountPage();
+    expect(document.body.dataset.page).toBe('console');
+    document.querySelector('.xapi-nav [data-tab="docs"]').click();
+    expect(location.pathname).toBe('/docs');
+    expect(document.body.dataset.page).toBe('docs');
+    expect(document.getElementById('docs').hidden).toBe(false);
+    // Иначе «страница» была бы тем же табом с новым адресом: панель слева —
+    // место, где живут поиск и оглавление, а не ещё один блок над списком.
+    const rail = document.querySelector('#docs .xapi-rail');
+    expect(rail).toBeTruthy();
+    expect(rail.contains(document.getElementById('docs-filter'))).toBe(true);
+    expect(rail.contains(document.getElementById('docs-toc'))).toBe(true);
+    expect(document.getElementById('panel').hidden).toBe(true);
+
+    document.querySelector('#docs .xapi-switch [data-tab="recipes"]').click();
+    expect(location.pathname).toBe('/recipes');
+    expect(document.getElementById('recipes').hidden).toBe(false);
+    expect(document.getElementById('docs').hidden).toBe(true);
+
+    document.querySelector('#recipes .xapi-crumb').click();
+    expect(location.pathname).toBe('/');
+    expect(document.body.dataset.page).toBe('console');
+    expect(document.getElementById('panel').hidden).toBe(false);
+  });
+
+  it('ссылки на страницы настоящие: их можно скопировать или открыть рядом', () => {
+    mountPage();
+    for (const [name, href] of [
+      ['docs', '/docs'],
+      ['recipes', '/recipes']
+    ]) {
+      const link = document.querySelector(`.xapi-nav [data-tab="${name}"]`);
+      expect(link.tagName, `«${name}» в навигации — ссылка`).toBe('A');
+      expect(link.getAttribute('href')).toBe(href);
+    }
+    // Rust раздаёт оболочку страницы и по этим адресам — иначе ссылка,
+    // вставленная в задачу, ведёт на 404, а не на справочник.
+    const rust = readFileSync(resolve(process.cwd(), 'src-tauri/src/external_api/mod.rs'), 'utf8');
+    for (const route of ['"/docs"', '"/docs/"', '"/recipes"', '"/recipes/"']) {
+      expect(rust, `маршрут ${route} отдаёт страницу`).toContain(route);
+    }
   });
 
   it('фильтр скрывает и ссылки оглавления — список не обещает лишнего', () => {

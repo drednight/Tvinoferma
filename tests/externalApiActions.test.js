@@ -26,6 +26,10 @@ function loadActions() {
 
 /** Загрузить страницу целиком и подключить токен. */
 async function mountPage({ fetchImpl = null } = {}) {
+  // Адрес страницы влияет на то, какой раздел открыт (у справок свои адреса),
+  // поэтому тест всегда начинает с «/» — но якорь сохраняет: ссылки вида
+  // `#m-…` проверяются именно так, как их вставляет человек.
+  window.history.replaceState(null, '', `/${window.location.hash || ''}`);
   document.documentElement.innerHTML = read('index.html')
     .replace(/^[\s\S]*?<body>/, '<body>')
     .replace(/<\/body>[\s\S]*$/, '</body>');

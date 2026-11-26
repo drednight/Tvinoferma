@@ -362,19 +362,96 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
   /*  Вкладки страницы                                                  */
   /* ------------------------------------------------------------------ */
 
-  function showTab(name) {
-    activeTab = name;
+  /* ------------------------------------------------------------------ */
+  /*  Страницы: /docs и /recipes — отдельные адреса, а не вкладки        */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Справочник и рецепты — страницы, у каждой свой адрес: на метод ссылаются
+   * (`/docs#m-characters-list-characters`), страницу открывают новой вкладкой и
+   * возвращаются к ней кнопкой «назад». Разделы консоли при этом остаются
+   * переключателями — им свой адрес не нужен.
+   */
+  const PAGES = { docs: 'Справочник API', recipes: 'Рецепты' };
+
+  function pageFromLocation() {
+    const match = /^\/(docs|recipes)\/?$/.exec(location.pathname || '');
+    return match ? match[1] : '';
+  }
+
+  let page = pageFromLocation();
+
+  /** Раздел на экране: страница (`/docs`, `/recipes`) или вкладка консоли. */
+  function currentSection() {
+    return page || activeTab;
+  }
+
+  function applyRoute() {
+    // По адресу понимают, какая страница открыта, — это нужно CSS (на справке
+    // колонка шире). `body` может не быть только в тестовой разметке, поэтому
+    // без него просто пропускаем: на раздел это не влияет.
+    if (document.body) document.body.dataset.page = page || 'console';
+    const shown = page || activeTab;
     for (const panel of document.querySelectorAll('[data-panel]')) {
-      panel.hidden = panel.dataset.panel !== name;
+      panel.hidden = panel.dataset.panel !== shown;
     }
     for (const tab of document.querySelectorAll('[data-tab]')) {
-      const on = tab.dataset.tab === name;
+      const on = tab.dataset.tab === shown;
       tab.classList.toggle('is-on', on);
       if (on) tab.setAttribute('aria-current', 'page');
       else tab.removeAttribute('aria-current');
     }
-    if (name === 'docs') renderDocs();
-    if (name === 'recipes') renderRecipes();
+    if (page === 'docs') renderDocs();
+    if (page === 'recipes') renderRecipes();
+  }
+
+  /**
+   * Якорь, который имеет смысл на целевой странице: `#m-…` и `#g-…` живут в
+   * справочнике, `#rp-…` и `#rg-…` — в рецептах. Тащить чужой якорь за собой
+   * незачем: он никуда не ведёт, а адрес портит.
+   */
+  function anchorFor(pageName) {
+    const hash = location.hash || '';
+    if (pageName === 'docs' && /^#(m-|g-)/.test(hash)) return hash;
+    if (pageName === 'recipes' && /^#(rp-|rg-)/.test(hash)) return hash;
+    return '';
+  }
+
+  /**
+   * Адрес меняем через history, а не переходом: разметка и состояние (токен,
+   * списки, уже выполненные запросы) общие, а перезагрузкой человек потерял бы
+   * введённый токен и ответы. Ссылки при этом настоящие — Rust отдаёт оболочку
+   * страницы и на `/docs`, и на `/recipes`.
+   */
+  function goPage(name) {
+    const next = PAGES[name] ? name : '';
+    const url = next ? `/${next}${anchorFor(next)}` : '/';
+    const changed = page !== next || location.pathname !== url;
+    page = next;
+    if (changed) {
+      try {
+        history.pushState({ page: next }, '', url);
+      } catch {
+        /* file:// или закрытый history: страницы это не ломает — просто адрес не меняется */
+      }
+      // Новая страница начинается с её верха; якорь (если его просили) докрутит сам.
+      // scrollTop, а не scrollTo: в тестовой среде второго не существует, и он
+      // только шумел бы «Not implemented», а эффект тот же.
+      if (!location.hash) {
+        const scroller = document.scrollingElement || document.documentElement;
+        if (scroller) scroller.scrollTop = 0;
+      }
+    }
+    applyRoute();
+  }
+
+  function showTab(name) {
+    if (PAGES[name]) {
+      goPage(name);
+      return;
+    }
+    activeTab = name;
+    goPage('');
     if (name === 'overview') loadOverview();
   }
 
@@ -1053,11 +1130,12 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
     // такой запрос вернул бы 404.
     const runLine = localizeExample(fillExamplePath(item.template || item.path));
     runExamples.set(`recipe-${item.id}`, item.response);
-    return `<article class="xapi-doc" data-recipe data-recipe-id="${escapeHtml(item.id)}" data-recipe-scope="${escapeHtml(SCOPE_KEYS[item.scope] || '')}">
+    return `<article class="xapi-doc" id="rp-${escapeHtml(item.id)}" data-recipe data-recipe-id="${escapeHtml(item.id)}" data-recipe-scope="${escapeHtml(SCOPE_KEYS[item.scope] || '')}">
       <div class="xapi-doc-head">
         <span class="xapi-doc-method is-${escapeHtml(String(item.method).toLowerCase())}">${escapeHtml(item.method)}</span>
         <code class="xapi-doc-path">${escapeHtml(item.template || item.path)}</code>
         <span class="xapi-chip">право: ${escapeHtml(RECIPE_SCOPE_NAMES[item.scope] || item.scope)}</span>
+        <button type="button" class="btn ghost small xapi-doc-link" data-recipe-link="${escapeHtml(`rp-${item.id}`)}" title="Скопировать ссылку на этот рецепт">🔗 ссылка</button>
       </div>
       <h4>${escapeHtml(item.title)}</h4>
       <p class="xapi-note">${escapeHtml(item.scenario)}</p>
@@ -1095,15 +1173,93 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
         .map(group => {
           const inGroup = recipeCatalog.filter(item => item.group === group.id);
           if (!inGroup.length) return '';
-          return `<section class="xapi-doc-group" data-recipe-group>
+          return `<section class="xapi-doc-group" id="rg-${escapeHtml(group.id)}" data-recipe-group>
             <h3>${escapeHtml(group.title)}</h3>
             ${inGroup.map(recipeHtml).join('')}
           </section>`;
         })
         .join('');
+      $('#recipes-toc').innerHTML = recipesTocHtml();
+      bindTocLinks($('#recipes-toc'));
+      for (const button of body.querySelectorAll('[data-recipe-link]'))
+        button.addEventListener('click', () => {
+          void copyLink(button, pageUrl('recipes', button.dataset.recipeLink));
+        });
       bindRunPanels(body);
+      // Карточки перерисовались (подключились — подставились живые id), а человек
+      // всё ещё смотрит на тот рецепт, по которому пришёл по ссылке. Возвращаем
+      // якорь на место — но только при перерисовке: иначе каждый символ в поиске
+      // мотал бы страницу к предыдущей ссылке.
+      if (location.hash) goToAnchor(location.hash);
     }
     filterRecipes();
+  }
+
+  /**
+   * Оглавление рецептов: разделы и сами рецепты. Список из 22 карточек без
+   * навигации — это прокрутка вслепую, а с ним видно и состав каталога, и то,
+   * сколько рецептов осталось под фильтром (ссылки прячутся вместе с карточками).
+   */
+  function recipesTocHtml() {
+    return recipeGroupList
+      .map(group => {
+        const inGroup = recipeCatalog.filter(item => item.group === group.id);
+        if (!inGroup.length) return '';
+        return `<div class="xapi-toc-group" data-recipes-toc-group="${escapeHtml(group.id)}">
+          <a class="xapi-toc-link" href="#rg-${escapeHtml(group.id)}" data-toc-group-link>${escapeHtml(group.title)}<span class="xapi-toc-count">${inGroup.length}</span></a>
+          <ul class="xapi-toc-methods">${inGroup
+            .map(
+              item =>
+                `<li class="xapi-toc-item"><a class="xapi-toc-method" href="#rp-${escapeHtml(item.id)}"><code>${escapeHtml(item.method)}</code><span>${escapeHtml(item.title)}</span></a></li>`
+            )
+            .join('')}</ul>
+        </div>`;
+      })
+      .join('');
+  }
+
+  /**
+   * Ссылка на страницу с якорем. Адрес собирается от корня, а не от текущего
+   * пути: ссылку на метод копивируют из задач и `AGENTS.md`, и она должна вести
+   * на `/docs` независимо от того, где человек стоял в момент копирования.
+   */
+  function pageUrl(pageName, hash) {
+    return `${location.origin}/${pageName}${hash ? `#${hash}` : ''}`;
+  }
+
+  /** Кнопка «🔗 ссылка»: копирует адрес; без доступа к буферу — показывает его в prompt. */
+  async function copyLink(button, url) {
+    try {
+      await navigator.clipboard.writeText(url);
+      button.textContent = '🔗 скопировано';
+      setTimeout(() => {
+        button.textContent = '🔗 ссылка';
+      }, 1600);
+    } catch {
+      window.prompt('Скопируйте ссылку:', url);
+    }
+  }
+
+  /** Ссылки оглавления: переход без прыжка «якорем» по умолчанию, с подсветкой цели. */
+  function bindTocLinks(box) {
+    for (const link of box.querySelectorAll('a[href^="#"]'))
+      link.addEventListener('click', e => {
+        e.preventDefault();
+        goToAnchor(link.getAttribute('href'));
+      });
+  }
+
+  /** Перейти к якорю на любой из страниц, подсветив карточку. */
+  function goToAnchor(hash) {
+    const id = String(hash || '').replace(/^#/, '');
+    if (!id) return false;
+    const target = document.getElementById(id);
+    if (!target) return false;
+    if (location.hash !== `#${id}`) history.replaceState(null, '', `#${id}`);
+    target.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    target.classList.add('is-target');
+    setTimeout(() => target.classList.remove('is-target'), 1600);
+    return true;
   }
 
   /**
@@ -1146,6 +1302,18 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
     }
     if (query && shown === 0 && input) input.setAttribute('data-empty', '1');
     else if (input) input.removeAttribute('data-empty');
+    // Оглавление разделов повторяет фильтр: ссылка остаётся только там, где
+    // остались карточки, иначе список обещает то, чего на экране нет.
+    for (const tocGroup of document.querySelectorAll('[data-recipes-toc-group]')) {
+      let anyToc = false;
+      for (const item of tocGroup.querySelectorAll('.xapi-toc-item')) {
+        const card = document.getElementById(String(item.querySelector('a').getAttribute('href') || '').slice(1));
+        const hit = !!card && !card.hidden;
+        item.hidden = !hit;
+        if (hit) anyToc = true;
+      }
+      tocGroup.hidden = !anyToc;
+    }
     const counter = $('#recipes-count');
     if (counter) {
       counter.textContent =
@@ -1565,7 +1733,7 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
   function goToDoc(hash) {
     const id = String(hash || '').replace(/^#/, '');
     if (!id) return false;
-    if (activeTab !== 'docs') showTab('docs');
+    if (page !== 'docs') showTab('docs');
     const target = document.getElementById(id);
     if (!target) return false;
     if (location.hash !== `#${id}`) history.replaceState(null, '', `#${id}`);
@@ -1635,16 +1803,7 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
       // или AGENTS.md, чтобы другой человек открыл ровно этот метод.
       for (const button of body.querySelectorAll('[data-doc-link]'))
         button.addEventListener('click', async () => {
-          const url = `${location.origin}${location.pathname}#${button.dataset.docLink}`;
-          try {
-            await navigator.clipboard.writeText(url);
-            button.textContent = '🔗 скопировано';
-            setTimeout(() => {
-              button.textContent = '🔗 ссылка';
-            }, 1600);
-          } catch {
-            window.prompt('Скопируйте ссылку:', url);
-          }
+          void copyLink(button, pageUrl('docs', button.dataset.docLink));
         });
     }
     filterDocs();
@@ -1755,7 +1914,7 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
       setChip('server', `сервер: ${health.status === 401 ? 'токен не принят' : 'недоступен'}`, 'bad');
       $('#connect-note').textContent = `${errorText(health)}. Проверьте токен в настройках приложения.`;
       // Справочник не зависит от токена: его можно читать и без подключения.
-      if (activeTab === 'panel') showTab('docs');
+      if (!page && activeTab === 'panel') showTab('docs');
       return false;
     }
     const info = health.body || {};
@@ -1793,21 +1952,21 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
     renderWindows(latest.windows);
     // «Данные» показываем, только если они и есть открытая вкладка: иначе загрузка
     // прилепляла вторую панель под той, на которой человек стоит (две сразу).
-    if (activeTab === 'panel') $('#panel').hidden = false;
+    if (!page && activeTab === 'panel') $('#panel').hidden = false;
     $('#reload-audit').hidden = false;
     // Списки персонажей и пати могли поменяться — формы действий строятся из них.
     renderActionsList();
     // Справочник и рецепты строятся из этих списков (в них подставлены id): после
     // подключения они обязаны показывать ваши id, а не те, что были на экране до.
-    if (activeTab === 'docs') renderDocs();
-    if (activeTab === 'recipes') renderRecipes();
+    if (currentSection() === 'docs') renderDocs();
+    if (currentSection() === 'recipes') renderRecipes();
     syncDocsFilter();
     const recipesToggle = $('#recipes-only-available');
     if (recipesToggle) {
       recipesToggle.disabled = !grantedScopes;
       if (!grantedScopes) recipesToggle.checked = false;
     }
-    if (activeTab === 'recipes') renderRecipes();
+    if (currentSection() === 'recipes') renderRecipes();
     await loadAudit();
     return true;
   }
@@ -1866,7 +2025,18 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
 
   function bind() {
     for (const tab of document.querySelectorAll('[data-tab]'))
-      tab.addEventListener('click', () => showTab(tab.dataset.tab || 'panel'));
+      tab.addEventListener('click', e => {
+        // Ссылка ведёт в то же приложение: перезагружать его ради смены раздела
+        // незачем, адрес подставит history — и «назад» в браузере работает.
+        if (tab.tagName === 'A') e.preventDefault();
+        showTab(tab.dataset.tab || 'panel');
+      });
+    // Кнопка «назад» в браузере должна возвращать и на страницу, и с неё.
+    window.addEventListener('popstate', () => {
+      page = pageFromLocation();
+      applyRoute();
+      if (location.hash) goToDoc(location.hash);
+    });
     $('#play-send').addEventListener('click', sendPlay);
     $('#play-clear').addEventListener('click', () => {
       $('#play-method').value = 'GET';
@@ -1888,7 +2058,15 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
       $(`#${id}`)?.addEventListener('change', filterDocs);
     // Якорь, вставленный в адрес уже открытой страницы, тоже работает.
     window.addEventListener('hashchange', () => {
-      if (location.hash) goToDoc(location.hash);
+      if (!location.hash) return;
+      // Якорь рецептов (`#rp-…`, `#rg-…`) означает «открой рецепты» — так же,
+      // как `#m-…`/`#g-…` означают справочник.
+      if (/^#(rp-|rg-)/.test(location.hash)) {
+        if (page !== 'recipes') showTab('recipes');
+        goToAnchor(location.hash);
+        return;
+      }
+      goToDoc(location.hash);
     });
     // Вкладка «Рецепты».
     $('#recipes-filter')?.addEventListener('input', filterRecipes);
@@ -1957,7 +2135,11 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
   renderPresets();
   renderHints();
   renderActionsList();
-  showTab('panel');
+  applyRoute();
+  if (!page) showTab('panel');
+  // Якорь рецепта на открытой странице рецептов: `#rp-…`/`#rg-…` должны найти цель
+  // и на первой загрузке, а не только когда их вставили в адрес позже.
+  if (page === 'recipes' && /^#(rp-|rg-)/.test(location.hash)) goToAnchor(location.hash);
   // Якорь справочника (`#m-…`, `#g-…`) означает «открой справочник»: иначе ссылка
   // привела бы на вкладку «Данные» и промахнулась бы по разделу, ради которого её
   // и вставили (а ссылки на методы — это то, чем делятся в задачах и AGENTS.md).

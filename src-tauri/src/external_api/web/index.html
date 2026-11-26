@@ -38,8 +38,8 @@
           <button type="button" class="xapi-nav-item" data-tab="overview">Обзор</button>
           <button type="button" class="xapi-nav-item" data-tab="actions">Действия</button>
           <button type="button" class="xapi-nav-item" data-tab="playground">Тестовый запрос</button>
-          <button type="button" class="xapi-nav-item" data-tab="recipes">Рецепты</button>
-          <button type="button" class="xapi-nav-item" data-tab="docs">Справочник API</button>
+          <a class="xapi-nav-item" href="/recipes" data-tab="recipes">Рецепты<span class="xapi-nav-ext" aria-hidden="true">↗</span></a>
+          <a class="xapi-nav-item" href="/docs" data-tab="docs">Справочник API<span class="xapi-nav-ext" aria-hidden="true">↗</span></a>
         </nav>
         <div class="xapi-status" role="status" aria-live="polite">
           <span class="xapi-chip" data-chip="server">сервер: не подключено</span>
@@ -173,7 +173,14 @@
       </section>
 
       <section class="xapi-block xapi-tabpanel" id="recipes" data-panel="recipes" aria-labelledby="recipes-title" hidden>
-        <h2 id="recipes-title">Рецепты</h2>
+        <div class="xapi-page-head">
+          <a class="xapi-crumb" href="/" data-tab="panel">← Консоль API</a>
+          <h2 id="recipes-title">Рецепты</h2>
+          <nav class="xapi-switch" aria-label="Страницы справки">
+            <a class="xapi-switch-item" href="/docs" data-tab="docs">Справочник API</a>
+            <a class="xapi-switch-item" href="/recipes" data-tab="recipes">Рецепты</a>
+          </nav>
+        </div>
         <p class="xapi-note">
           Готовые сценарии: когда запрос нужен, как он выглядит, что придёт в ответ и что этот ответ значит.
           Тот же набор собран в <code>docs/EXTERNAL-API-EXAMPLES.md</code> — из того же каталога, поэтому текст и
@@ -183,52 +190,68 @@
           Каждый рецепт можно выполнить прямо здесь: «▶ Выполнить» отправит запрос этим приложением
           и покажет настоящий ответ рядом с примером из документации. Ответы рецептов сверяются с
           документом — если форма ответа разошлась, страница об этом скажет. Чипы под строкой
-          запроса дописывают параметры того же метода из справочника (`fields`, `full`,
-          `format`…) сразу со значениями, а не пустым `=`.
+          запроса дописывают параметры того же метода из справочника (<code>fields</code>, <code>full</code>,
+          <code>format</code>…) сразу со значениями, а не пустым <code>=</code>.
         </p>
-        <div class="xapi-docs-search xapi-docs-filter">
-          <label class="xapi-field xapi-field-grow">
-            Поиск по рецептам
-            <input id="recipes-filter" type="search" autocomplete="off" placeholder="планировщик, деньги, 403…" />
-          </label>
-          <label class="xapi-check"><input id="recipes-only-available" type="checkbox" disabled /> только доступные моим правам</label>
-          <span id="recipes-count" class="xapi-note"></span>
+        <div class="xapi-page-layout">
+          <aside class="xapi-rail" aria-label="Поиск и разделы рецептов">
+            <label class="xapi-field">
+              Поиск по рецептам
+              <input id="recipes-filter" type="search" autocomplete="off" placeholder="планировщик, деньги, 403…" />
+            </label>
+            <label class="xapi-check"><input id="recipes-only-available" type="checkbox" disabled /> только доступные моим правам</label>
+            <p id="recipes-count" class="xapi-note"></p>
+            <nav class="xapi-toc" id="recipes-toc" aria-label="Раздел recipes"></nav>
+            <div class="xapi-tabs xapi-tabs-rail" role="tablist" aria-label="Язык примера">
+              <button type="button" class="xapi-tab is-on" data-recipe-lang="curl" role="tab" aria-selected="true">curl</button>
+              <button type="button" class="xapi-tab" data-recipe-lang="python" role="tab" aria-selected="false">Python</button>
+              <button type="button" class="xapi-tab" data-recipe-lang="powershell" role="tab" aria-selected="false">
+                PowerShell
+              </button>
+            </div>
+          </aside>
+          <div class="xapi-page-main">
+            <div id="recipes-body" class="xapi-docs"></div>
+          </div>
         </div>
-        <div class="xapi-tabs" role="tablist" aria-label="Язык примера">
-          <button type="button" class="xapi-tab is-on" data-recipe-lang="curl" role="tab" aria-selected="true">curl</button>
-          <button type="button" class="xapi-tab" data-recipe-lang="python" role="tab" aria-selected="false">Python</button>
-          <button type="button" class="xapi-tab" data-recipe-lang="powershell" role="tab" aria-selected="false">
-            PowerShell
-          </button>
-        </div>
-        <div id="recipes-body" class="xapi-docs"></div>
       </section>
 
       <section class="xapi-block xapi-tabpanel" id="docs" data-panel="docs" aria-labelledby="docs-title" hidden>
-        <h2 id="docs-title">Справочник API</h2>
+        <div class="xapi-page-head">
+          <a class="xapi-crumb" href="/" data-tab="panel">← Консоль API</a>
+          <h2 id="docs-title">Справочник API</h2>
+          <nav class="xapi-switch" aria-label="Страницы справки">
+            <a class="xapi-switch-item" href="/docs" data-tab="docs">Справочник API</a>
+            <a class="xapi-switch-item" href="/recipes" data-tab="recipes">Рецепты</a>
+          </nav>
+        </div>
         <p class="xapi-note">
           Все методы с параметрами, ответами и примерами. В каждой карточке — строка запроса с вашими
           id и кнопка «▶ Выполнить»: ответ приходит в эту же карточку, перепрыгивать в «Тестовый запрос»
           не нужно. Изменяющие методы просят подтверждение вторым нажатием. Полный текст контракта —
           <code>docs/EXTERNAL-API.md</code>.
         </p>
-        <div class="xapi-docs-search xapi-docs-filter">
-          <label class="xapi-field xapi-field-grow">
-            Поиск по методам
-            <input id="docs-filter" type="search" autocomplete="off" placeholder="hp, проходк, марафон, export…" />
-          </label>
-          <label class="xapi-check"><input id="docs-only-read" type="checkbox" /> только чтение (GET)</label>
-          <label class="xapi-check">
-            <input id="docs-only-available" type="checkbox" disabled /> только доступные моим правам
-          </label>
-          <span id="docs-filter-hint" class="xapi-note"></span>
+        <div class="xapi-page-layout">
+          <aside class="xapi-rail" aria-label="Поиск и оглавление справочника">
+            <label class="xapi-field">
+              Поиск по методам
+              <input id="docs-filter" type="search" autocomplete="off" placeholder="hp, проходк, марафон, export…" />
+            </label>
+            <label class="xapi-check"><input id="docs-only-read" type="checkbox" /> только чтение (GET)</label>
+            <label class="xapi-check">
+              <input id="docs-only-available" type="checkbox" disabled /> только доступные моим правам
+            </label>
+            <p id="docs-filter-hint" class="xapi-note"></p>
+            <p class="xapi-toc-head">
+              <span id="docs-toc-count" class="muted"></span>
+              <span class="muted">Оглавление ведёт к каждому методу; ссылка на метод — кнопка «🔗 ссылка» в его карточке.</span>
+            </p>
+            <nav id="docs-toc" class="xapi-toc" aria-label="Методы справочника"></nav>
+          </aside>
+          <div class="xapi-page-main">
+            <div id="docs-body" class="xapi-docs"></div>
+          </div>
         </div>
-        <p class="xapi-toc-head">
-          <span id="docs-toc-count" class="muted"></span>
-          <span class="muted">Оглавление ведёт к каждому методу; ссылка на метод — кнопка «🔗 ссылка» в его карточке.</span>
-        </p>
-        <nav id="docs-toc" class="xapi-toc" aria-label="Методы справочника"></nav>
-        <div id="docs-body" class="xapi-docs"></div>
       </section>
 
       <section class="xapi-block" aria-labelledby="log-title">

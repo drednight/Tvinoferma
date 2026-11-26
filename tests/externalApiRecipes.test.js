@@ -5,7 +5,7 @@
 //   2. каждый рецепт ведёт в существующий маршрут моста (иначе «рецепт» врёт);
 //   3. документ docs/EXTERNAL-API-EXAMPLES.md собран из этого же каталога;
 //   4. вкладка «Рецепты» на странице рисует те же рецепты.
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { state } from '../js/core/state.js';
@@ -158,6 +158,7 @@ describe('внешний API: документ с примерами', () => {
 
 describe('внешний API: вкладка «Рецепты» на странице', () => {
   it('страница подключает каталог и рисует рецепты', async () => {
+    window.history.replaceState(null, '', `/${window.location.hash || ''}`);
     document.documentElement.innerHTML = read('index.html')
       .replace(/^[\s\S]*?<body>/, '<body>')
       .replace(/<\/body>[\s\S]*$/, '</body>');
@@ -198,7 +199,92 @@ describe('внешний API: вкладка «Рецепты» на стран�
     expect(document.getElementById('recipes-count').textContent).toMatch(/ни один рецепт/);
   });
 
+  it('у рецептов своё оглавление разделов и ссылки на карточку', async () => {
+    window.history.replaceState(null, '', '/recipes');
+    document.documentElement.innerHTML = read('index.html')
+      .replace(/^[\s\S]*?<body>/, '<body>')
+      .replace(/<\/body>[\s\S]*$/, '</body>');
+    globalThis.fetch = async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json; charset=utf-8' },
+      text: async () => JSON.stringify({ ok: true })
+    });
+    for (const file of ['errors.js', 'docs.js', 'actions.js', 'recipes.js', 'app.js']) {
+      new Function(read(file))();
+    }
+    const toc = document.getElementById('recipes-toc');
+    expect(toc).toBeTruthy();
+    const groups = [...toc.querySelectorAll('[data-recipes-toc-group]')];
+    expect(groups.length).toBeGreaterThan(1);
+    // Ссылка ведёт на раздел, а каждая карточка recipe — на свой якорь `#rp-…`:
+    // на рецепт ссылаются из задач, и он должен открываться сразу на нём.
+    for (const group of groups) {
+      const id = group.dataset.recipesTocGroup;
+      expect(document.getElementById(`rg-${id}`), `раздел ${id} имеет якорь`).toBeTruthy();
+      expect(toc.querySelector(`a[href="#rg-${id}"]`)).toBeTruthy();
+    }
+    const first = document.querySelector('#recipes-body [data-recipe]');
+    expect(first.id).toMatch(/^rp-/);
+    expect(toc.querySelector(`a[href="#${first.id}"]`)).toBeTruthy();
+    // Оглавление следует за фильтром: под фильтр не попало ничего — ссылок нет.
+    const filter = document.getElementById('recipes-filter');
+    filter.value = 'такого-нет-в-каталоге';
+    filter.dispatchEvent(new window.Event('input', { bubbles: true }));
+    expect(groups.every(group => group.hidden)).toBe(true);
+    filter.value = '';
+    filter.dispatchEvent(new window.Event('input', { bubbles: true }));
+    expect(groups.some(group => !group.hidden)).toBe(true);
+    // Кнопка «🔗 ссылка» даёт адрес страницы, а не текущего места.
+    const linkButton = document.querySelector('#recipes-body [data-recipe-link]');
+    let copied = '';
+    Object.defineProperty(globalThis.navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async text => (copied = text) }
+    });
+    linkButton.click();
+    await vi.waitFor(() => expect(copied).not.toBe(''));
+    // Адрес берётся от страницы рецептов, а не от текущего пути: ссылку
+    // копируют из любой точки, и она должна вести туда же.
+    expect(copied).toContain(`/recipes#${linkButton.dataset.recipeLink}`);
+  });
+
+  it('подключение не сбрасывает подсветку карточки, открытой по ссылке', async () => {
+    // Ссылку вида `/recipes#rp-health` вставляют в задачи и чаты. Ответ /health
+    // перерисовывает карточки — в них подставляются живые id, — и если при этом
+    // подсветка гаснет, человек теряет ровно то место, ради которого шёл.
+    window.sessionStorage.setItem('tf-external-api-token', 'f'.repeat(64));
+    window.history.replaceState(null, '', '/recipes#rp-health');
+    document.documentElement.innerHTML = read('index.html')
+      .replace(/^[\s\S]*?<body>/, '<body>')
+      .replace(/<\/body>[\s\S]*$/, '</body>');
+    globalThis.fetch = async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json; charset=utf-8' },
+      text: async () =>
+        JSON.stringify({
+          ok: true,
+          app: { version: '3.0.0' },
+          scopes: { read: true, modify: true, launchClose: true },
+          storage: { writable: true },
+          characters: [],
+          parties: [],
+          windows: []
+        })
+    });
+    for (const file of ['errors.js', 'docs.js', 'actions.js', 'recipes.js', 'app.js']) {
+      new Function(read(file))();
+    }
+    expect(document.getElementById('rp-health').classList.contains('is-target')).toBe(true);
+    await vi.waitFor(() => expect(document.getElementById('recipes-count').textContent).toMatch(/рецептов/));
+    expect(document.getElementById('rp-health').classList.contains('is-target')).toBe(true);
+    window.sessionStorage.removeItem('tf-external-api-token');
+    window.history.replaceState(null, '', '/');
+  });
+
   it('язык примера переключается: curl, Python и PowerShell', async () => {
+    window.history.replaceState(null, '', `/${window.location.hash || ''}`);
     document.documentElement.innerHTML = read('index.html')
       .replace(/^[\s\S]*?<body>/, '<body>')
       .replace(/<\/body>[\s\S]*$/, '</body>');

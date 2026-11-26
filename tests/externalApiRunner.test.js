@@ -96,6 +96,10 @@ function fakeApi({ scopes = { read: true, modify: true, launchClose: true } } = 
 function mountPage(options = {}) {
   const html = read('index.html');
   const body = html.replace(/^[\s\S]*?<body>/, '<body>').replace(/<\/body>[\s\S]*$/, '</body>');
+  // Адрес страницы влияет на то, какой раздел открыт (у справок свои адреса),
+  // поэтому тест всегда начинает с «/» — но якорь сохраняет: ссылки вида
+  // `#m-…` проверяются именно так, как их вставляет человек.
+  window.history.replaceState(null, '', `/${window.location.hash || ''}`);
   document.documentElement.innerHTML = body;
   const calls = [];
   const impl = fakeApi(options);

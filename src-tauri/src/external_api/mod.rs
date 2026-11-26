@@ -722,7 +722,11 @@ fn handle(app: &AppHandle, context: &ServeContext, request: http::Request) -> Re
 
     if method == "GET" {
         match path {
-            "/" | "/index.html" => {
+            // `/docs` и `/recipes` — отдельные страницы справки. Разметка та же:
+            // приложение одно, и дублировать её ради двух разделов значило бы
+            // разъезжаться в двух местах. Скрипт страницы смотрит на путь и
+            // показывает нужный раздел со своей шапкой и адресом.
+            "/" | "/index.html" | "/docs" | "/docs/" | "/recipes" | "/recipes/" => {
                 return Response::static_file(200, "text/html; charset=utf-8", PAGE_HTML, &ledger);
             }
             "/app.css" => {
