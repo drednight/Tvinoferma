@@ -9,9 +9,11 @@ const mocks = vi.hoisted(() => ({
   news: null,
   site: null,
   siteCalls: [],
-  list: []
+  list: [],
+  openLink: vi.fn(async () => {})
 }));
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
+vi.mock('../js/core/linkBrowser.js', () => ({ openWebLink: mocks.openLink }));
 vi.mock('../js/modules/sync/authStatus.js', () => ({ getAuthView: () => ({ icon: '' }) }));
 vi.mock('../js/modules/marathons/siteSync.js', () => ({
   SITE_PAGES: [],
@@ -36,6 +38,7 @@ let state, openMarathonWizard;
 beforeEach(async () => {
   vi.resetModules();
   mocks.siteCalls.length = 0;
+  mocks.openLink.mockClear();
   mocks.news = parseNewsHtml(fixture('news-summer-2026.html'), {
     title: 'Летний марафон',
     publishedAt: '29.05.2026',
@@ -155,6 +158,60 @@ describe('мастер: поиск новости о марафоне (issue #72
     click('[data-src="site"]');
     click('[data-act="find-news"]');
     await vi.waitFor(() => expect($('.tf-news-search .tf-warn')).not.toBeNull());
+  });
+
+  it('кнопка «На сайте» открывает найденную новость, не выбирая её', async () => {
+    mocks.list = parseNewsList(fixture('news_list_p2.html'));
+    openMarathonWizard();
+    click('[data-src="site"]');
+    click('[data-act="find-news"]');
+    await vi.waitFor(() => expect(document.querySelectorAll('[data-open-news]').length).toBe(3));
+    const row = [...document.querySelectorAll('[data-open-news]')].find(b =>
+      b.dataset.openNews.endsWith('article=9046')
+    );
+    expect(row.title).toContain('прочитать');
+    row.click();
+    expect(mocks.openLink).toHaveBeenCalledWith('https://pwonline.ru/news.php?article=9046');
+    // Чтение новости — не выбор: ссылка не подставлена, разбор не запущен, строка осталась в списке
+    expect($('[data-news-url]').value).toBe('');
+    expect($('.tf-src-summary')).toBeNull();
+    expect(document.querySelectorAll('[data-pick-news]').length).toBe(3);
+  });
+
+  it('кнопка у поля ссылки открывает вставленную новость; пустое поле ничего не открывает', async () => {
+    openMarathonWizard();
+    click('[data-src="site"]');
+    $('[data-act="open-news"]').click();
+    expect(mocks.openLink).not.toHaveBeenCalled();
+    const input = $('[data-news-url]');
+    input.value = NEWS_URL;
+    input.dispatchEvent(new Event('input'));
+    $('[data-act="open-news"]').click();
+    expect(mocks.openLink).toHaveBeenCalledWith(NEWS_URL);
+    expect($('.tf-src-summary')).toBeNull(); // открытие ссылки не запускает разбор
+  });
+
+  it('в шаге наград панель «Награды из новости» тоже открывает сохранённую новость', async () => {
+    const { createMarathon } = await import('../js/modules/marathons/model.js');
+    state.marathons = [
+      createMarathon({
+        id: 'rw-news',
+        title: 'Летний марафон',
+        startDate: '2026-06-01',
+        endDate: '2026-06-30',
+        participantIds: ['c1'],
+        tasks: [{ id: 't', title: 'Задание', targetChecks: 1 }],
+        assignments: { c1: ['t'] },
+        source: { type: 'news', url: null, newsUrl: NEWS_URL }
+      })
+    ];
+    openMarathonWizard({ marathon: state.marathons[0] }); // правка: шаг 1, участники уже выбраны
+    click('[data-act="next"]');
+    click('[data-act="next"]');
+    click('[data-act="rw-news"]');
+    expect($('[data-rw-news-url]').value).toBe(NEWS_URL);
+    $('[data-act="rw-news-open"]').click();
+    expect(mocks.openLink).toHaveBeenCalledWith(NEWS_URL);
   });
 });
 

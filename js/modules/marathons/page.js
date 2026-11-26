@@ -1,4 +1,4 @@
-import { openCharacterWebLink } from '../../core/linkBrowser.js';
+import { openCharacterWebLink, openWebLink } from '../../core/linkBrowser.js';
 // js/modules/marathons/page.js
 // Раздел «Марафоны» v2: список (с сериями-папками), страница серии, страница марафона
 // с матрицей прогресса «персонаж × задание», сверкой с сайтом и статистикой монет.
@@ -576,7 +576,11 @@ function renderDetail(root, m) {
           <span title="${url ? 'Страница марафона на сайте' : 'Адрес страницы не задан — сверка с сайтом недоступна'}">
             ${url ? `🌐 ${escapeHtml(url.replace('https://', ''))}` : '🌐 сверка с сайтом не настроена'}
           </span>
-          ${m.source?.newsUrl ? `<span>📰 ${escapeHtml(m.source.newsUrl.replace('https://', ''))}</span>` : ''}
+          ${
+            m.source?.newsUrl
+              ? `<span class="mr-meta-news">📰 ${escapeHtml(m.source.newsUrl.replace('https://', ''))} <button type="button" class="btn tiny ghost" data-act="open-news" title="Открыть новость на сайте pwonline.ru и прочитать её целиком">🌐 На сайте</button></span>`
+              : ''
+          }
         </div>
         ${moreInfoBlock(m)}
       </div>
@@ -856,6 +860,21 @@ function coinsSection(m, t) {
     </div>`;
 }
 
+/**
+ * Новость, из которой взято описание марафона, открывается в браузере ссылок
+ * (`settings.browser.linkOpenMode`: отдельный профиль или системный браузер).
+ * Ссылка нужна, чтобы прочитать оригинал целиком: парсер берёт из новости не всё.
+ */
+async function openNewsUrl(url) {
+  const link = String(url || '').trim();
+  if (!link) return;
+  try {
+    await openWebLink(link);
+  } catch (error) {
+    toast(`Не удалось открыть новость: ${error.message || error}`, 'warning');
+  }
+}
+
 function bindDetail(root, m) {
   root.querySelectorAll('[data-character-site]').forEach(button => {
     button.addEventListener('click', async () => {
@@ -871,6 +890,7 @@ function bindDetail(root, m) {
   });
   const act = (name, fn) => root.querySelector(`[data-act="${name}"]`)?.addEventListener('click', fn);
   act('sync', () => runSync([m], m.id));
+  act('open-news', () => openNewsUrl(m.source?.newsUrl));
   act('edit', () => openMarathonWizard({ marathon: m }));
   act('move', () => openFolderPicker(m));
   act('complete', async () => {
