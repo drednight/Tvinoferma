@@ -309,6 +309,33 @@ describe('справочник: панель запроса в карточке 
     expect(requested).toEqual(['/api/v1/characters?full=true&party=Гром']);
   });
 
+  it('рецепт получает параметры того же метода из справочника', async () => {
+    window.sessionStorage.setItem('tf-external-api-token', TOKEN);
+    mountPage();
+    openTab('recipes');
+    await settle();
+    await vi.waitFor(() =>
+      expect(document.querySelector('[data-recipe-id="characters"] [data-run-param]')).toBeTruthy()
+    );
+    const recipePanel = document.querySelector('[data-recipe-id="characters"] [data-run]');
+    const names = [...recipePanel.querySelectorAll('[data-run-param]')].map(chip => chip.dataset.runParam);
+    // Тот же GET /characters, что и в справочнике: значит, те же query-параметры.
+    expect(names).toEqual(expect.arrayContaining(['party', 'full', 'fields']));
+    [...recipePanel.querySelectorAll('[data-run-param]')].find(chip => chip.dataset.runParam === 'full').click();
+    expect(recipePanel.querySelector('.xapi-run-path').value).toBe('GET /api/v1/characters?full=true');
+    // Рецепт выгрузки получает параметр формата — «csv» вместо пустого `format=`.
+    await vi.waitFor(() =>
+      expect(document.querySelector('[data-recipe-id="export-csv"] [data-run-param]')).toBeTruthy()
+    );
+    const exportPanel = document.querySelector('[data-recipe-id="export-csv"] [data-run]');
+    const formatChip = [...exportPanel.querySelectorAll('[data-run-param]')].find(
+      chip => chip.dataset.runParam === 'format'
+    );
+    expect(formatChip).toBeTruthy();
+    formatChip.click();
+    expect(exportPanel.querySelector('.xapi-run-path').value).toMatch(/format=csv$/);
+  });
+
   it('id задания из запуска подставляется в карточку /jobs/{jobId}', async () => {
     window.sessionStorage.setItem('tf-external-api-token', TOKEN);
     mountPage();

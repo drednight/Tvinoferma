@@ -1011,6 +1011,35 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
     return item.body ? localizeExample(JSON.stringify(item.body)) : '';
   }
 
+  /**
+   * Параметры для чипов в рецепте: берём их из справочника по совпадению метода и
+   * пути. Рецепт и метод — один и тот же запрос, а без чипов карточка рецепта
+   * не даёт даже попробовать `?full=true`, хотя поле описано в документации.
+   */
+  function recipeQueryParams(item) {
+    // Рецепт описан абсолютным путём (`/api/v1/characters`), справочник — относительным
+    // (`/characters`): сравниваем без префикса, иначе чипов ни в одном рецепте не будет.
+    const recipePath = String(item.template || item.path || '')
+      .split('?')[0]
+      .trim()
+      .replace(/^\/api\/v1/, '');
+    const key = `${String(item.method).toUpperCase()} ${recipePath}`;
+    for (const group of docs.groups || []) {
+      for (const method of group.methods || []) {
+        if (`${method.method} ${method.path}` !== key) continue;
+        return [
+          ...new Set(
+            (method.params || [])
+              .filter(param => param[1] === 'query')
+              .flatMap(param => String(param[0]).split(',').map(name => name.trim()))
+              .filter(Boolean)
+          )
+        ];
+      }
+    }
+    return [];
+  }
+
   function recipeHtml(item) {
     const errors = (item.errors || []).length
       ? `<h5>Если придёт ошибка</h5>
@@ -1041,7 +1070,7 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
           path: runLine,
           body: recipeBody(item),
           scope: item.scope,
-          params: []
+          params: recipeQueryParams(item)
         })}
         <h5>Ответ — как он описан в документации</h5>
         <pre class="xapi-code xapi-code-sm">${escapeHtml(response)}</pre>
