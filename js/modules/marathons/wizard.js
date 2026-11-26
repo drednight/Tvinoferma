@@ -33,6 +33,7 @@ import {
   searchNewsList
 } from './siteSync.js';
 import { filterNews, NEWS_LIST_PAGES } from './newsList.js';
+import { openWebLink } from '../../core/linkBrowser.js';
 import { enhanceDateInputs } from '../../core/datePicker.js';
 import { baseTitle } from './model.js';
 import { taskCardHtml, errorText } from '../../core/taskLog.js';
@@ -208,6 +209,7 @@ export function openMarathonWizard(opts = {}) {
             <h4>📰 Новость <small class="muted">— рекомендуется: в ней задания, цели, награды, бонусы и полные описания</small></h4>
             <div class="row gap">
               <input class="input tf-grow" data-news-url placeholder="https://pwonline.ru/news.php?article=…" value="${escapeHtml(n.url)}"/>
+              <button type="button" class="btn" data-act="open-news" title="Открыть эту новость на сайте pwonline.ru, чтобы прочитать её целиком">🌐 На сайте</button>
               <button type="button" class="btn" data-act="parse-news" ${n.loading || n.search.loading ? 'disabled' : ''}>${n.loading ? '⏳ Разбираю…' : hasNews ? '📰 Разобрать заново' : '📰 Разобрать новость'}</button>
               <button type="button" class="btn primary" data-act="find-news" title="Просмотреть первые ${NEWS_LIST_PAGES} страницы архива событий pwonline.ru" ${n.loading || n.search.loading ? 'disabled' : ''}>${n.search.loading ? '⏳ Ищу…' : '🔎 Найти новость'}</button>
             </div>
@@ -316,6 +318,10 @@ export function openMarathonWizard(opts = {}) {
       if (e.key === 'Enter') doParseNews();
     });
     ov.body.querySelector('[data-act="parse-news"]')?.addEventListener('click', () => doParseNews());
+    ov.body.querySelector('[data-act="open-news"]')?.addEventListener('click', () => openNewsLink(W.news.url));
+    ov.body
+      .querySelectorAll('[data-open-news]')
+      .forEach(b => b.addEventListener('click', () => openNewsLink(b.dataset.openNews)));
     ov.body.querySelector('[data-act="find-news"]')?.addEventListener('click', () => doFindNews());
     ov.body.querySelector('[data-news-all]')?.addEventListener('change', e => {
       W.news.search.all = e.target.checked;
@@ -445,6 +451,24 @@ export function openMarathonWizard(opts = {}) {
     render();
   }
 
+  /**
+   * Открыть новость на pwonline.ru: парсер берёт из неё только задания, а весь текст
+   * удобнее прочитать на сайте. Ссылка открывается так же, как все остальные ссылки
+   * приложения («Настройки → Браузер ссылок»: отдельный профиль или системный браузер).
+   */
+  async function openNewsLink(url, emptyHint = 'Сначала вставьте или выберите ссылку на новость.') {
+    const link = String(url || '').trim();
+    if (!link) {
+      toast(emptyHint, 'warning');
+      return;
+    }
+    try {
+      await openWebLink(link);
+    } catch (error) {
+      toast(`Не удалось открыть новость: ${error.message || error}`, 'warning');
+    }
+  }
+
   /** Поиск новости о марафоне в архиве событий (первые 3 страницы). */
   async function doFindNews() {
     const sr = W.news.search;
@@ -491,6 +515,7 @@ export function openMarathonWizard(opts = {}) {
                     x => `
             <div class="tf-list-item">
               <span class="tf-grow"><strong>${escapeHtml(x.title)}</strong> <small class="muted">${escapeHtml(x.date)}</small></span>
+              <button type="button" class="btn tiny ghost" data-open-news="${escapeHtml(x.url)}" title="Открыть новость на сайте pwonline.ru и прочитать её целиком">🌐 На сайте</button>
               <button type="button" class="btn" data-pick-news="${escapeHtml(x.url)}">Выбрать</button>
             </div>`
                   )
@@ -1220,6 +1245,7 @@ export function openMarathonWizard(opts = {}) {
           <div class="row gap">
             <input class="input tf-grow" data-rw-news-url placeholder="https://pwonline.ru/news.php?article=…" value="${escapeHtml(W.rwNews.url || d.source?.newsUrl || '')}"/>
             <button type="button" class="btn primary" data-act="rw-news-load" ${W.rwNews.loading ? 'disabled' : ''}>${W.rwNews.loading ? '⏳ Загружаю…' : '📥 Подтянуть награды'}</button>
+            <button type="button" class="btn" data-act="rw-news-open" title="Открыть эту новость на сайте pwonline.ru, чтобы прочитать её целиком">🌐 На сайте</button>
           </div>
           <small class="muted">Задания сопоставляются по названию (и месяцу этапа). Цели и награды обновятся во всех этапах мастера.</small>
           ${W.rwNews.task ? taskCardHtml(W.rwNews.task) : ''}
@@ -1327,6 +1353,9 @@ export function openMarathonWizard(opts = {}) {
       W.rwNews.url = e.target.value.trim();
     });
     ov.body.querySelector('[data-act="rw-news-load"]')?.addEventListener('click', importRewardsFromNews);
+    ov.body
+      .querySelector('[data-act="rw-news-open"]')
+      ?.addEventListener('click', () => openNewsLink(W.rwNews.url || d.source?.newsUrl));
     ov.body.querySelector('[data-act="add-bonus"]').onclick = () => {
       d.bonuses = [...(d.bonuses || []), { id: uid(), needTasks: Math.max(1, d.tasks.length - 1), text: '' }];
       render();

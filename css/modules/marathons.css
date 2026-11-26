@@ -441,6 +441,19 @@
   font-size: 0.82rem;
   color: var(--muted);
 }
+/* Ссылка новости остаётся текстом (её можно выделить и скопировать), рядом — кнопка,
+   которая открывает новость на сайте: раньше адрес приходилось вставлять в браузер руками. */
+.mr-meta-news {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.mr-meta-news .btn.tiny {
+  opacity: 0.8;
+}
+.mr-meta-news .btn.tiny:hover:not([disabled]) {
+  opacity: 1;
+}
 .mr-head-actions {
   flex: none;
 }
