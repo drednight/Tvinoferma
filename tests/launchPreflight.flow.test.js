@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { DEFAULT_SETTINGS } from '../js/core/constants.js';
+import { DEFAULT_PREFLIGHT_MODE } from '../js/modules/launcher/preflight.js';
 
 // Запуск пати с проверками: пропуск уже запущенных окон, экран «Проверка перед запуском», «Исправить и запустить», история.
 const invoke = vi.fn(async () => ({}));
@@ -151,6 +153,33 @@ describe('экран «Проверка перед запуском»', () => {
     await partyLaunch.launchGroup('Пати', [A(), ch('n', 'Нн', [])]);
     expect(dlg()).toBeNull();
     expect(started()).toEqual(['a']);
+  });
+
+  it('умолчание настройки — «не показывать»: обычный клик по «▶ Запустить» окна не имеет', async () => {
+    // «Запустить» значит «запустить»: экран с отметками состава и подсказками не должен
+    // вставать между кнопкой и началом запуска. Проблемный персонаж при этом просто
+    // пропускается (его причина — в журнале задачи), а не спрашивает разрешения.
+    expect([DEFAULT_PREFLIGHT_MODE, DEFAULT_SETTINGS.launcher.preflight]).toEqual(['off', 'off']);
+    state.settings.launcher.preflight = undefined; // как у того, кто не трогал настройку
+    const results = await partyLaunch.launchGroup('Пати', [A(), ch('n', 'Нн', [])]);
+    expect(dlg()).toBeNull();
+    expect(started()).toEqual(['a']);
+    expect(results.map(r => r.id)).toEqual(['a']);
+  });
+
+  it('«Проверить перед запуском…» из стрелки: экран есть, даже когда настройка «не показывать»', async () => {
+    // Отказ от окна по умолчанию не должен отнимать сам экран: он вызывается точечно,
+    // и `opts.preflight` перебивает настройку на один запуск, не меняя её глобально.
+    state.settings.launcher.preflight = 'off';
+    state.parties = [{ id: 'p1', name: 'Папка 1' }];
+    state.characters = [A(), B()].map(c => ({ ...c, partyIds: ['p1'] }));
+    const p = partyLaunch.launchPartyByName('Папка 1', { preflight: 'always' });
+    await vi.waitFor(() => expect(dlg()).not.toBeNull());
+    expect(dlg().textContent).toContain('Проверка перед запуском');
+    click('launch');
+    await p;
+    expect(started()).toEqual(['a', 'b']);
+    expect(state.settings.launcher.preflight).toBe('off'); // настройку не тронули
   });
 
   it('нет GameCenter — экран сам; «Запустить» пропускает такого, остальные запускаются', async () => {

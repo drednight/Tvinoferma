@@ -46,7 +46,8 @@ import {
   shouldShowPreflight,
   preflightLog,
   availableFixes,
-  applyPreflightDrops
+  applyPreflightDrops,
+  normalizePreflightMode
 } from './preflight.js';
 import { openPreflight } from './preflightDialog.js';
 import { recordLaunchRun, loadLaunchLog } from './launchLog.js';
@@ -366,7 +367,10 @@ export async function launchGroup(title, characters, opts = {}) {
     // будут из другой, где токена нет, — и окно откроется под прежним аккаунтом.
     const group = launchContextForGroup(characters, opts.gcId);
     let pre = await runPreflight(characters, group.ctx);
-    const mode = state.settings?.launcher?.preflight;
+    // Настройка решает, показывать ли экран; `opts.preflight` перебивает её для одного
+    // запуска — так работает «Проверить перед запуском…» в меню стрелки: человек просит
+    // экран здесь и сейчас, не меняя настройку на всё приложение.
+    const mode = normalizePreflightMode(opts.preflight ?? state.settings?.launcher?.preflight);
     // «Исправить и запустить» открывает окно «GameCenter и персонажи», пользователь что-то
     // доделывает и закрывает окно — и мы снова показываем проверку с новым списком. Круг
     // ограничен двумя способами, иначе пользователь в нём застрял бы:

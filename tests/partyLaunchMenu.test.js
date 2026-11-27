@@ -157,6 +157,38 @@ describe('стрелка вариантов запуска в карточке �
     await vi.waitFor(() => expect(started().length).toBe(3));
     expect(picker()).toBeNull();
   });
+
+  it('«▶ Запустить» не открывает ни одного окна — даже когда у кого-то нет входа', async () => {
+    // Именно за это кнопку и просят: персонаж без запомненного входа не должен
+    // ставить между кликом и запуском экран с галочками состава. Он пропускается,
+    // остальные стартуют, а причина остаётся в журнале задачи.
+    state.characters.push({
+      id: 'd',
+      nick: 'Дд',
+      class: 'Воин',
+      partyIds: ['p1'],
+      mainPartyId: 'p1',
+      launch: { gcIds: ['gc-1'] } // вход не запомнен
+    });
+    renderPartiesGrid();
+    document.querySelector('.launch-party-action-btn').click();
+    await vi.waitFor(() => expect(started()).toEqual(['a', 'b', 'c']));
+    expect(picker()).toBeNull();
+    expect(document.querySelector('.tf-dialog')).toBeNull();
+  });
+
+  it('в меню есть «проверить перед запуском»: экран открывается по запросу и запускает всех', async () => {
+    // Отказ от окна по умолчанию не отменяет сами проверки: они остаются, а экран
+    // с ними — отдельный пункт, который человек вызывает сам, когда хочет.
+    renderPartiesGrid();
+    const opened = await openMenu();
+    expect(opened.querySelector('[data-id="preflight"]')).toBeTruthy();
+    opened.querySelector('[data-id="preflight"]').click();
+    await vi.waitFor(() => expect(document.querySelector('.tf-dialog')).not.toBeNull());
+    document.querySelector('[data-act="launch"]').click();
+    await vi.waitFor(() => expect(started()).toEqual(['a', 'b', 'c']));
+    expect(state.settings.launcher.preflight).toBe('off'); // настройку пункт не меняет
+  });
 });
 
 describe('повтор за отставшими', () => {

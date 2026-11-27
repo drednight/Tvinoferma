@@ -18,8 +18,9 @@ import { resolveGameCenter, pickMajorityGc } from './gameCenters.js';
 import { parseWindowTitle } from './windowList.js';
 
 /** Режимы экрана проверок (Настройки → Запуск игры). */
-export const PREFLIGHT_MODES = ['issues', 'always', 'off'];
-export const DEFAULT_PREFLIGHT_MODE = 'issues';
+export const PREFLIGHT_MODES = ['off', 'issues', 'always'];
+// Обычный запуск пати не прерывается: экран — по запросу (настройка или «▾» в карточке).
+export const DEFAULT_PREFLIGHT_MODE = 'off';
 
 /** @param {any} v */
 export const normalizePreflightMode = v => (PREFLIGHT_MODES.includes(v) ? v : DEFAULT_PREFLIGHT_MODE);
@@ -153,7 +154,7 @@ export function launchPreflight({
 /**
  * Показывать ли экран проверок.
  * @param {Preflight} pre
- * @param {string} mode 'issues' | 'always' | 'off'
+ * @param {string} mode 'off' | 'issues' | 'always'
  */
 /**
  * Кого показывать в списке выбора состава прямо в окне проверок.

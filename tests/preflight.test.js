@@ -178,12 +178,13 @@ describe('когда показывать экран', () => {
 
   it('режим из настроек: мусор заменяется на умолчание, новые поля есть в state', () => {
     expect(normalizePreflightMode('off')).toBe('off');
-    expect(normalizePreflightMode(5)).toBe('issues');
+    // Умолчание — «не показывать»: обычный клик по «▶ Запустить» не должен ни о чём спрашивать.
+    expect(normalizePreflightMode(5)).toBe('off');
     const l = normalizeState({ characters: [], settings: { launcher: { preflight: 'zzz', skipRunning: false } } })
       .settings.launcher;
-    expect([l.preflight, l.skipRunning]).toEqual(['issues', false]);
+    expect([l.preflight, l.skipRunning]).toEqual(['off', false]);
     const d = normalizeState({ characters: [], settings: {} }).settings.launcher;
-    expect([d.preflight, d.skipRunning]).toEqual(['issues', true]);
+    expect([d.preflight, d.skipRunning]).toEqual(['off', true]);
   });
 });
 

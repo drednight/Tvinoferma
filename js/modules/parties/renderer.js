@@ -176,7 +176,7 @@ function partyCardHtml(name, members) {
             <div class="pt-actions">
                 <span class="pt-split">
                 <button class="pt-btn pt-btn-launch launch-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" ${activeMembers.length ? '' : 'disabled'}
-                        title="${launchReady ? 'Запустить игру для активных участников по очереди (GameCenter выбирается по большинству участников)' : activeMembers.length ? `Готовы к запуску: ${launchReady} из ${activeMembers.length}. Остальным нужен GameCenter и запомненный вход — откроется экран проверки` : 'В пати нет активных персонажей'}">
+                        title="${launchReady ? 'Запустить игру для активных участников по очереди, без окон и вопросов (GameCenter выбирается по большинству участников)' : activeMembers.length ? `Готовы к запуску: ${launchReady} из ${activeMembers.length}. Остальным нужен GameCenter и запомненный вход — они пропустятся, причина будет в журнале задачи` : 'В пати нет активных персонажей'}">
                     ▶ Запустить <small>${launchReady}/${activeMembers.length}</small>
                 </button>${
                   // Стрелка есть всегда, когда в пати кого выбирать (в том числе из одного
@@ -184,7 +184,7 @@ function partyCardHtml(name, members) {
                   // состав — единственное исключение: рядом с заблокированной кнопкой
                   // стрелка только обещала бы меню без пунктов.
                   activeMembers.length
-                    ? `<button class="pt-btn pt-btn-caret" type="button" data-party-name="${escapeHtml(name)}" aria-haspopup="menu" aria-expanded="false" title="Как запускать: всех, выборочно или только отставших" aria-label="Варианты запуска пати ${escapeHtml(name)}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>`
+                    ? `<button class="pt-btn pt-btn-caret" type="button" data-party-name="${escapeHtml(name)}" aria-haspopup="menu" aria-expanded="false" title="Как запускать: всех, выборочно, только отставших или сначала проверить" aria-label="Варианты запуска пати ${escapeHtml(name)}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>`
                     : ''
                 }
                 </span>
@@ -542,6 +542,13 @@ function bindPartyEvents(container) {
                   : 'В прошлый запуск этой пати все окна поднялись — повторять не за чем',
                 disabled: !misses.length,
                 onSelect: () => m.launchPartyByName(name, { memberIds: misses })
+              },
+              {
+                id: 'preflight',
+                icon: '🔎',
+                label: 'Проверить перед запуском…',
+                hint: 'Открыть экран проверок (GameCenter, вход, уже открытые окна) — с «Исправить и запустить»',
+                onSelect: () => m.launchPartyByName(name, { preflight: 'always' })
               }
             ],
             { portal: document.body }
