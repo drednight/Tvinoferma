@@ -17,6 +17,7 @@ import {
   siteKeyOf
 } from './shopCore.js';
 import { writeLogBounded } from '../../core/logStore.js';
+import { rememberItemIcons } from './itemIconMemory.js';
 
 export const STATE_KEY = 'tf_shop_state_v1';
 export const LOG_KEY = 'tf_shop_log_v1';
@@ -89,6 +90,9 @@ export function saveScan(charIds, scan, now = new Date()) {
   });
   const acc = s.accounts[siteKey] || { tracks: {} };
   const tracks = {};
+  // Магазин — второй источник картинки предмета: сайт рисует её у карточки так же, как у
+  // строки перечисления. Запомнив её, приложение покажет иконку и в «Что будет передано».
+  rememberItemIcons(Object.values(scan.items || {}));
   SHOP_ITEMS.forEach(def => {
     const item = scan.items[def.key];
     const t = reconcileTrack(acc.tracks?.[def.key], item, now);

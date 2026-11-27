@@ -49,6 +49,7 @@
     "transfer.form": [".js-transfer-form"],
     "transfer.row": ["table.promo_items tr"],
     "transfer.itemBlock": [".item_input_block"],
+    "transfer.itemImage": [".img_item_cont img", ".img_item_cell img", ".item_input_block img"],
     "transfer.chest": [".chest_input_block", "a[href*=\"do=activate\"]"],
     "transfer.label": ["label"],
     "transfer.checkbox": ["input[type=\"checkbox\"][name=\"cart_items[]\"]"],

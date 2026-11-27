@@ -1,4 +1,4 @@
-import { siteItemIconHtml } from './siteItemIcon.js';
+import { itemIconHtml } from './itemIconMemory.js';
 import { openShopLimits } from './shopLimitsView.js';
 import { classIconHtml, stripeCls } from './characterPicker.js';
 import { layoutScriptWorkspace } from './scriptWorkspace.js';
@@ -405,7 +405,7 @@ export function openShopDialog({ ids = [] } = {}) {
     // поэтому показываем их покладистый значок без рамки и фона.
     const iconHtml = def.chest
       ? `<span class="site-item-icon" aria-hidden="true">${escapeHtml(def.icon)}</span>`
-      : siteItemIconHtml(it?.image, def.name);
+      : itemIconHtml(it?.image, def.name);
     return `<div class="shop-card${locked ? ' shop-locked' : ''}${picked.has(def.key) ? ' shop-picked' : ''}" data-card="${def.key}">
       <label class="shop-pick"><input type="checkbox" data-item="${def.key}" ${picked.has(def.key) ? 'checked' : ''} ${locked ? 'disabled' : ''}>
         ${iconHtml}<b>${escapeHtml(def.name)}</b><span class="shop-card-check" aria-hidden="true">✓</span></label>

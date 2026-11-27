@@ -17,6 +17,15 @@ it('groups matching name and quantity across all categories/deadlines, retaining
   expect(groups).toHaveLength(3);
   expect(groups[0].items.map(item => item.id)).toEqual(['a', 'b', 'd', 'e']);
 });
+it('берёт картинку предмета у той строки группы, где она прочитана', () => {
+  const SITE = 'https://pwonline.ru/img/promo_items/item_47278.png';
+  const OTHER = 'https://cdn.pwonline.ru/img/promo_items/item_72297.png';
+  // Строки одного предмета — один и тот же предмет: превью могло не прочитаться у первой.
+  expect(groupTransferItems([item('a'), item('b', { image: SITE }), item('c')])[0].image).toBe(SITE);
+  expect(groupTransferItems([item('a', { image: OTHER }), item('b', { image: SITE })])[0].image).toBe(OTHER);
+  expect(groupTransferItems([item('a'), item('b')])[0].image).toBeUndefined();
+});
+
 it('chooses a subset of real packets, leaves unrelated IDs and uses stable order for equal or unknown deadlines', () => {
   const [group] = groupTransferItems(['a', 'b', 'c', 'd'].map(id => item(id)));
   const previous = new Set(['c', 'unrelated']);

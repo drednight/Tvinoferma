@@ -75,6 +75,40 @@
     var m = TF.match('transfer.item', text);
     return { name: squash(m ? m[1] : text).substring(0, 120), qty: m && m[2] ? Number(m[2]) : 1, until: until.substring(0, 30) };
   }
+  // Адрес картинки <img>: сайт догружает превью лениво, поэтому адрес лежит то в src,
+  // то в data-src/srcset, пока строка не попала в поле зрения. Пустой src («src=""») —
+  // не адрес: берём следующую картинку, а не сдаёмся на первой.
+  function imgSrc(img) {
+    if (!img) return '';
+    var attrs = ['src', 'data-src', 'data-original'];
+    for (var i = 0; i < attrs.length; i++) {
+      var raw = squash(img.getAttribute(attrs[i]) || '');
+      if (raw) return raw;
+    }
+    return squash(img.getAttribute('srcset') || '').split(',')[0].trim().split(/\s+/)[0];
+  }
+  function absImg(raw) {
+    if (!raw) return '';
+    try {
+      return new URL(raw.indexOf('//') === 0 ? 'https:' + raw : raw, location.href).href;
+    } catch (_) {
+      return '';
+    }
+  }
+  // Иконка предмета. Рисует её соседняя ячейка той же строки (`.img_item_cell`), а не блок
+  // с чекбоксом: пока искали внутри `.item_input_block`, адрес не находился ни у одной
+  // строки и список «Что будет передано» показывал картинку только у тех немногих
+  // предметов, для которых в приложении лежит файл-рисунок.
+  function iconUrlOf(row, block) {
+    var imgs = [];
+    try { imgs = TF.qa('transfer.itemImage', row); } catch (_) { imgs = []; }
+    if (block) imgs = imgs.concat(Array.prototype.slice.call(block.querySelectorAll('img')));
+    for (var i = 0; i < imgs.length; i++) {
+      var url = absImg(imgSrc(imgs[i]));
+      if (url) return url;
+    }
+    return '';
+  }
   // Предметы страницы: те, что можно передать (есть галочка), сундуки (их выбирают на сайте) и строки без галочки
   function readItems() {
     var out = { items: [], chests: 0, locked: 0 };
@@ -87,9 +121,7 @@
       if (!label) return;
       if (!box || box.disabled) { out.locked++; return; }
       var info = parseLabel(label);
-      var image = block.querySelector('img[src]');
-      var imageUrl = '';
-      try { imageUrl = image && String(image.getAttribute('src') || '').trim() ? new URL(image.getAttribute('src'), location.href).href : ''; } catch (_) {}
+      var imageUrl = iconUrlOf(row, block);
       var item = { id: String(box.value), name: info.name, qty: info.qty, until: info.until, source: sourceOf(row) };
       if (imageUrl) item.image = imageUrl;
       out.items.push(item);

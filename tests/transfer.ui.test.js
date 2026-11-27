@@ -468,6 +468,46 @@ describe('форма', () => {
     expect($('.tr-preview-dialog')).toBeNull();
   });
 
+  it('иконка предмета в «Что будет передано»: картинка строки, иначе виденная сайтом, иначе знак', async () => {
+    const SITE = 'https://pwonline.ru/img/promo_items/item_47278.png';
+    const SHOP = 'https://cdn.pwonline.ru/img/promo_items/item_111222.png';
+    // «Камень светлого духа» — предмет магазина подарков: у самого сайта в строке перечисления
+    // картинки нет (или список прочитан до обновления), но приложение её уже видело. Своя
+    // картинка строки при этом всегда впереди запомненной, а неизвестный предмет остаётся со
+    // знаком 🎁 — иконку ему не выдумывают.
+    setRoster('b', rosterOf('88', { items: [{ id: '9', name: 'Камень светлого духа', qty: 1, image: SHOP }] }));
+    setRoster(
+      'a',
+      rosterOf('77', {
+        items: [
+          { id: '2', name: 'Камень светлого духа', qty: 1 },
+          { id: '3', name: 'Осколок сумеречной души', qty: 1, image: SITE },
+          { id: '4', name: 'Предмет, которого приложение не видело', qty: 1 }
+        ]
+      })
+    );
+    openTransferDialog({ ids: [] });
+    $('[data-q="all"]').click();
+    ['a', 'b'].forEach(id => pickRow(id, '5'));
+    mocks.invoke.mockImplementation(async (cmd, args) => {
+      if (cmd !== 'read_transfer_page') return answer(cmd, args);
+      const { loadRosters } = await import('../js/modules/automation/transferStore.js');
+      const roster = loadRosters()[args.charId];
+      return { charId: args.charId, status: 'ok', roster: { ...roster, items: roster.pending.items } };
+    });
+    $('#tr-plan-btn').click();
+    await vi.waitFor(() => expect($('.tr-preview-dialog .tf-dialog-body').textContent).not.toContain('Читаю сайт…'));
+    const rows = [...$('.tr-preview-dialog').querySelectorAll('[data-transfer-group-row]')];
+    const iconOf = name =>
+      rows.find(r => r.querySelector('b')?.textContent.trim() === name)?.querySelector('.site-item-icon');
+    expect(iconOf('Камень светлого духа').querySelector('img').src).toBe(SHOP);
+    expect(iconOf('Камень светлого духа').className).toContain('site-item-icon--framed');
+    // Своя картинка строки важнее запомненной, а неизвестному предмету иконку не выдумывают.
+    expect(iconOf('Осколок сумеречной души').querySelector('img').src).toBe(SITE);
+    expect(iconOf('Предмет, которого приложение не видело').textContent).toBe('🎁');
+    expect(iconOf('Предмет, которого приложение не видело').querySelector('img')).toBeNull();
+  });
+
   it('сохранённый получатель пропал с сайта: в плане подсказка «выберите заново»', async () => {
     preload();
     window.localStorage.setItem(

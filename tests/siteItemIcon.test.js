@@ -40,6 +40,16 @@ it('crops only the framed promo item preview to its central icon, shared by shop
   expect(siteItemIconHtml('https://cdn.pwonline.ru/images/chest.png')).not.toContain('site-item-icon--framed');
 });
 
+it('crops any picture from the site preview folder, not only one item_NNN file name', () => {
+  const el = document.createElement('div');
+  el.innerHTML = siteItemIconHtml('https://pwonline.ru/img/promo_items/gift_9.png', 'Осколок сумеречной души');
+  expect(el.querySelector('.site-item-icon--framed')).not.toBeNull();
+  // И нейтральный знак объясняет, почему картинки нет.
+  const blank = document.createElement('div');
+  blank.innerHTML = siteItemIconHtml('', 'Предмет без картинки');
+  expect(blank.querySelector('.site-item-icon').title).toContain('не показал картинку');
+});
+
 it('uses every shipped local icon before remote art, without framed cropping', async () => {
   const { localItemNames, localItemIcons, localItemIcon } = await import('../js/modules/automation/localItemIcons.js');
   expect(localItemIcons).toHaveLength(37);

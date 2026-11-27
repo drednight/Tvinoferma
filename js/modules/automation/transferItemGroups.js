@@ -28,7 +28,11 @@ export function groupTransferItems(items) {
   for (const item of items) {
     const key = JSON.stringify([item.name, item.qty]);
     if (!groups.has(key)) groups.set(key, { ...item, items: [] });
-    groups.get(key).items.push(item);
+    const group = groups.get(key);
+    group.items.push(item);
+    // Картинку берём у любой строки группы, а не только у первой: предмет один и тот же,
+    // а у отдельной строки сайта превью могло не прочитаться (строка читана давно).
+    if (!group.image && item.image) group.image = item.image;
   }
   for (const group of groups.values()) group.items.sort((a, b) => compareExpiry(a, b));
   return [...groups.values()];

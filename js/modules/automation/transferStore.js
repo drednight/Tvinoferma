@@ -5,6 +5,7 @@
 //  - журнал передач: когда, откуда, куда, что и чем закончилось.
 
 import { normalizeRoster, normalizeStatus, normKey } from './transferCore.js';
+import { rememberItemIcons } from './itemIconMemory.js';
 import { writeLogBounded } from '../../core/logStore.js';
 
 export const ROSTER_KEY = 'tf_transfer_roster_v1';
@@ -63,6 +64,10 @@ export const saveRosters = rosters => writeJson(ROSTER_KEY, rosters);
 export function setRoster(charId, data, now = new Date(), { preserveLookup = false } = {}) {
   const all = loadRosters();
   const next = normalizeRoster(data, now);
+  // Картинки, которые сайт нарисовал у этой строки, запоминаются по названию предмета:
+  // они пригодятся и этому списку после следующего чтения, и другим разделам (см.
+  // itemIconMemory.js). Само чтение от этого не зависит — память только пополняется.
+  rememberItemIcons(next.pending.items);
   const prev = all[charId];
   if (next.shards.length === 0 && prev?.shards?.length) {
     next.shards = prev.shards;

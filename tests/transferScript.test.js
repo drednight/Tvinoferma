@@ -222,6 +222,54 @@ describe('transfer.js: scan (только чтение)', () => {
     ]);
   });
 
+  it('иконка предмета читается из ячейки с превью, а ленивая догрузка — из data-src', () => {
+    // Сайт рисует превью в соседней <td class="img_item_cell"> той же строки. Пока картинку
+    // искали внутри .item_input_block (блок чекбокса), адрес не находился ни у одной строки,
+    // и «Что будет передано» показывало иконку только у предметов с файлом-рисунком в приложении.
+    const WITHOUT = '550314371';
+    const seen = new Set();
+    const html = editDom(fixture('site-promoitems.html'), d => {
+      d.querySelectorAll('table.promo_items tr').forEach(row => {
+        const box = row.querySelector('input[type="checkbox"][name="cart_items[]"]');
+        const picture = row.querySelector('.img_item_cont img');
+        if (!box || box.disabled || !picture) return;
+        seen.add(String(box.value));
+        if (box.value === WITHOUT) return; // сайт не нарисовал картинку: поля image не будет
+        if (Number(box.value) % 2) picture.setAttribute('src', `//pwonline.ru/img/promo_items/item_${box.value}.png`);
+        else picture.setAttribute('data-src', `/img/promo_items/item_${box.value}.png`);
+      });
+    });
+    const items = run(html, 'scan').data.items;
+    expect(items.length).toBeGreaterThan(5);
+    // Обход что-то нашёл, иначе проверка ниже была бы пустой.
+    expect(seen.size).toBeGreaterThan(5);
+    expect(items.filter(i => i.image).length).toBe(seen.size - 1); // все, кроме WITHOUT
+    for (const item of items) {
+      if (!seen.has(item.id)) continue;
+      const expected =
+        item.id === WITHOUT
+          ? undefined
+          : Number(item.id) % 2
+            ? `https://pwonline.ru/img/promo_items/item_${item.id}.png`
+            : new URL(`/img/promo_items/item_${item.id}.png`, window.location.href).href;
+      expect(item.image, item.name).toEqual(expected);
+    }
+    // Пустой src («src=""» у ленивой картинки) адресом не считается: берётся следующая картинка строки.
+    const lazy = editDom(fixture('site-promoitems.html'), d => {
+      d.querySelectorAll('table.promo_items tr').forEach(row => {
+        const box = row.querySelector('input[type="checkbox"][name="cart_items[]"]');
+        const picture = row.querySelector('.img_item_cont img');
+        if (!box || !picture) return;
+        picture.setAttribute('src', '');
+        picture.insertAdjacentHTML('beforebegin', '<img src="" alt=""/>');
+        picture.setAttribute('srcset', `/img/promo_items/item_${box.value}.png 1x`);
+      });
+    });
+    const lazyItems = run(lazy, 'scan').data.items;
+    for (const item of lazyItems.filter(i => seen.has(i.id)))
+      expect(item.image, item.name).toBe(new URL(`/img/promo_items/item_${item.id}.png`, window.location.href).href);
+  });
+
   it('название без количества: qty = 1', () => {
     const html = editDom(fixture('site-promoitems.html'), d => {
       const l = d.querySelector('.item_input_block label');

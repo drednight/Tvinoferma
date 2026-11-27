@@ -64,22 +64,36 @@ const normalize = value =>
     .replace(/[«»“”"]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+// Presentation-only tails: quantity and binding tags. Categories and levels stay.
+const stripSuffixes = exact =>
+  exact
+    .replace(/\s*\((?:привязан(?:ный|ная|ное)?|персональн(?:ый|ая|ое)|непередаваемый)\)\s*[.;,]?$/iu, '')
+    .replace(/\s*\(\s*(?:[×xх]\s*)?\d[\d\s.,]*(?:\s*(?:шт\.?|штук[аи]?|ед\.?))?\s*\)\s*[.;,]?$/iu, '')
+    .replace(/\s*(?:[×xх:]|[-]\s*(?=\d))\s*\d[\d\s.,]*(?:\s*(?:шт\.?|штук[аи]?|ед\.?))?\s*[.;,]?$/iu, '')
+    // A sentence period after the name is not part of the name.
+    .replace(/[.;,]+$/, '')
+    .trim();
 const icons = new Map(
   [...Object.entries(files), ...Object.entries(shared), ...Object.entries(wordings)].map(([name, key]) => [
     normalize(name),
     key
   ])
 );
-export function localItemIcon(name) {
+/**
+ * Единый ключ предмета: по нему находится и рисунок из приложения, и картинка, которую
+ * приложение уже видело на сайте (itemIconMemory.js). Один ключ на «Приказ феникса»,
+ * «Приказ феникса (30 шт.)» и «Приказ феникса ×30 (привязанный)».
+ * @param {any} name
+ */
+export const itemIconKey = name => {
   const exact = normalize(name);
-  // Strip presentation-only quantity/binding suffixes; never strip categories or levels.
-  const item = exact
-    .replace(/\s*\((?:привязан(?:ный|ная|ное)?|персональн(?:ый|ая|ое)|непередаваемый)\)\s*[.;,]?$/iu, '')
-    .replace(/\s*\(\s*(?:[×xх]\s*)?\d[\d\s.,]*(?:\s*(?:шт\.?|штук[аи]?|ед\.?))?\s*\)\s*[.;,]?$/iu, '')
-    .replace(/\s*(?:[×xх:]|[-]\s*(?=\d))\s*\d[\d\s.,]*(?:\s*(?:шт\.?|штук[аи]?|ед\.?))?\s*[.;,]?$/iu, '')
-    .trim();
-  const key = icons.get(exact) || icons.get(item);
-  return key ? `${import.meta.env.BASE_URL}assets/icons/items/${key}.webp` : '';
+  return icons.has(exact) ? exact : stripSuffixes(exact);
+};
+
+export function localItemIcon(name) {
+  const key = itemIconKey(name);
+  const file = icons.get(key);
+  return file ? `${import.meta.env.BASE_URL}assets/icons/items/${file}.webp` : '';
 }
 // Items the site draws with a local icon: one name per artwork plus the
 // separate items that share an artwork.
