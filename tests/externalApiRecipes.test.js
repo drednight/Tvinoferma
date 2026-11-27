@@ -199,6 +199,60 @@ describe('внешний API: вкладка «Рецепты» на стран�
     expect(document.getElementById('recipes-count').textContent).toMatch(/ни один рецепт/);
   });
 
+  it('рецепты читаются по одному: выбор слева открывает деталь справа', async () => {
+    // Справа длинный список из 23 рецептов — то, на что жаловались: ищут один,
+    // видят все. Ожидаемое поведение — как в справочнике: одна выбранная карточка.
+    window.history.replaceState(null, '', '/recipes');
+    document.documentElement.innerHTML = read('index.html')
+      .replace(/^[\s\S]*?<body>/, '<body>')
+      .replace(/<\/body>[\s\S]*$/, '</body>');
+    globalThis.fetch = async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json; charset=utf-8' },
+      text: async () => JSON.stringify({ ok: true })
+    });
+    for (const file of ['errors.js', 'docs.js', 'actions.js', 'recipes.js', 'app.js']) {
+      new Function(read(file))();
+    }
+    const body = document.getElementById('recipes-body');
+    const catalog = loadCatalog();
+    expect(body.dataset.view).toBe('one');
+    expect([...body.querySelectorAll('[data-recipe].is-selected')]).toHaveLength(1);
+    expect(
+      [...body.querySelectorAll('[data-recipe-group]')].filter(group => group.classList.contains('is-open'))
+    ).toHaveLength(1);
+    expect(document.querySelector('[data-refnav="recipes"]').hidden).toBe(false);
+    expect(document.querySelector('[data-refnav="recipes"] [data-ref-pos]').textContent).toMatch(/1 из \d+/);
+    expect(document.querySelectorAll('#recipes-body [data-recipe]').length).toBe(catalog.recipes.length);
+    // Клик по ссылке рецепта в оглавлении открывает именно его.
+    const cards = [...body.querySelectorAll('[data-recipe]')];
+    const wanted = cards[3];
+    const link = document.querySelector(`#recipes-toc a[href="#${wanted.id}"]`);
+    expect(link, 'оглавление ссылается на карточку рецепта').toBeTruthy();
+    link.click();
+    expect([...body.querySelectorAll('[data-recipe].is-selected')].map(card => card.id)).toEqual([wanted.id]);
+    expect(location.hash).toBe(`#${wanted.id}`);
+    expect(link.classList.contains('is-on')).toBe(true);
+    // Выбор под фильтром не теряется и не показывает то, что фильтр убрал.
+    const filter = document.getElementById('recipes-filter');
+    filter.value = wanted.textContent.slice(0, 18);
+    filter.dispatchEvent(new window.Event('input', { bubbles: true }));
+    expect([...body.querySelectorAll('[data-recipe].is-selected')].map(card => card.id)).toEqual([wanted.id]);
+    // «все списком» — тот же переключатель, что и в справочнике, и он возвратный.
+    document.querySelector('[data-ref-mode="all"]').click();
+    expect(body.dataset.view).toBe('all');
+    expect(body.querySelectorAll('[data-recipe].is-selected')).toHaveLength(0);
+    expect(document.querySelector('[data-refnav="recipes"]').hidden).toBe(true);
+    document.querySelector('[data-ref-mode="one"]').click();
+    expect(body.dataset.view).toBe('one');
+    localStorage.removeItem('tf-api-ref-view');
+    // Язык примера и панель выполнения живут в открытой карточке, а не в тексте справки.
+    const selected = body.querySelector('[data-recipe].is-selected');
+    expect(selected.querySelector('[data-run-go]')).toBeTruthy();
+    expect(selected.querySelector('[data-recipe-snippet]')).toBeTruthy();
+  });
+
   it('у рецептов своё оглавление разделов и ссылки на карточку', async () => {
     window.history.replaceState(null, '', '/recipes');
     document.documentElement.innerHTML = read('index.html')

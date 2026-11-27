@@ -314,6 +314,15 @@ export async function routeRequest(request, deps = {}) {
     return { status: 200, body: read.publicCharacters(state, query.toString(), { running: runningByCharIdOf(rows) }) };
   }
 
+  // «Цифры списка» отдельной командой: `/characters` по умолчанию краткий (id и ник),
+  // а статы и проходки у всех разом нужны часто — «сколько у фермы оружия», «у кого
+  // HP просел». Суффикс в пути (`characters.stats`) выбран не ради красоты: он не
+  // может столкнуться с `/characters/{id}`, где id — имя персонажа.
+  if (method === 'GET' && path === '/api/v1/characters.stats') {
+    const read = await load('characters', () => import('./actions/read.js'));
+    return { status: 200, body: read.publicCharacterStats(state, query.toString()) };
+  }
+
   if (method === 'GET' && path.startsWith('/api/v1/characters/')) {
     const id = decodeSegment(path.slice('/api/v1/characters/'.length));
 

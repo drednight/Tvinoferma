@@ -11,6 +11,7 @@ tf — командная строка Твинофермы поверх вне�
 
 Чтение данных:
   tf list-characters                          GET /api/v1/characters  [чтение]
+  tf list-character-stats                     GET /api/v1/characters.stats  [чтение]
   tf character-card <id>                      GET /api/v1/characters/{id}  [чтение]
   tf character-stats <id>                     GET /api/v1/characters/{id}/stats  [чтение]
   tf character-passes <id>                    GET /api/v1/characters/{id}/dungeon-passes  [чтение]

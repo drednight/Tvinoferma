@@ -201,6 +201,10 @@
             </label>
             <label class="xapi-check"><input id="recipes-only-available" type="checkbox" disabled /> только доступные моим правам</label>
             <p id="recipes-count" class="xapi-note"></p>
+            <div class="xapi-refmodes" role="group" aria-label="Как показывать карточки">
+              <button type="button" class="xapi-refmode is-on" data-ref-mode="one" aria-pressed="true">по одной</button>
+              <button type="button" class="xapi-refmode" data-ref-mode="all" aria-pressed="false">все списком</button>
+            </div>
             <nav class="xapi-toc" id="recipes-toc" aria-label="Раздел recipes"></nav>
             <div class="xapi-tabs xapi-tabs-rail" role="tablist" aria-label="Язык примера">
               <button type="button" class="xapi-tab is-on" data-recipe-lang="curl" role="tab" aria-selected="true">curl</button>
@@ -211,6 +215,11 @@
             </div>
           </aside>
           <div class="xapi-page-main">
+            <div class="xapi-refnav" data-refnav="recipes" hidden>
+              <button type="button" class="btn ghost small" data-ref-step="-1">← предыдущий</button>
+              <span class="xapi-refpos" data-ref-pos></span>
+              <button type="button" class="btn ghost small" data-ref-step="1">следующий →</button>
+            </div>
             <div id="recipes-body" class="xapi-docs"></div>
           </div>
         </div>
@@ -242,6 +251,10 @@
               <input id="docs-only-available" type="checkbox" disabled /> только доступные моим правам
             </label>
             <p id="docs-filter-hint" class="xapi-note"></p>
+            <div class="xapi-refmodes" role="group" aria-label="Как показывать карточки">
+              <button type="button" class="xapi-refmode is-on" data-ref-mode="one" aria-pressed="true">по одной</button>
+              <button type="button" class="xapi-refmode" data-ref-mode="all" aria-pressed="false">все списком</button>
+            </div>
             <p class="xapi-toc-head">
               <span id="docs-toc-count" class="muted"></span>
               <span class="muted">Оглавление ведёт к каждому методу; ссылка на метод — кнопка «🔗 ссылка» в его карточке.</span>
@@ -249,6 +262,11 @@
             <nav id="docs-toc" class="xapi-toc" aria-label="Методы справочника"></nav>
           </aside>
           <div class="xapi-page-main">
+            <div class="xapi-refnav" data-refnav="docs" hidden>
+              <button type="button" class="btn ghost small" data-ref-step="-1">← предыдущий</button>
+              <span class="xapi-refpos" data-ref-pos></span>
+              <button type="button" class="btn ghost small" data-ref-step="1">следующий →</button>
+            </div>
             <div id="docs-body" class="xapi-docs"></div>
           </div>
         </div>

@@ -58,6 +58,18 @@
   const recipeSnippetBuilders = window.TF_API_RECIPE_SNIPPETS || {};
   // Язык примера в рецептах: curl, Python или PowerShell — на всех сразу.
   let recipeLanguage = 'curl';
+  // Как показывать справку. Список из 40 методов — это прокрутка вслепую: человек
+  // ищет одно, а видит сорок. По умолчанию справа лежит ровно то, что выбрано
+  // слева, а «все списком» остаётся рядом — для Ctrl+F и для печати.
+  const refViewKey = 'tf-api-ref-view';
+  let refView = 'one';
+  try {
+    if (localStorage.getItem(refViewKey) === 'all') refView = 'all';
+  } catch {
+    /* приватный режим: выбор живёт до перезагрузки, это не ломает страницу */
+  }
+  /** Что открыто справа на каждой из страниц справки. */
+  const refSelected = { docs: '', recipes: '' };
   let activeAction = null;
 
   /** Подставить пример запроса в тестовую строку. */
@@ -650,6 +662,9 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
    */
   const RUN_PARAM_SAMPLES = {
     full: 'true',
+    // `detail` — чем подробнее список: значение из справочника подставляется как есть,
+    // и чип обязан вставлять рабочее, а не пустое `detail=`.
+    detail: 'list',
     flat: 'true',
     lang: 'ru',
     sort: 'nick',
@@ -1249,17 +1264,16 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
       });
   }
 
-  /** Перейти к якорю на любой из страниц, подсветив карточку. */
+  /** Перейти к якорю на любой из страниц: тот же выбор, что и по клику в оглавлении. */
   function goToAnchor(hash) {
     const id = String(hash || '').replace(/^#/, '');
     if (!id) return false;
-    const target = document.getElementById(id);
-    if (!target) return false;
-    if (location.hash !== `#${id}`) history.replaceState(null, '', `#${id}`);
-    target.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
-    target.classList.add('is-target');
-    setTimeout(() => target.classList.remove('is-target'), 1600);
-    return true;
+    const kind = /^#?(m-|g-)/.test(`#${id}`) ? 'docs' : 'recipes';
+    if (page !== kind && (kind === 'docs' || kind === 'recipes')) {
+      if (!PAGES[kind]) return false;
+      showTab(kind);
+    }
+    return refJump(kind, `#${id}`);
   }
 
   /**
@@ -1295,6 +1309,7 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
         let hit = !query || item.textContent.toLowerCase().includes(query);
         if (hit && onlyAvailable && blocked) hit = false;
         item.hidden = !hit;
+        item.dataset.match = hit ? '1' : '0';
         if (hit) any = true;
       }
       group.hidden = !any;
@@ -1324,6 +1339,7 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
           : `рецептов: ${recipeCatalog.length}`;
       counter.classList.toggle('is-empty', (!!query || onlyAvailable) && !shown);
     }
+    applyRefView('recipes');
   }
 
   /* ------------------------------------------------------------------ */
@@ -1730,19 +1746,186 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
    * методу, а не к началу страницы. Ссылки из оглавления настоящие, поэтому
    * переход работает и без JS: обработчик добавляет только прокрутку и подсветку.
    */
-  function goToDoc(hash) {
+  /* ------------------------------------------------------------------ */
+  /*  Режим показа справок: «по одной карточке» или «все списком»        */
+  /* ------------------------------------------------------------------ */
+
+  const refCardSel = kind => (kind === 'docs' ? '[data-doc]' : '[data-recipe]');
+  const refGroupSel = kind => (kind === 'docs' ? '[data-doc-group]' : '[data-recipe-group]');
+  const refRoot = kind => document.getElementById(kind === 'docs' ? 'docs-body' : 'recipes-body');
+
+  /** Все карточки страницы. */
+  function refCards(kind) {
+    const root = refRoot(kind);
+    return root ? [...root.querySelectorAll(refCardSel(kind))] : [];
+  }
+
+  /**
+   * Карточки, прошедшие фильтр. Отличаем от `hidden`: в режиме «по одной» скрыто всё
+   * кроме выбранного, и если читать `hidden`, список для листания схлопнулся бы до
+   * одной строки — «следующий» и «предыдущий» перестали бы ходить.
+   */
+  function refMatched(kind) {
+    return refCards(kind).filter(card => card.dataset.match !== '0');
+  }
+
+  /**
+   * Применить режим и выбор: какая карточка открыта, какая группа вокруг неё,
+   * что подсвечено в оглавлении и какие строки показывать в панели перехода.
+   */
+  function applyRefView(kind) {
+    const root = refRoot(kind);
+    if (!root) return;
+    const one = refView === 'one';
+    const matched = refMatched(kind);
+    let selected = refSelected[kind];
+    if (one && (!selected || !matched.some(card => card.id === selected))) {
+      // Выбор не должен висеть на том, что фильтр уже убрал, и не должен быть
+      // пустым, когда под фильтр что-то попало: справа всегда есть что читать.
+      selected = matched.length ? matched[0].id : '';
+      refSelected[kind] = selected;
+    }
+    root.dataset.view = one ? 'one' : 'all';
+    // `hidden` остаётся собственностью фильтра, режим показа — классы: два
+    // независимых смысла в одном флаге неизбежно разошлись бы (и тесты, и CSS).
+    for (const card of refCards(kind)) card.classList.toggle('is-selected', one && card.id === selected);
+    for (const group of root.querySelectorAll(refGroupSel(kind)))
+      group.classList.toggle(
+        'is-open',
+        one && [...group.querySelectorAll(refCardSel(kind))].some(card => card.id === selected)
+      );
+    const toc = document.getElementById(kind === 'docs' ? 'docs-toc' : 'recipes-toc');
+    if (toc) {
+      // Подсвечивается и строка, и её раздел: в списке из сорока ссылок без
+      // заголовка непонятно, в какой половине страницы смотришь.
+      const groupId = one && selected ? document.getElementById(selected)?.closest(refGroupSel(kind))?.id || '' : '';
+      for (const link of toc.querySelectorAll('a[href^="#"]')) {
+        const href = link.getAttribute('href');
+        const on = one && (href === `#${selected}` || (!!groupId && href === `#${groupId}`));
+        link.classList.toggle('is-on', on);
+        if (on) link.setAttribute('aria-current', 'true');
+        else link.removeAttribute('aria-current');
+      }
+    }
+    renderRefNav(kind, matched, selected);
+  }
+
+  /** Панель «← предыдущий · 7 из 40 · следующий →»: листание по тому, что не скрыто фильтром. */
+  function renderRefNav(kind, matched, selected) {
+    const nav = document.querySelector(`[data-refnav="${kind}"]`);
+    if (!nav) return;
+    const index = matched.findIndex(card => card.id === selected);
+    const show = refView === 'one' && matched.length > 0;
+    nav.hidden = !show;
+    if (!show) return;
+    // Подпись: заголовок карточки — `h4` есть и в методах (краткое описание), и в
+    // рецептах (название): «5 из 40 · Список персонажей» отвечает на «где я» лучше,
+    // чем номер без контекста.
+    const title = index >= 0 ? (matched[index].querySelector('h4')?.textContent || '').trim().slice(0, 60) : '';
+    const note = nav.querySelector('[data-ref-pos]');
+    if (note) note.textContent = `${index + 1} из ${matched.length}${title ? ` · ${title}` : ''}`;
+    const prev = nav.querySelector('[data-ref-step="-1"]');
+    const next = nav.querySelector('[data-ref-step="1"]');
+    if (prev) prev.disabled = index <= 0;
+    if (next) next.disabled = index < 0 || index >= matched.length - 1;
+  }
+
+  /** Открыть карточку: выбор, адрес и подсветка. Прокрутка нужна только в режиме списка. */
+  function selectRef(kind, id) {
+    if (!id) return false;
+    refSelected[kind] = id;
+    applyRefView(kind);
+    if (location.hash.slice(1) !== id) {
+      try {
+        history.replaceState(null, '', `#${id}`);
+      } catch {
+        /* file:// — адрес не пишется, выбор работает и без него */
+      }
+    }
+    const card = document.getElementById(id);
+    if (!card) return true;
+    if (refView === 'all') card.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    else {
+      // Справа одна карточка: листать нечего, но страница могла уехать вниз —
+      // возврат наверх и есть «переход» между карточками.
+      const scroller = document.scrollingElement || document.documentElement;
+      if (scroller) scroller.scrollTop = 0;
+    }
+    card.classList.add('is-target');
+    setTimeout(() => card.classList.remove('is-target'), 1600);
+    return true;
+  }
+
+  /** Шаг по списку: `delta` = ±1, в пределах того, что оставил фильтр. */
+  function stepRef(kind, delta) {
+    const matched = refMatched(kind);
+    if (!matched.length) return;
+    const index = matched.findIndex(card => card.id === refSelected[kind]);
+    const next = matched[Math.min(matched.length - 1, Math.max(0, (index < 0 ? 0 : index) + delta))];
+    if (next) selectRef(kind, next.id);
+  }
+
+  /**
+   * Ссылка или клик в оглавлении. Ссылка на раздел (`#g-…`, `#rg-…`) в режиме
+   * «по одной» открывает первую карточку раздела: раздел сам по себе читать нечего,
+   * а молча ничего не делать — значит обмануть ожидание от клика.
+   */
+  /**
+   * Сброс фильтра перед переходом по якорю. Ссылка на то, что фильтр сейчас спрятал,
+   * важнее фильтра: такой адрес дают в чате и в задаче ради конкретного метода, и
+   * показывать вместо него первую совпавшую карточку — значит привести не туда.
+   */
+  function clearRefFilter(kind) {
+    if (kind === 'docs') {
+      const box = $('#docs-filter');
+      if (box) box.value = '';
+      for (const id of ['docs-only-read', 'docs-only-available']) {
+        const el = document.getElementById(id);
+        if (el && !el.disabled) el.checked = false;
+      }
+      filterDocs();
+      return;
+    }
+    const box = $('#recipes-filter');
+    if (box) box.value = '';
+    const available = $('#recipes-only-available');
+    if (available && !available.disabled) available.checked = false;
+    filterRecipes();
+  }
+
+  function refJump(kind, hash) {
     const id = String(hash || '').replace(/^#/, '');
     if (!id) return false;
-    if (page !== 'docs') showTab('docs');
     const target = document.getElementById(id);
     if (!target) return false;
-    if (location.hash !== `#${id}`) history.replaceState(null, '', `#${id}`);
-    // Прокрутка — украшение перехода: в окружении без разметки (тест jsdom) её нет,
-    // а адрес и подсветка должны работать там же.
-    target.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
-    target.classList.add('is-target');
-    setTimeout(() => target.classList.remove('is-target'), 1600);
-    return true;
+    if (refView === 'one' && target.matches(refCardSel(kind)) && target.dataset.match === '0') clearRefFilter(kind);
+    if (refView === 'one' && target.matches(refGroupSel(kind))) {
+      const first = [...target.querySelectorAll(refCardSel(kind))].find(card => card.dataset.match !== '0');
+      return selectRef(kind, first ? first.id : id);
+    }
+    return selectRef(kind, target.id);
+  }
+
+  /** Режим показа для обеих страниц сразу: выбор человек делает один, а не на каждой. */
+  function setRefView(value) {
+    refView = value === 'all' ? 'all' : 'one';
+    try {
+      localStorage.setItem(refViewKey, refView);
+    } catch {
+      /* приватный режим */
+    }
+    for (const button of document.querySelectorAll('[data-ref-mode]')) {
+      const on = button.dataset.refMode === refView;
+      button.classList.toggle('is-on', on);
+      button.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    applyRefView('docs');
+    applyRefView('recipes');
+  }
+
+  function goToDoc(hash) {
+    if (page !== 'docs') showTab('docs');
+    return refJump('docs', hash);
   }
 
   /**
@@ -1871,6 +2054,9 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
         if (hit && onlyRead && doc.dataset.docRead !== '1') hit = false;
         if (hit && onlyAvailable && docCardBlocked(doc)) hit = false;
         doc.hidden = !hit;
+        // Отдельная отметка «прошёл фильтр»: режим «по одной» прячет карточки сам,
+        // и по одному `hidden` было бы не понять, отфильтровано или просто не выбрано.
+        doc.dataset.match = hit ? '1' : '0';
         if (hit) {
           any = true;
           shown += 1;
@@ -1906,6 +2092,7 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
       const filtered = query || onlyRead || onlyAvailable;
       counter.textContent = filtered ? `показано ${tocHits} из ${total}` : `методов: ${total}`;
     }
+    applyRefView('docs');
   }
 
   async function loadAll() {
@@ -2054,6 +2241,28 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
       if (event.key === 'Enter') sendPlay();
     });
     $('#docs-filter').addEventListener('input', filterDocs);
+    // Режим показа справок и переход по карточкам. Один клик — на обеих страницах:
+    // человек выбирает, как читать, а не на каждой странице заново.
+    for (const button of document.querySelectorAll('[data-ref-mode]'))
+      button.addEventListener('click', () => setRefView(button.dataset.refMode));
+    for (const nav of document.querySelectorAll('[data-refnav]')) {
+      const kind = nav.dataset.refnav;
+      for (const button of nav.querySelectorAll('[data-ref-step]'))
+        button.addEventListener('click', () => stepRef(kind, Number(button.dataset.refStep)));
+    }
+    // Оглавление — список: ↑/↓ переставляют выбор, как в tabs. Мышь для этого
+    // не нужна, а с клавиатуры справку листать быстрее всего.
+    for (const id of ['docs-toc', 'recipes-toc']) {
+      const toc = document.getElementById(id);
+      if (!toc) continue;
+      toc.addEventListener('keydown', event => {
+        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+        event.preventDefault();
+        stepRef(id === 'docs-toc' ? 'docs' : 'recipes', event.key === 'ArrowDown' ? 1 : -1);
+        const link = document.querySelector(`#${id} a.is-on`);
+        if (link) link.focus?.();
+      });
+    }
     for (const id of ['docs-only-read', 'docs-only-available'])
       $(`#${id}`)?.addEventListener('change', filterDocs);
     // Якорь, вставленный в адрес уже открытой страницы, тоже работает.
@@ -2131,6 +2340,9 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
 
   fillBase();
   bind();
+  // Разворачиваем режим показа до первой отрисовки: иначе на миг мелькает весь список,
+  // а человек открывал один метод.
+  setRefView(refView);
   syncDocsFilter();
   renderPresets();
   renderHints();

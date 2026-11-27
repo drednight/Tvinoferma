@@ -162,6 +162,116 @@ describe('страница API: справочник', () => {
     expect(document.getElementById(id).classList.contains('is-target')).toBe(true);
   });
 
+  it('справа одна карточка, а не весь список: выбор слева открывает его справа', () => {
+    // Список из сорока методов — это прокрутка вслепую: ищут одно, видят все.
+    // Поэтому по умолчанию справа лежит ровно то, что выбрано слева.
+    const docs = mountPage();
+    document.querySelector('[data-tab="docs"]').click();
+    const total = docs.groups.reduce((sum, group) => sum + group.methods.length, 0);
+    const body = document.getElementById('docs-body');
+    expect(body.dataset.view).toBe('one');
+    expect(document.querySelectorAll('#docs-body [data-doc]').length).toBe(total);
+    expect([...document.querySelectorAll('#docs-body [data-doc].is-selected')]).toHaveLength(1);
+    // Пустых групп-заголовков в режиме «по одной» быть не должно: виден только раздел
+    // выбранной карточки.
+    expect(
+      [...document.querySelectorAll('#docs-body [data-doc-group]')].filter(g => g.classList.contains('is-open'))
+    ).toHaveLength(1);
+    const link = document.querySelectorAll('[data-toc-method]')[2];
+    link.click();
+    const id = link.getAttribute('href').slice(1);
+    const selected = [...document.querySelectorAll('#docs-body [data-doc].is-selected')];
+    expect(selected.map(card => card.id)).toEqual([id]);
+    expect(location.hash).toBe(`#${id}`);
+    // Подсветка в оглавлении обязательна: без неё непонятно, что именно открыто.
+    expect(link.classList.contains('is-on')).toBe(true);
+    expect(link.getAttribute('aria-current')).toBe('true');
+    // И раздел, которому эта карточка принадлежит, подсвечен: в списке сорока ссылок
+    // без заголовка не понять, в какой половине страницы смотришь.
+    expect(link.closest('[data-toc-group]').querySelector('.xapi-toc-link').classList.contains('is-on')).toBe(true);
+    // Панель перехода считает то, что осталось под фильтром (всё — значит все методы).
+    const pos = document.querySelector('[data-refnav="docs"] [data-ref-pos]');
+    expect(pos.textContent).toMatch(/3 из \d+/);
+    expect(pos.textContent).toMatch(/·/);
+    expect(document.querySelector('[data-refnav="docs"] [data-ref-step="-1"]').disabled).toBe(false);
+    expect(document.querySelector('[data-refnav="docs"] [data-ref-step="1"]').disabled).toBe(false);
+  });
+
+  it('листание по карточкам не выпрыгивает за пределы фильтра', () => {
+    mountPage();
+    document.querySelector('[data-tab="docs"]').click();
+    const filter = document.getElementById('docs-filter');
+    filter.value = 'проходк';
+    filter.dispatchEvent(new Event('input'));
+    const matched = [...document.querySelectorAll('#docs-body [data-doc]')].filter(doc => doc.dataset.match === '1');
+    expect(matched.length).toBeGreaterThan(1);
+    const next = document.querySelector('[data-refnav="docs"] [data-ref-step="1"]');
+    next.click();
+    let selected = [...document.querySelectorAll('#docs-body [data-doc].is-selected')];
+    expect(selected).toHaveLength(1);
+    expect(matched.map(card => card.id)).toContain(selected[0].id);
+    // ↑/↓ в оглавлении — тот же переход: справку листают с клавиатуры быстрее, чем мышью.
+    document
+      .getElementById('docs-toc')
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    selected = [...document.querySelectorAll('#docs-body [data-doc].is-selected')];
+    expect(matched.map(card => card.id)).toContain(selected[0].id);
+    // До конца списка — и «следующий» гаснет, а не упирается в себя.
+    for (let i = 0; i < matched.length + 2; i += 1) next.click();
+    expect(next.disabled).toBe(true);
+    // Справа по-прежнему ровно одна карточка — и она последняя из подошедших под фильтр.
+    expect([...document.querySelectorAll('#docs-body [data-doc].is-selected')].map(card => card.id)).toEqual([
+      matched[matched.length - 1].id
+    ]);
+  });
+
+  it('режим «все списком» возвращает полный список и запоминается', () => {
+    const docs = mountPage();
+    document.querySelector('[data-tab="docs"]').click();
+    const total = docs.groups.reduce((sum, group) => sum + group.methods.length, 0);
+    document.querySelector('[data-ref-mode="all"]').click();
+    const body = document.getElementById('docs-body');
+    expect(body.dataset.view).toBe('all');
+    expect(document.querySelectorAll('#docs-body [data-doc].is-selected')).toHaveLength(0);
+    expect([...document.querySelectorAll('#docs-body [data-doc]')].filter(doc => !doc.hidden)).toHaveLength(total);
+    // Панели перехода в списке нечего: карточка не одна.
+    expect(document.querySelector('[data-refnav="docs"]').hidden).toBe(true);
+    expect(localStorage.getItem('tf-api-ref-view')).toBe('all');
+    // Спрятано режимом, а не фильтром: `hidden` остаётся собственностью фильтра,
+    // видимость режима держится на классе (правило в CSS, jsdom его не применяет).
+    const css = read('app.css');
+    expect(css).toMatch(/\.xapi-docs\[data-view='one'\] \.xapi-doc:not\(\.is-selected\)[\s\S]{0,80}display:\s*none/);
+    expect(css).toMatch(/\.xapi-docs\[data-view='one'\] \.xapi-doc-group:not\(\.is-open\)/);
+    localStorage.removeItem('tf-api-ref-view');
+  });
+
+  it('ссылка на метод, который фильтр спрятал,тот же фильтр снимает', () => {
+    // Такой адрес дают в чате ради конкретного метода: показать вместо него первую
+    // совпавшую карточку — значит привести не туда.
+    const docs = mountPage();
+    document.querySelector('[data-tab="docs"]').click();
+    const target = `m-${docs.groups[1].id}-${docs.groups[1].methods[0].id}`;
+    const filter = document.getElementById('docs-filter');
+    filter.value = 'zzz-такого-нет';
+    filter.dispatchEvent(new Event('input'));
+    location.hash = `#${target}`;
+    window.dispatchEvent(new Event('hashchange'));
+    expect(document.getElementById(target).classList.contains('is-selected')).toBe(true);
+    expect(filter.value).toBe('');
+    expect(document.getElementById('docs-filter-hint').classList.contains('is-empty')).toBe(false);
+  });
+
+  it('в одной открытой карточке живёт панель выполнения и «ссылка»', () => {
+    // Режим «по одной» не должен превращать справку в текст без действий: панель
+    // «▶ Выполнить» и кнопка ссылки обязательны именно у открытой карточки.
+    mountPage();
+    document.querySelector('[data-tab="docs"]').click();
+    const card = document.querySelector('#docs-body [data-doc].is-selected');
+    expect(card).toBeTruthy();
+    expect(card.querySelector('[data-run-go]')).toBeTruthy();
+    expect(card.querySelector('[data-doc-link]')).toBeTruthy();
+  });
+
   it('ссылка с якорем открывает страницу сразу на «Справочнике», а не на «Данных»', () => {
     // Якорь из чата или из AGENTS.md («посмотри GET /characters») — это ссылка на
     // карточку метода. Открыть её надо так, чтобы человеку не пришлось угадывать

@@ -197,9 +197,9 @@
           method: 'GET',
           path: '/characters',
           scope: 'чтение',
-          summary: 'Список всех персонажей — по id, без статов; поля и `full` по запросу.',
+          summary: 'Список всех персонажей по id: кратко (id и ник); подробности спрашиваются detail, fields или /characters.stats.',
           description:
-            'Возвращаются все персонажи, отсортированные по id: список читается глазами и не переезжает между вызовами. По умолчанию в строке есть всё, кроме статов, заметок и истории монет: список отвечает на «кто есть и до чего дожил», а не пересказывает карточку — полный он по `full=true`. fields — через запятую (вложенные через точку): id, класс, уровень и проходки это один запрос. В ответе есть detail («list», «picked» или «full») и omitted — чтобы сокращение было видно, а не молчалось. lang=ru подписывает ключи по-русски, flat=false даёт вложенные объекты вместо плоских ключей. Секретов в ответе нет: контакты, пароль, путь запуска и куки не отдаются никогда.',
+            'Возвращаются все персонажи, отсортированные по id: список читается глазами и не переезжает между вызовами. По умолчанию он краткий — в строке только id и ник: «список всех персонажей» отвечает на вопрос «кто есть», а не пересказывает карточку. Дальше — что удобнее: detail=list — карточки, но без статов, заметок и истории монет; detail=full (он же прежний full=true) — карточки целиком; fields=id,nick,level,stats.hp — ровно названные поля, они перекрывают detail; /characters.stats — статы и проходки у всех одной таблицей, без карточек. В ответе всегда есть detail («brief», «list», «picked» или «full») и omitted с подсказкой — чтобы сокращение было видно и было чем его снять, а не молчалось. lang=ru подписывает ключи по-русски, flat=false даёт вложенные объекты вместо плоских ключей. Секретов в ответе нет: контакты, пароль, путь запуска и куки не отдаются никогда.',
           params: [
             ['party', 'query', 'string', 'id или название пати (без регистра): только её состав.'],
             ['fields', 'query', 'string', 'Поля через запятую; вложенные — через точку (stats.hp, dungeonPasses.weapon). id остаётся всегда. Неизвестное поле → 422 со списком допустимых.'],
@@ -207,12 +207,32 @@
             ['flat', 'query', 'boolean', 'true (по умолчанию) — ключи «dungeonPasses.weapon»; false — вложенный объект dungeonPasses.'],
             ['sort', 'query', 'string', 'id (по умолчанию), nick, level или none — порядок хранения.'],
             ['order', 'query', 'string', 'asc (по умолчанию) или desc.'],
-            ['full', 'query', 'boolean', 'true — полные карточки: со статами, заметками и историей монет. По умолчанию список их не отдаёт, какие поля убраны — в omitted.'],
-            ['running', 'в ответе', 'object|null', 'Окно игры, если запущено: { pid, title, charId, nick }.']
+            ['detail', 'query', 'string', 'brief (по умолчанию) — id и ник; list — карточки без статов, заметок и истории монет; full — карточки целиком.'],
+            ['full', 'query', 'boolean', 'true — то же, что detail=full: полные карточки со статами, заметками и историей монет. Работает и сейчас, чтобы прежние скрипты не переписывать.'],
+            ['running', 'в ответе', 'object|null', 'Окно игры, если запущено: { pid, title, charId, nick }. В кратком списке его нет — спросите fields=id,nick,running.']
           ],
           response:
-            '{ characters: [{ id, class, level, "dungeonPasses.weapon", … }], count, fields, detail: "list", omitted: ["stats", "notes", "coinHistory"] }. С full=true — карточки целиком, detail: "full".',
+            '{ characters: [{ id, nick }, …], count, fields: null, detail: "brief", omitted: […], detailHint: "…" }. С detail=list — строки карточек без тяжёлых полей и omitted: ["stats", "notes", "coinHistory"], с detail=full — карточки целиком.',
           example: 'GET /characters?fields=id,class,level,dungeonPasses',
+          exampleBody: null
+        },
+        {
+          id: 'list-character-stats',
+          method: 'GET',
+          path: '/characters.stats',
+          scope: 'чтение',
+          summary: 'Статы, проходки, уровень и небо у всех персонажей одной таблицей (+ суммы проходок).',
+          description:
+            'Отдельная команда для «цифр по ферме»: краткий /characters этих полей не несёт, а detail=full тянет ради одной колонки заметки и историю монет. Здесь ровно то, что сравнивают: уровень, небо, статы, проходки и монеты — плюс totals с суммами проходок на весь список (сколько у фермы оружия, доспеха и реликвий). Отбор и порядок — те же, что у /characters: party, sort, order, lang; id строк совпадают, поэтому два ответа склеиваются на своей стороне без угадывания.',
+          params: [
+            ['party', 'query', 'string', 'id или название пати: считаются только её персонажи (и totals — по ним же).'],
+            ['sort', 'query', 'string', 'id (по умолчанию), nick или level — порядок тот же, что у /characters.'],
+            ['order', 'query', 'string', 'asc (по умолчанию) или desc.'],
+            ['lang', 'query', 'string', 'en (по умолчанию) или ru — подписи полей по-русски.']
+          ],
+          response:
+            '{ characters: [{ id, nick, class, level, sky, stats, dungeonPasses, ancientCoins }], count, detail: "stats", totals: { weapon, armor, relic, sum } }.',
+          example: 'GET /characters.stats?party=Основа',
           exampleBody: null
         },
         {

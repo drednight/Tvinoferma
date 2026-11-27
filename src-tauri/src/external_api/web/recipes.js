@@ -97,10 +97,55 @@
       group: 'read',
       title: 'Кто есть в твин-ферме',
       scenario:
-        'Своя программа хочет показать список персонажей: кто есть, какой класс, до чего дожил — и не утонуть в статах.',
+        'Своя программа хочет показать список персонажей: кто есть на ферме — и не утонуть в карточках, которых она не просила.',
       method: 'GET',
       path: '/api/v1/characters',
       template: '/api/v1/characters',
+      scope: 'read',
+      body: null,
+      response: {
+        characters: [
+          { id: 'Mag_1', nick: 'Маг' },
+          { id: 'Luchnik_2', nick: 'Лучник' }
+        ],
+        count: 2,
+        fields: null,
+        detail: 'brief',
+        omitted: [
+          'class',
+          'level',
+          'favorite',
+          'sky',
+          'partyIds',
+          'mainPartyId',
+          'stats',
+          'dungeonPasses',
+          'ancientCoins',
+          'isLoggedIn',
+          'lastLoginCheck',
+          'updatedAt',
+          'notes',
+          'tags',
+          'coinHistory',
+          'createdAt',
+          'running'
+        ],
+        detailHint:
+          'detail=list — карточки без статов, detail=full — целиком; fields=id,nick,level — что нужно; /characters.stats — статы и проходки у всех'
+      },
+      explanation:
+        'Список по умолчанию краткий: id и ник. Это ровно то, за чем в него идут, — опознать персонажа и сослаться на него; остальное спрашивают явно. `detail=list` отдаёт карточки, но без статов, заметок и истории монет, `detail=full` (он же прежний `?full=true`) — карточки целиком, `fields=id,nick,level,stats.hp` — только названные поля (вложенные через точку; `fields` перекрывает `detail`). О том, что список сокращён, сказано в самом ответе: `detail: "brief"`, `omitted` и `detailHint` — а не молчанием. `count` — сколько строк вернулось после фильтра, а не сколько всего. Ещё полезно: `party` (только одна пати), `sort`/`order`, `lang=ru` — русские подписи.',
+      errors: [{ status: 422, code: 'invalid_value', why: 'В `fields` есть неизвестное поле — API отвечает списком допустимых имён.' }]
+    },
+    {
+      id: 'characters-stats',
+      group: 'read',
+      title: 'Цифры по всей ферме одним запросом',
+      scenario:
+        'Нужна таблица для сравнения: у кого какой уровень, небо, статы и проходки — по всем персоназам разом, без карточек и заметок в ответе.',
+      method: 'GET',
+      path: '/api/v1/characters.stats',
+      template: '/api/v1/characters.stats',
       scope: 'read',
       body: null,
       response: {
@@ -110,29 +155,33 @@
             nick: 'Маг',
             class: 'Маг',
             level: 100,
-            'dungeonPasses.weapon': 2,
-            'dungeonPasses.armor': 1,
-            'dungeonPasses.relic': 0
+            sky: { name: 'Звезда', level: 5 },
+            stats: { hp: 120, mp: 30, physAttack: 12 },
+            dungeonPasses: { weapon: 3, armor: 1, relic: 0 },
+            ancientCoins: 12
           },
           {
             id: 'Luchnik_2',
             nick: 'Лучник',
             class: 'Лучник',
             level: 99,
-            'dungeonPasses.weapon': 1,
-            'dungeonPasses.armor': 1,
-            'dungeonPasses.relic': 0
+            sky: { name: null, level: 0 },
+            stats: { hp: 140, mp: 10, physAttack: 20 },
+            dungeonPasses: { weapon: 2, armor: 1, relic: 0 },
+            ancientCoins: 8
           }
         ],
         count: 2,
         fields: null,
-        detail: 'list',
-        omitted: ['stats', 'notes', 'coinHistory'],
-        fullHint: '?full=true — вернуть карточки целиком'
+        detail: 'stats',
+        totals: { weapon: 5, armor: 2, relic: 0, sum: 7 }
       },
       explanation:
-        'Список по умолчанию — лёгкий: статы, заметки и историю монет он не отдаёт, а в ответе честно говорит об этом (`detail: "list"` и `omitted`). Нужны статы — попросите их: `?full=true` возвращает карточки целиком, `?fields=stats.hp,stats.critChance` — ровно названные поля (вложенные пишутся через точку), а адресный маршрут `GET /characters/{id}` полный всегда. `count` — сколько строк вернулось после фильтра, а не сколько всего. Ещё полезно: `party` (только одна пати), `sort`/`order`, `lang=ru` — русские подписи.',
-      errors: [{ status: 422, code: 'invalid_value', why: 'В `fields` есть неизвестное поле — API отвечает списком допустимых имён.' }]
+        'Отдельная команда для «чисел», потому что краткий `/characters` их не несёт, а `detail=full` ради одной колонки тянул бы заметки и историю монет. Строки идут в том же отборе и порядке, что `/characters` (те же `party`, `sort`, `order`, `lang`), и совпадают по id — два ответа склеиваются без угадывания. `totals` — суммы проходок на весь выданный список: «сколько у фермы оружия» считается на сервере, а не в вашем цикле. Одного персонажа подробно читают адресом `GET /characters/{id}/stats` и `…/dungeon-passes/{pass}`.',
+      errors: [
+        { status: 403, code: 'forbidden_scope', why: 'Право «чтение» выключено в настройках — без него цифры не отдаются.' },
+        { status: 200, code: '—', why: 'Неизвестная `party` — не ошибка, а пустой список (`count: 0`): API не угадывает пати по части названия.' }
+      ]
     },
     {
       id: 'character-card',

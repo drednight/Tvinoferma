@@ -162,6 +162,16 @@ export const CHARACTER_FIELD_NAMES = [
   'running.title'
 ];
 
+/**
+ * Краткий список (`GET /characters` по умолчанию): списка персонажей достаточно,
+ * чтобы выбрать, о ком дальше идёт речь. Всё остальное просят явно — `detail`,
+ * `fields` или `/characters.stats` (числа у всех разом).
+ */
+export const BRIEF_FIELDS = ['id', 'nick'];
+
+/** Что не вошло в краткий список — называется в ответе, чтобы «почему пусто» не было загадкой. */
+export const BRIEF_OMITTED = CHARACTER_FIELD_NAMES.filter(name => !name.includes('.') && !BRIEF_FIELDS.includes(name));
+
 /** Русские подписи для отчётов и страницы (`fields=hp` → `{ "HP": 120 }`). */
 const RUSSIAN_FIELD_LABELS = {
   id: 'id',
@@ -359,13 +369,22 @@ export function characterFilter(state, query) {
       .trim()
       .toLowerCase()
   );
+  // `detail` — насколько подробно: `brief` (id и ник — по умолчанию), `list` (карточки
+  // без статов, заметок и истории монет), `full` (карточка целиком). `?full=true` —
+  // прежний способ сказать `full`, он работает и сейчас; неизвестное значение — не
+  // ошибка, а «как не просили» (краткий список), чтобы `?detail=` из чужого скрипта
+  // не обрывал выгрузку.
+  const detailParam = String(params.get('detail') || '')
+    .trim()
+    .toLowerCase();
+  const detail = ['brief', 'list', 'full'].includes(detailParam) ? detailParam : '';
   const order =
     String(params.get('order') || 'asc')
       .trim()
       .toLowerCase() === 'desc'
       ? 'desc'
       : 'asc';
-  return { party, fields, lang, flat, sort, order, full };
+  return { party, fields, lang, flat, sort, order, full, detail };
 }
 
 /** Сравнение значений для `sort`: числа — как числа, строки — без регистра. */
@@ -377,11 +396,52 @@ function compareValues(a, b, order) {
 }
 
 /**
+ * Отбор и порядок строк списка: одно и то же для `GET /characters` и
+ * `GET /characters.stats`. Копировать этот отбор во второй маршрут значило бы
+ * развести «список» и «цифры списка»: они обязаны совпадать по составу и порядку.
+ *
+ * @param {{ characters?: any[], parties?: any[] }} state
+ * @param {string} query
+ * @param {{ running?: Map<string, any> | null }} [options]
+ */
+function listCharacterRows(state, query, options = {}) {
+  const filter = characterFilter(state, query);
+  const characters = Array.isArray(state?.characters) ? state.characters : [];
+  let list = characters;
+  if (filter.party) {
+    // Пати ищется по id или названию (без регистра), как в меню трея.
+    const parties = Array.isArray(state?.parties) ? state.parties : [];
+    const found = parties.find(
+      p =>
+        String(p?.id) === filter.party ||
+        String(p?.name || '')
+          .trim()
+          .toLowerCase() === filter.party.trim().toLowerCase()
+    );
+    const partyId = found ? String(found.id) : filter.party;
+    list = characters.filter(c => Array.isArray(c.partyIds) && c.partyIds.map(String).includes(partyId));
+  }
+  const running = options.running || null;
+  const rows = list.map(char => publicCharacter(char, { running })).filter(Boolean);
+  if (filter.sort !== 'none') {
+    const key = filter.sort === 'id' ? row => String(row.id) : row => row[filter.sort];
+    rows.sort((a, b) => compareValues(key(a), key(b), filter.order));
+  }
+  return { filter, rows };
+}
+
+/**
  * Список персонажей для ответа API.
  *
- * По умолчанию — **все** персонажи, отсортированные по `id`: так список можно
- * читать глазами и сравнивать между вызовами. `fields` оставляет только
- * запрошенные поля — «id, класс, уровень и проходки» это одна строка в адресе.
+ * По умолчанию — **краткий** список: все персонажи, отсортированные по `id`, по каждой
+ * строке `id` и `nick`. Это то, за чем идут в «список всех»: опознать, выбрать,
+ * сослаться. Полный ответ карточкой — дорогое удовольствие (в 28 персонажей он упирался
+ * в несколько килобайт на ровном месте), поэтому он прячется за явной просьбой:
+ *
+ * - `?detail=list` — карточки, но без тяжёлых полей (статы, заметки, история монет);
+ * - `?detail=full` (или `?full=true`) — карточки целиком;
+ * - `?fields=id,nick,level,stats.hp` — только названные поля, они перекрывают `detail`;
+ * - `GET /characters.stats` — статы и проходки у всех одной таблицей, без карточек.
  *
  * @param {{ characters?: any[], parties?: any[] }} state
  * @param {string} query
@@ -390,32 +450,22 @@ function compareValues(a, b, order) {
  *   и выгрузке полнота нужна по смыслу, а `?full` — опция списка
  */
 export function publicCharacters(state, query = '', options = {}) {
-  const { party, fields, lang, flat, sort, order, full } = characterFilter(state, query);
-  const characters = Array.isArray(state?.characters) ? state.characters : [];
-  let list = characters;
-  if (party) {
-    // Пати ищется по id или названию (без регистра), как в меню трея.
-    const parties = Array.isArray(state?.parties) ? state.parties : [];
-    const found = parties.find(
-      p =>
-        String(p?.id) === party ||
-        String(p?.name || '')
-          .trim()
-          .toLowerCase() === party.trim().toLowerCase()
-    );
-    const partyId = found ? String(found.id) : party;
-    list = characters.filter(c => Array.isArray(c.partyIds) && c.partyIds.map(String).includes(partyId));
-  }
-  const running = options.running || null;
-  const rows = list.map(char => publicCharacter(char, { running })).filter(Boolean);
-  if (sort !== 'none') {
-    const key = sort === 'id' ? row => String(row.id) : row => row[sort];
-    rows.sort((a, b) => compareValues(key(a), key(b), order));
-  }
-  // Список по умолчанию — без тяжёлых полей (LIST_OMITTED). `fields` и `full`
-  // отменяют сокращение: просящий явно сказал, что им нужно.
-  const compact = !fields.length && !full && !options.forceFull;
-  const base = compact ? rows.map(withoutListHeavy) : rows;
+  const { filter, rows } = listCharacterRows(state, query, options);
+  const { fields, lang, flat, full, detail } = filter;
+  // Уровень подробности: явные `fields` важнее всего (человек назвал поля — его не
+  // касается, что по умолчанию экономно), потом `detail`, потом старый `full=true`,
+  // и только потом `forceFull` адресных маршрутов. По умолчанию — `brief`.
+  const level = fields.length ? 'picked' : detail || (full ? 'full' : options.forceFull ? 'full' : 'brief');
+  const base =
+    level === 'brief'
+      ? rows.map(row => {
+          const out = {};
+          for (const field of BRIEF_FIELDS) out[field] = row[field] ?? null;
+          return out;
+        })
+      : level === 'list'
+        ? rows.map(withoutListHeavy)
+        : rows;
   const picked = fields.length ? base.map(row => pickCharacterFields(row, fields, { flat })) : base;
   // Подписи строятся по тем полям, что реально вернулись: в плоской строке ключи
   // уже собраны (`dungeonPasses.weapon` одним ключом), поэтому список берём из
@@ -426,8 +476,56 @@ export function publicCharacters(state, query = '', options = {}) {
     count: localized.length,
     fields: fields.length ? fields : null,
     // Честный ответ на вопрос «почему тут нет статов»: режим списка виден, а не молчится.
-    detail: compact ? 'list' : fields.length ? 'picked' : 'full',
-    ...(compact ? { omitted: [...LIST_OMITTED], fullHint: '?full=true — вернуть карточки целиком' } : {})
+    detail: level,
+    ...(level === 'brief'
+      ? {
+          omitted: [...BRIEF_OMITTED],
+          // Подсказка в ответе — вместо того же вопроса в чате: здесь названы все
+          // способы получить больше, и адрес с числами для всех сразу.
+          detailHint:
+            'detail=list — карточки без статов, detail=full — целиком; fields=id,nick,level — что нужно; /characters.stats — статы и проходки у всех'
+        }
+      : level === 'list'
+        ? { omitted: [...LIST_OMITTED], fullHint: '?full=true или ?detail=full — вернуть карточки целиком' }
+        : {})
+  };
+}
+
+/**
+ * `GET /characters.stats` — числа у всех персонажей одной таблицей: уровень, небо,
+ * статы, проходки и монеты. Отдельная команда нужна, потому что краткий список
+ * этих полей не несёт, а `?detail=full` ради одной колонки тянет заметки, историю
+ * монет и прочее — то, чего в таблице всё равно не будет.
+ *
+ * `totals` — суммы по проходкам на весь список: «сколько у фермы оружия» без
+ * подсчётов на своей стороне.
+ *
+ * @param {{ characters?: any[], parties?: any[] }} state
+ * @param {string} query `party`, `sort`, `order`, `lang` — как у `GET /characters`
+ */
+export function publicCharacterStats(state, query = '') {
+  const { filter, rows } = listCharacterRows(state, query);
+  const columns = ['id', 'nick', 'class', 'level', 'sky', 'stats', 'dungeonPasses', 'ancientCoins'];
+  const list = rows.map(row => {
+    const out = {};
+    for (const field of columns) out[field] = row[field] ?? null;
+    return out;
+  });
+  const totals = { weapon: 0, armor: 0, relic: 0, sum: 0 };
+  for (const row of list) {
+    const passes = row.dungeonPasses || {};
+    for (const pass of PASS_FIELDS) {
+      const value = Number(passes[pass]) || 0;
+      totals[pass] += value;
+      totals.sum += value;
+    }
+  }
+  return {
+    characters: filter.lang === 'ru' ? list.map(row => localizeRow(null, null, row)) : list,
+    count: list.length,
+    detail: 'stats',
+    fields: null,
+    totals
   };
 }
 

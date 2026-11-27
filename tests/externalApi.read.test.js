@@ -9,6 +9,7 @@ import {
   LIST_OMITTED,
   publicCharacter,
   publicCharacters,
+  publicCharacterStats,
   publicParties,
   publicWindows,
   runningByCharId,
@@ -114,16 +115,34 @@ describe('внешний API: чтение персонажей', () => {
     expect(Object.keys(light.characters[0]).sort()).toEqual(['id', 'nick', 'stats']);
   });
 
-  it('список по умолчанию — все персонажи, но без статов; статы по запросу', () => {
+  it('список по умолчанию — краткий: id и ник, а не карточка на каждого', () => {
+    // «Показать список всех персонажей» — это «кто есть на ферме». Полный ответ на
+    // 28 персонажей приносил несколько килобайт, из которых в списке не нужно ничего,
+    // кроме имени: детали спрашиваются отдельно, `detail` или `fields`.
     const list = publicCharacters(state());
     expect(list.characters.length).toBe(3);
+    expect(list.characters.map(row => Object.keys(row))).toEqual([
+      ['id', 'nick'],
+      ['id', 'nick'],
+      ['id', 'nick']
+    ]);
     const row = list.characters.find(c => c.id === 'Mag_1');
-    if (!row) return expect(row).toBeTruthy();
+    expect(row).toEqual({ id: 'Mag_1', nick: 'Маг' });
+    // Сокращение видно из ответа, и в нём же сказано, как получить больше.
+    expect(list.detail).toBe('brief');
+    expect(list.omitted).toContain('stats');
+    expect(list.omitted).toContain('level');
+    expect(list.detailHint).toContain('detail=list');
+    expect(list.detailHint).toContain('/characters.stats');
+  });
+
+  it('detail=list — прежний лёгкий список, detail=full и full=true — карточки целиком', () => {
+    const list = publicCharacters(state(), 'detail=list');
+    const row = list.characters.find(c => c.id === 'Mag_1');
     // Что в списке остаётся: опознавательные поля, проходки, пати, окно.
     expect(row).toMatchObject({ id: 'Mag_1', nick: 'Маг', class: 'Маг', level: 100 });
     // Что не приезжает: два десятка статов, заметки и история монет на каждого.
     for (const key of LIST_OMITTED) expect(row).not.toHaveProperty(key);
-    // Сокращение видно из ответа, а не молчится: клиенту сказано, что убрать нечем.
     expect(list).toMatchObject({ detail: 'list', omitted: [...LIST_OMITTED] });
     expect(list.fullHint).toContain('full=true');
 
@@ -133,11 +152,45 @@ describe('внешний API: чтение персонажей', () => {
     expect(full.characters.find(c => c.id === 'Mag_1').stats.physAttack).toBe(12000);
     expect(full.characters.find(c => c.id === 'Mag_1')).toHaveProperty('notes');
     expect(full.omitted).toBeUndefined();
+    expect(publicCharacters(state(), 'detail=full').detail).toBe('full');
 
     // `fields` перекрывает правило: попросил stats — получил stats.
     const asked = publicCharacters(state(), 'fields=id,stats');
     expect(Object.keys(asked.characters[0]).sort()).toEqual(['id', 'stats']);
     expect(asked.detail).toBe('picked');
+  });
+
+  it('characters.stats — статы и проходки у всех одной таблицей, с суммами', () => {
+    const stats = publicCharacterStats(state());
+    expect(stats.detail).toBe('stats');
+    expect(stats.characters.map(row => row.id)).toEqual(['Luchnik_2', 'Mag_1', 'Zhrets_3']);
+    const mag = stats.characters.find(row => row.id === 'Mag_1');
+    expect(mag.nick).toBe('Маг');
+    expect(mag.level).toBe(100);
+    expect(mag.stats.physAttack).toBe(12000);
+    expect(mag.dungeonPasses).toMatchObject({ weapon: 3 });
+    // Заметок и истории монет в таблице нет: за ними — /characters?detail=full.
+    expect(mag).not.toHaveProperty('notes');
+    expect(mag).not.toHaveProperty('coinHistory');
+    // Суммы на весь список и по пати считаются по тому же отбору, что и строки:
+    // «сколько оружия у фермы» и «сколько оружия у пати» не расходятся с таблицей.
+    const sumOf = rows =>
+      rows.reduce(
+        (n, row) => n + ['weapon', 'armor', 'relic'].reduce((m, p) => m + (Number(row.dungeonPasses?.[p]) || 0), 0),
+        0
+      );
+    expect(stats.totals.sum).toBe(sumOf(stats.characters));
+    expect(stats.totals.weapon).toBe(
+      stats.characters.reduce((n, row) => n + (Number(row.dungeonPasses?.weapon) || 0), 0)
+    );
+    const oneParty = publicCharacterStats(state(), 'party=p-farm');
+    expect(oneParty.characters.map(row => row.id)).toEqual(['Mag_1', 'Zhrets_3']);
+    expect(oneParty.totals.sum).toBe(sumOf(oneParty.characters));
+    expect(oneParty.totals.sum).toBeLessThanOrEqual(stats.totals.sum);
+    // Порядок и подписи — как у списка: два ответа склеиваются по id.
+    expect(publicCharacterStats(state(), 'sort=nick').characters[0].id).toBe('Zhrets_3'); // «Жрец» по-русски раньше всех
+    const ru = publicCharacterStats(state(), 'lang=ru');
+    expect(ru.characters[0]['Ник']).toBeTruthy();
   });
 
   it('один запрос отдаёт несколько полей сразу — включая проходки', () => {
@@ -210,7 +263,7 @@ describe('внешний API: чтение персонажей', () => {
     expect(byNick.characters.map(c => c.nick)).toEqual(
       ['Лучник', 'Маг', 'Жрец'].sort((a, b) => a.localeCompare(b, 'ru'))
     );
-    const desc = publicCharacters(state(), 'sort=level&order=desc');
+    const desc = publicCharacters(state(), 'sort=level&order=desc&detail=list');
     const levels = desc.characters.map(c => c.level);
     expect(levels).toEqual([...levels].sort((a, b) => b - a));
     expect(publicCharacters(state(), 'sort=none').characters.length).toBe(3);
@@ -225,13 +278,18 @@ describe('внешний API: чтение персонажей', () => {
       flat: true,
       sort: 'id',
       order: 'asc',
-      full: false
+      full: false,
+      detail: ''
     });
+    // `detail` — только одно из трёх; мусор не ошибка, а «как не просили» (краткий список).
+    expect(characterFilter(state(), 'detail=list')).toMatchObject({ detail: 'list' });
+    expect(characterFilter(state(), 'detail=МНОГО')).toMatchObject({ detail: '' });
     expect(characterFilter(state(), 'party=%D0%9E%D1%81%D0%BD%D0%BE%D0%B2%D0%B0&fields=nick,')).toEqual({
       party: 'Основа',
       fields: ['nick'],
       lang: 'en',
       flat: true,
+      detail: '',
       sort: 'id',
       order: 'asc',
       full: false
@@ -262,7 +320,7 @@ describe('внешний API: чтение персонажей', () => {
     ];
     const map = runningByCharId(rows);
     expect(map.size).toBe(1);
-    const list = publicCharacters(state(), '', { running: map });
+    const list = publicCharacters(state(), 'detail=list', { running: map });
     const byId = Object.fromEntries(list.characters.map(row => [row.id, row]));
     expect(byId.Mag_1.running).toEqual({ pid: 111, title: 'Маг — Маг' });
     expect(byId.Luchnik_2.running).toBeNull();

@@ -1212,6 +1212,89 @@ body[data-page='recipes'] .xapi {
   padding-left: 12px;
 }
 
+/* --------------------------------------------------------------- Режим «по одной» */
+
+/* Сегменты «по одной / все списком» — маленький, в колонке, рядом с фильтрами:
+   это способ чтения, а не раздел страницы. */
+.xapi-refmodes {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.xapi-refmode {
+  padding: 4px 11px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.xapi-refmode:hover {
+  color: var(--text);
+}
+
+.xapi-refmode.is-on {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+/* Режим «по одной»: скрыто всё, кроме выбранной карточки и её раздела. `hidden`
+   при этом остаётся делом фильтра — два смысла в одном флаге разъехались бы. */
+.xapi-docs[data-view='one'] .xapi-doc-group:not(.is-open),
+.xapi-docs[data-view='one'] .xapi-doc:not(.is-selected) {
+  display: none;
+}
+
+.xapi-docs[data-view='one'] .xapi-doc.is-selected {
+  /* карточка одна — ей не нужны отступы списка и разделители между соседями */
+  margin-top: 0;
+}
+
+/* Панель перехода: «← предыдущий · 3 из 40 · следующий →» над карточкой. */
+.xapi-refnav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-1);
+}
+
+.xapi-refnav[hidden] {
+  display: none;
+}
+
+.xapi-refpos {
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+/* Выбранная строка оглавления: без неё непонятно, что именно открыто справа.
+   Полоска слева работает и для ссылки на раздел, и для строки метода. */
+.xapi-rail .xapi-toc-link.is-on,
+.xapi-rail .xapi-toc-method.is-on {
+  box-shadow: inset 2px 0 0 var(--accent);
+  color: var(--text);
+}
+
+.xapi-rail .xapi-toc-method.is-on {
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--accent-soft);
+  text-decoration: none;
+}
+
 .xapi-tabs-rail {
   display: flex;
   flex-wrap: wrap;

@@ -46,16 +46,24 @@
       id: 'list-characters',
       group: 'Чтение данных',
       title: 'Все персонажи',
-      summary: 'Все персонажи по id: класс, уровень, проходки — без двух десятков статов на каждого.',
+      summary: 'Список всех персонажей: по умолчанию id и ник — «кто есть на ферме», без карточки на каждого.',
       method: 'GET',
       path: '/api/v1/characters',
       scope: 'read',
       fields: [
         {
+          name: 'detail',
+          label: 'Подробно',
+          type: 'select',
+          options: ['brief', 'list', 'full'],
+          default: 'brief',
+          hint: 'brief — id и ник (по умолчанию); list — карточки без статов, заметок и истории монет; full — карточки целиком.'
+        },
+        {
           name: 'fields',
           label: 'Поля',
           type: 'text',
-          hint: 'Через запятую; вложенные — через точку. Пусто — список без статов, заметок и истории монет.',
+          hint: 'Через запятую; вложенные — через точку (stats.hp). Названные поля перекрывают «Подробно».',
           default: ''
         },
         { name: 'lang', label: 'Подписи', type: 'select', options: ['en', 'ru'], default: 'en' },
@@ -73,7 +81,8 @@
       query: values => {
         const params = new URLSearchParams();
         if (values.fields) params.set('fields', values.fields);
-        // `full` — только когда попросили: по умолчанию список лёгкий.
+        // `detail` и `full` — только когда попросили: по умолчанию список краткий.
+        if (values.detail && values.detail !== 'brief') params.set('detail', values.detail);
         if (values.full === true || values.full === 'true') params.set('full', 'true');
         if (values.lang && values.lang !== 'en') params.set('lang', values.lang);
         if (values.sort && values.sort !== 'id') params.set('sort', values.sort);
@@ -83,7 +92,34 @@
         const text = params.toString();
         return text ? `?${text}` : '';
       },
-      result: body => `${body.count} персонаж(ей); поля: ${(body.fields || ['все']).join(', ')}`
+      result: body =>
+        `${body.count} персонаж(ей); detail: ${body.detail}${body.fields ? `, поля: ${body.fields.join(', ')}` : ''}`
+    },
+    {
+      id: 'list-character-stats',
+      group: 'Чтение данных',
+      title: 'Статы и проходки у всех',
+      summary: 'Одна таблица чисел по всей ферме: уровень, небо, статы, проходки, монеты + суммы.',
+      method: 'GET',
+      path: '/api/v1/characters.stats',
+      scope: 'read',
+      fields: [
+        { name: 'party', label: 'Только пати', type: PARTY },
+        { name: 'sort', label: 'Сортировка', type: 'select', options: ['id', 'nick', 'level'], default: 'id' },
+        { name: 'order', label: 'Порядок', type: 'select', options: ['asc', 'desc'], default: 'asc' },
+        { name: 'lang', label: 'Подписи', type: 'select', options: ['en', 'ru'], default: 'en' }
+      ],
+      query: values => {
+        const params = new URLSearchParams();
+        if (values.party) params.set('party', values.party);
+        if (values.sort && values.sort !== 'id') params.set('sort', values.sort);
+        if (values.order && values.order !== 'asc') params.set('order', values.order);
+        if (values.lang && values.lang !== 'en') params.set('lang', values.lang);
+        const text = params.toString();
+        return text ? `?${text}` : '';
+      },
+      result: body =>
+        `${body.count} персонаж(ей); проходки всего: ${body.totals?.sum ?? 0} (оружие ${body.totals?.weapon ?? 0}, доспех ${body.totals?.armor ?? 0}, реликвия ${body.totals?.relic ?? 0})`
     },
     {
       id: 'character-card',

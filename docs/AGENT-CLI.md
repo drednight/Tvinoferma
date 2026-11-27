@@ -38,8 +38,10 @@
 ```powershell
 # из копии репозитория
 npm run tf -- status --json
-node scripts/tf/tf.mjs characters --json          # список без статов (быстрый)
-node scripts/tf/tf.mjs characters --full --json   # те же строки со статами и заметками
+node scripts/tf/tf.mjs characters --json                    # краткий список: id и ник
+node scripts/tf/tf.mjs characters --detail=list --json      # карточки без статов и заметок
+node scripts/tf/tf.mjs characters --full --json             # те же строки со статами, заметками и историей монет
+node scripts/tf/tf.mjs list-character-stats --json          # статы и проходки у всех + суммы (totals)
 node scripts/tf/tf.mjs describe launch-party
 ```
 
@@ -105,7 +107,8 @@ tf call <МЕТОД> <путь> [--body '<json>'] [--yes]   прямой зап�
 | --- | --- |
 | `tf health` | `GET /health` — версия, права, запись, занятость запуска |
 | `tf status` | `GET /status` — сводка: счётчики, дела на сегодня, баланс |
-| `tf characters` (`list-characters`) | `GET /characters` |
+| `tf characters` (`list-characters`) | `GET /characters` — по умолчанию `id` и `ник`, дальше `--detail=list\|full` или `--fields=` |
+| `tf list-character-stats` | `GET /characters.stats` |
 | `tf character-card Mag_1` | `GET /characters/{id}` |
 | `tf character-stats Mag_1` / `tf character-stat Mag_1 hp` | `GET /characters/{id}/stats[/{stat}]` |
 | `tf character-passes Mag_1` / `tf character-pass Mag_1 weapon` | `GET /characters/{id}/dungeon-passes[/{pass}]` |

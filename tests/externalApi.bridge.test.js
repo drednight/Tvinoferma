@@ -63,6 +63,7 @@ function fakeDeps(overrides = {}) {
     characters: Object.fromEntries(
       [
         'publicCharacters',
+        'publicCharacterStats',
         'publicParties',
         'publicWindows',
         'publicMarathons',
@@ -145,6 +146,49 @@ describe('внешний API: маршрутизация моста', () => {
     expect(JSON.stringify(one.body)).not.toContain('password');
     const missing = await answer({ method: 'GET', path: '/api/v1/characters/Nope_9' }, fakeDeps());
     expect(missing).toMatchObject({ status: 404, body: { error: { code: 'no_such_character' } } });
+  });
+
+  it('список персонажей по умолчанию краткий, подробности — detail, fields и /characters.stats', async () => {
+    // «GET /characters» — это список, а не 28 карточек: по умолчанию в строке только
+    // `id` и `nick`. Проверяется на уровне маршрута, а не функции: именно адрес
+    // копируют в скрипт, и именно он не должен внезапно приносить карточки.
+    const list = await routeRequest({ method: 'GET', path: '/api/v1/characters' }, fakeDeps());
+    expect(list.status).toBe(200);
+    expect(list.body.characters.map(row => Object.keys(row))).toEqual([
+      ['id', 'nick'],
+      ['id', 'nick'],
+      ['id', 'nick']
+    ]);
+    expect(list.body.detail).toBe('brief');
+    expect(list.body.detailHint).toContain('/characters.stats');
+
+    const full = await routeRequest({ method: 'GET', path: '/api/v1/characters', query: 'detail=full' }, fakeDeps());
+    expect(full.body.detail).toBe('full');
+    expect(full.body.characters[0]).toHaveProperty('stats');
+
+    // прежний способ (`?full=true`) работает: старые скрипты переписывать не надо
+    const legacy = await routeRequest({ method: 'GET', path: '/api/v1/characters', query: 'full=true' }, fakeDeps());
+    expect(legacy.body.detail).toBe('full');
+
+    const asked = await routeRequest(
+      { method: 'GET', path: '/api/v1/characters', query: 'fields=id,nick,level' },
+      fakeDeps()
+    );
+    expect(asked.body.detail).toBe('picked');
+    expect(asked.body.characters[0]).toMatchObject({ id: expect.any(String), nick: expect.any(String) });
+    expect(asked.body.characters[0]).toHaveProperty('level');
+    expect(asked.body.characters[0]).not.toHaveProperty('stats');
+
+    const stats = await routeRequest({ method: 'GET', path: '/api/v1/characters.stats' }, fakeDeps());
+    expect(stats.status).toBe(200);
+    expect(stats.body.detail).toBe('stats');
+    expect(stats.body.characters[0]).toHaveProperty('dungeonPasses');
+    expect(stats.body.totals).toMatchObject({ weapon: expect.any(Number), sum: expect.any(Number) });
+
+    // секреты не приезжают ни в одном из режимов
+    for (const body of [list.body, full.body, stats.body]) {
+      expect(JSON.stringify(body)).not.toContain('password');
+    }
   });
 
   it('без права «изменение» — 403 forbidden_scope, и данные не меняются', async () => {
