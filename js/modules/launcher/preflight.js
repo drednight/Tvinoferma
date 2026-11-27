@@ -17,10 +17,14 @@
 import { resolveGameCenter, pickMajorityGc } from './gameCenters.js';
 import { parseWindowTitle } from './windowList.js';
 
-/** Режимы экрана проверок (Настройки → Запуск игры → «Проверки перед запуском»). */
+/**
+ * Режимы экрана проверок. Настройка (Настройки → Запуск игры → «Проверки перед
+ * запуском») признаёт из них два — см. `normalizePreflightSetting`; 'issues' остался
+ * здесь потому, что его просит вызывающий: `opts.preflight` в `launchGroup` (им же
+ * работает разовый «🔎 Проверить перед запуском…» из «▾» у кнопки запуска).
+ */
 export const PREFLIGHT_MODES = ['off', 'issues', 'always'];
-// Обычный запуск пати не прерывается: 'issues' и 'always' человек включает сам, как и
-// разовый экран из «▾» у кнопки запуска (он приходит отдельным `opts.preflight`).
+// Обычный запуск пати не прерывается ничем.
 export const DEFAULT_PREFLIGHT_MODE = 'off';
 
 /** @param {any} v */
