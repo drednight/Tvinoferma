@@ -30,6 +30,15 @@ body[data-ui-style='next'] .next-sidebar {
   top: 0;
   z-index: 120;
   height: 100vh;
+  /* Окно ниже, чем меню, — не повод его терять. Без прокрутки нижняя часть
+     (часы, «Статус серверов», «Настройки») уезжала за нижний край панели, а липкая
+     позиция возвращала наверх всё, кроме неё: добраться до этих пунктов было нельзя.
+     Теперь панель — свой прокручиваемый блок, как `.settings-nav` на странице настроек.
+     По горизонтали — clip: боковая полоса прокрутки съела бы 10 px из 248 (а в узком
+     режиме — из 76), и тащить её вдоль меню никто не просит. */
+  overflow-y: auto;
+  overflow-x: clip;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   padding: 18px 14px 14px;
@@ -324,6 +333,9 @@ body[data-ui-style='next'] .stat-strip {
     border-right: 0;
     flex-direction: row;
     gap: 6px;
+    /* Нижняя панель — строка на 64 px: прокручивать вертикально нечего, а полоса
+       прокрутки съела бы половину её высоты. */
+    overflow: visible;
   }
   .next-brand {
     display: none;
