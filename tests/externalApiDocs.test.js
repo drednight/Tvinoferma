@@ -272,6 +272,46 @@ describe('страница API: справочник', () => {
     expect(card.querySelector('[data-doc-link]')).toBeTruthy();
   });
 
+  it('выбор пункта слева не прокручивает страницу: никакого прыжка наверх', () => {
+    // Оглавление липкое, деталь — рядом. Прокрутка на каждый выбор (а тем более
+    // возврат к шапке) уносила человека с того места, где он читает.
+    mountPage();
+    document.querySelector('[data-tab="docs"]').click();
+    const scroller = document.scrollingElement || document.documentElement;
+    let scrollTopWrites = 0;
+    Object.defineProperty(scroller, 'scrollTop', {
+      configurable: true,
+      get: () => 1200,
+      set: () => {
+        scrollTopWrites += 1;
+      }
+    });
+    const scrolled = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function scrollSpy() {
+      scrolled.push(this.id);
+    };
+    try {
+      for (const link of [...document.querySelectorAll('[data-toc-method]')].slice(0, 4)) link.click();
+      expect(scrolled).toEqual([]);
+      expect(scrollTopWrites).toBe(0);
+      // Листание стрелками — тот же путь, и оно тоже не крутит страницу.
+      const nav = document.querySelector('[data-refnav="docs"]');
+      nav.querySelector('[data-ref-step="1"]').click();
+      nav.querySelector('[data-ref-step="-1"]').click();
+      expect(scrolled).toEqual([]);
+      expect(scrollTopWrites).toBe(0);
+      // В режиме «все списком» прокрутка нужна: карточку надо догнать.
+      document.querySelector('[data-ref-mode="all"]').click();
+      document.querySelectorAll('[data-toc-method]')[2].click();
+      expect(scrolled.length).toBe(1);
+      expect(scrollTopWrites).toBe(0);
+      localStorage.removeItem('tf-api-ref-view');
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
   it('ссылка с якорем открывает страницу сразу на «Справочнике», а не на «Данных»', () => {
     // Якорь из чата или из AGENTS.md («посмотри GET /characters») — это ссылка на
     // карточку метода. Открыть её надо так, чтобы человеку не пришлось угадывать

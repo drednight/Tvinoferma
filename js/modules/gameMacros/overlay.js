@@ -94,7 +94,6 @@ async function init() {
   let windowSignature = '';
   let latestParties = [];
   let latestWindows = [];
-  let askBeforeLaunch = false;
   let recipientRevision = '',
     recipientDirty = false,
     recipientsPending = false;
@@ -254,7 +253,6 @@ async function init() {
       selected = partySelect.value || data.partyId;
     latestParties = Array.isArray(data.parties) ? data.parties : [];
     latestWindows = Array.isArray(data.windows) ? data.windows : [];
-    askBeforeLaunch = data.askBeforeLaunch === true;
     partySelect.replaceChildren(new Option('Выберите пати', ''), ...latestParties.map(p => new Option(p.name, p.id)));
     partySelect.value = selected || '';
     if (data.busy) {
@@ -695,17 +693,9 @@ async function init() {
     setPartyLaunchDisabled(partyBusy || !document.getElementById('party-select').value);
   };
   document.getElementById('party-launch').onclick = () => {
-    const selectedId = document.getElementById('party-select').value;
-    const party = latestParties.find(p => p.id === selectedId);
-    // Обычное нажатие = вся пати без окна. Список «кого запускать» открывается либо
-    // включённым спросом, либо кнопкой «Кого запускать…» рядом — она активна всегда.
-    if (
-      askBeforeLaunch === true &&
-      Array.isArray(party?.members) &&
-      party.members.length > 1 &&
-      openInlinePicker(party)
-    )
-      return;
+    // «Запустить пати» значит «запусти всю пати по её порядку» — без окна и без
+    // настроек: список «кого запускать» открывается только своей кнопкой
+    // «☑ Кого запускать…» рядом (она активна всегда).
     void partyRequest('party-launch');
   };
   const pickButton = document.getElementById('party-launch-pick');

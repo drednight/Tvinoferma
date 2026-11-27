@@ -54,7 +54,9 @@ beforeEach(async () => {
     preferredGcId: '',
     decorateWindows: false,
     skipRunning: true,
-    askBeforeLaunch: false,
+    // Здесь режим проверок выставлен напрямую: state.json проходит через нормализацию,
+    // где 'issues' уже гаснет в 'off' (это проверено в tests/preflight.test.js), а эти
+    // тесты смотрят само поведение экрана — когда он показан и что он делает.
     preflight: 'issues',
     delaySec: 3
   };

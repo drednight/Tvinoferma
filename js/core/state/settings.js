@@ -17,8 +17,8 @@ import { normalizeGameCenters } from '../../modules/launcher/gameCenters.js';
 import { normalizePendingResponses } from '../../modules/guild/responseQueue.js';
 import { normalizePendingPollVotes } from '../../modules/guild/pollVoteQueue.js';
 import { normalizeGuildData } from '../../modules/guild/core.js';
-import { normalizePreflightMode } from '../../modules/launcher/preflight.js';
 import { normalizeSectionsSettings } from '../sections.js';
+import { normalizePreflightSetting } from '../../modules/launcher/preflight.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 
@@ -50,10 +50,13 @@ function normalizeLauncherSettings(input = {}) {
       ? Math.min(120, Math.max(0, delay))
       : DEFAULT_SETTINGS.launcher.delaySec;
   merged.skipRunning = merged.skipRunning !== false;
-  // Спрос «кого запускать» — по желанию, а не по умолчанию: обычный запуск пати не должен
-  // прерываться окном. Включённая настройка остаётся включённой.
-  merged.askBeforeLaunch = merged.askBeforeLaunch === true;
-  merged.preflight = normalizePreflightMode(merged.preflight);
+  // Флаг «спрашивать, кого запускать» ушёл: обычная кнопка «Запустить» не имеет права
+  // показывать окно. Удаляем и слежавшееся значение из state.json, иначе оно пережило бы
+  // удаление настройки и модалка вернулась — ровно так, и случилось у тех, кто её включал.
+  delete merged.askBeforeLaunch;
+  // А вот `preflight` остаётся настройкой: экран проверок нужен тем, у кого вход
+  // регулярно слетает. Но из неё живёт только 'always' — см. normalizePreflightSetting.
+  merged.preflight = normalizePreflightSetting(merged.preflight);
   merged.layoutDir = String(merged.layoutDir ?? '').trim();
   merged.layoutTemplate = String(merged.layoutTemplate ?? '').trim();
   return merged;

@@ -17,13 +17,27 @@
 import { resolveGameCenter, pickMajorityGc } from './gameCenters.js';
 import { parseWindowTitle } from './windowList.js';
 
-/** Режимы экрана проверок (Настройки → Запуск игры). */
+/** Режимы экрана проверок (Настройки → Запуск игры → «Проверки перед запуском»). */
 export const PREFLIGHT_MODES = ['off', 'issues', 'always'];
-// Обычный запуск пати не прерывается: экран — по запросу (настройка или «▾» в карточке).
+// Обычный запуск пати не прерывается: 'issues' и 'always' человек включает сам, как и
+// разовый экран из «▾» у кнопки запуска (он приходит отдельным `opts.preflight`).
 export const DEFAULT_PREFLIGHT_MODE = 'off';
 
 /** @param {any} v */
 export const normalizePreflightMode = v => (PREFLIGHT_MODES.includes(v) ? v : DEFAULT_PREFLIGHT_MODE);
+
+/**
+ * То же, но для настройки `launcher.preflight`: из неё допустимо только 'always' —
+ * «всегда» человек выбирает сам, и именно поэтому оно его и получает.
+ *
+ * 'issues' был значением по умолчанию, а экран с тех пор перестал вставать между
+ * кнопкой «▶ Запустить» и запуском. Отличить «я выбрал при проблемах» от «мне досталось
+ * прежнее умолчание» нельзя, и побеждает обещание кнопки: слежавшееся 'issues' гаснет
+ * в 'off'. Режим не исчезает — он по-прежнему доступен вызывающему (`opts.preflight`),
+ * и именно так работает разовое «Проверить перед запуском…» из меню «▾».
+ * @param {any} v
+ */
+export const normalizePreflightSetting = v => (v === 'always' ? 'always' : 'off');
 
 const same = (a, b) =>
   String(a || '')

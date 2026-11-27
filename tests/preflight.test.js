@@ -8,9 +8,11 @@ import {
   availableFixes,
   chooseGcToAttach,
   attachGcTo,
-  normalizePreflightMode
+  normalizePreflightMode,
+  normalizePreflightSetting
 } from '../js/modules/launcher/preflight.js';
 import { preflightRows, openPreflight } from '../js/modules/launcher/preflightDialog.js';
+import { readFileSync } from 'node:fs';
 import { normalizeState } from '../js/core/state.js';
 
 const GC1 = { id: 'gc-1', name: 'Папка 1', path: 'D:\\GC1\\GameCenter.exe' };
@@ -185,6 +187,27 @@ describe('когда показывать экран', () => {
     expect([l.preflight, l.skipRunning]).toEqual(['off', false]);
     const d = normalizeState({ characters: [], settings: {} }).settings.launcher;
     expect([d.preflight, d.skipRunning]).toEqual(['off', true]);
+  });
+
+  it('слежавшееся «показывать при проблемах» не возвращает окно под кнопку', () => {
+    // 'issues' был значением по умолчанию, и на уже сохранённых настройках он жил своей
+    // жизнью: смена умолчания его не снимала, а экран вставал между «▶ Запустить» и
+    // запуском. Поэтому настройка теперь признаёт только явное 'always'.
+    expect(normalizePreflightSetting('issues')).toBe('off');
+    expect(normalizePreflightSetting('always')).toBe('always');
+    expect(normalizePreflightSetting(undefined)).toBe('off');
+    expect(
+      normalizeState({ characters: [], settings: { launcher: { preflight: 'issues' } } }).settings.launcher.preflight
+    ).toBe('off');
+    expect(
+      normalizeState({ characters: [], settings: { launcher: { preflight: 'always' } } }).settings.launcher.preflight
+    ).toBe('always');
+    // Режим не исчез: его по-прежнему можно попросить на один запуск.
+    expect(normalizePreflightMode('issues')).toBe('issues');
+    // ...и в списке настроек двух значений хватает
+    const html = readFileSync('index.html', 'utf8');
+    expect(html).toContain('data-setting="launcher.preflight"');
+    expect(html).not.toContain('<option value="issues">');
   });
 });
 

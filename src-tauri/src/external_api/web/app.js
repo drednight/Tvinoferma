@@ -1844,13 +1844,11 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
     }
     const card = document.getElementById(id);
     if (!card) return true;
+    // Прокрутка — только в режиме списка, где карточку надо ещё догнать. В режиме
+    // «по одной» прокрутка не нужна вовсе, и тем более не нужен возврат наверх:
+    // оглавление липкое, выбор в нём человек делает, не отрывая глаз от детали
+    // справа, а прыжок страницы каждый раз уносил бы его к шапке.
     if (refView === 'all') card.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
-    else {
-      // Справа одна карточка: листать нечего, но страница могла уехать вниз —
-      // возврат наверх и есть «переход» между карточками.
-      const scroller = document.scrollingElement || document.documentElement;
-      if (scroller) scroller.scrollTop = 0;
-    }
     card.classList.add('is-target');
     setTimeout(() => card.classList.remove('is-target'), 1600);
     return true;
@@ -2259,8 +2257,11 @@ curl -s -OJ -H "Authorization: Bearer ${shown}" ${base}/api/v1/export/characters
         if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
         event.preventDefault();
         stepRef(id === 'docs-toc' ? 'docs' : 'recipes', event.key === 'ArrowDown' ? 1 : -1);
+        // `preventScroll`: фокус нужен, чтобы стрелки продолжали работать, но
+        // перевод фокуса сам по себе прокручивает страницу к элементу — на узком
+        // экране, где оглавление не липкое, это выглядело бы как прыжок.
         const link = document.querySelector(`#${id} a.is-on`);
-        if (link) link.focus?.();
+        link?.focus?.({ preventScroll: true });
       });
     }
     for (const id of ['docs-only-read', 'docs-only-available'])

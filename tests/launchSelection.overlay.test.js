@@ -1,3 +1,7 @@
+// tests/launchSelection.overlay.test.js
+// Оверлей («мини-окно запуска»): свои кнопки «▶ Запустить пати» и «☑ Кого
+// запускать…». Правило то же, что и в главном окне: обычное нажатие запускает всю
+// пати по её порядку и НЕ открывает список; список — только по своей кнопке.
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 
@@ -30,56 +34,53 @@ describe('оверлей: встроенный выбор состава пат�
     await vi.waitFor(() => expect(document.querySelector('#party-launch').onclick).toBeTypeOf('function'));
   });
 
-  it('показывает встроенный список с бейджем «уже запущено» и отправляет только отмеченные memberIds', async () => {
-    mocks.handlers.get('game-macro-snapshot')({
-      payload: {
-        askBeforeLaunch: true,
-        parties: [
-          {
-            id: 'p1',
-            name: 'Основа',
-            members: [
-              { id: 'c', nick: 'Вв', cls: 'Жрец' },
-              { id: 'a', nick: 'Аа', cls: 'Воин' },
-              { id: 'b', nick: 'Бб', cls: 'Маг' }
-            ]
-          }
-        ],
-        partyId: 'p1',
-        windows: [{ name: 'Аа', pid: 10, known: true }]
-      }
-    });
+  it('«Кого запускать…» показывает список с бейджем «уже запущено» и отправляет только отмеченные memberIds', async () => {
+    const snapshotPayload = {
+      askBeforeLaunch: true,
+      busy: false,
+      parties: [
+        {
+          id: 'p1',
+          name: 'Основа',
+          members: [
+            { id: 'c', nick: 'Вв', cls: 'Жрец' },
+            { id: 'a', nick: 'Аа', cls: 'Воин' },
+            { id: 'b', nick: 'Бб', cls: 'Маг' }
+          ]
+        }
+      ],
+      partyId: 'p1',
+      windows: [{ name: 'Аа', pid: 10, known: true }]
+    };
+    mocks.handlers.get('game-macro-snapshot')({ payload: snapshotPayload });
 
     document.querySelector('[data-view="party"]').click();
     await vi.waitFor(() =>
       expect(mocks.invoke).toHaveBeenCalledWith('game_macro_navigate', { action: 'party-refresh', partyId: 'p1' })
     );
-    mocks.handlers.get('game-macro-snapshot')({
-      payload: {
-        askBeforeLaunch: true,
-        busy: false,
-        parties: [
-          {
-            id: 'p1',
-            name: 'Основа',
-            members: [
-              { id: 'c', nick: 'Вв', cls: 'Жрец' },
-              { id: 'a', nick: 'Аа', cls: 'Воин' },
-              { id: 'b', nick: 'Бб', cls: 'Маг' }
-            ]
-          }
-        ],
-        partyId: 'p1',
-        windows: [{ name: 'Аа', pid: 10, known: true }]
-      }
-    });
+    // Обновление окон присылает новый снапшот — с ним кнопки и оживают.
+    mocks.handlers.get('game-macro-snapshot')({ payload: snapshotPayload });
     mocks.invoke.mockClear();
     mocks.emitTo.mockClear();
 
     expect(document.querySelector('#party-launch').disabled).toBe(false);
+    // Обычная кнопка не спрашивает даже со `askBeforeLaunch: true` в снапшоте —
+    // этот флаг больше ни на что не влияет и в оверлей не передаётся.
     document.querySelector('#party-launch').click();
+    expect(document.querySelector('#party-launch-picker').hidden).toBe(true);
+    await vi.waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith('game_macro_navigate', { action: 'party-launch', partyId: 'p1' })
+    );
+    expect(mocks.emitTo).not.toHaveBeenCalled();
+
+    mocks.invoke.mockClear();
+    // Кнопки гаснут на время запроса и возвращаются в деле следующему снапшоту —
+    // как в живом оверлее, где снапшоты приходят после каждого действия.
+    mocks.handlers.get('game-macro-snapshot')({ payload: snapshotPayload });
+    document.querySelector('#party-launch-pick').click();
     const picker = document.querySelector('#party-launch-picker');
     expect(picker.hidden).toBe(false);
+    // Открытие списка — это не запуск: запрос уйдёт только по «Запустить (N)».
     expect(mocks.invoke).not.toHaveBeenCalledWith(
       'game_macro_navigate',
       expect.objectContaining({ action: 'party-launch' })
@@ -107,7 +108,7 @@ describe('оверлей: встроенный выбор состава пат�
     expect(picker.hidden).toBe(true);
   });
 
-  it('при снятии всех кнопка запуска блокируется, а при askBeforeLaunch: false список не открывается', async () => {
+  it('при снятии всех кнопка «Запустить (0)» блокируется, а без отметок список не запускает', async () => {
     mocks.handlers.get('game-macro-snapshot')({
       payload: {
         askBeforeLaunch: true,
@@ -125,29 +126,17 @@ describe('оверлей: встроенный выбор состава пат�
         windows: []
       }
     });
-    document.querySelector('#party-launch').click();
+    document.querySelector('#party-launch-pick').click();
     document.querySelector('#party-picker-none').click();
     expect(document.querySelector('#party-picker-confirm').disabled).toBe(true);
     document.querySelector('#party-picker-cancel').click();
     expect(document.querySelector('#party-launch-picker').hidden).toBe(true);
+    // Отменённый список — это не запуск: «пустой выбор» наружу не уходит.
+    expect(mocks.invoke).not.toHaveBeenCalledWith(
+      'game_macro_navigate',
+      expect.objectContaining({ action: 'party-launch' })
+    );
 
-    mocks.handlers.get('game-macro-snapshot')({
-      payload: {
-        askBeforeLaunch: false,
-        parties: [
-          {
-            id: 'p1',
-            name: 'Основа',
-            members: [
-              { id: 'a', nick: 'Аа', cls: 'Воин' },
-              { id: 'b', nick: 'Бб', cls: 'Маг' }
-            ]
-          }
-        ],
-        partyId: 'p1',
-        windows: []
-      }
-    });
     mocks.invoke.mockClear();
     expect(document.querySelector('#party-launch').disabled).toBe(false);
     document.querySelector('#party-launch').click();
@@ -157,10 +146,10 @@ describe('оверлей: встроенный выбор состава пат�
     );
   });
 
-  it('«Кого запускать…» в оверлее работает всегда: список при выключенном спросе', async () => {
+  it('«Кого запускать…» в оверлее работает всегда: активна и открывает список сама', async () => {
     mocks.handlers.get('game-macro-snapshot')({
       payload: {
-        askBeforeLaunch: false,
+        askBeforeLaunch: true, // слежавшийся флаг: на поведение кнопки «Запустить» он не влияет
         busy: false,
         parties: [
           {

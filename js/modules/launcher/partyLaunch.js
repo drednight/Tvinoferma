@@ -367,9 +367,9 @@ export async function launchGroup(title, characters, opts = {}) {
     // будут из другой, где токена нет, — и окно откроется под прежним аккаунтом.
     const group = launchContextForGroup(characters, opts.gcId);
     let pre = await runPreflight(characters, group.ctx);
-    // Настройка решает, показывать ли экран; `opts.preflight` перебивает её для одного
-    // запуска — так работает «Проверить перед запуском…» в меню стрелки: человек просит
-    // экран здесь и сейчас, не меняя настройку на всё приложение.
+    // Режим экрана проверок — за настройкой, а `opts.preflight` перебивает её для одного
+    // запуска: так работает «Проверить перед запуском…» в меню «▾», когда человек хочет
+    // экран здесь и сейчас и не хочет менять настройку на всё приложение.
     const mode = normalizePreflightMode(opts.preflight ?? state.settings?.launcher?.preflight);
     // «Исправить и запустить» открывает окно «GameCenter и персонажи», пользователь что-то
     // доделывает и закрывает окно — и мы снова показываем проверку с новым списком. Круг
@@ -636,14 +636,16 @@ async function partyLaunchTargets(name) {
 }
 
 /**
- * «Запустить не всех»: окно выбора состава. Этот путь не зависит от настройки
- * «спрашивать перед запуском» и работает всегда.
+ * «Запустить не всех»: окно выбора состава. Отдельное действие — его вызывают
+ * только там, где человек просят выбрать: «▾» у кнопки запуска в карточке пати,
+ * «Кого запускать…» на «Сегодня», в палитре команд, в оверлее и `memberIds` во
+ * внешнем API.
  *
- * Почему отдельная кнопка, а не переключатель: спрос «кого запускать» нужен один раз —
- * сегодня, для конкретного запуска. Держать окно на каждом запуске — значит получить
- * модалку под обычной кнопкой «Запустить», и настройку выключают, а вместе с ней
- * исчезает и разовый выбор. Здесь наоборот: обычный запуск молча поднимает всю пати,
- * выбор — рядом, в стрелке «▾», в «Сегодня», в палитре команд и в оверлее.
+ * Почему это действие, а не настройка: спрос «кого запускать» нужен один раз — сегодня,
+ * для конкретного запуска. Окно под обычной кнопкой «Запустить» превращало запуск пати
+ * в лишний клик, а выключенная настройка у тех, кто её один раз включил, жил в
+ * state.json дольше, чем значение по умолчанию: модалка оставалась. Теперь у нажатия
+ * «▶ Запустить» одного окна нет и быть не может.
  * @param {string} name название пати
  * @param {{ partyId?: string }} [opts]
  * @returns {Promise<any[] | null>} результаты запуска; null — отменено или пати нет
@@ -697,8 +699,8 @@ export function partyLaunchMisses(name) {
 
 /**
  * «Запустить всех»: состав пати целиком, без окна выбора — второй пункт той же
- * стрелки. Нужен, когда спрос включён и мешать ему не надо, но сегодня хочется
- * просто поднять всю пати одним нажатием.
+ * стрелки. Нужен, когда под рукой только меню «▾» (например, из «Сегодня» или из
+ * палитры команд), а запускать надо всю пати и сразу.
  * @param {string} name название пати
  * @param {{ partyId?: string }} [opts]
  */
@@ -713,8 +715,8 @@ export async function launchPartyAll(name, opts = {}) {
     toast('В пати некого запускать', 'warning');
     return null;
   }
-  // `memberIds` = все: проверка «спрашивать или нет» в launchPartyByName не
-  // срабатывает, и окно не всплывёт. Снятие отметки в окне выбора — тоже список id.
+  // `memberIds` = все: путь проходит через тот же отбор, что и окно выбора, и ничем от
+  // обычного «Запустить» не отличается — ни одного окна на нём нет по определению.
   return launchPartyByName(name, { ...opts, partyId: party.id, memberIds: members.map(m => m.id) });
 }
 
@@ -746,7 +748,12 @@ export async function launchOne(char, opts = {}) {
   return launchGroup(`Запуск игры: ${char.nick}`, [char], opts);
 }
 
-/** Запуск пати по названию (меню трея, вкладка «Пати», «Сегодня», палитра команд). */
+/**
+ * Запуск пати по названию (меню трея, вкладка «Пати», «Сегодня», палитра команд,
+ * внешний API): всегда вся пати, в её сохранённом порядке и без единого окна.
+ * @param {string} name название пати
+ * @param {{ partyId?: string, memberIds?: string[], gcId?: string, interactive?: boolean, preflight?: string }} [opts]
+ */
 export async function launchPartyByName(name, opts = {}) {
   const { partyByName, charactersInPartyOrdered } = await import('../parties/membership.js');
   const party = partyByName(state.parties, name);
@@ -758,38 +765,15 @@ export async function launchPartyByName(name, opts = {}) {
   // участников в карточке («⠿» → «изменить порядок запуска»), и запускаться надо в нём же.
   let members = charactersInPartyOrdered(state.characters, party.id);
 
+  // Спроса здесь нет намеренно: этот вызов — «запусти», а не «спроси». Везде, где
+  // нажатие значит «вся пати», включая карточку «Пати», «Сегодня», палитру команд,
+  // оверлей и внешний API, окно состава открывается только отдельным действием
+  // (`launchPartyPicked`, «Кого запускать…»), а здесь учитывается уже сделанный выбор —
+  // `opts.memberIds` от него же и приходит.
   if (Array.isArray(opts.memberIds)) {
     const { selectMembersById } = await import('./launchSelection.js');
     const { selected } = selectMembersById(members, opts.memberIds);
     members = selected;
-    if (!members.length) {
-      toast('Выберите хотя бы одного персонажа для запуска', 'warning');
-      return null;
-    }
-  } else if (
-    isTauri() &&
-    state.settings?.launcher?.askBeforeLaunch === true &&
-    opts.interactive !== false &&
-    members.length > 1
-  ) {
-    let runningIds;
-    try {
-      const { matchRunningClients } = await import('./preflight.js');
-      const facts = await readLaunchFacts();
-      if (facts.clients) {
-        runningIds = new Set(matchRunningClients(members, facts.clients).keys());
-      }
-    } catch {
-      /* не удалось прочитать открытые окна — показываем список без бейджей */
-    }
-    const { openLaunchPicker } = await import('./launchSelection.js');
-    const picked = await openLaunchPicker({
-      partyName: party.name,
-      members,
-      runningIds
-    });
-    if (!picked) return null;
-    members = picked;
     if (!members.length) {
       toast('Выберите хотя бы одного персонажа для запуска', 'warning');
       return null;

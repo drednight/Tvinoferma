@@ -162,7 +162,6 @@ export function snapshot() {
   return {
     overlayOpenRequest,
     busy,
-    askBeforeLaunch: state.settings?.launcher?.askBeforeLaunch === true,
     parties: (state.parties || []).map(({ id, name }) => ({
       id,
       name,
